@@ -30,8 +30,8 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
         ncols: Size<'ncols>,
     ) -> Self {
         assert!(all(
-            inner.nrows() == nrows.into_inner(),
-            inner.ncols() == ncols.into_inner(),
+            inner.nrows() == nrows.unbound(),
+            inner.ncols() == ncols.unbound(),
         ));
         Self(Branded {
             __marker: PhantomData,
@@ -51,20 +51,20 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
     /// Returns the number of rows of the matrix.
     #[inline]
     pub fn nrows(&self) -> Size<'nrows> {
-        unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
+        unsafe { Size::new_unbound(self.0.inner.inner.nrows()) }
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
     pub fn ncols(&self) -> Size<'ncols> {
-        unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
+        unsafe { Size::new_unbound(self.0.inner.inner.ncols()) }
     }
 
     #[inline]
     #[track_caller]
     #[doc(hidden)]
     pub fn col_range(&self, j: Idx<'ncols, usize>) -> Range<usize> {
-        unsafe { self.into_inner().col_range_unchecked(j.into_inner()) }
+        unsafe { self.into_inner().col_range_unchecked(j.unbound()) }
     }
 
     /// Returns the row indices in column `j`.
@@ -87,12 +87,12 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
         unsafe {
             __get_unchecked(
                 self.into_inner().row_indices(),
-                self.into_inner().col_range_unchecked(j.into_inner()),
+                self.into_inner().col_range_unchecked(j.unbound()),
             )
             .iter()
             .map(
                 #[inline(always)]
-                move |&row| Idx::new_raw_unchecked(row.zx()),
+                move |&row| Idx::new_unbound(row.zx()),
             )
         }
     }
@@ -107,8 +107,8 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a
         ncols: Size<'ncols>,
     ) -> Self {
         assert!(all(
-            inner.nrows() == nrows.into_inner(),
-            inner.ncols() == ncols.into_inner(),
+            inner.nrows() == nrows.unbound(),
+            inner.ncols() == ncols.unbound(),
         ));
         Self {
             symbolic: SymbolicSparseColMatRef::new(inner.symbolic(), nrows, ncols),
@@ -148,8 +148,8 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatMut<'nrows, 'ncols, 'a
         ncols: Size<'ncols>,
     ) -> Self {
         assert!(all(
-            inner.nrows() == nrows.into_inner(),
-            inner.ncols() == ncols.into_inner(),
+            inner.nrows() == nrows.unbound(),
+            inner.ncols() == ncols.unbound(),
         ));
         Self {
             symbolic: SymbolicSparseColMatRef::new(inner.symbolic(), nrows, ncols),

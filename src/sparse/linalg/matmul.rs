@@ -6,7 +6,7 @@ use super::*;
 use crate::{
     assert,
     mat::{As2D, As2DMut},
-    utils::constrained::{self, Size},
+    utils::constrained::{self},
 };
 use core::cell::UnsafeCell;
 
@@ -306,30 +306,30 @@ pub fn sparse_dense_matmul<
             None => acc.fill_zero(),
         }
 
-        Size::with2(m, n, |m, n| {
-            Size::with(k, |k| {
-                let mut acc = constrained::mat::MatMut::new(acc, m, n);
-                let lhs = constrained::sparse::SparseColMatRef::new(lhs, m, k);
-                let rhs = constrained::mat::MatRef::new(rhs, k, n);
+        with_dim!(m, m);
+        with_dim!(n, n);
+        with_dim!(k, k);
 
-                for j in n.indices() {
-                    for depth in k.indices() {
-                        let rhs_kj = rhs.read(depth, j).canonicalize().faer_mul(beta);
-                        for (i, lhs_ik) in zip(
-                            lhs.row_indices_of_col(depth),
-                            SliceGroup::<'_, LhsE>::new(lhs.values_of_col(depth)).into_ref_iter(),
-                        ) {
-                            acc.write(
-                                i,
-                                j,
-                                acc.read(i, j)
-                                    .faer_add(lhs_ik.read().canonicalize().faer_mul(rhs_kj)),
-                            );
-                        }
-                    }
+        let mut acc = constrained::mat::MatMut::new(acc, m, n);
+        let lhs = constrained::sparse::SparseColMatRef::new(lhs, m, k);
+        let rhs = constrained::mat::MatRef::new(rhs, k, n);
+
+        for j in n.indices() {
+            for depth in k.indices() {
+                let rhs_kj = rhs.read(depth, j).canonicalize().faer_mul(beta);
+                for (i, lhs_ik) in zip(
+                    lhs.row_indices_of_col(depth),
+                    SliceGroup::<'_, LhsE>::new(lhs.values_of_col(depth)).into_ref_iter(),
+                ) {
+                    acc.write(
+                        i,
+                        j,
+                        acc.read(i, j)
+                            .faer_add(lhs_ik.read().canonicalize().faer_mul(rhs_kj)),
+                    );
                 }
-            });
-        });
+            }
+        }
     }
 
     implementation(
@@ -398,30 +398,28 @@ pub fn dense_sparse_matmul<
             None => acc.fill_zero(),
         }
 
-        Size::with2(m, n, |m, n| {
-            Size::with(k, |k| {
-                let mut acc = constrained::mat::MatMut::new(acc, m, n);
-                let lhs = constrained::mat::MatRef::new(lhs, m, k);
-                let rhs = constrained::sparse::SparseColMatRef::new(rhs, k, n);
+        with_dim!(m, m);
+        with_dim!(n, n);
+        with_dim!(k, k);
+        let mut acc = constrained::mat::MatMut::new(acc, m, n);
+        let lhs = constrained::mat::MatRef::new(lhs, m, k);
+        let rhs = constrained::sparse::SparseColMatRef::new(rhs, k, n);
 
-                for i in m.indices() {
-                    for j in n.indices() {
-                        let mut acc_ij = E::faer_zero();
-                        for (depth, rhs_kj) in zip(
-                            rhs.row_indices_of_col(j),
-                            SliceGroup::<'_, RhsE>::new(rhs.values_of_col(j)).into_ref_iter(),
-                        ) {
-                            let lhs_ik = lhs.read(i, depth);
-                            acc_ij = acc_ij.faer_add(
-                                lhs_ik.canonicalize().faer_mul(rhs_kj.read().canonicalize()),
-                            );
-                        }
-
-                        acc.write(i, j, acc.read(i, j).faer_add(beta.faer_mul(acc_ij)));
-                    }
+        for i in m.indices() {
+            for j in n.indices() {
+                let mut acc_ij = E::faer_zero();
+                for (depth, rhs_kj) in zip(
+                    rhs.row_indices_of_col(j),
+                    SliceGroup::<'_, RhsE>::new(rhs.values_of_col(j)).into_ref_iter(),
+                ) {
+                    let lhs_ik = lhs.read(i, depth);
+                    acc_ij = acc_ij
+                        .faer_add(lhs_ik.canonicalize().faer_mul(rhs_kj.read().canonicalize()));
                 }
-            });
-        });
+
+                acc.write(i, j, acc.read(i, j).faer_add(beta.faer_mul(acc_ij)));
+            }
+        }
     }
     implementation(
         { acc }.as_2d_mut(),

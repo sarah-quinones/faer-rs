@@ -906,7 +906,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         }
     }
 
-    /// Returns a view over the matrix.
+    /// Returns the input matrix with dynamic shape.
     #[inline]
     pub fn as_dyn(self) -> MatRef<'a, E> {
         unsafe {
@@ -920,9 +920,10 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         }
     }
 
-    /// Returns a view over the matrix.
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
     #[inline]
-    pub fn with_dims<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> MatRef<'a, E, V, H> {
+    pub fn as_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> MatRef<'a, E, V, H> {
         assert!(all(
             nrows.unbound() == self.nrows().unbound(),
             ncols.unbound() == self.ncols().unbound(),
@@ -1661,7 +1662,7 @@ impl<'a, T: Entity, R: Shape, C: Shape> core::fmt::Debug for MatRef<'a, T, R, C>
         make_guard!(N);
         let M = self.nrows().bind(M);
         let N = self.ncols().bind(N);
-        let this = self.with_dims(M, N);
+        let this = self.as_shape(M, N);
 
         fn imp<'M, 'N, T: Entity>(
             this: MatRef<'_, T, Dim<'M>, Dim<'N>>,

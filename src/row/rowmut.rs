@@ -213,7 +213,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
         self.ptr_at_mut_unchecked(col.unbound())
     }
 
-    /// Returns a view over the row.
+    /// Returns the input row with dynamic shape.
     #[inline]
     pub fn as_dyn(self) -> RowRef<'a, E> {
         let ncols = self.ncols().unbound();
@@ -221,12 +221,26 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
         unsafe { from_raw_parts(self.as_ptr(), ncols, col_stride) }
     }
 
-    /// Returns a view over the row.
+    /// Returns the input row with dynamic shape.
     #[inline]
     pub fn as_dyn_mut(self) -> RowMut<'a, E> {
         let ncols = self.ncols().unbound();
         let col_stride = self.col_stride();
         unsafe { from_raw_parts_mut(self.as_ptr_mut(), ncols, col_stride) }
+    }
+
+    /// Returns the input row with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<H: Shape>(self, ncols: H) -> RowRef<'a, E, H> {
+        self.into_const().as_shape(ncols)
+    }
+
+    /// Returns the input row with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape_mut<H: Shape>(self, ncols: H) -> RowMut<'a, E, H> {
+        unsafe { self.into_const().as_shape(ncols).const_cast() }
     }
 
     /// Splits the column vector at the given index into two parts and
@@ -687,7 +701,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 
     /// Returns an owning [`Row`] of the data.
     #[inline]
-    pub fn to_owned(&self) -> Row<E::Canonical>
+    pub fn to_owned(&self) -> Row<E::Canonical, C>
     where
         E: Conjugate,
     {
@@ -1046,17 +1060,17 @@ pub fn from_slice_mut<E: SimpleEntity>(slice: &mut [E]) -> RowMut<'_, E> {
     from_slice_mut_generic(slice)
 }
 
-impl<E: Entity> As2D<E> for RowMut<'_, E> {
+impl<E: Entity, C: Shape> As2D<E> for RowMut<'_, E, C> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (*self).rb().as_2d()
+        (*self).rb().as_2d().as_dyn()
     }
 }
 
-impl<E: Entity> As2DMut<E> for RowMut<'_, E> {
+impl<E: Entity, C: Shape> As2DMut<E> for RowMut<'_, E, C> {
     #[inline]
     fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (*self).rb_mut().as_2d_mut()
+        (*self).rb_mut().as_2d_mut().as_dyn_mut()
     }
 }
 
@@ -1066,21 +1080,21 @@ impl<'a, E: Entity, C: Shape> core::fmt::Debug for RowMut<'a, E, C> {
     }
 }
 
-impl<E: SimpleEntity> core::ops::Index<usize> for RowMut<'_, E> {
+impl<E: SimpleEntity, C: Shape> core::ops::Index<Idx<C>> for RowMut<'_, E, C> {
     type Output = E;
 
     #[inline]
     #[track_caller]
-    fn index(&self, col: usize) -> &E {
-        (*self).rb().get(col)
+    fn index(&self, col: Idx<C>) -> &E {
+        (*self).rb().at(col)
     }
 }
 
-impl<E: SimpleEntity> core::ops::IndexMut<usize> for RowMut<'_, E> {
+impl<E: SimpleEntity, C: Shape> core::ops::IndexMut<Idx<C>> for RowMut<'_, E, C> {
     #[inline]
     #[track_caller]
-    fn index_mut(&mut self, col: usize) -> &mut E {
-        (*self).rb_mut().get_mut(col)
+    fn index_mut(&mut self, col: Idx<C>) -> &mut E {
+        (*self).rb_mut().at_mut(col)
     }
 }
 

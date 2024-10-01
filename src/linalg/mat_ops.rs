@@ -1810,7 +1810,7 @@ impl<I: Index> Mul<PermRef<'_, I>> for PermRef<'_, I> {
             inv[fwd.to_signed().zx()] = I::from_signed(I::Signed::truncate(i));
         }
 
-        Perm::new_checked(fwd, inv)
+        Perm::new_checked(fwd, inv, lhs.len())
     }
 }
 
@@ -3413,9 +3413,13 @@ mod test {
     #[test]
     fn test_perm_mul() {
         let A = Mat::from_fn(6, 5, |i, j| (j + 5 * i) as f64);
-        let pl =
-            Perm::<usize>::new_checked(Box::new([5, 1, 4, 0, 2, 3]), Box::new([3, 1, 4, 5, 2, 0]));
-        let pr = Perm::<usize>::new_checked(Box::new([1, 4, 0, 2, 3]), Box::new([2, 0, 3, 4, 1]));
+        let pl = Perm::<usize>::new_checked(
+            Box::new([5, 1, 4, 0, 2, 3]),
+            Box::new([3, 1, 4, 5, 2, 0]),
+            6,
+        );
+        let pr =
+            Perm::<usize>::new_checked(Box::new([1, 4, 0, 2, 3]), Box::new([2, 0, 3, 4, 1]), 5);
 
         let perm_left = mat![
             [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],

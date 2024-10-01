@@ -26,15 +26,15 @@ use core::marker::PhantomData;
 /// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
 /// (though not undefined) behavior.
 #[derive(Clone)]
-pub struct SymbolicSparseColMat<I: Index> {
-    pub(crate) nrows: usize,
-    pub(crate) ncols: usize,
+pub struct SymbolicSparseColMat<I: Index, R: Shape = usize, C: Shape = usize> {
+    pub(crate) nrows: R,
+    pub(crate) ncols: C,
     pub(crate) col_ptr: alloc::vec::Vec<I>,
     pub(crate) col_nnz: Option<alloc::vec::Vec<I>>,
-    pub(crate) row_ind: alloc::vec::Vec<I>,
+    pub(crate) row_ind: alloc::vec::Vec<Idx<R, I>>,
 }
 
-impl<I: Index> SymbolicSparseColMat<I> {
+impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
     /// Creates a new symbolic matrix view after asserting its invariants.
     ///
     /// # Panics
@@ -43,11 +43,11 @@ impl<I: Index> SymbolicSparseColMat<I> {
     #[inline]
     #[track_caller]
     pub fn new_checked(
-        nrows: usize,
-        ncols: usize,
+        nrows: R,
+        ncols: C,
         col_ptrs: alloc::vec::Vec<I>,
         nnz_per_col: Option<alloc::vec::Vec<I>>,
-        row_indices: alloc::vec::Vec<I>,
+        row_indices: alloc::vec::Vec<Idx<R, I>>,
     ) -> Self {
         SymbolicSparseColMatRef::new_checked(
             nrows,
@@ -75,11 +75,11 @@ impl<I: Index> SymbolicSparseColMat<I> {
     #[inline]
     #[track_caller]
     pub fn new_unsorted_checked(
-        nrows: usize,
-        ncols: usize,
+        nrows: R,
+        ncols: C,
         col_ptrs: alloc::vec::Vec<I>,
         nnz_per_col: Option<alloc::vec::Vec<I>>,
-        row_indices: alloc::vec::Vec<I>,
+        row_indices: alloc::vec::Vec<Idx<R, I>>,
     ) -> Self {
         SymbolicSparseColMatRef::new_unsorted_checked(
             nrows,
@@ -106,11 +106,11 @@ impl<I: Index> SymbolicSparseColMat<I> {
     #[inline(always)]
     #[track_caller]
     pub unsafe fn new_unchecked(
-        nrows: usize,
-        ncols: usize,
+        nrows: R,
+        ncols: C,
         col_ptrs: alloc::vec::Vec<I>,
         nnz_per_col: Option<alloc::vec::Vec<I>>,
-        row_indices: alloc::vec::Vec<I>,
+        row_indices: alloc::vec::Vec<Idx<R, I>>,
     ) -> Self {
         SymbolicSparseColMatRef::new_unchecked(
             nrows,
@@ -139,11 +139,11 @@ impl<I: Index> SymbolicSparseColMat<I> {
     pub fn into_parts(
         self,
     ) -> (
-        usize,
-        usize,
+        R,
+        C,
         alloc::vec::Vec<I>,
         Option<alloc::vec::Vec<I>>,
-        alloc::vec::Vec<I>,
+        alloc::vec::Vec<Idx<R, I>>,
     ) {
         (
             self.nrows,
@@ -156,7 +156,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
 
     /// Returns a view over the symbolic structure of `self`.
     #[inline]
-    pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I> {
+    pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, R, C> {
         SymbolicSparseColMatRef {
             nrows: self.nrows,
             ncols: self.ncols,
@@ -168,18 +168,18 @@ impl<I: Index> SymbolicSparseColMat<I> {
 
     /// Returns the number of rows of the matrix.
     #[inline]
-    pub fn nrows(&self) -> usize {
+    pub fn nrows(&self) -> R {
         self.nrows
     }
     /// Returns the number of columns of the matrix.
     #[inline]
-    pub fn ncols(&self) -> usize {
+    pub fn ncols(&self) -> C {
         self.ncols
     }
 
     /// Returns the number of rows and columns of the matrix.
     #[inline]
-    pub fn shape(&self) -> (usize, usize) {
+    pub fn shape(&self) -> (R, C) {
         (self.nrows(), self.ncols())
     }
 
@@ -188,7 +188,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
-    pub fn into_transpose(self) -> SymbolicSparseRowMat<I> {
+    pub fn into_transpose(self) -> SymbolicSparseRowMat<I, C, R> {
         SymbolicSparseRowMat {
             nrows: self.ncols,
             ncols: self.nrows,
@@ -203,7 +203,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
-    pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
+    pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I, R, C>, FaerError> {
         self.as_ref().to_owned()
     }
 
@@ -212,7 +212,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
-    pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
+    pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I, R, C>, FaerError> {
         self.as_ref().to_row_major()
     }
 
@@ -242,7 +242,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
 
     /// Returns the row indices.
     #[inline]
-    pub fn row_indices(&self) -> &[I] {
+    pub fn row_indices(&self) -> &[Idx<R, I>] {
         &self.row_ind
     }
 
@@ -253,8 +253,8 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// Panics if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub fn row_indices_of_col_raw(&self, j: usize) -> &[I] {
-        &self.row_ind[self.col_range(j)]
+    pub fn row_indices_of_col_raw(&self, j: Idx<C>) -> &[Idx<R, I>] {
+        self.as_ref().row_indices_of_col_raw(j)
     }
 
     /// Returns the row indices of column `j`.
@@ -266,8 +266,8 @@ impl<I: Index> SymbolicSparseColMat<I> {
     #[track_caller]
     pub fn row_indices_of_col(
         &self,
-        j: usize,
-    ) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = usize> {
+        j: Idx<C>,
+    ) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = Idx<R>> {
         self.as_ref().row_indices_of_col(j)
     }
 
@@ -278,7 +278,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// Panics if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub fn col_range(&self, j: usize) -> Range<usize> {
+    pub fn col_range(&self, j: Idx<C>) -> Range<usize> {
         self.as_ref().col_range(j)
     }
 
@@ -289,25 +289,17 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// The behavior is undefined if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub unsafe fn col_range_unchecked(&self, j: usize) -> Range<usize> {
+    pub unsafe fn col_range_unchecked(&self, j: Idx<C>) -> Range<usize> {
         self.as_ref().col_range_unchecked(j)
     }
-}
 
-impl<I: Index> core::fmt::Debug for SymbolicSparseColMat<I> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_ref().fmt(f)
-    }
-}
-
-impl<I: Index> SymbolicSparseColMat<I> {
     pub(crate) fn try_new_from_indices_impl(
-        nrows: usize,
-        ncols: usize,
-        indices: impl Fn(usize) -> (I, I),
+        nrows: R,
+        ncols: C,
+        indices: impl Fn(usize) -> (Idx<R, I>, Idx<C, I>),
         all_nnz: usize,
     ) -> Result<(Self, ValuesOrder<I>), CreationError> {
-        if nrows > I::Signed::MAX.zx() || ncols > I::Signed::MAX.zx() {
+        if nrows.unbound() > I::Signed::MAX.zx() || ncols.unbound() > I::Signed::MAX.zx() {
             return Err(CreationError::Generic(FaerError::IndexOverflow));
         }
 
@@ -316,7 +308,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
                 Self {
                     nrows,
                     ncols,
-                    col_ptr: try_zeroed(ncols + 1)?,
+                    col_ptr: try_zeroed(ncols.unbound() + 1)?,
                     col_nnz: None,
                     row_ind: alloc::vec::Vec::new(),
                 },
@@ -356,29 +348,31 @@ impl<I: Index> SymbolicSparseColMat<I> {
             return Err(CreationError::Generic(FaerError::IndexOverflow));
         }
 
-        let mut col_ptr = try_zeroed::<I>(ncols + 1)?;
+        let mut col_ptr = try_zeroed::<I>(ncols.unbound() + 1)?;
         let mut row_ind = try_zeroed::<I>(nnz)?;
 
         let mut original_pos = 0usize;
         let mut new_pos = 0usize;
 
-        for j in 0..ncols {
+        for j in C::indices(C::start(), ncols.end()) {
             let mut n_unique = 0usize;
 
             while original_pos < all_nnz {
                 let (row, col) = indices(argsort[original_pos] & TOP_BIT_MASK);
-                if row.zx() >= nrows || col.zx() >= ncols {
+                let row_x = unsafe { Idx::<R>::new_unbound(row.unbound().zx()) };
+                let col_x = unsafe { Idx::<C>::new_unbound(col.unbound().zx()) };
+                if row_x >= nrows || col_x >= ncols {
                     return Err(CreationError::OutOfBounds {
-                        row: row.zx(),
-                        col: col.zx(),
+                        row: row.unbound().zx(),
+                        col: col.unbound().zx(),
                     });
                 }
 
-                if col.zx() != j {
+                if col_x != j {
                     break;
                 }
 
-                row_ind[new_pos] = row;
+                row_ind[new_pos] = row.unbound();
 
                 n_unique += 1;
 
@@ -392,8 +386,13 @@ impl<I: Index> SymbolicSparseColMat<I> {
                 }
             }
 
-            col_ptr[j + 1] = col_ptr[j] + I::truncate(n_unique);
+            col_ptr[j.unbound() + 1] = col_ptr[j.unbound()] + I::truncate(n_unique);
         }
+
+        let mut row_ind = core::mem::ManuallyDrop::new(row_ind);
+        let length = row_ind.len();
+        let capacity = row_ind.capacity();
+        let ptr = row_ind.as_mut_ptr() as _;
 
         Ok((
             Self {
@@ -401,7 +400,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
                 ncols,
                 col_ptr,
                 col_nnz: None,
-                row_ind,
+                row_ind: unsafe { alloc::vec::Vec::from_raw_parts(ptr, length, capacity) },
             },
             ValuesOrder {
                 argsort,
@@ -412,6 +411,19 @@ impl<I: Index> SymbolicSparseColMat<I> {
         ))
     }
 
+    /// Create a new symbolic structure, and the corresponding order for the numerical values
+    /// from pairs of indices `(row, col)`.
+    #[inline]
+    pub fn try_new_from_indices(
+        nrows: R,
+        ncols: C,
+        indices: &[(Idx<R, I>, Idx<C, I>)],
+    ) -> Result<(Self, ValuesOrder<I>), CreationError> {
+        Self::try_new_from_indices_impl(nrows, ncols, |i| indices[i], indices.len())
+    }
+}
+
+impl<I: Index> SymbolicSparseColMat<I> {
     pub(crate) fn try_new_from_nonnegative_indices_impl(
         nrows: usize,
         ncols: usize,
@@ -530,18 +542,6 @@ impl<I: Index> SymbolicSparseColMat<I> {
             },
         ))
     }
-
-    /// Create a new symbolic structure, and the corresponding order for the numerical values
-    /// from pairs of indices `(row, col)`.
-    #[inline]
-    pub fn try_new_from_indices(
-        nrows: usize,
-        ncols: usize,
-        indices: &[(I, I)],
-    ) -> Result<(Self, ValuesOrder<I>), CreationError> {
-        Self::try_new_from_indices_impl(nrows, ncols, |i| indices[i], indices.len())
-    }
-
     /// Create a new symbolic structure, and the corresponding order for the numerical values
     /// from pairs of indices `(row, col)`.
     ///
@@ -553,5 +553,10 @@ impl<I: Index> SymbolicSparseColMat<I> {
         indices: &[(I::Signed, I::Signed)],
     ) -> Result<(Self, ValuesOrder<I>), CreationError> {
         Self::try_new_from_nonnegative_indices_impl(nrows, ncols, |i| indices[i], indices.len())
+    }
+}
+impl<I: Index> core::fmt::Debug for SymbolicSparseColMat<I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
     }
 }

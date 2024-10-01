@@ -126,9 +126,9 @@ impl<E: Entity, C: Shape> ViewMut for &RowMut<'_, E, C> {
     }
 }
 
-impl<E: Entity> ViewMut for Col<E> {
+impl<E: Entity, R: Shape> ViewMut for Col<E, R> {
     type Target<'a>
-        = ColRef<'a, E>
+        = ColRef<'a, E, R>
     where
         Self: 'a;
 
@@ -137,9 +137,9 @@ impl<E: Entity> ViewMut for Col<E> {
         this.as_ref()
     }
 }
-impl<E: Entity> ViewMut for &Col<E> {
+impl<E: Entity, R: Shape> ViewMut for &Col<E, R> {
     type Target<'a>
-        = ColRef<'a, E>
+        = ColRef<'a, E, R>
     where
         Self: 'a;
 
@@ -148,9 +148,9 @@ impl<E: Entity> ViewMut for &Col<E> {
         (*this).as_ref()
     }
 }
-impl<E: Entity> ViewMut for &mut Col<E> {
+impl<E: Entity, R: Shape> ViewMut for &mut Col<E, R> {
     type Target<'a>
-        = ColMut<'a, E>
+        = ColMut<'a, E, R>
     where
         Self: 'a;
 
@@ -2156,7 +2156,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Mat<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Mat<E, R, C> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
         let rs = 1;
@@ -2169,7 +2169,7 @@ impl<
             |Zip(mut out, item)| out.write(f(item)),
         );
         unsafe { out.set_dims(m.unbound(), n.unbound()) };
-        out
+        out.into_shape(m, n)
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
@@ -2177,7 +2177,7 @@ impl<
     pub fn map_with_index<E: Entity>(
         self,
         f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item) -> E,
-    ) -> Mat<E> {
+    ) -> Mat<E, R, C> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
         let rs = 1;
@@ -2190,7 +2190,7 @@ impl<
             |i, j, Zip(mut out, item)| out.write(f(i, j, item)),
         );
         unsafe { out.set_dims(m.unbound(), n.unbound()) };
-        out
+        out.into_shape(m, n)
     }
 }
 
@@ -2227,7 +2227,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new row.
     #[inline(always)]
-    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Row<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Row<E, C> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Row::<E>::with_capacity(n.unbound());
         let out_view = unsafe { row::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), n, 1) };
@@ -2237,7 +2237,7 @@ impl<
             |Zip(mut out, item)| out.write(f(item)),
         );
         unsafe { out.set_ncols(n.unbound()) };
-        out
+        out.into_shape(n)
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new row.
@@ -2245,7 +2245,7 @@ impl<
     pub fn map_with_index<E: Entity>(
         self,
         f: impl FnMut(Idx<C>, <Self as MatIndex>::Item) -> E,
-    ) -> Row<E> {
+    ) -> Row<E, C> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Row::<E>::with_capacity(n.unbound());
         let out_view = unsafe { row::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), n, 1) };
@@ -2255,7 +2255,7 @@ impl<
             |j, Zip(mut out, item)| out.write(f(j, item)),
         );
         unsafe { out.set_ncols(n.unbound()) };
-        out
+        out.into_shape(n)
     }
 }
 
@@ -2292,7 +2292,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new column.
     #[inline(always)]
-    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Col<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Col<E, R> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Col::<E>::with_capacity(m.unbound());
         let out_view = unsafe { col::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), m, 1) };
@@ -2302,7 +2302,7 @@ impl<
             |Zip(mut out, item)| out.write(f(item)),
         );
         unsafe { out.set_nrows(m.unbound()) };
-        out
+        out.into_shape(m)
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new column.
@@ -2310,7 +2310,7 @@ impl<
     pub fn map_with_index<E: Entity>(
         self,
         f: impl FnMut(Idx<R>, <Self as MatIndex>::Item) -> E,
-    ) -> Col<E> {
+    ) -> Col<E, R> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Col::<E>::with_capacity(m.unbound());
         let out_view = unsafe { col::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), m, 1) };
@@ -2320,7 +2320,7 @@ impl<
             |i, Zip(mut out, item)| out.write(f(i, item)),
         );
         unsafe { out.set_nrows(m.unbound()) };
-        out
+        out.into_shape(m)
     }
 }
 
@@ -2372,7 +2372,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new row.
     #[inline(always)]
-    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Row<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Row<E, C> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Row::<E>::with_capacity(n.unbound());
         let out_view = unsafe { row::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), n, 1) };
@@ -2382,7 +2382,7 @@ impl<
             |Zip(mut out, item)| out.write(f(item)),
         );
         unsafe { out.set_ncols(n.unbound()) };
-        out
+        out.into_shape(n)
     }
 }
 
@@ -2434,7 +2434,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new column.
     #[inline(always)]
-    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Col<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Col<E, R> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Col::<E>::with_capacity(m.unbound());
         let out_view = unsafe { col::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), m, 1) };
@@ -2444,7 +2444,7 @@ impl<
             |Zip(mut out, item)| out.write(f(item)),
         );
         unsafe { out.set_nrows(m.unbound()) };
-        out
+        out.into_shape(m)
     }
 }
 
@@ -2540,7 +2540,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Mat<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Mat<E, R, C> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
         let rs = 1;
@@ -2553,7 +2553,7 @@ impl<
             |Zip(mut out, item)| out.write(f(item)),
         );
         unsafe { out.set_dims(m.unbound(), n.unbound()) };
-        out
+        out.into_shape(m, n)
     }
 }
 

@@ -1,9 +1,4 @@
-use crate::{
-    col::{VecImpl, VecOwnImpl},
-    mat::*,
-    utils::slice::*,
-    Conj, Shape,
-};
+use crate::{col::VecImpl, mat::*, utils::slice::*, Conj, Shape};
 use coe::Coerce;
 use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;

@@ -1,41 +1,39 @@
 use super::*;
 use crate::assert;
-use core::marker::PhantomData;
 
 /// Immutable permutation matrix view.
 #[derive(Debug)]
 pub struct PermRef<'a, I: Index, N: Shape = usize> {
     pub(super) forward: &'a [N::Idx<I>],
     pub(super) inverse: &'a [N::Idx<I>],
-    pub(super) __marker: PhantomData<N>,
 }
 
-impl<I: Index> Copy for PermRef<'_, I> {}
-impl<I: Index> Clone for PermRef<'_, I> {
+impl<I: Index, N: Shape> Copy for PermRef<'_, I, N> {}
+impl<I: Index, N: Shape> Clone for PermRef<'_, I, N> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'short, I: Index> Reborrow<'short> for PermRef<'_, I> {
-    type Target = PermRef<'short, I>;
+impl<'short, I: Index, N: Shape> Reborrow<'short> for PermRef<'_, I, N> {
+    type Target = PermRef<'short, I, N>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
         *self
     }
 }
-impl<'short, I: Index> ReborrowMut<'short> for PermRef<'_, I> {
-    type Target = PermRef<'short, I>;
+impl<'short, I: Index, N: Shape> ReborrowMut<'short> for PermRef<'_, I, N> {
+    type Target = PermRef<'short, I, N>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
         *self
     }
 }
-impl<'a, I: Index> IntoConst for PermRef<'a, I> {
-    type Target = PermRef<'a, I>;
+impl<'a, I: Index, N: Shape> IntoConst for PermRef<'a, I, N> {
+    type Target = PermRef<'a, I, N>;
 
     #[inline]
     fn into_const(self) -> Self::Target {
@@ -50,7 +48,22 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
         PermRef {
             forward: self.forward,
             inverse: self.inverse,
-            __marker: PhantomData,
+        }
+    }
+
+    /// Returns the input permutation with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<M: Shape>(self, dim: M) -> PermRef<'a, I, M> {
+        assert!(self.len().unbound() == dim.unbound());
+
+        PermRef {
+            forward: unsafe {
+                core::slice::from_raw_parts(self.forward.as_ptr() as _, dim.unbound())
+            },
+            inverse: unsafe {
+                core::slice::from_raw_parts(self.inverse.as_ptr() as _, dim.unbound())
+            },
         }
     }
 
@@ -63,7 +76,7 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub fn new_checked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], n: N) -> Self {
+    pub fn new_checked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], dim: N) -> Self {
         #[track_caller]
         fn check<I: Index>(forward: &[I], inverse: &[I], n: usize) {
             assert!(all(
@@ -81,13 +94,9 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
         check(
             I::canonicalize(N::cast_idx_slice(forward)),
             I::canonicalize(N::cast_idx_slice(inverse)),
-            n.unbound(),
+            dim.unbound(),
         );
-        Self {
-            forward,
-            inverse,
-            __marker: PhantomData,
-        }
+        Self { forward, inverse }
     }
 
     /// Creates a new permutation reference, without checking the validity of the inputs.
@@ -98,17 +107,17 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub unsafe fn new_unchecked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], n: N) -> Self {
+    pub unsafe fn new_unchecked(
+        forward: &'a [Idx<N, I>],
+        inverse: &'a [Idx<N, I>],
+        dim: N,
+    ) -> Self {
         assert!(all(
-            n.unbound() <= I::Signed::MAX.zx(),
-            forward.len() == n.unbound(),
-            inverse.len() == n.unbound(),
+            dim.unbound() <= I::Signed::MAX.zx(),
+            forward.len() == dim.unbound(),
+            inverse.len() == dim.unbound(),
         ));
-        Self {
-            forward,
-            inverse,
-            __marker: PhantomData,
-        }
+        Self { forward, inverse }
     }
 
     /// Returns the permutation as an array.
@@ -119,8 +128,8 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 
     /// Returns the dimension of the permutation.
     #[inline]
-    pub fn len(&self) -> usize {
-        self.forward.len()
+    pub fn len(&self) -> N {
+        unsafe { N::new_unbound(self.forward.len()) }
     }
 
     /// Returns the inverse permutation.
@@ -129,7 +138,6 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
         Self {
             forward: self.inverse,
             inverse: self.forward,
-            __marker: PhantomData,
         }
     }
 
@@ -146,7 +154,6 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
                     self.inverse.as_ptr() as _,
                     self.inverse.len(),
                 ),
-                __marker: PhantomData,
             }
         }
     }
@@ -165,7 +172,6 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
                     self.inverse.as_ptr() as _,
                     self.inverse.len(),
                 ),
-                __marker: PhantomData,
             }
         }
     }

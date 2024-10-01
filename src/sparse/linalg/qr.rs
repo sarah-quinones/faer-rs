@@ -95,18 +95,18 @@ pub fn col_etree<'out, I: Index>(
     etree: &'out mut [I],
     stack: &mut PodStack,
 ) -> EliminationTreeRef<'out, I> {
-    Size::with2(A.nrows(), A.ncols(), |M, N| {
-        ghost_col_etree(
-            ghost::SymbolicSparseColMatRef::new(A, M, N),
-            col_perm.map(|perm| ghost::PermRef::new(perm, N)),
-            Array::from_mut(bytemuck::cast_slice_mut(etree), N),
-            stack,
-        );
+    with_dim!(M, A.nrows());
+    with_dim!(N, A.ncols());
+    ghost_col_etree(
+        ghost::SymbolicSparseColMatRef::new(A, M, N),
+        col_perm.map(|perm| ghost::PermRef::new(perm, N)),
+        Array::from_mut(bytemuck::cast_slice_mut(etree), N),
+        stack,
+    );
 
-        EliminationTreeRef {
-            inner: bytemuck::cast_slice_mut(etree),
-        }
-    })
+    EliminationTreeRef {
+        inner: bytemuck::cast_slice_mut(etree),
+    }
 }
 
 pub(crate) fn ghost_least_common_ancestor<'n, I: Index>(
@@ -311,18 +311,19 @@ pub fn column_counts_ata<'m, 'n, I: Index>(
     post: &[I],
     stack: &mut PodStack,
 ) {
-    Size::with2(AT.nrows(), AT.ncols(), |M, N| {
-        let A = ghost::SymbolicSparseColMatRef::new(AT, M, N);
-        ghost_column_counts_aat(
-            Array::from_mut(col_counts, M),
-            Array::from_mut(bytemuck::cast_slice_mut(min_col), N),
-            A,
-            col_perm.map(|perm| ghost::PermRef::new(perm, M)),
-            etree.ghost_inner(M),
-            Array::from_ref(Idx::from_slice_ref_checked(post, M), M),
-            stack,
-        )
-    })
+    with_dim!(M, AT.nrows());
+    with_dim!(N, AT.ncols());
+
+    let A = ghost::SymbolicSparseColMatRef::new(AT, M, N);
+    ghost_column_counts_aat(
+        Array::from_mut(col_counts, M),
+        Array::from_mut(bytemuck::cast_slice_mut(min_col), N),
+        A,
+        col_perm.map(|perm| ghost::PermRef::new(perm, M)),
+        etree.ghost_inner(M),
+        Array::from_ref(Idx::from_slice_ref_checked(post, M), M),
+        stack,
+    )
 }
 
 /// Computes the size and alignment of the workspace required to compute the postordering of an
@@ -335,9 +336,8 @@ pub fn postorder_req<I: Index>(n: usize) -> Result<StackReq, SizeOverflow> {
 /// Computes a postordering of the elimination tree of size `n`.
 #[inline]
 pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, stack: &mut PodStack) {
-    Size::with(etree.inner.len(), |N| {
-        ghost_postorder(Array::from_mut(post, N), etree.ghost_inner(N), stack)
-    })
+    with_dim!(N, etree.inner.len());
+    ghost_postorder(Array::from_mut(post, N), etree.ghost_inner(N), stack)
 }
 
 /// Supernodal factorization module.
@@ -490,16 +490,19 @@ pub mod supernodal {
     ) -> Result<SymbolicSupernodalQr<I>, FaerError> {
         let m = A.nrows();
         let n = A.ncols();
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
-            let mut stack = stack;
-            let (L, H) = {
-                let etree = etree.ghost_inner(N);
-                let min_col = Array::from_ref(
-                    MaybeIdx::from_slice_ref_checked(bytemuck::cast_slice(&min_col), N),
-                    M,
-                );
-                let L = crate::sparse::linalg::cholesky::supernodal::ghost_factorize_supernodal_symbolic(
+
+        with_dim!(M, m);
+        with_dim!(N, n);
+        let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+        let mut stack = stack;
+        let (L, H) = {
+            let etree = etree.ghost_inner(N);
+            let min_col = Array::from_ref(
+                MaybeIdx::from_slice_ref_checked(bytemuck::cast_slice(&min_col), N),
+                M,
+            );
+            let L =
+                crate::sparse::linalg::cholesky::supernodal::ghost_factorize_supernodal_symbolic(
                     A,
                     col_perm.map(|perm| ghost::PermRef::new(perm, N)),
                     Some(min_col),
@@ -510,49 +513,47 @@ pub mod supernodal {
                     params,
                 )?;
 
-                let H = ghost_factorize_supernodal_householder_symbolic(
-                    &L, M, N, min_col, etree, stack,
-                )?;
+            let H =
+                ghost_factorize_supernodal_householder_symbolic(&L, M, N, min_col, etree, stack)?;
 
-                (L, H)
-            };
-            let n_supernodes = L.n_supernodes();
+            (L, H)
+        };
+        let n_supernodes = L.n_supernodes();
 
-            let mut min_col_perm = try_zeroed::<I>(m)?;
-            let mut index_to_super = try_zeroed::<I>(n)?;
-            let mut child_head = try_zeroed::<I>(n_supernodes)?;
-            let mut child_next = try_zeroed::<I>(n_supernodes)?;
-            for i in 0..m {
-                min_col_perm[i] = I::truncate(i);
+        let mut min_col_perm = try_zeroed::<I>(m)?;
+        let mut index_to_super = try_zeroed::<I>(n)?;
+        let mut child_head = try_zeroed::<I>(n_supernodes)?;
+        let mut child_next = try_zeroed::<I>(n_supernodes)?;
+        for i in 0..m {
+            min_col_perm[i] = I::truncate(i);
+        }
+        min_col_perm.sort_unstable_by_key(|i| min_col[i.zx()]);
+        for s in 0..n_supernodes {
+            index_to_super[L.supernode_begin()[s].zx()..L.supernode_end()[s].zx()]
+                .fill(I::truncate(s));
+        }
+
+        mem::fill_none::<I::Signed>(bytemuck::cast_slice_mut(&mut child_head));
+        mem::fill_none::<I::Signed>(bytemuck::cast_slice_mut(&mut child_next));
+
+        for s in 0..n_supernodes {
+            let parent = H.super_etree[s];
+            if parent.to_signed() >= I::Signed::truncate(0) {
+                let parent = parent.zx();
+                let head = child_head[parent];
+                child_next[s] = head;
+                child_head[parent] = I::truncate(s);
             }
-            min_col_perm.sort_unstable_by_key(|i| min_col[i.zx()]);
-            for s in 0..n_supernodes {
-                index_to_super[L.supernode_begin()[s].zx()..L.supernode_end()[s].zx()]
-                    .fill(I::truncate(s));
-            }
+        }
 
-            mem::fill_none::<I::Signed>(bytemuck::cast_slice_mut(&mut child_head));
-            mem::fill_none::<I::Signed>(bytemuck::cast_slice_mut(&mut child_next));
-
-            for s in 0..n_supernodes {
-                let parent = H.super_etree[s];
-                if parent.to_signed() >= I::Signed::truncate(0) {
-                    let parent = parent.zx();
-                    let head = child_head[parent];
-                    child_next[s] = head;
-                    child_head[parent] = I::truncate(s);
-                }
-            }
-
-            Ok(SymbolicSupernodalQr {
-                L,
-                H,
-                min_col,
-                min_col_perm,
-                index_to_super,
-                child_head,
-                child_next,
-            })
+        Ok(SymbolicSupernodalQr {
+            L,
+            H,
+            min_col,
+            min_col_perm,
+            index_to_super,
+            child_head,
+            child_next,
         })
     }
 
@@ -565,107 +566,108 @@ pub mod supernodal {
         stack: &mut PodStack,
     ) -> Result<SymbolicSupernodalHouseholder<I>, FaerError> {
         let n_supernodes = L_symbolic.n_supernodes();
-        ghost::with_size(n_supernodes, |N_SUPERNODES| {
-            let mut col_ptrs_for_row_indices = try_zeroed::<I>(n_supernodes + 1)?;
-            let mut col_ptrs_for_tau_values = try_zeroed::<I>(n_supernodes + 1)?;
-            let mut col_ptrs_for_values = try_zeroed::<I>(n_supernodes + 1)?;
-            let mut super_etree_ = try_zeroed::<I>(n_supernodes)?;
-            let mut max_blocksize = try_zeroed::<I>(n_supernodes)?;
-            let super_etree = bytemuck::cast_slice_mut::<I, I::Signed>(&mut super_etree_);
 
-            let to_wide = |i: I| i.zx() as u128;
-            let from_wide = |i: u128| I::truncate(i as usize);
-            let from_wide_checked = |i: u128| -> Option<I> {
-                (i <= to_wide(I::from_signed(I::Signed::MAX))).then_some(I::truncate(i as usize))
+        with_dim!(N_SUPERNODES, n_supernodes);
+
+        let mut col_ptrs_for_row_indices = try_zeroed::<I>(n_supernodes + 1)?;
+        let mut col_ptrs_for_tau_values = try_zeroed::<I>(n_supernodes + 1)?;
+        let mut col_ptrs_for_values = try_zeroed::<I>(n_supernodes + 1)?;
+        let mut super_etree_ = try_zeroed::<I>(n_supernodes)?;
+        let mut max_blocksize = try_zeroed::<I>(n_supernodes)?;
+        let super_etree = bytemuck::cast_slice_mut::<I, I::Signed>(&mut super_etree_);
+
+        let to_wide = |i: I| i.zx() as u128;
+        let from_wide = |i: u128| I::truncate(i as usize);
+        let from_wide_checked = |i: u128| -> Option<I> {
+            (i <= to_wide(I::from_signed(I::Signed::MAX))).then_some(I::truncate(i as usize))
+        };
+
+        let supernode_begin = Array::from_ref(L_symbolic.supernode_begin(), N_SUPERNODES);
+        let supernode_end = Array::from_ref(L_symbolic.supernode_end(), N_SUPERNODES);
+        let L_col_ptrs_for_row_indices = L_symbolic.col_ptrs_for_row_indices();
+
+        let (index_to_super, _) = stack.make_raw::<I>(*N);
+
+        for s in N_SUPERNODES.indices() {
+            index_to_super[supernode_begin[s].zx()..supernode_end[s].zx()].fill(*s.truncate::<I>());
+        }
+        let index_to_super =
+            Array::from_ref(Idx::from_slice_ref_checked(index_to_super, N_SUPERNODES), N);
+
+        let super_etree = Array::from_mut(super_etree, N_SUPERNODES);
+        for s in N_SUPERNODES.indices() {
+            let last = supernode_end[s].zx() - 1;
+            if let Some(parent) = etree[N.check(last)].idx() {
+                super_etree[s] = index_to_super[parent.zx()].to_signed();
+            } else {
+                super_etree[s] = I::Signed::truncate(NONE);
+            }
+        }
+        let super_etree = Array::from_ref(
+            MaybeIdx::<'_, I>::from_slice_ref_checked(super_etree.as_ref(), N_SUPERNODES),
+            N_SUPERNODES,
+        );
+
+        let non_zero_count = Array::from_mut(&mut col_ptrs_for_row_indices[1..], N_SUPERNODES);
+        for i in M.indices() {
+            let Some(min_col) = min_col[i].idx() else {
+                continue;
             };
+            non_zero_count[index_to_super[min_col.zx()].zx()] += I::truncate(1);
+        }
 
-            let supernode_begin = Array::from_ref(L_symbolic.supernode_begin(), N_SUPERNODES);
-            let supernode_end = Array::from_ref(L_symbolic.supernode_end(), N_SUPERNODES);
-            let L_col_ptrs_for_row_indices = L_symbolic.col_ptrs_for_row_indices();
-
-            let (index_to_super, _) = stack.make_raw::<I>(*N);
-
-            for s in N_SUPERNODES.indices() {
-                index_to_super[supernode_begin[s].zx()..supernode_end[s].zx()]
-                    .fill(*s.truncate::<I>());
-            }
-            let index_to_super =
-                Array::from_ref(Idx::from_slice_ref_checked(index_to_super, N_SUPERNODES), N);
-
-            let super_etree = Array::from_mut(super_etree, N_SUPERNODES);
-            for s in N_SUPERNODES.indices() {
-                let last = supernode_end[s].zx() - 1;
-                if let Some(parent) = etree[N.check(last)].idx() {
-                    super_etree[s] = index_to_super[parent.zx()].to_signed();
-                } else {
-                    super_etree[s] = I::Signed::truncate(NONE);
-                }
-            }
-            let super_etree = Array::from_ref(
-                MaybeIdx::<'_, I>::from_slice_ref_checked(super_etree.as_ref(), N_SUPERNODES),
-                N_SUPERNODES,
-            );
-
-            let non_zero_count = Array::from_mut(&mut col_ptrs_for_row_indices[1..], N_SUPERNODES);
-            for i in M.indices() {
-                let Some(min_col) = min_col[i].idx() else {
-                    continue;
-                };
-                non_zero_count[index_to_super[min_col.zx()].zx()] += I::truncate(1);
-            }
-
-            for s in N_SUPERNODES.indices() {
-                if let Some(parent) = super_etree[s].idx() {
-                    let s_col_count =
-                        L_col_ptrs_for_row_indices[*s + 1] - L_col_ptrs_for_row_indices[*s];
-                    let panel_width = supernode_end[s] - supernode_begin[s];
-
-                    let s_count = non_zero_count[s];
-                    non_zero_count[parent.zx()] +=
-                        Ord::min(Ord::max(s_count, panel_width) - panel_width, s_col_count);
-                }
-            }
-
-            let mut val_count = to_wide(I::truncate(0));
-            let mut tau_count = to_wide(I::truncate(0));
-            let mut row_count = to_wide(I::truncate(0));
-            for (s, ((next_row_ptr, next_val_ptr), next_tau_ptr)) in zip(
-                N_SUPERNODES.indices(),
-                zip(
-                    zip(
-                        &mut col_ptrs_for_row_indices[1..],
-                        &mut col_ptrs_for_values[1..],
-                    ),
-                    &mut col_ptrs_for_tau_values[1..],
-                ),
-            ) {
+        for s in N_SUPERNODES.indices() {
+            if let Some(parent) = super_etree[s].idx() {
+                let s_col_count =
+                    L_col_ptrs_for_row_indices[*s + 1] - L_col_ptrs_for_row_indices[*s];
                 let panel_width = supernode_end[s] - supernode_begin[s];
-                let s_row_count = *next_row_ptr;
-                let s_col_count = panel_width
-                    + (L_col_ptrs_for_row_indices[*s + 1] - L_col_ptrs_for_row_indices[*s]);
-                val_count += to_wide(s_row_count) * to_wide(s_col_count);
-                row_count += to_wide(s_row_count);
-                let blocksize = crate::linalg::qr::no_pivoting::compute::recommended_blocksize::<
-                    Symbolic,
-                >(s_row_count.zx(), s_col_count.zx()) as u128;
-                max_blocksize[*s] = from_wide(blocksize);
-                tau_count += blocksize * to_wide(Ord::min(s_row_count, s_col_count));
-                *next_val_ptr = from_wide(val_count);
-                *next_row_ptr = from_wide(row_count);
-                *next_tau_ptr = from_wide(tau_count);
-            }
-            from_wide_checked(row_count).ok_or(FaerError::IndexOverflow)?;
-            from_wide_checked(tau_count).ok_or(FaerError::IndexOverflow)?;
-            from_wide_checked(val_count).ok_or(FaerError::IndexOverflow)?;
 
-            Ok(SymbolicSupernodalHouseholder {
-                col_ptrs_for_row_indices,
-                col_ptrs_for_values,
-                super_etree: super_etree_,
-                col_ptrs_for_tau_values,
-                max_blocksize,
-                nrows: *M,
-            })
+                let s_count = non_zero_count[s];
+                non_zero_count[parent.zx()] +=
+                    Ord::min(Ord::max(s_count, panel_width) - panel_width, s_col_count);
+            }
+        }
+
+        let mut val_count = to_wide(I::truncate(0));
+        let mut tau_count = to_wide(I::truncate(0));
+        let mut row_count = to_wide(I::truncate(0));
+        for (s, ((next_row_ptr, next_val_ptr), next_tau_ptr)) in zip(
+            N_SUPERNODES.indices(),
+            zip(
+                zip(
+                    &mut col_ptrs_for_row_indices[1..],
+                    &mut col_ptrs_for_values[1..],
+                ),
+                &mut col_ptrs_for_tau_values[1..],
+            ),
+        ) {
+            let panel_width = supernode_end[s] - supernode_begin[s];
+            let s_row_count = *next_row_ptr;
+            let s_col_count =
+                panel_width + (L_col_ptrs_for_row_indices[*s + 1] - L_col_ptrs_for_row_indices[*s]);
+            val_count += to_wide(s_row_count) * to_wide(s_col_count);
+            row_count += to_wide(s_row_count);
+            let blocksize = crate::linalg::qr::no_pivoting::compute::recommended_blocksize::<Symbolic>(
+                s_row_count.zx(),
+                s_col_count.zx(),
+            ) as u128;
+            max_blocksize[*s] = from_wide(blocksize);
+            tau_count += blocksize * to_wide(Ord::min(s_row_count, s_col_count));
+            *next_val_ptr = from_wide(val_count);
+            *next_row_ptr = from_wide(row_count);
+            *next_tau_ptr = from_wide(tau_count);
+        }
+        from_wide_checked(row_count).ok_or(FaerError::IndexOverflow)?;
+        from_wide_checked(tau_count).ok_or(FaerError::IndexOverflow)?;
+        from_wide_checked(val_count).ok_or(FaerError::IndexOverflow)?;
+
+        Ok(SymbolicSupernodalHouseholder {
+            col_ptrs_for_row_indices,
+            col_ptrs_for_values,
+            super_etree: super_etree_,
+            col_ptrs_for_tau_values,
+            max_blocksize,
+            nrows: *M,
         })
     }
 
@@ -2312,7 +2314,7 @@ impl<I: Index> SymbolicQr<I> {
                 let (new_values, mut stack) =
                     crate::sparse::linalg::make_raw::<E>(self.A_nnz, stack);
 
-                let AT = crate::sparse::utils::transpose::<I, E>(
+                let AT = crate::sparse::utils::transpose(
                     new_col_ptr,
                     new_row_ind,
                     new_values.into_inner(),
@@ -2354,153 +2356,148 @@ pub fn factorize_symbolic_qr<I: Index>(
     let n = A.ncols();
     let A_nnz = A.compute_nnz();
 
-    Size::with2(m, n, |M, N| {
-        let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+    with_dim!(M, m);
+    with_dim!(N, n);
+    let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
 
-        let req = || -> Result<StackReq, SizeOverflow> {
-            let n_req = StackReq::try_new::<I>(n)?;
-            let m_req = StackReq::try_new::<I>(m)?;
-            let AT_req = StackReq::try_and(
-                // new_col_ptr
-                StackReq::try_new::<I>(m + 1)?,
-                // new_row_ind
-                StackReq::try_new::<I>(A_nnz)?,
-            )?;
-
-            StackReq::try_or(
-                colamd::order_req::<I>(m, n, A_nnz)?,
-                StackReq::try_all_of([
-                    n_req,
-                    n_req,
-                    n_req,
-                    n_req,
-                    AT_req,
-                    StackReq::try_any_of([
-                        StackReq::try_and(n_req, m_req)?,
-                        StackReq::try_all_of([n_req; 3])?,
-                        StackReq::try_all_of([n_req, n_req, n_req, n_req, n_req, m_req])?,
-                        supernodal::factorize_supernodal_symbolic_qr_req::<I>(m, n)?,
-                        simplicial::factorize_simplicial_symbolic_qr_req::<I>(m, n)?,
-                    ])?,
-                ])?,
-            )
-        };
-
-        let req = req().map_err(nomem)?;
-        let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
-        let mut stack = PodStack::new(&mut mem);
-
-        let mut col_perm_fwd = try_zeroed::<I>(n)?;
-        let mut col_perm_inv = try_zeroed::<I>(n)?;
-        let mut min_row = try_zeroed::<I>(m)?;
-
-        colamd::order(
-            &mut col_perm_fwd,
-            &mut col_perm_inv,
-            A.into_inner(),
-            params.colamd_params,
-            stack.rb_mut(),
+    let req = || -> Result<StackReq, SizeOverflow> {
+        let n_req = StackReq::try_new::<I>(n)?;
+        let m_req = StackReq::try_new::<I>(m)?;
+        let AT_req = StackReq::try_and(
+            // new_col_ptr
+            StackReq::try_new::<I>(m + 1)?,
+            // new_row_ind
+            StackReq::try_new::<I>(A_nnz)?,
         )?;
 
-        let col_perm =
-            ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n), N);
+        StackReq::try_or(
+            colamd::order_req::<I>(m, n, A_nnz)?,
+            StackReq::try_all_of([
+                n_req,
+                n_req,
+                n_req,
+                n_req,
+                AT_req,
+                StackReq::try_any_of([
+                    StackReq::try_and(n_req, m_req)?,
+                    StackReq::try_all_of([n_req; 3])?,
+                    StackReq::try_all_of([n_req, n_req, n_req, n_req, n_req, m_req])?,
+                    supernodal::factorize_supernodal_symbolic_qr_req::<I>(m, n)?,
+                    simplicial::factorize_simplicial_symbolic_qr_req::<I>(m, n)?,
+                ])?,
+            ])?,
+        )
+    };
 
-        let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
-        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-        let AT = crate::sparse::utils::ghost_adjoint_symbolic(
-            new_col_ptr,
-            new_row_ind,
-            A,
-            stack.rb_mut(),
-        );
+    let req = req().map_err(nomem)?;
+    let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
+    let mut stack = PodStack::new(&mut mem);
 
-        let (etree, stack) = stack.make_raw::<I::Signed>(n);
-        let (post, stack) = stack.make_raw::<I>(n);
-        let (col_counts, stack) = stack.make_raw::<I>(n);
-        let (h_col_counts, mut stack) = stack.make_raw::<I>(n);
+    let mut col_perm_fwd = try_zeroed::<I>(n)?;
+    let mut col_perm_inv = try_zeroed::<I>(n)?;
+    let mut min_row = try_zeroed::<I>(m)?;
 
-        ghost_col_etree(A, Some(col_perm), Array::from_mut(etree, N), stack.rb_mut());
-        let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(etree, N), N);
-        ghost_postorder(Array::from_mut(post, N), etree_, stack.rb_mut());
+    colamd::order(
+        &mut col_perm_fwd,
+        &mut col_perm_inv,
+        A.into_inner(),
+        params.colamd_params,
+        stack.rb_mut(),
+    )?;
 
-        ghost_column_counts_aat(
-            Array::from_mut(col_counts, N),
-            Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-            AT,
-            Some(col_perm),
-            etree_,
-            Array::from_ref(Idx::from_slice_ref_checked(post, N), N),
-            stack.rb_mut(),
-        );
-        let min_col = min_row;
+    let col_perm = ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n), N);
 
-        let mut threshold = params.supernodal_flop_ratio_threshold;
-        if threshold != SupernodalThreshold::FORCE_SIMPLICIAL
-            && threshold != SupernodalThreshold::FORCE_SUPERNODAL
-        {
-            mem::fill_zero(h_col_counts);
-            for i in 0..m {
-                let min_col = min_col[i];
-                if min_col.to_signed() < I::Signed::truncate(0) {
-                    continue;
-                }
-                h_col_counts[min_col.zx()] += I::truncate(1);
+    let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
+    let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+    let AT =
+        crate::sparse::utils::ghost_adjoint_symbolic(new_col_ptr, new_row_ind, A, stack.rb_mut());
+
+    let (etree, stack) = stack.make_raw::<I::Signed>(n);
+    let (post, stack) = stack.make_raw::<I>(n);
+    let (col_counts, stack) = stack.make_raw::<I>(n);
+    let (h_col_counts, mut stack) = stack.make_raw::<I>(n);
+
+    ghost_col_etree(A, Some(col_perm), Array::from_mut(etree, N), stack.rb_mut());
+    let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(etree, N), N);
+    ghost_postorder(Array::from_mut(post, N), etree_, stack.rb_mut());
+
+    ghost_column_counts_aat(
+        Array::from_mut(col_counts, N),
+        Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
+        AT,
+        Some(col_perm),
+        etree_,
+        Array::from_ref(Idx::from_slice_ref_checked(post, N), N),
+        stack.rb_mut(),
+    );
+    let min_col = min_row;
+
+    let mut threshold = params.supernodal_flop_ratio_threshold;
+    if threshold != SupernodalThreshold::FORCE_SIMPLICIAL
+        && threshold != SupernodalThreshold::FORCE_SUPERNODAL
+    {
+        mem::fill_zero(h_col_counts);
+        for i in 0..m {
+            let min_col = min_col[i];
+            if min_col.to_signed() < I::Signed::truncate(0) {
+                continue;
             }
-            for j in 0..n {
-                let parent = etree[j];
-                if parent < I::Signed::truncate(0) || h_col_counts[j] == I::truncate(0) {
-                    continue;
-                }
-                h_col_counts[parent.zx()] += h_col_counts[j] - I::truncate(1);
+            h_col_counts[min_col.zx()] += I::truncate(1);
+        }
+        for j in 0..n {
+            let parent = etree[j];
+            if parent < I::Signed::truncate(0) || h_col_counts[j] == I::truncate(0) {
+                continue;
             }
-
-            let mut nnz = 0.0f64;
-            let mut flops = 0.0f64;
-            for j in 0..n {
-                let hj = h_col_counts[j].zx() as f64;
-                let rj = col_counts[j].zx() as f64;
-                flops += hj + 2.0 * hj * rj;
-                nnz += hj + rj;
-            }
-
-            if flops / nnz > threshold.0 * crate::sparse::linalg::QR_SUPERNODAL_RATIO_FACTOR {
-                threshold = SupernodalThreshold::FORCE_SUPERNODAL;
-            } else {
-                threshold = SupernodalThreshold::FORCE_SIMPLICIAL;
-            }
+            h_col_counts[parent.zx()] += h_col_counts[j] - I::truncate(1);
         }
 
-        if threshold == SupernodalThreshold::FORCE_SUPERNODAL {
-            let symbolic = supernodal::factorize_supernodal_symbolic_qr::<I>(
-                A.into_inner(),
-                Some(col_perm.into_inner()),
-                min_col,
-                EliminationTreeRef::<'_, I> { inner: etree },
-                col_counts,
-                stack.rb_mut(),
-                params.supernodal_params,
-            )?;
-            Ok(SymbolicQr {
-                raw: SymbolicQrRaw::Supernodal(symbolic),
-                col_perm_fwd,
-                col_perm_inv,
-                A_nnz,
-            })
+        let mut nnz = 0.0f64;
+        let mut flops = 0.0f64;
+        for j in 0..n {
+            let hj = h_col_counts[j].zx() as f64;
+            let rj = col_counts[j].zx() as f64;
+            flops += hj + 2.0 * hj * rj;
+            nnz += hj + rj;
+        }
+
+        if flops / nnz > threshold.0 * crate::sparse::linalg::QR_SUPERNODAL_RATIO_FACTOR {
+            threshold = SupernodalThreshold::FORCE_SUPERNODAL;
         } else {
-            let symbolic = simplicial::factorize_simplicial_symbolic_qr::<I>(
-                &min_col,
-                EliminationTreeRef::<'_, I> { inner: etree },
-                col_counts,
-                stack.rb_mut(),
-            )?;
-            Ok(SymbolicQr {
-                raw: SymbolicQrRaw::Simplicial(symbolic),
-                col_perm_fwd,
-                col_perm_inv,
-                A_nnz,
-            })
+            threshold = SupernodalThreshold::FORCE_SIMPLICIAL;
         }
-    })
+    }
+
+    if threshold == SupernodalThreshold::FORCE_SUPERNODAL {
+        let symbolic = supernodal::factorize_supernodal_symbolic_qr::<I>(
+            A.into_inner(),
+            Some(col_perm.into_inner()),
+            min_col,
+            EliminationTreeRef::<'_, I> { inner: etree },
+            col_counts,
+            stack.rb_mut(),
+            params.supernodal_params,
+        )?;
+        Ok(SymbolicQr {
+            raw: SymbolicQrRaw::Supernodal(symbolic),
+            col_perm_fwd,
+            col_perm_inv,
+            A_nnz,
+        })
+    } else {
+        let symbolic = simplicial::factorize_simplicial_symbolic_qr::<I>(
+            &min_col,
+            EliminationTreeRef::<'_, I> { inner: etree },
+            col_counts,
+            stack.rb_mut(),
+        )?;
+        Ok(SymbolicQr {
+            raw: SymbolicQrRaw::Simplicial(symbolic),
+            col_perm_fwd,
+            col_perm_inv,
+            A_nnz,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -2587,50 +2584,50 @@ mod tests {
         let mut etree = vec![zero.to_signed(); n];
         let mut post = vec![zero; n];
         let mut col_counts = vec![zero; n];
-        ghost::with_size(n, |N| {
-            let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
-            ghost_col_etree(
-                A,
-                None,
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*N + *N))),
-            );
-            let etree = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
 
-            let mut min_row = vec![zero.to_signed(); n];
-            let mut new_col_ptrs = vec![zero; n + 1];
-            let mut new_row_ind = vec![zero; 43];
+        with_dim!(N, n);
+        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+        ghost_col_etree(
+            A,
+            None,
+            Array::from_mut(&mut etree, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*N + *N))),
+        );
+        let etree = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
+        ghost_postorder(
+            Array::from_mut(&mut post, N),
+            etree,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+        );
 
-            let AT = ghost_adjoint_symbolic(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(&mut min_row, N),
-                AT,
-                None,
-                etree,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
+        let mut min_row = vec![zero.to_signed(); n];
+        let mut new_col_ptrs = vec![zero; n + 1];
+        let mut new_row_ind = vec![zero; 43];
 
-            assert!(
-                MaybeIdx::<'_, I>::as_slice_ref(etree.as_ref())
-                    == [3, 2, 3, 4, 5, 6, 7, 8, 9, 10, NONE]
-                        .map(I)
-                        .map(I::to_signed)
-            );
+        let AT = ghost_adjoint_symbolic(
+            &mut new_col_ptrs,
+            &mut new_row_ind,
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+        );
+        ghost_column_counts_aat(
+            Array::from_mut(&mut col_counts, N),
+            Array::from_mut(&mut min_row, N),
+            AT,
+            None,
+            etree,
+            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+        );
 
-            assert!(col_counts == [7, 6, 8, 8, 7, 6, 5, 4, 3, 2, 1].map(I));
-        });
+        assert!(
+            MaybeIdx::<'_, I>::as_slice_ref(etree.as_ref())
+                == [3, 2, 3, 4, 5, 6, 7, 8, 9, 10, NONE]
+                    .map(I)
+                    .map(I::to_signed)
+        );
+
+        assert!(col_counts == [7, 6, 8, 8, 7, 6, 5, 4, 3, 2, 1].map(I));
     }
 
     fn load_mtx<I: Index>(
@@ -2710,112 +2707,114 @@ mod tests {
             &values,
         );
         let zero = I(0);
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SparseColMatRef::new(A, M, N);
-            let mut new_col_ptrs = vec![zero; m + 1];
-            let mut new_row_ind = vec![zero; nnz];
-            let mut new_values = vec![0.0; nnz];
 
-            let AT = crate::sparse::utils::ghost_adjoint(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                SliceGroupMut::<'_, f64>::new(&mut new_values),
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            )
-            .into_const();
+        with_dim!(M, m);
+        with_dim!(N, n);
 
-            let mut etree = vec![zero.to_signed(); n];
-            let mut post = vec![zero; n];
-            let mut col_counts = vec![zero; n];
-            let mut min_row = vec![zero; m];
+        let A = ghost::SparseColMatRef::new(A, M, N);
+        let mut new_col_ptrs = vec![zero; m + 1];
+        let mut new_row_ind = vec![zero; nnz];
+        let mut new_values = vec![0.0; nnz];
 
-            ghost_col_etree(
-                *A,
-                None,
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
-            );
-            let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree_,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
+        let AT = crate::sparse::utils::ghost_adjoint(
+            &mut new_col_ptrs,
+            &mut new_row_ind,
+            SliceGroupMut::<'_, f64>::new(&mut new_values),
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+        )
+        .into_const();
 
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-                *AT,
-                None,
-                etree_,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
+        let mut etree = vec![zero.to_signed(); n];
+        let mut post = vec![zero; n];
+        let mut col_counts = vec![zero; n];
+        let mut min_row = vec![zero; m];
 
-            let min_col = min_row;
+        ghost_col_etree(
+            *A,
+            None,
+            Array::from_mut(&mut etree, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
+        );
+        let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
+        ghost_postorder(
+            Array::from_mut(&mut post, N),
+            etree_,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+        );
 
-            let symbolic = factorize_supernodal_symbolic_qr::<I>(
-                A.symbolic().into_inner(),
-                None,
-                min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-                Default::default(),
-            )
-            .unwrap();
+        ghost_column_counts_aat(
+            Array::from_mut(&mut col_counts, N),
+            Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
+            *AT,
+            None,
+            etree_,
+            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+        );
 
-            let mut householder_row_indices =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
+        let min_col = min_row;
 
-            let mut L_values = vec![0.0; symbolic.r_adjoint().len_values()];
-            let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
-            let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
+        let symbolic = factorize_supernodal_symbolic_qr::<I>(
+            A.symbolic().into_inner(),
+            None,
+            min_col,
+            EliminationTreeRef::<'_, I> { inner: &etree },
+            &col_counts,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+            Default::default(),
+        )
+        .unwrap();
 
-            let mut tau_blocksize = vec![
-                I(0);
-                symbolic.householder().len_householder_row_indices()
-                    + symbolic.householder().n_supernodes()
-            ];
-            let mut householder_nrows = vec![
-                I(0);
-                symbolic.householder().len_householder_row_indices()
-                    + symbolic.householder().n_supernodes()
-            ];
-            let mut householder_ncols = vec![
-                I(0);
-                symbolic.householder().len_householder_row_indices()
-                    + symbolic.householder().n_supernodes()
-            ];
+        let mut householder_row_indices =
+            vec![zero; symbolic.householder().len_householder_row_indices()];
 
-            factorize_supernodal_numeric_qr::<I, f64>(
-                &mut householder_row_indices,
-                &mut tau_blocksize,
-                &mut householder_nrows,
-                &mut householder_ncols,
-                &mut L_values,
-                &mut householder_values,
-                &mut tau_values,
-                AT.into_inner(),
-                None,
-                &symbolic,
-                crate::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    factorize_supernodal_numeric_qr_req::<usize, f64>(
-                        &symbolic,
-                        crate::Parallelism::None,
-                    )
-                    .unwrap(),
-                )),
-            );
-            let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_adjoint(), &L_values);
-            let a = sparse_to_dense(A.into_inner());
-            let ata = a.adjoint() * &a;
+        let mut L_values = vec![0.0; symbolic.r_adjoint().len_values()];
+        let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
+        let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
 
-            let llt_diff = &llt - &ata;
-            assert!(llt_diff.norm_max() <= 1e-10);
-        });
+        let mut tau_blocksize = vec![
+            I(0);
+            symbolic.householder().len_householder_row_indices()
+                + symbolic.householder().n_supernodes()
+        ];
+        let mut householder_nrows = vec![
+            I(0);
+            symbolic.householder().len_householder_row_indices()
+                + symbolic.householder().n_supernodes()
+        ];
+        let mut householder_ncols = vec![
+            I(0);
+            symbolic.householder().len_householder_row_indices()
+                + symbolic.householder().n_supernodes()
+        ];
+
+        factorize_supernodal_numeric_qr::<I, f64>(
+            &mut householder_row_indices,
+            &mut tau_blocksize,
+            &mut householder_nrows,
+            &mut householder_ncols,
+            &mut L_values,
+            &mut householder_values,
+            &mut tau_values,
+            AT.into_inner(),
+            None,
+            &symbolic,
+            crate::Parallelism::None,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                factorize_supernodal_numeric_qr_req::<usize, f64>(
+                    &symbolic,
+                    crate::Parallelism::None,
+                )
+                .unwrap(),
+            )),
+        );
+        let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_adjoint(), &L_values);
+        let a = sparse_to_dense(A.into_inner());
+        let ata = a.adjoint() * &a;
+
+        let llt_diff = &llt - &ata;
+        assert!(llt_diff.norm_max() <= 1e-10);
     }
 
     #[test]
@@ -2841,140 +2840,141 @@ mod tests {
             &values,
         );
         let zero = I(0);
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SparseColMatRef::new(A, M, N);
-            let mut new_col_ptrs = vec![zero; m + 1];
-            let mut new_row_ind = vec![zero; nnz];
-            let mut new_values = vec![E::faer_zero(); nnz];
 
-            let AT = crate::sparse::utils::ghost_transpose(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                SliceGroupMut::<'_, E>::new(&mut new_values),
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
-            )
-            .into_const();
+        with_dim!(M, m);
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, M, N);
+        let mut new_col_ptrs = vec![zero; m + 1];
+        let mut new_row_ind = vec![zero; nnz];
+        let mut new_values = vec![E::faer_zero(); nnz];
 
-            let (A, AT) = (AT, A);
-            let (M, N) = (N, M);
-            let (m, n) = (n, m);
+        let AT = crate::sparse::utils::ghost_transpose(
+            &mut new_col_ptrs,
+            &mut new_row_ind,
+            SliceGroupMut::<'_, E>::new(&mut new_values),
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
+        )
+        .into_const();
 
-            let mut etree = vec![zero.to_signed(); n];
-            let mut post = vec![zero; n];
-            let mut col_counts = vec![zero; n];
-            let mut min_row = vec![zero; m];
+        let (A, AT) = (AT, A);
+        let (M, N) = (N, M);
+        let (m, n) = (n, m);
 
-            ghost_col_etree(
-                *A,
-                None,
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
-            );
-            let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree_,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
-            );
+        let mut etree = vec![zero.to_signed(); n];
+        let mut post = vec![zero; n];
+        let mut col_counts = vec![zero; n];
+        let mut min_row = vec![zero; m];
 
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-                *AT,
-                None,
-                etree_,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * *N + *M))),
-            );
+        ghost_col_etree(
+            *A,
+            None,
+            Array::from_mut(&mut etree, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
+        );
+        let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
+        ghost_postorder(
+            Array::from_mut(&mut post, N),
+            etree_,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
+        );
 
-            let min_col = min_row;
+        ghost_column_counts_aat(
+            Array::from_mut(&mut col_counts, N),
+            Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
+            *AT,
+            None,
+            etree_,
+            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * *N + *M))),
+        );
 
-            let symbolic = factorize_supernodal_symbolic_qr::<I>(
-                A.symbolic().into_inner(),
-                None,
-                min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    supernodal::factorize_supernodal_symbolic_qr_req::<usize>(*M, *N).unwrap(),
-                )),
-                Default::default(),
-            )
-            .unwrap();
+        let min_col = min_row;
 
-            let mut householder_row_indices =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
+        let symbolic = factorize_supernodal_symbolic_qr::<I>(
+            A.symbolic().into_inner(),
+            None,
+            min_col,
+            EliminationTreeRef::<'_, I> { inner: &etree },
+            &col_counts,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                supernodal::factorize_supernodal_symbolic_qr_req::<usize>(*M, *N).unwrap(),
+            )),
+            Default::default(),
+        )
+        .unwrap();
 
-            let mut L_values = vec![E::faer_zero(); symbolic.r_adjoint().len_values()];
-            let mut householder_values =
-                vec![E::faer_zero(); symbolic.householder().len_householder_values()];
-            let mut tau_values = vec![E::faer_zero(); symbolic.householder().len_tau_values()];
+        let mut householder_row_indices =
+            vec![zero; symbolic.householder().len_householder_row_indices()];
 
-            let mut tau_blocksize = vec![
-                I(0);
-                symbolic.householder().len_householder_row_indices()
-                    + symbolic.householder().n_supernodes()
-            ];
-            let mut householder_nrows = vec![
-                I(0);
-                symbolic.householder().len_householder_row_indices()
-                    + symbolic.householder().n_supernodes()
-            ];
-            let mut householder_ncols = vec![
-                I(0);
-                symbolic.householder().len_householder_row_indices()
-                    + symbolic.householder().n_supernodes()
-            ];
+        let mut L_values = vec![E::faer_zero(); symbolic.r_adjoint().len_values()];
+        let mut householder_values =
+            vec![E::faer_zero(); symbolic.householder().len_householder_values()];
+        let mut tau_values = vec![E::faer_zero(); symbolic.householder().len_tau_values()];
 
-            let qr = factorize_supernodal_numeric_qr::<I, E>(
-                &mut householder_row_indices,
-                &mut tau_blocksize,
-                &mut householder_nrows,
-                &mut householder_ncols,
-                &mut L_values,
-                &mut householder_values,
-                &mut tau_values,
-                AT.into_inner(),
-                None,
-                &symbolic,
-                crate::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    factorize_supernodal_numeric_qr_req::<usize, E>(
-                        &symbolic,
-                        crate::Parallelism::None,
-                    )
+        let mut tau_blocksize = vec![
+            I(0);
+            symbolic.householder().len_householder_row_indices()
+                + symbolic.householder().n_supernodes()
+        ];
+        let mut householder_nrows = vec![
+            I(0);
+            symbolic.householder().len_householder_row_indices()
+                + symbolic.householder().n_supernodes()
+        ];
+        let mut householder_ncols = vec![
+            I(0);
+            symbolic.householder().len_householder_row_indices()
+                + symbolic.householder().n_supernodes()
+        ];
+
+        let qr = factorize_supernodal_numeric_qr::<I, E>(
+            &mut householder_row_indices,
+            &mut tau_blocksize,
+            &mut householder_nrows,
+            &mut householder_ncols,
+            &mut L_values,
+            &mut householder_values,
+            &mut tau_values,
+            AT.into_inner(),
+            None,
+            &symbolic,
+            crate::Parallelism::None,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                factorize_supernodal_numeric_qr_req::<usize, E>(
+                    &symbolic,
+                    crate::Parallelism::None,
+                )
+                .unwrap(),
+            )),
+        );
+
+        let a = sparse_to_dense(A.into_inner());
+
+        let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
+        let mut x = rhs.clone();
+        let mut work = rhs.clone();
+        qr.solve_in_place_with_conj(
+            crate::Conj::No,
+            x.as_mut(),
+            crate::Parallelism::None,
+            work.as_mut(),
+            PodStack::new(&mut GlobalPodBuffer::new(
+                symbolic
+                    .solve_in_place_req::<E>(2, crate::Parallelism::None)
                     .unwrap(),
-                )),
-            );
+            )),
+        );
+        let x = x.as_ref().subrows(0, n);
 
-            let a = sparse_to_dense(A.into_inner());
+        let linsolve_diff = a.adjoint() * (&a * &x - &rhs);
 
-            let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
-            let mut x = rhs.clone();
-            let mut work = rhs.clone();
-            qr.solve_in_place_with_conj(
-                crate::Conj::No,
-                x.as_mut(),
-                crate::Parallelism::None,
-                work.as_mut(),
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    symbolic
-                        .solve_in_place_req::<E>(2, crate::Parallelism::None)
-                        .unwrap(),
-                )),
-            );
-            let x = x.as_ref().subrows(0, n);
+        let llt = reconstruct_from_supernodal_llt::<I, E>(symbolic.r_adjoint(), &L_values);
+        let ata = a.adjoint() * &a;
 
-            let linsolve_diff = a.adjoint() * (&a * &x - &rhs);
-
-            let llt = reconstruct_from_supernodal_llt::<I, E>(symbolic.r_adjoint(), &L_values);
-            let ata = a.adjoint() * &a;
-
-            let llt_diff = &llt - &ata;
-            assert!(llt_diff.norm_max() <= 1e-10);
-            assert!(linsolve_diff.norm_max() <= 1e-10);
-        });
+        let llt_diff = &llt - &ata;
+        assert!(llt_diff.norm_max() <= 1e-10);
+        assert!(linsolve_diff.norm_max() <= 1e-10);
     }
 
     #[test]
@@ -2999,134 +2999,129 @@ mod tests {
             &values,
         );
         let zero = I(0);
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SparseColMatRef::new(A, M, N);
-            let mut new_col_ptrs = vec![zero; m + 1];
-            let mut new_row_ind = vec![zero; nnz];
-            let mut new_values = vec![E::faer_zero(); nnz];
 
-            let AT = crate::sparse::utils::ghost_transpose(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                SliceGroupMut::<'_, E>::new(&mut new_values),
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
-            )
-            .into_const();
+        with_dim!(M, m);
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, M, N);
+        let mut new_col_ptrs = vec![zero; m + 1];
+        let mut new_row_ind = vec![zero; nnz];
+        let mut new_values = vec![E::faer_zero(); nnz];
 
-            let (A, AT) = (AT, A);
-            let (M, N) = (N, M);
-            let (m, n) = (n, m);
+        let AT = crate::sparse::utils::ghost_transpose(
+            &mut new_col_ptrs,
+            &mut new_row_ind,
+            SliceGroupMut::<'_, E>::new(&mut new_values),
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
+        )
+        .into_const();
 
-            let mut etree = vec![zero.to_signed(); n];
-            let mut post = vec![zero; n];
-            let mut col_counts = vec![zero; n];
-            let mut min_row = vec![zero; m];
+        let (A, AT) = (AT, A);
+        let (M, N) = (N, M);
+        let (m, n) = (n, m);
 
-            ghost_col_etree(
-                *A,
-                None,
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
+        let mut etree = vec![zero.to_signed(); n];
+        let mut post = vec![zero; n];
+        let mut col_counts = vec![zero; n];
+        let mut min_row = vec![zero; m];
+
+        ghost_col_etree(
+            *A,
+            None,
+            Array::from_mut(&mut etree, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
+        );
+        let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
+        ghost_postorder(
+            Array::from_mut(&mut post, N),
+            etree_,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
+        );
+
+        ghost_column_counts_aat(
+            Array::from_mut(&mut col_counts, N),
+            Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
+            *AT,
+            None,
+            etree_,
+            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * *N + *M))),
+        );
+
+        let min_col = min_row;
+
+        let symbolic = factorize_simplicial_symbolic_qr::<I>(
+            &min_col,
+            EliminationTreeRef::<'_, I> { inner: &etree },
+            &col_counts,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
+        )
+        .unwrap();
+
+        let mut r_col_ptrs = vec![zero; n + 1];
+        let mut r_row_indices = vec![zero; symbolic.len_r()];
+        let mut householder_col_ptrs = vec![zero; n + 1];
+        let mut householder_row_indices = vec![zero; symbolic.len_householder()];
+
+        let mut r_values = vec![E::faer_zero(); symbolic.len_r()];
+        let mut householder_values = vec![E::faer_zero(); symbolic.len_householder()];
+        let mut tau_values = vec![E::faer_zero(); n];
+
+        let qr = factorize_simplicial_numeric_qr_unsorted::<I, E>(
+            &mut r_col_ptrs,
+            &mut r_row_indices,
+            &mut r_values,
+            &mut householder_col_ptrs,
+            &mut householder_row_indices,
+            &mut householder_values,
+            &mut tau_values,
+            A.into_inner(),
+            None,
+            &symbolic,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                factorize_simplicial_numeric_qr_req::<usize, E>(&symbolic).unwrap(),
+            )),
+        );
+        let a = sparse_to_dense(A.into_inner());
+        let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
+        {
+            let mut x = rhs.clone();
+            let mut work = rhs.clone();
+            qr.solve_in_place_with_conj(
+                crate::Conj::No,
+                x.as_mut(),
+                crate::Parallelism::None,
+                work.as_mut(),
             );
-            let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree_,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
+
+            let x = x.as_ref().subrows(0, n);
+            let linsolve_diff = a.adjoint() * (&a * &x - &rhs);
+            assert!(linsolve_diff.norm_max() <= 1e-10);
+        }
+        {
+            let mut x = rhs.clone();
+            let mut work = rhs.clone();
+            qr.solve_in_place_with_conj(
+                crate::Conj::Yes,
+                x.as_mut(),
+                crate::Parallelism::None,
+                work.as_mut(),
             );
 
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-                *AT,
-                None,
-                etree_,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * *N + *M))),
-            );
+            let x = x.as_ref().subrows(0, n);
+            let a = a.conjugate();
+            let linsolve_diff = a.adjoint() * (a * &x - &rhs);
+            assert!(linsolve_diff.norm_max() <= 1e-10);
+        }
 
-            let min_col = min_row;
-
-            let symbolic = factorize_simplicial_symbolic_qr::<I>(
-                &min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
-            )
-            .unwrap();
-
-            let mut r_col_ptrs = vec![zero; n + 1];
-            let mut r_row_indices = vec![zero; symbolic.len_r()];
-            let mut householder_col_ptrs = vec![zero; n + 1];
-            let mut householder_row_indices = vec![zero; symbolic.len_householder()];
-
-            let mut r_values = vec![E::faer_zero(); symbolic.len_r()];
-            let mut householder_values = vec![E::faer_zero(); symbolic.len_householder()];
-            let mut tau_values = vec![E::faer_zero(); n];
-
-            let qr = factorize_simplicial_numeric_qr_unsorted::<I, E>(
-                &mut r_col_ptrs,
-                &mut r_row_indices,
-                &mut r_values,
-                &mut householder_col_ptrs,
-                &mut householder_row_indices,
-                &mut householder_values,
-                &mut tau_values,
-                A.into_inner(),
-                None,
-                &symbolic,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    factorize_simplicial_numeric_qr_req::<usize, E>(&symbolic).unwrap(),
-                )),
-            );
-            let a = sparse_to_dense(A.into_inner());
-            let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
-            {
-                let mut x = rhs.clone();
-                let mut work = rhs.clone();
-                qr.solve_in_place_with_conj(
-                    crate::Conj::No,
-                    x.as_mut(),
-                    crate::Parallelism::None,
-                    work.as_mut(),
-                );
-
-                let x = x.as_ref().subrows(0, n);
-                let linsolve_diff = a.adjoint() * (&a * &x - &rhs);
-                assert!(linsolve_diff.norm_max() <= 1e-10);
-            }
-            {
-                let mut x = rhs.clone();
-                let mut work = rhs.clone();
-                qr.solve_in_place_with_conj(
-                    crate::Conj::Yes,
-                    x.as_mut(),
-                    crate::Parallelism::None,
-                    work.as_mut(),
-                );
-
-                let x = x.as_ref().subrows(0, n);
-                let a = a.conjugate();
-                let linsolve_diff = a.adjoint() * (a * &x - &rhs);
-                assert!(linsolve_diff.norm_max() <= 1e-10);
-            }
-
-            let R = SparseColMatRef::<'_, usize, E>::new(
-                SymbolicSparseColMatRef::new_unsorted_checked(
-                    n,
-                    n,
-                    &r_col_ptrs,
-                    None,
-                    &r_row_indices,
-                ),
-                &r_values,
-            );
-            let r = sparse_to_dense(R);
-            let ata = a.adjoint() * &a;
-            let rtr = r.adjoint() * &r;
-            assert!((&ata - &rtr).norm_max() < 1e-10);
-        });
+        let R = SparseColMatRef::<'_, usize, E>::new(
+            SymbolicSparseColMatRef::new_unsorted_checked(n, n, &r_col_ptrs, None, &r_row_indices),
+            &r_values,
+        );
+        let r = sparse_to_dense(R);
+        let ata = a.adjoint() * &a;
+        let rtr = r.adjoint() * &r;
+        assert!((&ata - &rtr).norm_max() < 1e-10);
     }
 
     #[test]
@@ -3154,7 +3149,7 @@ mod tests {
         let mut new_row_ind = vec![I(0); nnz];
         let mut new_values = vec![E::faer_zero(); nnz];
 
-        let AT = crate::sparse::utils::transpose::<I, E>(
+        let AT = crate::sparse::utils::transpose(
             &mut new_col_ptrs,
             &mut new_row_ind,
             SliceGroupMut::<'_, E>::new(&mut new_values).into_inner(),

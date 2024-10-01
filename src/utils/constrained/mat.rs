@@ -19,8 +19,8 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
     #[track_caller]
     pub fn new(inner: mat::MatRef<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
         assert!(all(
-            inner.nrows() == nrows.into_inner(),
-            inner.ncols() == ncols.into_inner(),
+            inner.nrows() == nrows.unbound(),
+            inner.ncols() == ncols.unbound(),
         ));
         Self(Branded {
             __marker: PhantomData,
@@ -34,13 +34,13 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
     /// Returns the number of rows of the matrix.
     #[inline]
     pub fn nrows(&self) -> Size<'nrows> {
-        unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
+        unsafe { Size::new_unbound(self.0.inner.inner.nrows()) }
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
     pub fn ncols(&self) -> Size<'ncols> {
-        unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
+        unsafe { Size::new_unbound(self.0.inner.inner.ncols()) }
     }
 
     /// Returns the unconstrained matrix.
@@ -53,12 +53,7 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
     #[inline]
     #[track_caller]
     pub fn read(&self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>) -> E {
-        unsafe {
-            self.0
-                .inner
-                .inner
-                .read_unchecked(i.into_inner(), j.into_inner())
-        }
+        unsafe { self.0.inner.inner.read_unchecked(i.unbound(), j.unbound()) }
     }
 }
 
@@ -69,8 +64,8 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
     #[track_caller]
     pub fn new(inner: mat::MatMut<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
         assert!(all(
-            inner.nrows() == nrows.into_inner(),
-            inner.ncols() == ncols.into_inner(),
+            inner.nrows() == nrows.unbound(),
+            inner.ncols() == ncols.unbound(),
         ));
         Self(Branded {
             __marker: PhantomData,
@@ -84,13 +79,13 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
     /// Returns the number of rows of the matrix.
     #[inline]
     pub fn nrows(&self) -> Size<'nrows> {
-        unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
+        unsafe { Size::new_unbound(self.0.inner.inner.nrows()) }
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
     pub fn ncols(&self) -> Size<'ncols> {
-        unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
+        unsafe { Size::new_unbound(self.0.inner.inner.ncols()) }
     }
 
     /// Returns the unconstrained matrix.
@@ -103,12 +98,7 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
     #[inline]
     #[track_caller]
     pub fn read(&self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>) -> E {
-        unsafe {
-            self.0
-                .inner
-                .inner
-                .read_unchecked(i.into_inner(), j.into_inner())
-        }
+        unsafe { self.0.inner.inner.read_unchecked(i.unbound(), j.unbound()) }
     }
 
     /// Writes `value` to the location at position `(i, j)`.
@@ -119,7 +109,7 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
             self.0
                 .inner
                 .inner
-                .write_unchecked(i.into_inner(), j.into_inner(), value)
+                .write_unchecked(i.unbound(), j.unbound(), value)
         };
     }
 }

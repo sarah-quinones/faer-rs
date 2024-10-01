@@ -12,8 +12,8 @@ impl<'n, 'a, I: Index> PermRef<'n, 'a, I> {
     pub fn new(perm: perm::PermRef<'a, I>, size: Size<'n>) -> Self {
         let (fwd, inv) = perm.arrays();
         assert!(all(
-            fwd.len() == size.into_inner(),
-            inv.len() == size.into_inner(),
+            fwd.len() == size.unbound(),
+            inv.len() == size.unbound(),
         ));
         Self(Branded {
             __marker: PhantomData,
@@ -50,7 +50,7 @@ impl<'n, 'a, I: Index> PermRef<'n, 'a, I> {
     /// Returns the length of the permutation.
     #[inline]
     pub fn len(&self) -> Size<'n> {
-        unsafe { Size::new_raw_unchecked(self.into_inner().len()) }
+        unsafe { Size::new_unbound(self.into_inner().len()) }
     }
 }
 

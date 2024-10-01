@@ -595,14 +595,13 @@ pub mod simplicial {
         assert!(etree.len() == n);
         assert!(col_counts.len() == n);
 
-        ghost::with_size(n, |N| {
-            ghost_prefactorize_symbolic_cholesky(
-                Array::from_mut(etree, N),
-                Array::from_mut(col_counts, N),
-                ghost::SymbolicSparseColMatRef::new(A, N, N),
-                stack,
-            );
-        });
+        with_dim!(N, n);
+        ghost_prefactorize_symbolic_cholesky(
+            Array::from_mut(etree, N),
+            Array::from_mut(col_counts, N),
+            ghost::SymbolicSparseColMatRef::new(A, N, N),
+            stack,
+        );
 
         simplicial::EliminationTreeRef { inner: etree }
     }
@@ -639,7 +638,7 @@ pub mod simplicial {
                 len += 1;
 
                 visited[i] = k_.to_signed();
-                i = N.check(etree[i].into_inner().zx());
+                i = N.check(etree[i].unbound().zx());
             }
 
             // because stack[..len] elements are less than or equal to k
@@ -682,14 +681,13 @@ pub mod simplicial {
         assert!(etree.inner.len() == n);
         assert!(col_counts.len() == n);
 
-        ghost::with_size(n, |N| {
-            ghost_factorize_simplicial_symbolic_cholesky(
-                ghost::SymbolicSparseColMatRef::new(A, N, N),
-                etree.ghost_inner(N),
-                Array::from_ref(col_counts, N),
-                stack,
-            )
-        })
+        with_dim!(N, n);
+        ghost_factorize_simplicial_symbolic_cholesky(
+            ghost::SymbolicSparseColMatRef::new(A, N, N),
+            etree.ghost_inner(N),
+            Array::from_ref(col_counts, N),
+            stack,
+        )
     }
 
     pub(crate) fn ghost_factorize_simplicial_symbolic_cholesky<'n, I: Index>(
@@ -711,61 +709,50 @@ pub mod simplicial {
         let l_nnz = L_col_ptrs[n].zx();
         let mut L_row_ind = try_zeroed::<I>(l_nnz)?;
 
-        ghost::with_size(
-            l_nnz,
-            #[inline(always)]
-            move |L_NNZ| {
-                let (current_row_index, stack) = stack.make_raw::<I>(n);
-                let (ereach_stack, stack) = stack.make_raw::<I>(n);
-                let (visited, _) = stack.make_raw::<I::Signed>(n);
+        with_dim!(L_NNZ, l_nnz);
+        let (current_row_index, stack) = stack.make_raw::<I>(n);
+        let (ereach_stack, stack) = stack.make_raw::<I>(n);
+        let (visited, _) = stack.make_raw::<I::Signed>(n);
 
-                let ereach_stack = Array::from_mut(ereach_stack, N);
-                let visited = Array::from_mut(visited, N);
+        let ereach_stack = Array::from_mut(ereach_stack, N);
+        let visited = Array::from_mut(visited, N);
 
-                mem::fill_none(visited.as_mut());
-                let L_row_indices = Array::from_mut(&mut L_row_ind, L_NNZ);
-                let L_col_ptrs_start =
-                    Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
-                let current_row_index = Array::from_mut(
-                    ghost::copy_slice(current_row_index, L_col_ptrs_start.as_ref()),
-                    N,
-                );
+        mem::fill_none(visited.as_mut());
+        let L_row_indices = Array::from_mut(&mut L_row_ind, L_NNZ);
+        let L_col_ptrs_start =
+            Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
+        let current_row_index = Array::from_mut(
+            ghost::copy_slice(current_row_index, L_col_ptrs_start.as_ref()),
+            N,
+        );
 
-                for k in N.indices() {
-                    let reach = ereach(ereach_stack, A, etree, k, visited);
-                    for &j in reach {
-                        let j = j.zx();
-                        let cj = &mut current_row_index[j];
-                        let row_idx = L_NNZ.check(*cj.zx() + 1);
-                        *cj = row_idx.truncate();
-                        L_row_indices[row_idx] = *k.truncate();
-                    }
-                    let k_start = L_col_ptrs_start[k].zx();
-                    L_row_indices[k_start] = *k.truncate();
-                }
+        for k in N.indices() {
+            let reach = ereach(ereach_stack, A, etree, k, visited);
+            for &j in reach {
+                let j = j.zx();
+                let cj = &mut current_row_index[j];
+                let row_idx = L_NNZ.check(*cj.zx() + 1);
+                *cj = row_idx.truncate();
+                L_row_indices[row_idx] = *k.truncate();
+            }
+            let k_start = L_col_ptrs_start[k].zx();
+            L_row_indices[k_start] = *k.truncate();
+        }
 
-                let etree = try_collect(
-                    bytemuck::cast_slice::<I::Signed, I>(MaybeIdx::as_slice_ref(etree.as_ref()))
-                        .iter()
-                        .copied(),
-                )?;
+        let etree = try_collect(
+            bytemuck::cast_slice::<I::Signed, I>(MaybeIdx::as_slice_ref(etree.as_ref()))
+                .iter()
+                .copied(),
+        )?;
 
-                let _ = SymbolicSparseColMatRef::new_unsorted_checked(
-                    n,
-                    n,
-                    &L_col_ptrs,
-                    None,
-                    &L_row_ind,
-                );
+        let _ = SymbolicSparseColMatRef::new_unsorted_checked(n, n, &L_col_ptrs, None, &L_row_ind);
 
-                Ok(SymbolicSimplicialCholesky {
-                    dimension: n,
-                    col_ptrs: L_col_ptrs,
-                    row_indices: L_row_ind,
-                    etree,
-                })
-            },
-        )
+        Ok(SymbolicSimplicialCholesky {
+            dimension: n,
+            col_ptrs: L_col_ptrs,
+            row_indices: L_row_ind,
+            etree,
+        })
     }
 
     #[derive(Copy, Clone, Debug)]
@@ -795,150 +782,136 @@ pub mod simplicial {
         assert!(etree.into_inner().len() == n);
         let l_nnz = L_col_ptrs[n].zx();
 
-        ghost::with_size(
-            n,
-            #[inline(always)]
-            |N| {
-                let etree = etree.ghost_inner(N);
-                let A = ghost::SparseColMatRef::new(A, N, N);
+        with_dim!(N, n);
+        with_dim!(L_NNZ, l_nnz);
 
-                ghost::with_size(
-                    l_nnz,
-                    #[inline(always)]
-                    move |L_NNZ| {
-                        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
-                        let delta = regularization.dynamic_regularization_delta.faer_abs();
-                        let has_delta = delta > E::Real::faer_zero();
-                        let mut dynamic_regularization_count = 0usize;
+        let etree = etree.ghost_inner(N);
+        let A = ghost::SparseColMatRef::new(A, N, N);
 
-                        let (x, stack) = crate::sparse::linalg::make_raw::<E>(n, stack);
-                        let (current_row_index, stack) = stack.make_raw::<I>(n);
-                        let (ereach_stack, stack) = stack.make_raw::<I>(n);
-                        let (visited, _) = stack.make_raw::<I::Signed>(n);
+        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
+        let delta = regularization.dynamic_regularization_delta.faer_abs();
+        let has_delta = delta > E::Real::faer_zero();
+        let mut dynamic_regularization_count = 0usize;
 
-                        let ereach_stack = Array::from_mut(ereach_stack, N);
-                        let visited = Array::from_mut(visited, N);
-                        let mut x = ghost::ArrayGroupMut::<'_, '_, E>::new(x.into_inner(), N);
+        let (x, stack) = crate::sparse::linalg::make_raw::<E>(n, stack);
+        let (current_row_index, stack) = stack.make_raw::<I>(n);
+        let (ereach_stack, stack) = stack.make_raw::<I>(n);
+        let (visited, _) = stack.make_raw::<I::Signed>(n);
 
-                        SliceGroupMut::<'_, E>::new(x.rb_mut().into_slice()).fill_zero();
-                        mem::fill_none(visited.as_mut());
+        let ereach_stack = Array::from_mut(ereach_stack, N);
+        let visited = Array::from_mut(visited, N);
+        let mut x = ghost::ArrayGroupMut::<'_, '_, E>::new(x.into_inner(), N);
 
-                        let mut L_values = ghost::ArrayGroupMut::<'_, '_, E>::new(L_values, L_NNZ);
-                        let L_row_indices = Array::from_mut(L_row_indices, L_NNZ);
+        SliceGroupMut::<'_, E>::new(x.rb_mut().into_slice()).fill_zero();
+        mem::fill_none(visited.as_mut());
 
-                        let L_col_ptrs_start = Array::from_ref(
-                            Idx::from_slice_ref_checked(&L_col_ptrs[..n], L_NNZ),
-                            N,
-                        );
+        let mut L_values = ghost::ArrayGroupMut::<'_, '_, E>::new(L_values, L_NNZ);
+        let L_row_indices = Array::from_mut(L_row_indices, L_NNZ);
 
-                        let current_row_index = Array::from_mut(
-                            ghost::copy_slice(current_row_index, L_col_ptrs_start.as_ref()),
-                            N,
-                        );
+        let L_col_ptrs_start =
+            Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
 
-                        for k in N.indices() {
-                            let reach = ereach(ereach_stack, *A, etree, k, visited);
+        let current_row_index = Array::from_mut(
+            ghost::copy_slice(current_row_index, L_col_ptrs_start.as_ref()),
+            N,
+        );
 
-                            for (i, aik) in zip(
-                                A.row_indices_of_col(k),
-                                SliceGroup::<'_, E>::new(A.values_of_col(k)).into_ref_iter(),
-                            ) {
-                                x.write(i, x.read(i).faer_add(aik.read().faer_conj()));
+        for k in N.indices() {
+            let reach = ereach(ereach_stack, *A, etree, k, visited);
+
+            for (i, aik) in zip(
+                A.row_indices_of_col(k),
+                SliceGroup::<'_, E>::new(A.values_of_col(k)).into_ref_iter(),
+            ) {
+                x.write(i, x.read(i).faer_add(aik.read().faer_conj()));
+            }
+
+            let mut d = x.read(k).faer_real();
+            x.write(k, E::faer_zero());
+
+            for &j in reach {
+                let j = j.zx();
+
+                let j_start = L_col_ptrs_start[j].zx();
+                let cj = &mut current_row_index[j];
+                let row_idx = L_NNZ.check(*cj.zx() + 1);
+                *cj = row_idx.truncate();
+
+                let mut xj = x.read(j);
+                x.write(j, E::faer_zero());
+
+                let dj = L_values.read(j_start).faer_real();
+                let lkj = xj.faer_scale_real(dj.faer_inv());
+                if matches!(kind, FactorizationKind::Llt) {
+                    xj = lkj;
+                }
+
+                let range = j_start.next()..row_idx.to_inclusive();
+                for (i, lij) in zip(
+                    &L_row_indices[range.clone()],
+                    SliceGroup::<'_, E>::new(L_values.rb().subslice(range)).into_ref_iter(),
+                ) {
+                    let i = N.check(i.zx());
+                    let mut xi = x.read(i);
+                    let prod = lij.read().faer_conj().faer_mul(xj);
+                    xi = xi.faer_sub(prod);
+                    x.write(i, xi);
+                }
+
+                d = d.faer_sub(lkj.faer_mul(xj.faer_conj()).faer_real());
+
+                L_row_indices[row_idx] = *k.truncate();
+                L_values.write(row_idx, lkj);
+            }
+
+            let k_start = L_col_ptrs_start[k].zx();
+            L_row_indices[k_start] = *k.truncate();
+
+            if has_delta {
+                match kind {
+                    FactorizationKind::Llt => {
+                        if d <= eps {
+                            d = delta;
+                            dynamic_regularization_count += 1;
+                        }
+                    }
+                    FactorizationKind::Ldlt => {
+                        if let Some(signs) = regularization.dynamic_regularization_signs {
+                            if signs[*k] > 0 && d <= eps {
+                                d = delta;
+                                dynamic_regularization_count += 1;
+                            } else if signs[*k] < 0 && d >= eps.faer_neg() {
+                                d = delta.faer_neg();
+                                dynamic_regularization_count += 1;
                             }
-
-                            let mut d = x.read(k).faer_real();
-                            x.write(k, E::faer_zero());
-
-                            for &j in reach {
-                                let j = j.zx();
-
-                                let j_start = L_col_ptrs_start[j].zx();
-                                let cj = &mut current_row_index[j];
-                                let row_idx = L_NNZ.check(*cj.zx() + 1);
-                                *cj = row_idx.truncate();
-
-                                let mut xj = x.read(j);
-                                x.write(j, E::faer_zero());
-
-                                let dj = L_values.read(j_start).faer_real();
-                                let lkj = xj.faer_scale_real(dj.faer_inv());
-                                if matches!(kind, FactorizationKind::Llt) {
-                                    xj = lkj;
-                                }
-
-                                let range = j_start.next()..row_idx.to_inclusive();
-                                for (i, lij) in zip(
-                                    &L_row_indices[range.clone()],
-                                    SliceGroup::<'_, E>::new(L_values.rb().subslice(range))
-                                        .into_ref_iter(),
-                                ) {
-                                    let i = N.check(i.zx());
-                                    let mut xi = x.read(i);
-                                    let prod = lij.read().faer_conj().faer_mul(xj);
-                                    xi = xi.faer_sub(prod);
-                                    x.write(i, xi);
-                                }
-
-                                d = d.faer_sub(lkj.faer_mul(xj.faer_conj()).faer_real());
-
-                                L_row_indices[row_idx] = *k.truncate();
-                                L_values.write(row_idx, lkj);
-                            }
-
-                            let k_start = L_col_ptrs_start[k].zx();
-                            L_row_indices[k_start] = *k.truncate();
-
-                            if has_delta {
-                                match kind {
-                                    FactorizationKind::Llt => {
-                                        if d <= eps {
-                                            d = delta;
-                                            dynamic_regularization_count += 1;
-                                        }
-                                    }
-                                    FactorizationKind::Ldlt => {
-                                        if let Some(signs) =
-                                            regularization.dynamic_regularization_signs
-                                        {
-                                            if signs[*k] > 0 && d <= eps {
-                                                d = delta;
-                                                dynamic_regularization_count += 1;
-                                            } else if signs[*k] < 0 && d >= eps.faer_neg() {
-                                                d = delta.faer_neg();
-                                                dynamic_regularization_count += 1;
-                                            }
-                                        } else if d.faer_abs() <= eps {
-                                            if d < E::Real::faer_zero() {
-                                                d = delta.faer_neg();
-                                                dynamic_regularization_count += 1;
-                                            } else {
-                                                d = delta;
-                                                dynamic_regularization_count += 1;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            match kind {
-                                FactorizationKind::Llt => {
-                                    if d <= E::Real::faer_zero() {
-                                        return Err(CholeskyError {
-                                            non_positive_definite_minor: *k + 1,
-                                        });
-                                    }
-                                    L_values.write(k_start, E::faer_from_real(d.faer_sqrt()));
-                                }
-                                FactorizationKind::Ldlt => {
-                                    L_values.write(k_start, E::faer_from_real(d));
-                                }
+                        } else if d.faer_abs() <= eps {
+                            if d < E::Real::faer_zero() {
+                                d = delta.faer_neg();
+                                dynamic_regularization_count += 1;
+                            } else {
+                                d = delta;
+                                dynamic_regularization_count += 1;
                             }
                         }
-                        Ok(dynamic_regularization_count)
-                    },
-                )
-            },
-        )
+                    }
+                }
+            }
+
+            match kind {
+                FactorizationKind::Llt => {
+                    if d <= E::Real::faer_zero() {
+                        return Err(CholeskyError {
+                            non_positive_definite_minor: *k + 1,
+                        });
+                    }
+                    L_values.write(k_start, E::faer_from_real(d.faer_sqrt()));
+                }
+                FactorizationKind::Ldlt => {
+                    L_values.write(k_start, E::faer_from_real(d));
+                }
+            }
+        }
+        Ok(dynamic_regularization_count)
     }
 
     fn factorize_simplicial_numeric<I: Index, E: ComplexField>(
@@ -961,158 +934,141 @@ pub mod simplicial {
         assert!(L_col_ptrs.len() == n + 1);
         let l_nnz = L_col_ptrs[n].zx();
 
-        ghost::with_size(
-            n,
-            #[inline(always)]
-            |N| {
-                ghost::with_size(
-                    l_nnz,
-                    #[inline(always)]
-                    move |L_NNZ| {
-                        let etree = Array::from_ref(
-                            MaybeIdx::from_slice_ref_checked(
-                                bytemuck::cast_slice::<I, I::Signed>(etree),
-                                N,
-                            ),
-                            N,
-                        );
-                        let A = ghost::SparseColMatRef::new(A, N, N);
+        with_dim!(N, n);
+        with_dim!(L_NNZ, l_nnz);
 
-                        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
-                        let delta = regularization.dynamic_regularization_delta.faer_abs();
-                        let has_delta = delta > E::Real::faer_zero();
-                        let mut dynamic_regularization_count = 0usize;
+        let etree = Array::from_ref(
+            MaybeIdx::from_slice_ref_checked(bytemuck::cast_slice::<I, I::Signed>(etree), N),
+            N,
+        );
+        let A = ghost::SparseColMatRef::new(A, N, N);
 
-                        let (x, stack) = crate::sparse::linalg::make_raw::<E>(n, stack);
-                        let (current_row_index, stack) = stack.make_raw::<I>(n);
-                        let (ereach_stack, stack) = stack.make_raw::<I>(n);
-                        let (visited, _) = stack.make_raw::<I::Signed>(n);
+        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
+        let delta = regularization.dynamic_regularization_delta.faer_abs();
+        let has_delta = delta > E::Real::faer_zero();
+        let mut dynamic_regularization_count = 0usize;
 
-                        let ereach_stack = Array::from_mut(ereach_stack, N);
-                        let visited = Array::from_mut(visited, N);
-                        let mut x = ghost::ArrayGroupMut::<'_, '_, E>::new(x.into_inner(), N);
+        let (x, stack) = crate::sparse::linalg::make_raw::<E>(n, stack);
+        let (current_row_index, stack) = stack.make_raw::<I>(n);
+        let (ereach_stack, stack) = stack.make_raw::<I>(n);
+        let (visited, _) = stack.make_raw::<I::Signed>(n);
 
-                        SliceGroupMut::<'_, E>::new(x.rb_mut().into_slice()).fill_zero();
-                        mem::fill_none(visited.as_mut());
+        let ereach_stack = Array::from_mut(ereach_stack, N);
+        let visited = Array::from_mut(visited, N);
+        let mut x = ghost::ArrayGroupMut::<'_, '_, E>::new(x.into_inner(), N);
 
-                        let mut L_values = ghost::ArrayGroupMut::<'_, '_, E>::new(L_values, L_NNZ);
-                        let L_row_indices = Array::from_ref(L_row_indices, L_NNZ);
+        SliceGroupMut::<'_, E>::new(x.rb_mut().into_slice()).fill_zero();
+        mem::fill_none(visited.as_mut());
 
-                        let L_col_ptrs_start = Array::from_ref(
-                            Idx::from_slice_ref_checked(&L_col_ptrs[..n], L_NNZ),
-                            N,
-                        );
+        let mut L_values = ghost::ArrayGroupMut::<'_, '_, E>::new(L_values, L_NNZ);
+        let L_row_indices = Array::from_ref(L_row_indices, L_NNZ);
 
-                        let current_row_index = Array::from_mut(
-                            ghost::copy_slice(current_row_index, L_col_ptrs_start.as_ref()),
-                            N,
-                        );
+        let L_col_ptrs_start =
+            Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
 
-                        for k in N.indices() {
-                            let reach = ereach(ereach_stack, *A, etree, k, visited);
+        let current_row_index = Array::from_mut(
+            ghost::copy_slice(current_row_index, L_col_ptrs_start.as_ref()),
+            N,
+        );
 
-                            for (i, aik) in zip(
-                                A.row_indices_of_col(k),
-                                SliceGroup::<'_, E>::new(A.values_of_col(k)).into_ref_iter(),
-                            ) {
-                                x.write(i, x.read(i).faer_add(aik.read().faer_conj()));
+        for k in N.indices() {
+            let reach = ereach(ereach_stack, *A, etree, k, visited);
+
+            for (i, aik) in zip(
+                A.row_indices_of_col(k),
+                SliceGroup::<'_, E>::new(A.values_of_col(k)).into_ref_iter(),
+            ) {
+                x.write(i, x.read(i).faer_add(aik.read().faer_conj()));
+            }
+
+            let mut d = x.read(k).faer_real();
+            x.write(k, E::faer_zero());
+
+            for &j in reach {
+                let j = j.zx();
+
+                let j_start = L_col_ptrs_start[j].zx();
+                let cj = &mut current_row_index[j];
+                let row_idx = L_NNZ.check(*cj.zx() + 1);
+                *cj = row_idx.truncate();
+
+                let mut xj = x.read(j);
+                x.write(j, E::faer_zero());
+
+                let dj = L_values.read(j_start).faer_real();
+                let lkj = xj.faer_scale_real(dj.faer_inv());
+                if matches!(kind, FactorizationKind::Llt) {
+                    xj = lkj;
+                }
+
+                let range = j_start.next()..row_idx.to_inclusive();
+                for (i, lij) in zip(
+                    &L_row_indices[range.clone()],
+                    SliceGroup::<'_, E>::new(L_values.rb().subslice(range)).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    if i >= *N {
+                        panic!();
+                    }
+                    let i = unsafe { Idx::new_unchecked(i, N) };
+                    let mut xi = x.read(i);
+                    let prod = lij.read().faer_conj().faer_mul(xj);
+                    xi = xi.faer_sub(prod);
+                    x.write(i, xi);
+                }
+
+                d = d.faer_sub(lkj.faer_mul(xj.faer_conj()).faer_real());
+
+                L_values.write(row_idx, lkj);
+            }
+
+            let k_start = L_col_ptrs_start[k].zx();
+
+            if has_delta {
+                match kind {
+                    FactorizationKind::Llt => {
+                        if d <= eps {
+                            d = delta;
+                            dynamic_regularization_count += 1;
+                        }
+                    }
+                    FactorizationKind::Ldlt => {
+                        if let Some(signs) = regularization.dynamic_regularization_signs {
+                            if signs[*k] > 0 && d <= eps {
+                                d = delta;
+                                dynamic_regularization_count += 1;
+                            } else if signs[*k] < 0 && d >= eps.faer_neg() {
+                                d = delta.faer_neg();
+                                dynamic_regularization_count += 1;
                             }
-
-                            let mut d = x.read(k).faer_real();
-                            x.write(k, E::faer_zero());
-
-                            for &j in reach {
-                                let j = j.zx();
-
-                                let j_start = L_col_ptrs_start[j].zx();
-                                let cj = &mut current_row_index[j];
-                                let row_idx = L_NNZ.check(*cj.zx() + 1);
-                                *cj = row_idx.truncate();
-
-                                let mut xj = x.read(j);
-                                x.write(j, E::faer_zero());
-
-                                let dj = L_values.read(j_start).faer_real();
-                                let lkj = xj.faer_scale_real(dj.faer_inv());
-                                if matches!(kind, FactorizationKind::Llt) {
-                                    xj = lkj;
-                                }
-
-                                let range = j_start.next()..row_idx.to_inclusive();
-                                for (i, lij) in zip(
-                                    &L_row_indices[range.clone()],
-                                    SliceGroup::<'_, E>::new(L_values.rb().subslice(range))
-                                        .into_ref_iter(),
-                                ) {
-                                    let i = i.zx();
-                                    if i >= *N {
-                                        panic!();
-                                    }
-                                    let i = unsafe { Idx::new_unchecked(i, N) };
-                                    let mut xi = x.read(i);
-                                    let prod = lij.read().faer_conj().faer_mul(xj);
-                                    xi = xi.faer_sub(prod);
-                                    x.write(i, xi);
-                                }
-
-                                d = d.faer_sub(lkj.faer_mul(xj.faer_conj()).faer_real());
-
-                                L_values.write(row_idx, lkj);
-                            }
-
-                            let k_start = L_col_ptrs_start[k].zx();
-
-                            if has_delta {
-                                match kind {
-                                    FactorizationKind::Llt => {
-                                        if d <= eps {
-                                            d = delta;
-                                            dynamic_regularization_count += 1;
-                                        }
-                                    }
-                                    FactorizationKind::Ldlt => {
-                                        if let Some(signs) =
-                                            regularization.dynamic_regularization_signs
-                                        {
-                                            if signs[*k] > 0 && d <= eps {
-                                                d = delta;
-                                                dynamic_regularization_count += 1;
-                                            } else if signs[*k] < 0 && d >= eps.faer_neg() {
-                                                d = delta.faer_neg();
-                                                dynamic_regularization_count += 1;
-                                            }
-                                        } else if d.faer_abs() <= eps {
-                                            if d < E::Real::faer_zero() {
-                                                d = delta.faer_neg();
-                                                dynamic_regularization_count += 1;
-                                            } else {
-                                                d = delta;
-                                                dynamic_regularization_count += 1;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            match kind {
-                                FactorizationKind::Llt => {
-                                    if d <= E::Real::faer_zero() {
-                                        return Err(CholeskyError {
-                                            non_positive_definite_minor: *k + 1,
-                                        });
-                                    }
-                                    L_values.write(k_start, E::faer_from_real(d.faer_sqrt()));
-                                }
-                                FactorizationKind::Ldlt => {
-                                    L_values.write(k_start, E::faer_from_real(d));
-                                }
+                        } else if d.faer_abs() <= eps {
+                            if d < E::Real::faer_zero() {
+                                d = delta.faer_neg();
+                                dynamic_regularization_count += 1;
+                            } else {
+                                d = delta;
+                                dynamic_regularization_count += 1;
                             }
                         }
-                        Ok(dynamic_regularization_count)
-                    },
-                )
-            },
-        )
+                    }
+                }
+            }
+
+            match kind {
+                FactorizationKind::Llt => {
+                    if d <= E::Real::faer_zero() {
+                        return Err(CholeskyError {
+                            non_positive_definite_minor: *k + 1,
+                        });
+                    }
+                    L_values.write(k_start, E::faer_from_real(d.faer_sqrt()));
+                }
+                FactorizationKind::Ldlt => {
+                    L_values.write(k_start, E::faer_from_real(d));
+                }
+            }
+        }
+        Ok(dynamic_regularization_count)
     }
 
     /// Computes the numeric values of the Cholesky LLT factor of the matrix `A`, and stores them in
@@ -1510,7 +1466,7 @@ pub mod simplicial {
 /// factor is somewhat dense.
 pub mod supernodal {
     use super::*;
-    use crate::{assert, debug_assert};
+    use crate::{assert, debug_assert, Shape};
 
     #[doc(hidden)]
     pub fn ereach_super<'n, 'nsuper, I: Index>(
@@ -2373,84 +2329,87 @@ pub mod supernodal {
             etree: &[I::Signed],
             stack: &mut PodStack,
         ) {
-            ghost::Size::with2(self.nrows(), self.n_supernodes(), |N, N_SUPERNODES| {
-                let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
-                let n = *N;
-                let n_supernodes = *N_SUPERNODES;
-                let none = I::Signed::truncate(NONE);
+            generativity::make_guard!(N);
+            generativity::make_guard!(N_SUPERNODES);
+            let N = self.nrows().bind(N);
+            let N_SUPERNODES = self.nrows().bind(N_SUPERNODES);
 
-                let etree = MaybeIdx::<I>::from_slice_ref_checked(etree, N);
-                let etree = Array::from_ref(etree, N);
+            let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+            let n = *N;
+            let n_supernodes = *N_SUPERNODES;
+            let none = I::Signed::truncate(NONE);
 
-                let mut stack = stack;
-                let (index_to_super, mut stack) = stack.rb_mut().make_raw::<I>(n);
-                let (current_row_positions, mut stack) = stack.rb_mut().make_raw::<I>(n_supernodes);
-                let (visited, mut stack) = stack.rb_mut().make_raw::<I::Signed>(n_supernodes);
-                let (super_etree, _) = stack.rb_mut().make_raw::<I::Signed>(n_supernodes);
+            let etree = MaybeIdx::<I>::from_slice_ref_checked(etree, N);
+            let etree = Array::from_ref(etree, N);
 
-                let super_etree = Array::from_mut(super_etree, N_SUPERNODES);
-                let index_to_super = Array::from_mut(index_to_super, N);
+            let mut stack = stack;
+            let (index_to_super, mut stack) = stack.rb_mut().make_raw::<I>(n);
+            let (current_row_positions, mut stack) = stack.rb_mut().make_raw::<I>(n_supernodes);
+            let (visited, mut stack) = stack.rb_mut().make_raw::<I::Signed>(n_supernodes);
+            let (super_etree, _) = stack.rb_mut().make_raw::<I::Signed>(n_supernodes);
 
-                let mut supernode_begin = 0usize;
-                for s in N_SUPERNODES.indices() {
-                    let size = self.supernode_end()[*s].zx() - self.supernode_begin()[*s].zx();
-                    index_to_super.as_mut()[supernode_begin..][..size].fill(*s.truncate::<I>());
-                    supernode_begin += size;
+            let super_etree = Array::from_mut(super_etree, N_SUPERNODES);
+            let index_to_super = Array::from_mut(index_to_super, N);
+
+            let mut supernode_begin = 0usize;
+            for s in N_SUPERNODES.indices() {
+                let size = self.supernode_end()[*s].zx() - self.supernode_begin()[*s].zx();
+                index_to_super.as_mut()[supernode_begin..][..size].fill(*s.truncate::<I>());
+                supernode_begin += size;
+            }
+
+            let index_to_super = Array::from_mut(
+                Idx::from_slice_mut_checked(index_to_super.as_mut(), N_SUPERNODES),
+                N,
+            );
+
+            let mut supernode_begin = 0usize;
+            for s in N_SUPERNODES.indices() {
+                let size = self.supernode_end()[*s + 1].zx() - self.supernode_begin()[*s].zx();
+                let last = supernode_begin + size - 1;
+                if let Some(parent) = etree[N.check(last)].idx() {
+                    super_etree[s] = index_to_super[parent.zx()].to_signed();
+                } else {
+                    super_etree[s] = none;
                 }
+                supernode_begin += size;
+            }
 
-                let index_to_super = Array::from_mut(
-                    Idx::from_slice_mut_checked(index_to_super.as_mut(), N_SUPERNODES),
-                    N,
-                );
+            let super_etree = Array::from_mut(
+                MaybeIdx::<'_, I>::from_slice_mut_checked(super_etree.as_mut(), N_SUPERNODES),
+                N_SUPERNODES,
+            );
 
-                let mut supernode_begin = 0usize;
-                for s in N_SUPERNODES.indices() {
-                    let size = self.supernode_end()[*s + 1].zx() - self.supernode_begin()[*s].zx();
-                    let last = supernode_begin + size - 1;
-                    if let Some(parent) = etree[N.check(last)].idx() {
-                        super_etree[s] = index_to_super[parent.zx()].to_signed();
-                    } else {
-                        super_etree[s] = none;
-                    }
-                    supernode_begin += size;
+            let visited = Array::from_mut(visited, N_SUPERNODES);
+            let current_row_positions = Array::from_mut(current_row_positions, N_SUPERNODES);
+
+            mem::fill_none::<I::Signed>(visited.as_mut());
+            mem::fill_zero(current_row_positions.as_mut());
+
+            for s in N_SUPERNODES.indices() {
+                let k1 = ghost::IdxInclusive::new_checked(self.supernode_begin()[*s].zx(), N);
+                let k2 = ghost::IdxInclusive::new_checked(self.supernode_end()[*s].zx(), N);
+
+                for k in k1.range_to(k2) {
+                    ereach_super(
+                        A,
+                        super_etree,
+                        index_to_super,
+                        current_row_positions,
+                        unsafe { Idx::from_slice_mut_unchecked(&mut self.row_indices) },
+                        k,
+                        visited,
+                    );
                 }
+            }
 
-                let super_etree = Array::from_mut(
-                    MaybeIdx::<'_, I>::from_slice_mut_checked(super_etree.as_mut(), N_SUPERNODES),
-                    N_SUPERNODES,
-                );
+            let Some(nnz_per_super) = self.nnz_per_super.as_deref_mut() else {
+                panic!()
+            };
 
-                let visited = Array::from_mut(visited, N_SUPERNODES);
-                let current_row_positions = Array::from_mut(current_row_positions, N_SUPERNODES);
-
-                mem::fill_none::<I::Signed>(visited.as_mut());
-                mem::fill_zero(current_row_positions.as_mut());
-
-                for s in N_SUPERNODES.indices() {
-                    let k1 = ghost::IdxInclusive::new_checked(self.supernode_begin()[*s].zx(), N);
-                    let k2 = ghost::IdxInclusive::new_checked(self.supernode_end()[*s].zx(), N);
-
-                    for k in k1.range_to(k2) {
-                        ereach_super(
-                            A,
-                            super_etree,
-                            index_to_super,
-                            current_row_positions,
-                            unsafe { Idx::from_slice_mut_unchecked(&mut self.row_indices) },
-                            k,
-                            visited,
-                        );
-                    }
-                }
-
-                let Some(nnz_per_super) = self.nnz_per_super.as_deref_mut() else {
-                    panic!()
-                };
-
-                for s in N_SUPERNODES.indices() {
-                    nnz_per_super[*s] = current_row_positions[s] - self.supernode_begin[*s];
-                }
-            });
+            for s in N_SUPERNODES.indices() {
+                nnz_per_super[*s] = current_row_positions[s] - self.supernode_begin[*s];
+            }
         }
     }
 
@@ -2483,18 +2442,17 @@ pub mod supernodal {
         assert!(A.nrows() == A.ncols());
         assert!(etree.into_inner().len() == n);
         assert!(col_counts.len() == n);
-        ghost::with_size(n, |N| {
-            ghost_factorize_supernodal_symbolic(
-                ghost::SymbolicSparseColMatRef::new(A, N, N),
-                None,
-                None,
-                CholeskyInput::A,
-                etree.ghost_inner(N),
-                Array::from_ref(col_counts, N),
-                stack,
-                params,
-            )
-        })
+        with_dim!(N, n);
+        ghost_factorize_supernodal_symbolic(
+            ghost::SymbolicSparseColMatRef::new(A, N, N),
+            None,
+            None,
+            CholeskyInput::A,
+            etree.ghost_inner(N),
+            Array::from_ref(col_counts, N),
+            stack,
+            params,
+        )
     }
 
     pub(crate) enum CholeskyInput {
@@ -2573,424 +2531,394 @@ pub mod supernodal {
         let n_fundamental_supernodes = current_supernode + 1;
 
         // last n elements contain supernode degrees
-        let supernode_begin__ = ghost::with_size(
-            n_fundamental_supernodes,
-            |N_FUNDAMENTAL_SUPERNODES| -> Result<alloc::vec::Vec<I>, FaerError> {
-                let supernode_sizes = Array::from_mut(
-                    &mut supernode_sizes__[..n_fundamental_supernodes],
+        let supernode_begin__ = {
+            with_dim!(N_FUNDAMENTAL_SUPERNODES, n_fundamental_supernodes);
+            let supernode_sizes = Array::from_mut(
+                &mut supernode_sizes__[..n_fundamental_supernodes],
+                N_FUNDAMENTAL_SUPERNODES,
+            );
+            let super_etree = Array::from_mut(
+                &mut super_etree__[..n_fundamental_supernodes],
+                N_FUNDAMENTAL_SUPERNODES,
+            );
+
+            let mut supernode_begin = 0usize;
+            for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                let size = supernode_sizes[s].zx();
+                index_to_super.as_mut()[supernode_begin..][..size].fill(*s.truncate::<I>());
+                supernode_begin += size;
+            }
+
+            let index_to_super = Array::from_mut(
+                Idx::from_slice_mut_checked(index_to_super.as_mut(), N_FUNDAMENTAL_SUPERNODES),
+                N,
+            );
+
+            let mut supernode_begin = 0usize;
+            for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                let size = supernode_sizes[s].zx();
+                let last = supernode_begin + size - 1;
+                let last = N.check(last);
+                if let Some(parent) = etree[last].idx() {
+                    super_etree[s] = index_to_super[parent.zx()].to_signed();
+                } else {
+                    super_etree[s] = none;
+                }
+                supernode_begin += size;
+            }
+
+            let super_etree = Array::from_mut(
+                MaybeIdx::<'_, I>::from_slice_mut_checked(
+                    super_etree.as_mut(),
+                    N_FUNDAMENTAL_SUPERNODES,
+                ),
+                N_FUNDAMENTAL_SUPERNODES,
+            );
+
+            if let Some(relax) = params.relax {
+                let req = || -> Result<StackReq, SizeOverflow> {
+                    let req = StackReq::try_new::<I>(n_fundamental_supernodes)?;
+                    StackReq::try_all_of([req; 5])
+                };
+                let mut mem =
+                    dyn_stack::GlobalPodBuffer::try_new(req().map_err(nomem)?).map_err(nomem)?;
+                let stack = PodStack::new(&mut mem);
+
+                let child_lists =
+                    bytemuck::cast_slice_mut(&mut child_count.as_mut()[..n_fundamental_supernodes]);
+                let (child_list_heads, stack) =
+                    stack.make_raw::<I::Signed>(n_fundamental_supernodes);
+                let (last_merged_children, stack) =
+                    stack.make_raw::<I::Signed>(n_fundamental_supernodes);
+                let (merge_parents, stack) = stack.make_raw::<I::Signed>(n_fundamental_supernodes);
+                let (fundamental_supernode_degrees, stack) =
+                    stack.make_raw::<I>(n_fundamental_supernodes);
+                let (num_zeros, _) = stack.make_raw::<I>(n_fundamental_supernodes);
+
+                let child_lists = Array::from_mut(
+                    ghost::fill_none::<I>(child_lists, N_FUNDAMENTAL_SUPERNODES),
                     N_FUNDAMENTAL_SUPERNODES,
                 );
-                let super_etree = Array::from_mut(
-                    &mut super_etree__[..n_fundamental_supernodes],
+                let child_list_heads = Array::from_mut(
+                    ghost::fill_none::<I>(child_list_heads, N_FUNDAMENTAL_SUPERNODES),
                     N_FUNDAMENTAL_SUPERNODES,
                 );
+                let last_merged_children = Array::from_mut(
+                    ghost::fill_none::<I>(last_merged_children, N_FUNDAMENTAL_SUPERNODES),
+                    N_FUNDAMENTAL_SUPERNODES,
+                );
+                let merge_parents = Array::from_mut(
+                    ghost::fill_none::<I>(merge_parents, N_FUNDAMENTAL_SUPERNODES),
+                    N_FUNDAMENTAL_SUPERNODES,
+                );
+                let fundamental_supernode_degrees =
+                    Array::from_mut(fundamental_supernode_degrees, N_FUNDAMENTAL_SUPERNODES);
+                let num_zeros = Array::from_mut(num_zeros, N_FUNDAMENTAL_SUPERNODES);
 
                 let mut supernode_begin = 0usize;
                 for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                    let size = supernode_sizes[s].zx();
+                    fundamental_supernode_degrees[s] =
+                        col_counts[N.check(supernode_begin + size - 1)] - one;
+                    supernode_begin += size;
+                }
+
+                for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                    if let Some(parent) = super_etree[s].idx() {
+                        let parent = parent.zx();
+                        child_lists[s] = child_list_heads[parent];
+                        child_list_heads[parent] = MaybeIdx::from_index(s.truncate());
+                    }
+                }
+
+                mem::fill_zero(num_zeros.as_mut());
+                for parent in N_FUNDAMENTAL_SUPERNODES.indices() {
+                    loop {
+                        let mut merging_child = MaybeIdx::none();
+                        let mut num_new_zeros = 0usize;
+                        let mut num_merged_zeros = 0usize;
+                        let mut largest_mergable_size = 0usize;
+
+                        let mut child_ = child_list_heads[parent];
+                        while let Some(child) = child_.idx() {
+                            let child = child.zx();
+                            if *child + 1 != *parent {
+                                child_ = child_lists[child];
+                                continue;
+                            }
+
+                            if merge_parents[child].idx().is_some() {
+                                child_ = child_lists[child];
+                                continue;
+                            }
+
+                            let parent_size = supernode_sizes[parent].zx();
+                            let child_size = supernode_sizes[child].zx();
+                            if child_size < largest_mergable_size {
+                                child_ = child_lists[child];
+                                continue;
+                            }
+
+                            let parent_degree = fundamental_supernode_degrees[parent].zx();
+                            let child_degree = fundamental_supernode_degrees[child].zx();
+
+                            let num_parent_zeros = num_zeros[parent].zx();
+                            let num_child_zeros = num_zeros[child].zx();
+
+                            let status_num_merged_zeros = {
+                                let num_new_zeros =
+                                    (parent_size + parent_degree - child_degree) * child_size;
+
+                                if num_new_zeros == 0 {
+                                    num_parent_zeros + num_child_zeros
+                                } else {
+                                    let num_old_zeros = num_child_zeros + num_parent_zeros;
+                                    let num_zeros = num_new_zeros + num_old_zeros;
+
+                                    let combined_size = child_size + parent_size;
+                                    let num_expanded_entries =
+                                        (combined_size * (combined_size + 1)) / 2
+                                            + parent_degree * combined_size;
+
+                                    let f = || {
+                                        for cutoff in relax {
+                                            let num_zeros_cutoff =
+                                                num_expanded_entries as f64 * cutoff.1;
+                                            if cutoff.0 >= combined_size
+                                                && num_zeros_cutoff >= num_zeros as f64
+                                            {
+                                                return num_zeros;
+                                            }
+                                        }
+                                        NONE
+                                    };
+                                    f()
+                                }
+                            };
+                            if status_num_merged_zeros == NONE {
+                                child_ = child_lists[child];
+                                continue;
+                            }
+
+                            let num_proposed_new_zeros =
+                                status_num_merged_zeros - (num_child_zeros + num_parent_zeros);
+                            if child_size > largest_mergable_size
+                                || num_proposed_new_zeros < num_new_zeros
+                            {
+                                merging_child = MaybeIdx::from_index(child);
+                                num_new_zeros = num_proposed_new_zeros;
+                                num_merged_zeros = status_num_merged_zeros;
+                                largest_mergable_size = child_size;
+                            }
+
+                            child_ = child_lists[child];
+                        }
+
+                        if let Some(merging_child) = merging_child.idx() {
+                            supernode_sizes[parent] =
+                                supernode_sizes[parent] + supernode_sizes[merging_child];
+                            supernode_sizes[merging_child] = zero;
+                            num_zeros[parent] = I::truncate(num_merged_zeros);
+
+                            merge_parents[merging_child] =
+                                if let Some(child) = last_merged_children[parent].idx() {
+                                    MaybeIdx::from_index(child)
+                                } else {
+                                    MaybeIdx::from_index(parent.truncate())
+                                };
+
+                            last_merged_children[parent] =
+                                if let Some(child) = last_merged_children[merging_child].idx() {
+                                    MaybeIdx::from_index(child)
+                                } else {
+                                    MaybeIdx::from_index(merging_child.truncate())
+                                };
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                let original_to_relaxed = last_merged_children;
+                original_to_relaxed.as_mut().fill(MaybeIdx::none());
+
+                let mut pos = 0usize;
+                for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                    let idx = N_FUNDAMENTAL_SUPERNODES.check(pos);
+                    let size = supernode_sizes[s];
+                    let degree = fundamental_supernode_degrees[s];
+                    if size > zero {
+                        supernode_sizes[idx] = size;
+                        fundamental_supernode_degrees[idx] = degree;
+                        original_to_relaxed[s] = MaybeIdx::from_index(idx.truncate());
+
+                        pos += 1;
+                    }
+                }
+                let n_relaxed_supernodes = pos;
+
+                let mut supernode_begin__ = try_zeroed(n_relaxed_supernodes + 1)?;
+                supernode_begin__[1..].copy_from_slice(
+                    &fundamental_supernode_degrees.as_ref()[..n_relaxed_supernodes],
+                );
+
+                supernode_begin__
+            } else {
+                let mut supernode_begin__ = try_zeroed(n_fundamental_supernodes + 1)?;
+
+                let mut supernode_begin = 0usize;
+                for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                    let size = supernode_sizes[s].zx();
+                    supernode_begin__[*s + 1] =
+                        col_counts[N.check(supernode_begin + size - 1)] - one;
+                    supernode_begin += size;
+                }
+
+                supernode_begin__
+            }
+        };
+
+        let n_supernodes = supernode_begin__.len() - 1;
+
+        let (supernode_begin__, col_ptrs_for_row_indices__, col_ptrs_for_values__, row_indices__) = {
+            with_dim!(N_SUPERNODES, n_supernodes);
+            let supernode_sizes =
+                Array::from_mut(&mut supernode_sizes__[..n_supernodes], N_SUPERNODES);
+
+            if n_supernodes != n_fundamental_supernodes {
+                let mut supernode_begin = 0usize;
+                for s in N_SUPERNODES.indices() {
                     let size = supernode_sizes[s].zx();
                     index_to_super.as_mut()[supernode_begin..][..size].fill(*s.truncate::<I>());
                     supernode_begin += size;
                 }
 
                 let index_to_super = Array::from_mut(
-                    Idx::from_slice_mut_checked(index_to_super.as_mut(), N_FUNDAMENTAL_SUPERNODES),
+                    Idx::<'_, I>::from_slice_mut_checked(index_to_super.as_mut(), N_SUPERNODES),
                     N,
                 );
+                let super_etree = Array::from_mut(&mut super_etree__[..n_supernodes], N_SUPERNODES);
 
                 let mut supernode_begin = 0usize;
-                for s in N_FUNDAMENTAL_SUPERNODES.indices() {
+                for s in N_SUPERNODES.indices() {
                     let size = supernode_sizes[s].zx();
                     let last = supernode_begin + size - 1;
-                    let last = N.check(last);
-                    if let Some(parent) = etree[last].idx() {
+                    if let Some(parent) = etree[N.check(last)].idx() {
                         super_etree[s] = index_to_super[parent.zx()].to_signed();
                     } else {
                         super_etree[s] = none;
                     }
                     supernode_begin += size;
                 }
+            }
 
-                let super_etree = Array::from_mut(
-                    MaybeIdx::<'_, I>::from_slice_mut_checked(
-                        super_etree.as_mut(),
-                        N_FUNDAMENTAL_SUPERNODES,
-                    ),
-                    N_FUNDAMENTAL_SUPERNODES,
-                );
+            let index_to_super = Array::from_mut(
+                Idx::from_slice_mut_checked(index_to_super.as_mut(), N_SUPERNODES),
+                N,
+            );
 
-                if let Some(relax) = params.relax {
-                    let req = || -> Result<StackReq, SizeOverflow> {
-                        let req = StackReq::try_new::<I>(n_fundamental_supernodes)?;
-                        StackReq::try_all_of([req; 5])
-                    };
-                    let mut mem = dyn_stack::GlobalPodBuffer::try_new(req().map_err(nomem)?)
-                        .map_err(nomem)?;
-                    let stack = PodStack::new(&mut mem);
+            let mut supernode_begin__ = supernode_begin__;
+            let mut col_ptrs_for_row_indices__ = try_zeroed::<I>(n_supernodes + 1)?;
+            let mut col_ptrs_for_values__ = try_zeroed::<I>(n_supernodes + 1)?;
 
-                    let child_lists = bytemuck::cast_slice_mut(
-                        &mut child_count.as_mut()[..n_fundamental_supernodes],
-                    );
-                    let (child_list_heads, stack) =
-                        stack.make_raw::<I::Signed>(n_fundamental_supernodes);
-                    let (last_merged_children, stack) =
-                        stack.make_raw::<I::Signed>(n_fundamental_supernodes);
-                    let (merge_parents, stack) =
-                        stack.make_raw::<I::Signed>(n_fundamental_supernodes);
-                    let (fundamental_supernode_degrees, stack) =
-                        stack.make_raw::<I>(n_fundamental_supernodes);
-                    let (num_zeros, _) = stack.make_raw::<I>(n_fundamental_supernodes);
+            let mut row_ptr = zero;
+            let mut val_ptr = zero;
 
-                    let child_lists = Array::from_mut(
-                        ghost::fill_none::<I>(child_lists, N_FUNDAMENTAL_SUPERNODES),
-                        N_FUNDAMENTAL_SUPERNODES,
-                    );
-                    let child_list_heads = Array::from_mut(
-                        ghost::fill_none::<I>(child_list_heads, N_FUNDAMENTAL_SUPERNODES),
-                        N_FUNDAMENTAL_SUPERNODES,
-                    );
-                    let last_merged_children = Array::from_mut(
-                        ghost::fill_none::<I>(last_merged_children, N_FUNDAMENTAL_SUPERNODES),
-                        N_FUNDAMENTAL_SUPERNODES,
-                    );
-                    let merge_parents = Array::from_mut(
-                        ghost::fill_none::<I>(merge_parents, N_FUNDAMENTAL_SUPERNODES),
-                        N_FUNDAMENTAL_SUPERNODES,
-                    );
-                    let fundamental_supernode_degrees =
-                        Array::from_mut(fundamental_supernode_degrees, N_FUNDAMENTAL_SUPERNODES);
-                    let num_zeros = Array::from_mut(num_zeros, N_FUNDAMENTAL_SUPERNODES);
+            supernode_begin__[0] = zero;
 
-                    let mut supernode_begin = 0usize;
-                    for s in N_FUNDAMENTAL_SUPERNODES.indices() {
-                        let size = supernode_sizes[s].zx();
-                        fundamental_supernode_degrees[s] =
-                            col_counts[N.check(supernode_begin + size - 1)] - one;
-                        supernode_begin += size;
-                    }
+            let mut row_indices__ = {
+                let mut wide_val_count = 0u128;
+                for (s, [current, next]) in zip(
+                    N_SUPERNODES.indices(),
+                    windows2(Cell::as_slice_of_cells(Cell::from_mut(
+                        &mut *supernode_begin__,
+                    ))),
+                ) {
+                    let degree = next.get();
+                    let ncols = supernode_sizes[s];
+                    let nrows = degree + ncols;
+                    supernode_sizes[s] = row_ptr;
+                    next.set(current.get() + ncols);
 
-                    for s in N_FUNDAMENTAL_SUPERNODES.indices() {
-                        if let Some(parent) = super_etree[s].idx() {
-                            let parent = parent.zx();
-                            child_lists[s] = child_list_heads[parent];
-                            child_list_heads[parent] = MaybeIdx::from_index(s.truncate());
-                        }
-                    }
+                    col_ptrs_for_row_indices__[*s] = row_ptr;
+                    col_ptrs_for_values__[*s] = val_ptr;
 
-                    mem::fill_zero(num_zeros.as_mut());
-                    for parent in N_FUNDAMENTAL_SUPERNODES.indices() {
-                        loop {
-                            let mut merging_child = MaybeIdx::none();
-                            let mut num_new_zeros = 0usize;
-                            let mut num_merged_zeros = 0usize;
-                            let mut largest_mergable_size = 0usize;
+                    let wide_matrix_size = to_wide(nrows) * to_wide(ncols);
+                    wide_val_count += wide_matrix_size;
 
-                            let mut child_ = child_list_heads[parent];
-                            while let Some(child) = child_.idx() {
-                                let child = child.zx();
-                                if *child + 1 != *parent {
-                                    child_ = child_lists[child];
-                                    continue;
-                                }
-
-                                if merge_parents[child].idx().is_some() {
-                                    child_ = child_lists[child];
-                                    continue;
-                                }
-
-                                let parent_size = supernode_sizes[parent].zx();
-                                let child_size = supernode_sizes[child].zx();
-                                if child_size < largest_mergable_size {
-                                    child_ = child_lists[child];
-                                    continue;
-                                }
-
-                                let parent_degree = fundamental_supernode_degrees[parent].zx();
-                                let child_degree = fundamental_supernode_degrees[child].zx();
-
-                                let num_parent_zeros = num_zeros[parent].zx();
-                                let num_child_zeros = num_zeros[child].zx();
-
-                                let status_num_merged_zeros = {
-                                    let num_new_zeros =
-                                        (parent_size + parent_degree - child_degree) * child_size;
-
-                                    if num_new_zeros == 0 {
-                                        num_parent_zeros + num_child_zeros
-                                    } else {
-                                        let num_old_zeros = num_child_zeros + num_parent_zeros;
-                                        let num_zeros = num_new_zeros + num_old_zeros;
-
-                                        let combined_size = child_size + parent_size;
-                                        let num_expanded_entries =
-                                            (combined_size * (combined_size + 1)) / 2
-                                                + parent_degree * combined_size;
-
-                                        let f = || {
-                                            for cutoff in relax {
-                                                let num_zeros_cutoff =
-                                                    num_expanded_entries as f64 * cutoff.1;
-                                                if cutoff.0 >= combined_size
-                                                    && num_zeros_cutoff >= num_zeros as f64
-                                                {
-                                                    return num_zeros;
-                                                }
-                                            }
-                                            NONE
-                                        };
-                                        f()
-                                    }
-                                };
-                                if status_num_merged_zeros == NONE {
-                                    child_ = child_lists[child];
-                                    continue;
-                                }
-
-                                let num_proposed_new_zeros =
-                                    status_num_merged_zeros - (num_child_zeros + num_parent_zeros);
-                                if child_size > largest_mergable_size
-                                    || num_proposed_new_zeros < num_new_zeros
-                                {
-                                    merging_child = MaybeIdx::from_index(child);
-                                    num_new_zeros = num_proposed_new_zeros;
-                                    num_merged_zeros = status_num_merged_zeros;
-                                    largest_mergable_size = child_size;
-                                }
-
-                                child_ = child_lists[child];
-                            }
-
-                            if let Some(merging_child) = merging_child.idx() {
-                                supernode_sizes[parent] =
-                                    supernode_sizes[parent] + supernode_sizes[merging_child];
-                                supernode_sizes[merging_child] = zero;
-                                num_zeros[parent] = I::truncate(num_merged_zeros);
-
-                                merge_parents[merging_child] =
-                                    if let Some(child) = last_merged_children[parent].idx() {
-                                        MaybeIdx::from_index(child)
-                                    } else {
-                                        MaybeIdx::from_index(parent.truncate())
-                                    };
-
-                                last_merged_children[parent] = if let Some(child) =
-                                    last_merged_children[merging_child].idx()
-                                {
-                                    MaybeIdx::from_index(child)
-                                } else {
-                                    MaybeIdx::from_index(merging_child.truncate())
-                                };
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-
-                    let original_to_relaxed = last_merged_children;
-                    original_to_relaxed.as_mut().fill(MaybeIdx::none());
-
-                    let mut pos = 0usize;
-                    for s in N_FUNDAMENTAL_SUPERNODES.indices() {
-                        let idx = N_FUNDAMENTAL_SUPERNODES.check(pos);
-                        let size = supernode_sizes[s];
-                        let degree = fundamental_supernode_degrees[s];
-                        if size > zero {
-                            supernode_sizes[idx] = size;
-                            fundamental_supernode_degrees[idx] = degree;
-                            original_to_relaxed[s] = MaybeIdx::from_index(idx.truncate());
-
-                            pos += 1;
-                        }
-                    }
-                    let n_relaxed_supernodes = pos;
-
-                    let mut supernode_begin__ = try_zeroed(n_relaxed_supernodes + 1)?;
-                    supernode_begin__[1..].copy_from_slice(
-                        &fundamental_supernode_degrees.as_ref()[..n_relaxed_supernodes],
-                    );
-
-                    Ok(supernode_begin__)
-                } else {
-                    let mut supernode_begin__ = try_zeroed(n_fundamental_supernodes + 1)?;
-
-                    let mut supernode_begin = 0usize;
-                    for s in N_FUNDAMENTAL_SUPERNODES.indices() {
-                        let size = supernode_sizes[s].zx();
-                        supernode_begin__[*s + 1] =
-                            col_counts[N.check(supernode_begin + size - 1)] - one;
-                        supernode_begin += size;
-                    }
-
-                    Ok(supernode_begin__)
+                    row_ptr += degree;
+                    val_ptr = from_wide(to_wide(val_ptr) + wide_matrix_size);
                 }
-            },
-        )?;
+                col_ptrs_for_row_indices__[n_supernodes] = row_ptr;
+                col_ptrs_for_values__[n_supernodes] = val_ptr;
+                from_wide_checked(wide_val_count).ok_or(FaerError::IndexOverflow)?;
 
-        let n_supernodes = supernode_begin__.len() - 1;
+                try_zeroed::<I>(row_ptr.zx())?
+            };
 
-        let (supernode_begin__, col_ptrs_for_row_indices__, col_ptrs_for_values__, row_indices__) =
-            ghost::with_size(
-                n_supernodes,
-                |N_SUPERNODES| -> Result<
-                    (
-                        alloc::vec::Vec<I>,
-                        alloc::vec::Vec<I>,
-                        alloc::vec::Vec<I>,
-                        alloc::vec::Vec<I>,
-                    ),
-                    FaerError,
-                > {
-                    let supernode_sizes =
-                        Array::from_mut(&mut supernode_sizes__[..n_supernodes], N_SUPERNODES);
+            let super_etree = Array::from_ref(
+                MaybeIdx::from_slice_ref_checked(&super_etree__[..n_supernodes], N_SUPERNODES),
+                N_SUPERNODES,
+            );
 
-                    if n_supernodes != n_fundamental_supernodes {
-                        let mut supernode_begin = 0usize;
-                        for s in N_SUPERNODES.indices() {
-                            let size = supernode_sizes[s].zx();
-                            index_to_super.as_mut()[supernode_begin..][..size]
-                                .fill(*s.truncate::<I>());
-                            supernode_begin += size;
-                        }
+            let current_row_positions = supernode_sizes;
 
-                        let index_to_super = Array::from_mut(
-                            Idx::<'_, I>::from_slice_mut_checked(
-                                index_to_super.as_mut(),
-                                N_SUPERNODES,
-                            ),
-                            N,
+            let row_indices = Idx::from_slice_mut_checked(&mut row_indices__, N);
+            let visited = Array::from_mut(
+                bytemuck::cast_slice_mut(&mut child_count.as_mut()[..n_supernodes]),
+                N_SUPERNODES,
+            );
+
+            mem::fill_none::<I::Signed>(visited.as_mut());
+            if matches!(input, CholeskyInput::A) {
+                let A = ghost::SymbolicSparseColMatRef::new(A.into_inner(), N, N);
+                for s in N_SUPERNODES.indices() {
+                    let k1 = ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
+                    let k2 = ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
+
+                    for k in k1.range_to(k2) {
+                        ereach_super(
+                            A,
+                            super_etree,
+                            index_to_super,
+                            current_row_positions,
+                            row_indices,
+                            k,
+                            visited,
                         );
-                        let super_etree =
-                            Array::from_mut(&mut super_etree__[..n_supernodes], N_SUPERNODES);
-
-                        let mut supernode_begin = 0usize;
-                        for s in N_SUPERNODES.indices() {
-                            let size = supernode_sizes[s].zx();
-                            let last = supernode_begin + size - 1;
-                            if let Some(parent) = etree[N.check(last)].idx() {
-                                super_etree[s] = index_to_super[parent.zx()].to_signed();
-                            } else {
-                                super_etree[s] = none;
-                            }
-                            supernode_begin += size;
-                        }
                     }
+                }
+            } else {
+                let min_col = min_col.unwrap();
+                for s in N_SUPERNODES.indices() {
+                    let k1 = ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
+                    let k2 = ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
 
-                    let index_to_super = Array::from_mut(
-                        Idx::from_slice_mut_checked(index_to_super.as_mut(), N_SUPERNODES),
-                        N,
-                    );
-
-                    let mut supernode_begin__ = supernode_begin__;
-                    let mut col_ptrs_for_row_indices__ = try_zeroed::<I>(n_supernodes + 1)?;
-                    let mut col_ptrs_for_values__ = try_zeroed::<I>(n_supernodes + 1)?;
-
-                    let mut row_ptr = zero;
-                    let mut val_ptr = zero;
-
-                    supernode_begin__[0] = zero;
-
-                    let mut row_indices__ = {
-                        let mut wide_val_count = 0u128;
-                        for (s, [current, next]) in zip(
-                            N_SUPERNODES.indices(),
-                            windows2(Cell::as_slice_of_cells(Cell::from_mut(
-                                &mut *supernode_begin__,
-                            ))),
-                        ) {
-                            let degree = next.get();
-                            let ncols = supernode_sizes[s];
-                            let nrows = degree + ncols;
-                            supernode_sizes[s] = row_ptr;
-                            next.set(current.get() + ncols);
-
-                            col_ptrs_for_row_indices__[*s] = row_ptr;
-                            col_ptrs_for_values__[*s] = val_ptr;
-
-                            let wide_matrix_size = to_wide(nrows) * to_wide(ncols);
-                            wide_val_count += wide_matrix_size;
-
-                            row_ptr += degree;
-                            val_ptr = from_wide(to_wide(val_ptr) + wide_matrix_size);
-                        }
-                        col_ptrs_for_row_indices__[n_supernodes] = row_ptr;
-                        col_ptrs_for_values__[n_supernodes] = val_ptr;
-                        from_wide_checked(wide_val_count).ok_or(FaerError::IndexOverflow)?;
-
-                        try_zeroed::<I>(row_ptr.zx())?
-                    };
-
-                    let super_etree = Array::from_ref(
-                        MaybeIdx::from_slice_ref_checked(
-                            &super_etree__[..n_supernodes],
-                            N_SUPERNODES,
-                        ),
-                        N_SUPERNODES,
-                    );
-
-                    let current_row_positions = supernode_sizes;
-
-                    let row_indices = Idx::from_slice_mut_checked(&mut row_indices__, N);
-                    let visited = Array::from_mut(
-                        bytemuck::cast_slice_mut(&mut child_count.as_mut()[..n_supernodes]),
-                        N_SUPERNODES,
-                    );
-
-                    mem::fill_none::<I::Signed>(visited.as_mut());
-                    if matches!(input, CholeskyInput::A) {
-                        let A = ghost::SymbolicSparseColMatRef::new(A.into_inner(), N, N);
-                        for s in N_SUPERNODES.indices() {
-                            let k1 =
-                                ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
-                            let k2 =
-                                ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
-
-                            for k in k1.range_to(k2) {
-                                ereach_super(
-                                    A,
-                                    super_etree,
-                                    index_to_super,
-                                    current_row_positions,
-                                    row_indices,
-                                    k,
-                                    visited,
-                                );
-                            }
-                        }
-                    } else {
-                        let min_col = min_col.unwrap();
-                        for s in N_SUPERNODES.indices() {
-                            let k1 =
-                                ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
-                            let k2 =
-                                ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
-
-                            for k in k1.range_to(k2) {
-                                ereach_super_ata(
-                                    A,
-                                    col_perm,
-                                    min_col,
-                                    super_etree,
-                                    index_to_super,
-                                    current_row_positions,
-                                    row_indices,
-                                    k,
-                                    visited,
-                                );
-                            }
-                        }
+                    for k in k1.range_to(k2) {
+                        ereach_super_ata(
+                            A,
+                            col_perm,
+                            min_col,
+                            super_etree,
+                            index_to_super,
+                            current_row_positions,
+                            row_indices,
+                            k,
+                            visited,
+                        );
                     }
+                }
+            }
 
-                    debug_assert!(
-                        current_row_positions.as_ref() == &col_ptrs_for_row_indices__[1..]
-                    );
+            debug_assert!(current_row_positions.as_ref() == &col_ptrs_for_row_indices__[1..]);
 
-                    Ok((
-                        supernode_begin__,
-                        col_ptrs_for_row_indices__,
-                        col_ptrs_for_values__,
-                        row_indices__,
-                    ))
-                },
-            )?;
+            (
+                supernode_begin__,
+                col_ptrs_for_row_indices__,
+                col_ptrs_for_values__,
+                row_indices__,
+            )
+        };
 
         let mut supernode_etree__: alloc::vec::Vec<I> = try_collect(
             bytemuck::cast_slice(&super_etree__[..n_supernodes])
@@ -3001,7 +2929,8 @@ pub mod supernodal {
 
         let mut descendent_count__ = try_zeroed::<I>(n_supernodes)?;
 
-        ghost::with_size(n_supernodes, |N_SUPERNODES| {
+        {
+            with_dim!(N_SUPERNODES, n_supernodes);
             let post = Array::from_mut(&mut supernode_postorder__, N_SUPERNODES);
             let desc_count = Array::from_mut(&mut descendent_count__, N_SUPERNODES);
             let etree: &Array<'_, MaybeIdx<'_, I>> = Array::from_ref(
@@ -3027,7 +2956,7 @@ pub mod supernodal {
             for i in N_SUPERNODES.indices() {
                 post_inv[N_SUPERNODES.check(post[i].zx())] = I::truncate(*i);
             }
-        });
+        };
 
         Ok(SymbolicSupernodalCholesky {
             dimension: n,
@@ -4320,81 +4249,81 @@ impl<I: Index> SymbolicCholesky<I> {
     ) -> Result<LltRef<'out, I, E>, CholeskyError> {
         assert!(A.nrows() == A.ncols());
         let n = A.nrows();
+        with_dim!(N, n);
+
         let mut L_values = L_values;
 
-        ghost::with_size(n, |N| {
-            let A_nnz = self.A_nnz;
-            let A = ghost::SparseColMatRef::new(A, N, N);
+        let A_nnz = self.A_nnz;
+        let A = ghost::SparseColMatRef::new(A, N, N);
 
-            let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
-            let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-            let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+        let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
+        let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
 
-            let out_side = match &self.raw {
-                SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
-                SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
-            };
+        let out_side = match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
+            SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
+        };
 
-            let A = match self.perm() {
-                Some(perm) => {
-                    let perm = ghost::PermRef::new(perm, N);
-                    unsafe {
-                        ghost_permute_hermitian_unsorted(
-                            new_values.rb_mut(),
-                            new_col_ptr,
-                            new_row_ind,
-                            A,
-                            perm,
-                            side,
-                            out_side,
-                            false,
-                            stack.rb_mut(),
-                        )
-                        .into_const()
-                    }
-                }
-                None => {
-                    if side == out_side {
-                        A
-                    } else {
-                        ghost_adjoint(
-                            new_col_ptr,
-                            new_row_ind,
-                            new_values.rb_mut(),
-                            A,
-                            stack.rb_mut(),
-                        )
-                        .into_const()
-                    }
-                }
-            };
-
-            match &self.raw {
-                SymbolicCholeskyRaw::Simplicial(this) => {
-                    simplicial::factorize_simplicial_numeric_llt(
-                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner().into_const(),
-                        regularization,
-                        this,
-                        stack,
-                    )?;
-                }
-                SymbolicCholeskyRaw::Supernodal(this) => {
-                    supernodal::factorize_supernodal_numeric_llt(
-                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner().into_const(),
-                        regularization,
-                        this,
-                        parallelism,
-                        stack,
-                    )?;
+        let A = match self.perm() {
+            Some(perm) => {
+                let perm = ghost::PermRef::new(perm, N);
+                unsafe {
+                    ghost_permute_hermitian_unsorted(
+                        new_values.rb_mut(),
+                        new_col_ptr,
+                        new_row_ind,
+                        A,
+                        perm,
+                        side,
+                        out_side,
+                        false,
+                        stack.rb_mut(),
+                    )
+                    .into_const()
                 }
             }
-            Ok(LltRef::<'out, I, E>::new(
-                self,
-                E::faer_into_const(L_values),
-            ))
-        })
+            None => {
+                if side == out_side {
+                    A
+                } else {
+                    ghost_adjoint(
+                        new_col_ptr,
+                        new_row_ind,
+                        new_values.rb_mut(),
+                        A,
+                        stack.rb_mut(),
+                    )
+                    .into_const()
+                }
+            }
+        };
+
+        match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(this) => {
+                simplicial::factorize_simplicial_numeric_llt(
+                    E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                    A.into_inner().into_const(),
+                    regularization,
+                    this,
+                    stack,
+                )?;
+            }
+            SymbolicCholeskyRaw::Supernodal(this) => {
+                supernodal::factorize_supernodal_numeric_llt(
+                    E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                    A.into_inner().into_const(),
+                    regularization,
+                    this,
+                    parallelism,
+                    stack,
+                )?;
+            }
+        }
+        Ok(LltRef::<'out, I, E>::new(
+            self,
+            E::faer_into_const(L_values),
+        ))
     }
 
     /// Computes a numerical LDLT factorization of A.
@@ -4412,106 +4341,105 @@ impl<I: Index> SymbolicCholesky<I> {
         let n = A.nrows();
         let mut L_values = L_values;
 
-        ghost::with_size(n, |N| {
-            let A_nnz = self.A_nnz;
-            let A = ghost::SparseColMatRef::new(A, N, N);
+        with_dim!(N, n);
+        let A_nnz = self.A_nnz;
+        let A = ghost::SparseColMatRef::new(A, N, N);
 
-            let (new_signs, stack) = stack.make_raw::<i8>(
-                if regularization.dynamic_regularization_signs.is_some() && self.perm().is_some() {
-                    n
+        let (new_signs, stack) = stack.make_raw::<i8>(
+            if regularization.dynamic_regularization_signs.is_some() && self.perm().is_some() {
+                n
+            } else {
+                0
+            },
+        );
+
+        let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
+        let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+
+        let out_side = match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
+            SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
+        };
+
+        let (A, signs) = match self.perm() {
+            Some(perm) => {
+                let perm = ghost::PermRef::new(perm, N);
+                let A = unsafe {
+                    ghost_permute_hermitian_unsorted(
+                        new_values.rb_mut(),
+                        new_col_ptr,
+                        new_row_ind,
+                        A,
+                        perm,
+                        side,
+                        out_side,
+                        false,
+                        stack.rb_mut(),
+                    )
+                    .into_const()
+                };
+                let fwd = perm.arrays().0;
+                let signs = regularization.dynamic_regularization_signs.map(|signs| {
+                    {
+                        let new_signs = Array::from_mut(new_signs, N);
+                        let signs = Array::from_ref(signs, N);
+                        for i in N.indices() {
+                            new_signs[i] = signs[fwd[i].zx()];
+                        }
+                    }
+                    &*new_signs
+                });
+
+                (A, signs)
+            }
+            None => {
+                if side == out_side {
+                    (A, regularization.dynamic_regularization_signs)
                 } else {
-                    0
-                },
-            );
-
-            let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
-            let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-            let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-
-            let out_side = match &self.raw {
-                SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
-                SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
-            };
-
-            let (A, signs) = match self.perm() {
-                Some(perm) => {
-                    let perm = ghost::PermRef::new(perm, N);
-                    let A = unsafe {
-                        ghost_permute_hermitian_unsorted(
-                            new_values.rb_mut(),
+                    (
+                        ghost_adjoint(
                             new_col_ptr,
                             new_row_ind,
+                            new_values.rb_mut(),
                             A,
-                            perm,
-                            side,
-                            out_side,
-                            false,
                             stack.rb_mut(),
                         )
-                        .into_const()
-                    };
-                    let fwd = perm.arrays().0;
-                    let signs = regularization.dynamic_regularization_signs.map(|signs| {
-                        {
-                            let new_signs = Array::from_mut(new_signs, N);
-                            let signs = Array::from_ref(signs, N);
-                            for i in N.indices() {
-                                new_signs[i] = signs[fwd[i].zx()];
-                            }
-                        }
-                        &*new_signs
-                    });
-
-                    (A, signs)
-                }
-                None => {
-                    if side == out_side {
-                        (A, regularization.dynamic_regularization_signs)
-                    } else {
-                        (
-                            ghost_adjoint(
-                                new_col_ptr,
-                                new_row_ind,
-                                new_values.rb_mut(),
-                                A,
-                                stack.rb_mut(),
-                            )
-                            .into_const(),
-                            regularization.dynamic_regularization_signs,
-                        )
-                    }
-                }
-            };
-
-            let regularization = LdltRegularization {
-                dynamic_regularization_signs: signs,
-                ..regularization
-            };
-
-            match &self.raw {
-                SymbolicCholeskyRaw::Simplicial(this) => {
-                    simplicial::factorize_simplicial_numeric_ldlt(
-                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner().into_const(),
-                        regularization,
-                        this,
-                        stack,
-                    );
-                }
-                SymbolicCholeskyRaw::Supernodal(this) => {
-                    supernodal::factorize_supernodal_numeric_ldlt(
-                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner().into_const(),
-                        regularization,
-                        this,
-                        parallelism,
-                        stack,
-                    );
+                        .into_const(),
+                        regularization.dynamic_regularization_signs,
+                    )
                 }
             }
+        };
 
-            LdltRef::<'out, I, E>::new(self, E::faer_into_const(L_values))
-        })
+        let regularization = LdltRegularization {
+            dynamic_regularization_signs: signs,
+            ..regularization
+        };
+
+        match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(this) => {
+                simplicial::factorize_simplicial_numeric_ldlt(
+                    E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                    A.into_inner().into_const(),
+                    regularization,
+                    this,
+                    stack,
+                );
+            }
+            SymbolicCholeskyRaw::Supernodal(this) => {
+                supernodal::factorize_supernodal_numeric_ldlt(
+                    E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                    A.into_inner().into_const(),
+                    regularization,
+                    this,
+                    parallelism,
+                    stack,
+                );
+            }
+        }
+
+        LdltRef::<'out, I, E>::new(self, E::faer_into_const(L_values))
     }
 
     /// Computes a numerical intranodal Bunch-Kaufman factorization of A.
@@ -4533,128 +4461,125 @@ impl<I: Index> SymbolicCholesky<I> {
         let mut L_values = L_values;
         let mut subdiag = subdiag;
 
-        ghost::with_size(n, move |N| {
-            let A_nnz = self.A_nnz;
-            let A = ghost::SparseColMatRef::new(A, N, N);
+        with_dim!(N, n);
+        let A_nnz = self.A_nnz;
+        let A = ghost::SparseColMatRef::new(A, N, N);
 
-            let (new_signs, stack) =
-                stack.make_raw::<i8>(if regularization.dynamic_regularization_signs.is_some() {
-                    n
-                } else {
-                    0
+        let (new_signs, stack) =
+            stack.make_raw::<i8>(if regularization.dynamic_regularization_signs.is_some() {
+                n
+            } else {
+                0
+            });
+
+        let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
+        let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+
+        let out_side = match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
+            SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
+        };
+
+        let (A, signs) = match self.perm() {
+            Some(perm) => {
+                let perm = ghost::PermRef::new(perm, N);
+                let fwd = perm.arrays().0;
+                let signs = regularization.dynamic_regularization_signs.map(|signs| {
+                    {
+                        let new_signs = Array::from_mut(new_signs, N);
+                        let signs = Array::from_ref(signs, N);
+                        for i in N.indices() {
+                            new_signs[i] = signs[fwd[i].zx()];
+                        }
+                    }
+                    &mut *new_signs
                 });
 
-            let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
-            let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-            let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+                let A = unsafe {
+                    ghost_permute_hermitian_unsorted(
+                        new_values.rb_mut(),
+                        new_col_ptr,
+                        new_row_ind,
+                        A,
+                        perm,
+                        side,
+                        out_side,
+                        false,
+                        stack.rb_mut(),
+                    )
+                    .into_const()
+                };
 
-            let out_side = match &self.raw {
-                SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
-                SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
-            };
-
-            let (A, signs) = match self.perm() {
-                Some(perm) => {
-                    let perm = ghost::PermRef::new(perm, N);
-                    let fwd = perm.arrays().0;
-                    let signs = regularization.dynamic_regularization_signs.map(|signs| {
-                        {
-                            let new_signs = Array::from_mut(new_signs, N);
-                            let signs = Array::from_ref(signs, N);
-                            for i in N.indices() {
-                                new_signs[i] = signs[fwd[i].zx()];
-                            }
-                        }
-                        &mut *new_signs
-                    });
-
-                    let A = unsafe {
-                        ghost_permute_hermitian_unsorted(
-                            new_values.rb_mut(),
+                (A, signs)
+            }
+            None => {
+                if side == out_side {
+                    (A, regularization.dynamic_regularization_signs)
+                } else {
+                    (
+                        ghost_adjoint(
                             new_col_ptr,
                             new_row_ind,
+                            new_values.rb_mut(),
                             A,
-                            perm,
-                            side,
-                            out_side,
-                            false,
                             stack.rb_mut(),
                         )
-                        .into_const()
-                    };
-
-                    (A, signs)
-                }
-                None => {
-                    if side == out_side {
-                        (A, regularization.dynamic_regularization_signs)
-                    } else {
-                        (
-                            ghost_adjoint(
-                                new_col_ptr,
-                                new_row_ind,
-                                new_values.rb_mut(),
-                                A,
-                                stack.rb_mut(),
-                            )
-                            .into_const(),
-                            regularization.dynamic_regularization_signs,
-                        )
-                    }
-                }
-            };
-
-            match &self.raw {
-                SymbolicCholeskyRaw::Simplicial(this) => {
-                    let regularization = LdltRegularization {
-                        dynamic_regularization_signs: signs.rb(),
-                        dynamic_regularization_delta: regularization.dynamic_regularization_delta,
-                        dynamic_regularization_epsilon: regularization
-                            .dynamic_regularization_epsilon,
-                    };
-                    for (i, p) in perm_forward.iter_mut().enumerate() {
-                        *p = I::truncate(i);
-                    }
-                    for (i, p) in perm_inverse.iter_mut().enumerate() {
-                        *p = I::truncate(i);
-                    }
-                    simplicial::factorize_simplicial_numeric_ldlt(
-                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner().into_const(),
-                        regularization,
-                        this,
-                        stack,
-                    );
-                }
-                SymbolicCholeskyRaw::Supernodal(this) => {
-                    let regularization = BunchKaufmanRegularization {
-                        dynamic_regularization_signs: signs,
-                        dynamic_regularization_delta: regularization.dynamic_regularization_delta,
-                        dynamic_regularization_epsilon: regularization
-                            .dynamic_regularization_epsilon,
-                    };
-
-                    supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
-                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        E::faer_rb_mut(E::faer_as_mut(&mut subdiag)),
-                        perm_forward,
-                        perm_inverse,
-                        A.into_inner().into_const(),
-                        regularization,
-                        this,
-                        parallelism,
-                        stack,
-                    );
+                        .into_const(),
+                        regularization.dynamic_regularization_signs,
+                    )
                 }
             }
+        };
 
-            IntranodeBunchKaufmanRef::<'out, I, E>::new(
-                self,
-                E::faer_into_const(L_values),
-                E::faer_into_const(subdiag),
-                unsafe { PermRef::<'out, I>::new_unchecked(perm_forward, perm_inverse, n) },
-            )
-        })
+        match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(this) => {
+                let regularization = LdltRegularization {
+                    dynamic_regularization_signs: signs.rb(),
+                    dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                    dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
+                };
+                for (i, p) in perm_forward.iter_mut().enumerate() {
+                    *p = I::truncate(i);
+                }
+                for (i, p) in perm_inverse.iter_mut().enumerate() {
+                    *p = I::truncate(i);
+                }
+                simplicial::factorize_simplicial_numeric_ldlt(
+                    E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                    A.into_inner().into_const(),
+                    regularization,
+                    this,
+                    stack,
+                );
+            }
+            SymbolicCholeskyRaw::Supernodal(this) => {
+                let regularization = BunchKaufmanRegularization {
+                    dynamic_regularization_signs: signs,
+                    dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                    dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
+                };
+
+                supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+                    E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                    E::faer_rb_mut(E::faer_as_mut(&mut subdiag)),
+                    perm_forward,
+                    perm_inverse,
+                    A.into_inner().into_const(),
+                    regularization,
+                    this,
+                    parallelism,
+                    stack,
+                );
+            }
+        }
+
+        IntranodeBunchKaufmanRef::<'out, I, E>::new(
+            self,
+            E::faer_into_const(L_values),
+            E::faer_into_const(subdiag),
+            unsafe { PermRef::<'out, I>::new_unchecked(perm_forward, perm_inverse, n) },
+        )
     }
 
     /// Computes the required workspace size and alignment for a dense solve in place using an LLT,
@@ -5141,151 +5066,144 @@ pub fn factorize_symbolic_cholesky<I: Index>(
     let A_nnz = A.compute_nnz();
 
     assert!(A.nrows() == A.ncols());
-    ghost::with_size(n, |N| {
-        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
-        let req = || -> Result<StackReq, SizeOverflow> {
-            let n_req = StackReq::try_new::<I>(n)?;
-            let A_req = StackReq::try_and(
-                // new_col_ptr
-                StackReq::try_new::<I>(n + 1)?,
-                // new_row_ind
-                StackReq::try_new::<I>(A_nnz)?,
-            )?;
+    with_dim!(N, n);
+    let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
-            StackReq::try_or(
-                match ord {
-                    SymmetricOrdering::Amd => amd::order_maybe_unsorted_req::<I>(n, A_nnz)?,
-                    _ => StackReq::empty(),
-                },
-                StackReq::try_all_of([
-                    A_req,
-                    // permute_symmetric | etree
-                    n_req,
-                    // col_counts
-                    n_req,
-                    // ghost_prefactorize_symbolic
-                    n_req,
-                    // ghost_factorize_*_symbolic
-                    StackReq::try_or(
-                        supernodal::factorize_supernodal_symbolic_cholesky_req::<I>(n)?,
-                        simplicial::factorize_simplicial_symbolic_req::<I>(n)?,
-                    )?,
-                ])?,
-            )
-        };
+    let req = || -> Result<StackReq, SizeOverflow> {
+        let n_req = StackReq::try_new::<I>(n)?;
+        let A_req = StackReq::try_and(
+            // new_col_ptr
+            StackReq::try_new::<I>(n + 1)?,
+            // new_row_ind
+            StackReq::try_new::<I>(A_nnz)?,
+        )?;
 
-        let req = req().map_err(nomem)?;
-        let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
-        let mut stack = PodStack::new(&mut mem);
-
-        let mut perm_fwd = match ord {
-            SymmetricOrdering::Identity => None,
-            _ => Some(try_zeroed(n)?),
-        };
-        let mut perm_inv = match ord {
-            SymmetricOrdering::Identity => None,
-            _ => Some(try_zeroed(n)?),
-        };
-        let flops = match ord {
-            SymmetricOrdering::Amd => Some(amd::order_maybe_unsorted(
-                perm_fwd.as_mut().unwrap(),
-                perm_inv.as_mut().unwrap(),
-                A.into_inner(),
-                params.amd_params,
-                stack.rb_mut(),
-            )?),
-            SymmetricOrdering::Identity => None,
-            SymmetricOrdering::Custom(perm) => {
-                let (fwd, inv) = perm.arrays();
-                perm_fwd.as_mut().unwrap().copy_from_slice(fwd);
-                perm_inv.as_mut().unwrap().copy_from_slice(inv);
-                None
-            }
-        };
-
-        let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-        let A = match ord {
-            SymmetricOrdering::Identity => A,
-            _ => unsafe {
-                ghost_permute_hermitian_unsorted_symbolic(
-                    new_col_ptr,
-                    new_row_ind,
-                    A,
-                    ghost::PermRef::new(
-                        PermRef::new_checked(
-                            perm_fwd.as_ref().unwrap(),
-                            perm_inv.as_ref().unwrap(),
-                            n,
-                        ),
-                        N,
-                    ),
-                    side,
-                    Side::Upper,
-                    stack.rb_mut(),
-                )
+        StackReq::try_or(
+            match ord {
+                SymmetricOrdering::Amd => amd::order_maybe_unsorted_req::<I>(n, A_nnz)?,
+                _ => StackReq::empty(),
             },
-        };
-
-        let (etree, stack) = stack.make_raw::<I::Signed>(n);
-        let (col_counts, mut stack) = stack.make_raw::<I>(n);
-        let etree = Array::from_mut(etree, N);
-        let col_counts = Array::from_mut(col_counts, N);
-        let etree =
-            &*ghost_prefactorize_symbolic_cholesky::<I>(etree, col_counts, A, stack.rb_mut());
-        let L_nnz = I::sum_nonnegative(col_counts.as_ref()).ok_or(FaerError::IndexOverflow)?;
-
-        let flops = match flops {
-            Some(flops) => flops,
-            None => {
-                let mut n_div = 0u128;
-                let mut n_mult_subs_ldl = 0u128;
-                for i in N.indices() {
-                    let c = col_counts[i].zx();
-                    n_div += c as u128;
-                    n_mult_subs_ldl += (c as u128 * (c as u128 + 1)) / 2;
-                }
-                FlopCount {
-                    n_div: n_div as f64,
-                    n_mult_subs_ldl: n_mult_subs_ldl as f64,
-                    n_mult_subs_lu: 0.0,
-                }
-            }
-        };
-
-        let flops = flops.n_div + flops.n_mult_subs_ldl;
-        let raw = if (flops / L_nnz.zx() as f64)
-            > params.supernodal_flop_ratio_threshold.0
-                * crate::sparse::linalg::CHOLESKY_SUPERNODAL_RATIO_FACTOR
-        {
-            SymbolicCholeskyRaw::Supernodal(supernodal::ghost_factorize_supernodal_symbolic(
-                A,
-                None,
-                None,
-                supernodal::CholeskyInput::A,
-                etree,
-                col_counts,
-                stack.rb_mut(),
-                params.supernodal_params,
-            )?)
-        } else {
-            SymbolicCholeskyRaw::Simplicial(
-                simplicial::ghost_factorize_simplicial_symbolic_cholesky(
-                    A,
-                    etree,
-                    col_counts,
-                    stack.rb_mut(),
+            StackReq::try_all_of([
+                A_req,
+                // permute_symmetric | etree
+                n_req,
+                // col_counts
+                n_req,
+                // ghost_prefactorize_symbolic
+                n_req,
+                // ghost_factorize_*_symbolic
+                StackReq::try_or(
+                    supernodal::factorize_supernodal_symbolic_cholesky_req::<I>(n)?,
+                    simplicial::factorize_simplicial_symbolic_req::<I>(n)?,
                 )?,
-            )
-        };
+            ])?,
+        )
+    };
 
-        Ok(SymbolicCholesky {
-            raw,
-            perm_fwd,
-            perm_inv,
-            A_nnz,
-        })
+    let req = req().map_err(nomem)?;
+    let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
+    let mut stack = PodStack::new(&mut mem);
+
+    let mut perm_fwd = match ord {
+        SymmetricOrdering::Identity => None,
+        _ => Some(try_zeroed(n)?),
+    };
+    let mut perm_inv = match ord {
+        SymmetricOrdering::Identity => None,
+        _ => Some(try_zeroed(n)?),
+    };
+    let flops = match ord {
+        SymmetricOrdering::Amd => Some(amd::order_maybe_unsorted(
+            perm_fwd.as_mut().unwrap(),
+            perm_inv.as_mut().unwrap(),
+            A.into_inner(),
+            params.amd_params,
+            stack.rb_mut(),
+        )?),
+        SymmetricOrdering::Identity => None,
+        SymmetricOrdering::Custom(perm) => {
+            let (fwd, inv) = perm.arrays();
+            perm_fwd.as_mut().unwrap().copy_from_slice(fwd);
+            perm_inv.as_mut().unwrap().copy_from_slice(inv);
+            None
+        }
+    };
+
+    let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+    let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+    let A = match ord {
+        SymmetricOrdering::Identity => A,
+        _ => unsafe {
+            ghost_permute_hermitian_unsorted_symbolic(
+                new_col_ptr,
+                new_row_ind,
+                A,
+                ghost::PermRef::new(
+                    PermRef::new_checked(perm_fwd.as_ref().unwrap(), perm_inv.as_ref().unwrap(), n),
+                    N,
+                ),
+                side,
+                Side::Upper,
+                stack.rb_mut(),
+            )
+        },
+    };
+
+    let (etree, stack) = stack.make_raw::<I::Signed>(n);
+    let (col_counts, mut stack) = stack.make_raw::<I>(n);
+    let etree = Array::from_mut(etree, N);
+    let col_counts = Array::from_mut(col_counts, N);
+    let etree = &*ghost_prefactorize_symbolic_cholesky::<I>(etree, col_counts, A, stack.rb_mut());
+    let L_nnz = I::sum_nonnegative(col_counts.as_ref()).ok_or(FaerError::IndexOverflow)?;
+
+    let flops = match flops {
+        Some(flops) => flops,
+        None => {
+            let mut n_div = 0u128;
+            let mut n_mult_subs_ldl = 0u128;
+            for i in N.indices() {
+                let c = col_counts[i].zx();
+                n_div += c as u128;
+                n_mult_subs_ldl += (c as u128 * (c as u128 + 1)) / 2;
+            }
+            FlopCount {
+                n_div: n_div as f64,
+                n_mult_subs_ldl: n_mult_subs_ldl as f64,
+                n_mult_subs_lu: 0.0,
+            }
+        }
+    };
+
+    let flops = flops.n_div + flops.n_mult_subs_ldl;
+    let raw = if (flops / L_nnz.zx() as f64)
+        > params.supernodal_flop_ratio_threshold.0
+            * crate::sparse::linalg::CHOLESKY_SUPERNODAL_RATIO_FACTOR
+    {
+        SymbolicCholeskyRaw::Supernodal(supernodal::ghost_factorize_supernodal_symbolic(
+            A,
+            None,
+            None,
+            supernodal::CholeskyInput::A,
+            etree,
+            col_counts,
+            stack.rb_mut(),
+            params.supernodal_params,
+        )?)
+    } else {
+        SymbolicCholeskyRaw::Simplicial(simplicial::ghost_factorize_simplicial_symbolic_cholesky(
+            A,
+            etree,
+            col_counts,
+            stack.rb_mut(),
+        )?)
+    };
+
+    Ok(SymbolicCholesky {
+        raw,
+        perm_fwd,
+        perm_inv,
+        A_nnz,
     })
 }
 
@@ -5328,7 +5246,8 @@ pub(crate) mod tests {
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
-        ghost::with_size(n, |N| {
+        {
+            with_dim!(N, n);
             let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
             let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
@@ -5348,7 +5267,8 @@ pub(crate) mod tests {
                 Default::default(),
             )
             .unwrap();
-        });
+        }
+
         assert_eq!(
             etree,
             [5, 2, 7, 5, 7, 6, 8, 9, 9, 10, NONE].map(I::Signed::truncate)
@@ -5589,72 +5509,71 @@ pub(crate) mod tests {
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
-        ghost::with_size(n, |N| {
-            let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic_cholesky(
-                Array::from_mut(&mut etree, N),
-                Array::from_mut(&mut col_count, N),
-                *A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
-            );
 
-            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
-                *A,
-                None,
-                None,
-                CholeskyInput::A,
-                etree,
-                Array::from_ref(&col_count, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-                Default::default(),
-            )
-            .unwrap();
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, N, N);
+        let etree = ghost_prefactorize_symbolic_cholesky(
+            Array::from_mut(&mut etree, N),
+            Array::from_mut(&mut col_count, N),
+            *A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+        );
 
-            let mut A_lower_col_ptr = col_ptr.to_vec();
-            let mut A_lower_values = values_mat.clone();
-            let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::sparse::utils::ghost_adjoint(
-                &mut A_lower_col_ptr,
-                &mut A_lower_row_ind,
-                A_lower_values,
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
-            let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+        let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+            *A,
+            None,
+            None,
+            CholeskyInput::A,
+            etree,
+            Array::from_ref(&col_count, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            Default::default(),
+        )
+        .unwrap();
 
-            supernodal::factorize_supernodal_numeric_ldlt(
-                values.col_as_slice_mut(0),
-                A_lower.into_inner().into_const(),
-                Default::default(),
-                &symbolic,
-                Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    supernodal::factorize_supernodal_numeric_ldlt_req::<I, E>(
-                        &symbolic,
-                        Parallelism::None,
-                    )
-                    .unwrap(),
-                )),
-            );
-            let mut A = sparse_to_dense(A.into_inner());
-            for j in 0..n {
-                for i in j + 1..n {
-                    A.write(i, j, A.read(j, i).faer_conj());
-                }
+        let mut A_lower_col_ptr = col_ptr.to_vec();
+        let mut A_lower_values = values_mat.clone();
+        let mut A_lower_row_ind = row_ind.to_vec();
+        let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
+        let A_lower = crate::sparse::utils::ghost_adjoint(
+            &mut A_lower_col_ptr,
+            &mut A_lower_row_ind,
+            A_lower_values,
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+        );
+        let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+
+        supernodal::factorize_supernodal_numeric_ldlt(
+            values.col_as_slice_mut(0),
+            A_lower.into_inner().into_const(),
+            Default::default(),
+            &symbolic,
+            Parallelism::None,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                supernodal::factorize_supernodal_numeric_ldlt_req::<I, E>(
+                    &symbolic,
+                    Parallelism::None,
+                )
+                .unwrap(),
+            )),
+        );
+        let mut A = sparse_to_dense(A.into_inner());
+        for j in 0..n {
+            for i in j + 1..n {
+                A.write(i, j, A.read(j, i).faer_conj());
             }
+        }
 
-            let err =
-                reconstruct_from_supernodal_ldlt::<I, E>(&symbolic, values.col_as_slice(0)) - A;
-            let mut max = <E as ComplexField>::Real::faer_zero();
-            for j in 0..n {
-                for i in 0..n {
-                    let x = err.read(i, j).faer_abs();
-                    max = if max > x { max } else { x }
-                }
+        let err = reconstruct_from_supernodal_ldlt::<I, E>(&symbolic, values.col_as_slice(0)) - A;
+        let mut max = <E as ComplexField>::Real::faer_zero();
+        for j in 0..n {
+            for i in 0..n {
+                let x = err.read(i, j).faer_abs();
+                max = if max > x { max } else { x }
             }
-            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
-        });
+        }
+        assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
     }
 
     fn test_supernodal_ldlt<I: Index>() {
@@ -5696,89 +5615,89 @@ pub(crate) mod tests {
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
-        ghost::with_size(n, |N| {
-            let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic_cholesky(
-                Array::from_mut(&mut etree, N),
-                Array::from_mut(&mut col_count, N),
-                *A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
-            );
 
-            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
-                *A,
-                None,
-                None,
-                CholeskyInput::A,
-                etree,
-                Array::from_ref(&col_count, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-                Default::default(),
-            )
-            .unwrap();
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, N, N);
+        let etree = ghost_prefactorize_symbolic_cholesky(
+            Array::from_mut(&mut etree, N),
+            Array::from_mut(&mut col_count, N),
+            *A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+        );
 
-            let mut A_lower_col_ptr = col_ptr.to_vec();
-            let mut A_lower_values = values_mat.clone();
-            let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::sparse::utils::ghost_adjoint(
-                &mut A_lower_col_ptr,
-                &mut A_lower_row_ind,
-                A_lower_values,
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
-            let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+        let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+            *A,
+            None,
+            None,
+            CholeskyInput::A,
+            etree,
+            Array::from_ref(&col_count, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            Default::default(),
+        )
+        .unwrap();
 
-            supernodal::factorize_supernodal_numeric_ldlt(
-                values.col_as_slice_mut(0),
-                A_lower.into_inner().into_const(),
-                Default::default(),
-                &symbolic,
+        let mut A_lower_col_ptr = col_ptr.to_vec();
+        let mut A_lower_values = values_mat.clone();
+        let mut A_lower_row_ind = row_ind.to_vec();
+        let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
+        let A_lower = crate::sparse::utils::ghost_adjoint(
+            &mut A_lower_col_ptr,
+            &mut A_lower_row_ind,
+            A_lower_values,
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+        );
+        let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+
+        supernodal::factorize_supernodal_numeric_ldlt(
+            values.col_as_slice_mut(0),
+            A_lower.into_inner().into_const(),
+            Default::default(),
+            &symbolic,
+            Parallelism::None,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                supernodal::factorize_supernodal_numeric_ldlt_req::<I, E>(
+                    &symbolic,
+                    Parallelism::None,
+                )
+                .unwrap(),
+            )),
+        );
+        let k = 2;
+
+        let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+            E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+        });
+        for conj in [Conj::Yes, Conj::No] {
+            let mut x = rhs.clone();
+            let ldlt = SupernodalLdltRef::new(&symbolic, values.col_as_slice(0));
+            ldlt.solve_in_place_with_conj(
+                conj,
+                x.as_mut(),
                 Parallelism::None,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    supernodal::factorize_supernodal_numeric_ldlt_req::<I, E>(
-                        &symbolic,
-                        Parallelism::None,
-                    )
-                    .unwrap(),
+                    symbolic.solve_in_place_req::<E>(k).unwrap(),
                 )),
             );
-            let k = 2;
 
-            let rhs = Mat::<E>::from_fn(n, k, |_, _| {
-                E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
-            });
-            for conj in [Conj::Yes, Conj::No] {
-                let mut x = rhs.clone();
-                let ldlt = SupernodalLdltRef::new(&symbolic, values.col_as_slice(0));
-                ldlt.solve_in_place_with_conj(
-                    conj,
-                    x.as_mut(),
-                    Parallelism::None,
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        symbolic.solve_in_place_req::<E>(k).unwrap(),
-                    )),
-                );
-
-                let rhs_reconstructed = if conj == Conj::No {
-                    &A_dense * &x
-                } else {
-                    A_dense.conjugate() * &x
-                };
-                let mut max = <E as ComplexField>::Real::faer_zero();
-                for j in 0..k {
-                    for i in 0..n {
-                        let x = rhs_reconstructed
-                            .read(i, j)
-                            .faer_sub(rhs.read(i, j))
-                            .faer_abs();
-                        max = if max > x { max } else { x }
-                    }
+            let rhs_reconstructed = if conj == Conj::No {
+                &A_dense * &x
+            } else {
+                A_dense.conjugate() * &x
+            };
+            let mut max = <E as ComplexField>::Real::faer_zero();
+            for j in 0..k {
+                for i in 0..n {
+                    let x = rhs_reconstructed
+                        .read(i, j)
+                        .faer_sub(rhs.read(i, j))
+                        .faer_abs();
+                    max = if max > x { max } else { x }
                 }
-                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
             }
-        });
+            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
+        }
     }
 
     fn test_supernodal_intranode_bk_1<I: Index>() {
@@ -5821,115 +5740,115 @@ pub(crate) mod tests {
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
-        ghost::with_size(n, |N| {
-            let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic_cholesky(
-                Array::from_mut(&mut etree, N),
-                Array::from_mut(&mut col_count, N),
-                *A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
-            );
 
-            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
-                *A,
-                None,
-                None,
-                CholeskyInput::A,
-                etree,
-                Array::from_ref(&col_count, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-                Default::default(),
-            )
-            .unwrap();
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, N, N);
+        let etree = ghost_prefactorize_symbolic_cholesky(
+            Array::from_mut(&mut etree, N),
+            Array::from_mut(&mut col_count, N),
+            *A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+        );
 
-            let mut A_lower_col_ptr = col_ptr.to_vec();
-            let mut A_lower_values = values_mat.clone();
-            let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::sparse::utils::ghost_adjoint(
-                &mut A_lower_col_ptr,
-                &mut A_lower_row_ind,
-                A_lower_values,
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
-            let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+        let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+            *A,
+            None,
+            None,
+            CholeskyInput::A,
+            etree,
+            Array::from_ref(&col_count, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            Default::default(),
+        )
+        .unwrap();
 
-            let mut fwd = vec![zero; n];
-            let mut inv = vec![zero; n];
-            let mut subdiag = Mat::<E>::zeros(n, 1);
+        let mut A_lower_col_ptr = col_ptr.to_vec();
+        let mut A_lower_values = values_mat.clone();
+        let mut A_lower_row_ind = row_ind.to_vec();
+        let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
+        let A_lower = crate::sparse::utils::ghost_adjoint(
+            &mut A_lower_col_ptr,
+            &mut A_lower_row_ind,
+            A_lower_values,
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+        );
+        let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
 
-            supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
-                values.col_as_slice_mut(0),
-                subdiag.col_as_slice_mut(0),
-                &mut fwd,
-                &mut inv,
-                A_lower.into_inner().into_const(),
-                Default::default(),
+        let mut fwd = vec![zero; n];
+        let mut inv = vec![zero; n];
+        let mut subdiag = Mat::<E>::zeros(n, 1);
+
+        supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+            values.col_as_slice_mut(0),
+            subdiag.col_as_slice_mut(0),
+            &mut fwd,
+            &mut inv,
+            A_lower.into_inner().into_const(),
+            Default::default(),
+            &symbolic,
+            Parallelism::None,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
+                    &symbolic,
+                    Parallelism::None,
+                )
+                .unwrap(),
+            )),
+        );
+        let k = 2;
+
+        let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+            E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+        });
+        for conj in [Conj::Yes, Conj::No] {
+            let mut x = rhs.clone();
+            let lblt = SupernodalIntranodeBunchKaufmanRef::new(
                 &symbolic,
-                Parallelism::None,
+                values.col_as_slice(0),
+                subdiag.col_as_slice(0),
+                PermRef::new_checked(&fwd, &inv, n),
+            );
+            crate::perm::permute_rows_in_place(
+                x.as_mut(),
+                lblt.perm,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
-                        &symbolic,
-                        Parallelism::None,
-                    )
-                    .unwrap(),
+                    crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                 )),
             );
-            let k = 2;
+            lblt.solve_in_place_no_numeric_permute_with_conj(
+                conj,
+                x.as_mut(),
+                Parallelism::None,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    symbolic.solve_in_place_req::<E>(k).unwrap(),
+                )),
+            );
+            crate::perm::permute_rows_in_place(
+                x.as_mut(),
+                lblt.perm.inverse(),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
+                )),
+            );
 
-            let rhs = Mat::<E>::from_fn(n, k, |_, _| {
-                E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
-            });
-            for conj in [Conj::Yes, Conj::No] {
-                let mut x = rhs.clone();
-                let lblt = SupernodalIntranodeBunchKaufmanRef::new(
-                    &symbolic,
-                    values.col_as_slice(0),
-                    subdiag.col_as_slice(0),
-                    PermRef::new_checked(&fwd, &inv, n),
-                );
-                crate::perm::permute_rows_in_place(
-                    x.as_mut(),
-                    lblt.perm,
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
-                    )),
-                );
-                lblt.solve_in_place_no_numeric_permute_with_conj(
-                    conj,
-                    x.as_mut(),
-                    Parallelism::None,
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        symbolic.solve_in_place_req::<E>(k).unwrap(),
-                    )),
-                );
-                crate::perm::permute_rows_in_place(
-                    x.as_mut(),
-                    lblt.perm.inverse(),
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
-                    )),
-                );
-
-                let rhs_reconstructed = if conj == Conj::No {
-                    &A_dense * &x
-                } else {
-                    A_dense.conjugate() * &x
-                };
-                let mut max = <E as ComplexField>::Real::faer_zero();
-                for j in 0..k {
-                    for i in 0..n {
-                        let x = rhs_reconstructed
-                            .read(i, j)
-                            .faer_sub(rhs.read(i, j))
-                            .faer_abs();
-                        max = if max > x { max } else { x }
-                    }
+            let rhs_reconstructed = if conj == Conj::No {
+                &A_dense * &x
+            } else {
+                A_dense.conjugate() * &x
+            };
+            let mut max = <E as ComplexField>::Real::faer_zero();
+            for j in 0..k {
+                for i in 0..n {
+                    let x = rhs_reconstructed
+                        .read(i, j)
+                        .faer_sub(rhs.read(i, j))
+                        .faer_abs();
+                    max = if max > x { max } else { x }
                 }
-                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-10));
             }
-        });
+            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-10));
+        }
     }
 
     fn test_supernodal_intranode_bk_2<I: Index>() {
@@ -5962,115 +5881,115 @@ pub(crate) mod tests {
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
-        ghost::with_size(n, |N| {
-            let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic_cholesky(
-                Array::from_mut(&mut etree, N),
-                Array::from_mut(&mut col_count, N),
-                *A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
-            );
 
-            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
-                *A,
-                None,
-                None,
-                CholeskyInput::A,
-                etree,
-                Array::from_ref(&col_count, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-                Default::default(),
-            )
-            .unwrap();
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, N, N);
+        let etree = ghost_prefactorize_symbolic_cholesky(
+            Array::from_mut(&mut etree, N),
+            Array::from_mut(&mut col_count, N),
+            *A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+        );
 
-            let mut A_lower_col_ptr = col_ptr.to_vec();
-            let mut A_lower_values = values_mat.clone();
-            let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::sparse::utils::ghost_adjoint(
-                &mut A_lower_col_ptr,
-                &mut A_lower_row_ind,
-                A_lower_values,
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
-            let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+        let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+            *A,
+            None,
+            None,
+            CholeskyInput::A,
+            etree,
+            Array::from_ref(&col_count, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            Default::default(),
+        )
+        .unwrap();
 
-            let mut fwd = vec![zero; n];
-            let mut inv = vec![zero; n];
-            let mut subdiag = Mat::<E>::zeros(n, 1);
+        let mut A_lower_col_ptr = col_ptr.to_vec();
+        let mut A_lower_values = values_mat.clone();
+        let mut A_lower_row_ind = row_ind.to_vec();
+        let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
+        let A_lower = crate::sparse::utils::ghost_adjoint(
+            &mut A_lower_col_ptr,
+            &mut A_lower_row_ind,
+            A_lower_values,
+            A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+        );
+        let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
 
-            supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
-                values.col_as_slice_mut(0),
-                subdiag.col_as_slice_mut(0),
-                &mut fwd,
-                &mut inv,
-                A_lower.into_inner().into_const(),
-                Default::default(),
+        let mut fwd = vec![zero; n];
+        let mut inv = vec![zero; n];
+        let mut subdiag = Mat::<E>::zeros(n, 1);
+
+        supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+            values.col_as_slice_mut(0),
+            subdiag.col_as_slice_mut(0),
+            &mut fwd,
+            &mut inv,
+            A_lower.into_inner().into_const(),
+            Default::default(),
+            &symbolic,
+            Parallelism::None,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
+                    &symbolic,
+                    Parallelism::None,
+                )
+                .unwrap(),
+            )),
+        );
+        let k = 2;
+
+        let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+            E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+        });
+        for conj in [Conj::Yes, Conj::No] {
+            let mut x = rhs.clone();
+            let lblt = SupernodalIntranodeBunchKaufmanRef::new(
                 &symbolic,
-                Parallelism::None,
+                values.col_as_slice(0),
+                subdiag.col_as_slice(0),
+                PermRef::new_checked(&fwd, &inv, n),
+            );
+            crate::perm::permute_rows_in_place(
+                x.as_mut(),
+                lblt.perm,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
-                        &symbolic,
-                        Parallelism::None,
-                    )
-                    .unwrap(),
+                    crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                 )),
             );
-            let k = 2;
+            lblt.solve_in_place_no_numeric_permute_with_conj(
+                conj,
+                x.as_mut(),
+                Parallelism::None,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    symbolic.solve_in_place_req::<E>(k).unwrap(),
+                )),
+            );
+            crate::perm::permute_rows_in_place(
+                x.as_mut(),
+                lblt.perm.inverse(),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
+                )),
+            );
 
-            let rhs = Mat::<E>::from_fn(n, k, |_, _| {
-                E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
-            });
-            for conj in [Conj::Yes, Conj::No] {
-                let mut x = rhs.clone();
-                let lblt = SupernodalIntranodeBunchKaufmanRef::new(
-                    &symbolic,
-                    values.col_as_slice(0),
-                    subdiag.col_as_slice(0),
-                    PermRef::new_checked(&fwd, &inv, n),
-                );
-                crate::perm::permute_rows_in_place(
-                    x.as_mut(),
-                    lblt.perm,
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
-                    )),
-                );
-                lblt.solve_in_place_no_numeric_permute_with_conj(
-                    conj,
-                    x.as_mut(),
-                    Parallelism::None,
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        symbolic.solve_in_place_req::<E>(k).unwrap(),
-                    )),
-                );
-                crate::perm::permute_rows_in_place(
-                    x.as_mut(),
-                    lblt.perm.inverse(),
-                    PodStack::new(&mut GlobalPodBuffer::new(
-                        crate::perm::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
-                    )),
-                );
-
-                let rhs_reconstructed = if conj == Conj::No {
-                    &A_dense * &x
-                } else {
-                    A_dense.conjugate() * &x
-                };
-                let mut max = <E as ComplexField>::Real::faer_zero();
-                for j in 0..k {
-                    for i in 0..n {
-                        let x = rhs_reconstructed
-                            .read(i, j)
-                            .faer_sub(rhs.read(i, j))
-                            .faer_abs();
-                        max = if max > x { max } else { x }
-                    }
+            let rhs_reconstructed = if conj == Conj::No {
+                &A_dense * &x
+            } else {
+                A_dense.conjugate() * &x
+            };
+            let mut max = <E as ComplexField>::Real::faer_zero();
+            for j in 0..k {
+                for i in 0..n {
+                    let x = rhs_reconstructed
+                        .read(i, j)
+                        .faer_sub(rhs.read(i, j))
+                        .faer_abs();
+                    max = if max > x { max } else { x }
                 }
-                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-10));
             }
-        });
+            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-10));
+        }
     }
 
     fn test_simplicial<I: Index>() {
@@ -6104,53 +6023,52 @@ pub(crate) mod tests {
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
-        ghost::with_size(n, |N| {
-            let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic_cholesky(
-                Array::from_mut(&mut etree, N),
-                Array::from_mut(&mut col_count, N),
-                *A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
-            );
 
-            let symbolic = simplicial::ghost_factorize_simplicial_symbolic_cholesky(
-                *A,
-                etree,
-                Array::from_ref(&col_count, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            )
-            .unwrap();
+        with_dim!(N, n);
+        let A = ghost::SparseColMatRef::new(A, N, N);
+        let etree = ghost_prefactorize_symbolic_cholesky(
+            Array::from_mut(&mut etree, N),
+            Array::from_mut(&mut col_count, N),
+            *A,
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+        );
 
-            let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+        let symbolic = simplicial::ghost_factorize_simplicial_symbolic_cholesky(
+            *A,
+            etree,
+            Array::from_ref(&col_count, N),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+        )
+        .unwrap();
 
-            simplicial::factorize_simplicial_numeric_ldlt::<I, E>(
-                values.col_as_slice_mut(0),
-                A.into_inner(),
-                Default::default(),
-                &symbolic,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    simplicial::factorize_simplicial_numeric_ldlt_req::<I, E>(n).unwrap(),
-                )),
-            );
-            let mut A = sparse_to_dense(A.into_inner());
-            for j in 0..n {
-                for i in j + 1..n {
-                    A.write(i, j, A.read(j, i).faer_conj());
-                }
+        let mut values = crate::Mat::<E>::zeros(symbolic.len_values(), 1);
+
+        simplicial::factorize_simplicial_numeric_ldlt::<I, E>(
+            values.col_as_slice_mut(0),
+            A.into_inner(),
+            Default::default(),
+            &symbolic,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                simplicial::factorize_simplicial_numeric_ldlt_req::<I, E>(n).unwrap(),
+            )),
+        );
+        let mut A = sparse_to_dense(A.into_inner());
+        for j in 0..n {
+            for i in j + 1..n {
+                A.write(i, j, A.read(j, i).faer_conj());
             }
+        }
 
-            let err =
-                reconstruct_from_simplicial_ldlt::<I, E>(&symbolic, values.col_as_slice(0)) - &A;
+        let err = reconstruct_from_simplicial_ldlt::<I, E>(&symbolic, values.col_as_slice(0)) - &A;
 
-            let mut max = <E as ComplexField>::Real::faer_zero();
-            for j in 0..n {
-                for i in 0..n {
-                    let x = err.read(i, j).faer_abs();
-                    max = if max > x { max } else { x }
-                }
+        let mut max = <E as ComplexField>::Real::faer_zero();
+        for j in 0..n {
+            for i in 0..n {
+                let x = err.read(i, j).faer_abs();
+                max = if max > x { max } else { x }
             }
-            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
-        });
+        }
+        assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
     }
 
     fn test_solver_llt<I: Index>() {

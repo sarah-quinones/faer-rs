@@ -172,6 +172,14 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+macro_rules! with_dim {
+    ($N: ident, $n: expr $(,)?) => {
+        let __tmp = $n;
+        ::generativity::make_guard!($N);
+        let $N = crate::utils::bound::Dim::new(__tmp, $N);
+    };
+}
+
 macro_rules! map {
     ($ty: ty, $input: expr, |($x: pat)| $f: expr $(,)?) => {
         <$ty as ::faer_entity::Entity>::faer_map(

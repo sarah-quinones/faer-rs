@@ -1,21 +1,39 @@
 use super::*;
-use crate::assert;
+use crate::{assert, Idx};
 
 /// Permutation matrix.
 #[derive(Debug, Clone)]
-pub struct Perm<I: Index> {
-    pub(super) forward: alloc::boxed::Box<[I]>,
-    pub(super) inverse: alloc::boxed::Box<[I]>,
+pub struct Perm<I: Index, N: Shape = usize> {
+    pub(super) forward: alloc::boxed::Box<[N::Idx<I>]>,
+    pub(super) inverse: alloc::boxed::Box<[N::Idx<I>]>,
 }
 
-impl<I: Index> Perm<I> {
+impl<I: Index, N: Shape> Perm<I, N> {
     /// Convert `self` to a permutation view.
     #[inline]
-    pub fn as_ref(&self) -> PermRef<'_, I> {
+    pub fn as_ref(&self) -> PermRef<'_, I, N> {
         PermRef {
             forward: &self.forward,
             inverse: &self.inverse,
-            __marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Returns the input permutation with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<M: Shape>(&self, dim: M) -> PermRef<'_, I, M> {
+        self.as_ref().as_shape(dim)
+    }
+
+    /// Returns the input permutation with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn into_shape<M: Shape>(self, dim: M) -> Perm<I, M> {
+        assert!(self.len().unbound() == dim.unbound());
+
+        Perm {
+            forward: unsafe { Box::from_raw(Box::into_raw(self.forward) as _) },
+            inverse: unsafe { Box::from_raw(Box::into_raw(self.inverse) as _) },
         }
     }
 
@@ -28,8 +46,12 @@ impl<I: Index> Perm<I> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub fn new_checked(forward: alloc::boxed::Box<[I]>, inverse: alloc::boxed::Box<[I]>) -> Self {
-        PermRef::<'_, I>::new_checked(&forward, &inverse, forward.len());
+    pub fn new_checked(
+        forward: alloc::boxed::Box<[Idx<N, I>]>,
+        inverse: alloc::boxed::Box<[Idx<N, I>]>,
+        dim: N,
+    ) -> Self {
+        PermRef::<'_, I, N>::new_checked(&forward, &inverse, dim);
         Self { forward, inverse }
     }
 
@@ -42,8 +64,8 @@ impl<I: Index> Perm<I> {
     #[inline]
     #[track_caller]
     pub unsafe fn new_unchecked(
-        forward: alloc::boxed::Box<[I]>,
-        inverse: alloc::boxed::Box<[I]>,
+        forward: alloc::boxed::Box<[Idx<N, I>]>,
+        inverse: alloc::boxed::Box<[Idx<N, I>]>,
     ) -> Self {
         let n = forward.len();
         assert!(all(
@@ -55,14 +77,19 @@ impl<I: Index> Perm<I> {
 
     /// Returns the permutation as an array.
     #[inline]
-    pub fn into_arrays(self) -> (alloc::boxed::Box<[I]>, alloc::boxed::Box<[I]>) {
+    pub fn into_arrays(
+        self,
+    ) -> (
+        alloc::boxed::Box<[Idx<N, I>]>,
+        alloc::boxed::Box<[Idx<N, I>]>,
+    ) {
         (self.forward, self.inverse)
     }
 
     /// Returns the dimension of the permutation.
     #[inline]
-    pub fn len(&self) -> usize {
-        self.forward.len()
+    pub fn len(&self) -> N {
+        unsafe { N::new_unbound(self.forward.len()) }
     }
 
     /// Returns the inverse permutation.

@@ -209,6 +209,54 @@ impl<E: Entity, R: Shape, C: Shape> Mat<E, R, C> {
         self.row_capacity() as isize
     }
 
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<V: Shape, H: Shape>(&self, nrows: V, ncols: H) -> MatRef<'_, E, V, H> {
+        self.as_ref().as_shape(nrows, ncols)
+    }
+
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape_mut<V: Shape, H: Shape>(&mut self, nrows: V, ncols: H) -> MatMut<'_, E, V, H> {
+        self.as_mut().as_shape_mut(nrows, ncols)
+    }
+
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
+    pub fn into_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> Mat<E, V, H> {
+        crate::assert!(all(
+            nrows.unbound() == self.nrows().unbound(),
+            ncols.unbound() == self.ncols().unbound(),
+        ));
+
+        let this = ManuallyDrop::new(self);
+
+        Mat {
+            inner: MatOwnImpl {
+                ptr: this.inner.ptr,
+                nrows: nrows,
+                ncols: ncols,
+            },
+            row_capacity: this.row_capacity,
+            col_capacity: this.col_capacity,
+            __marker: PhantomData,
+        }
+    }
+
+    /// Returns the input matrix with dynamic shape.
+    #[inline]
+    pub fn as_dyn(&self) -> MatRef<'_, E> {
+        self.as_ref().as_dyn()
+    }
+
+    /// Returns the input matrix with dynamic shape.
+    #[inline]
+    pub fn as_dyn_mut(&mut self) -> MatMut<'_, E> {
+        self.as_mut().as_dyn_mut()
+    }
+
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
     pub fn ptr_at(&self, row: usize, col: usize) -> PtrConst<E> {
@@ -2016,11 +2064,11 @@ impl<E: Entity, R: Shape, C: Shape> Mat<E, R, C> {
 
         if self.row_capacity() >= row_capacity && self.col_capacity() >= col_capacity {
             // do nothing
-        } else if core::mem::size_of::<E::Unit>() == 0 {
+        } else if size_of::<E::Unit>() == 0 {
             self.row_capacity = self.row_capacity().max(row_capacity);
             self.col_capacity = self.col_capacity().max(col_capacity);
         } else {
-            let mut tmp = core::mem::ManuallyDrop::new(Mat::<E> {
+            let mut tmp = ManuallyDrop::new(Mat::<E> {
                 inner: MatOwnImpl {
                     ptr: self.inner.ptr,
                     nrows: self.nrows().unbound(),

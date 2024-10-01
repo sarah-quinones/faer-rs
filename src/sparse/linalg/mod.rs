@@ -245,11 +245,6 @@ mod ghost {
     pub const NONE_BYTE: u8 = u8::MAX;
 
     #[inline]
-    pub fn with_size<R>(n: usize, f: impl FnOnce(Size<'_>) -> R) -> R {
-        Size::with(n, f)
-    }
-
-    #[inline]
     pub fn fill_zero<'n, 'a, I: Index>(slice: &'a mut [I], size: Size<'n>) -> &'a mut [Idx<'n, I>] {
         let len = slice.len();
         if len > 0 {

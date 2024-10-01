@@ -3,12 +3,12 @@ use crate::assert;
 
 #[derive(Clone)]
 /// Sparse matrix in column-major format, either compressed or uncompressed.
-pub struct SparseColMat<I: Index, E: Entity> {
-    pub(crate) symbolic: SymbolicSparseColMat<I>,
+pub struct SparseColMat<I: Index, E: Entity, R: Shape = usize, C: Shape = usize> {
+    pub(crate) symbolic: SymbolicSparseColMat<I, R, C>,
     pub(crate) values: VecGroup<E>,
 }
 
-impl<I: Index, E: Entity> SparseColMat<I, E> {
+impl<I: Index, E: Entity, R: Shape, C: Shape> SparseColMat<I, E, R, C> {
     /// Creates a new sparse matrix view.
     ///
     /// # Panics
@@ -18,7 +18,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     #[inline]
     #[track_caller]
     pub fn new(
-        symbolic: SymbolicSparseColMat<I>,
+        symbolic: SymbolicSparseColMat<I, R, C>,
         values: GroupFor<E, alloc::vec::Vec<E::Unit>>,
     ) -> Self {
         let values = VecGroup::from_inner(values);
@@ -28,18 +28,18 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns the number of rows of the matrix.
     #[inline]
-    pub fn nrows(&self) -> usize {
+    pub fn nrows(&self) -> R {
         self.symbolic.nrows
     }
     /// Returns the number of columns of the matrix.
     #[inline]
-    pub fn ncols(&self) -> usize {
+    pub fn ncols(&self) -> C {
         self.symbolic.ncols
     }
 
     /// Returns the number of rows and columns of the matrix.
     #[inline]
-    pub fn shape(&self) -> (usize, usize) {
+    pub fn shape(&self) -> (R, C) {
         (self.nrows(), self.ncols())
     }
 
@@ -48,7 +48,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
-    pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical, R, C>, FaerError>
     where
         E: Conjugate,
         E::Canonical: ComplexField,
@@ -61,7 +61,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// # Note
     /// Allows unsorted matrices, producing a sorted output.
     #[inline]
-    pub fn to_sorted(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    pub fn to_sorted(&self) -> Result<SparseColMat<I, E::Canonical, R, C>, FaerError>
     where
         E: Conjugate,
         E::Canonical: ComplexField,
@@ -71,10 +71,9 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Copies `self` into a newly allocated dense matrix
     #[inline]
-    pub fn to_dense(&self) -> Mat<E::Canonical>
+    pub fn to_dense(&self) -> Mat<E::Canonical, R, C>
     where
-        E: Conjugate,
-        E::Canonical: ComplexField,
+        E: Conjugate<Canonical: ComplexField>,
     {
         self.as_ref().to_dense()
     }
@@ -84,10 +83,9 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// # Note
     /// Allows unsorted matrices, producing a sorted output.
     #[inline]
-    pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical, R, C>, FaerError>
     where
-        E: Conjugate,
-        E::Canonical: ComplexField,
+        E: Conjugate<Canonical: ComplexField>,
     {
         self.as_ref().to_row_major()
     }
@@ -97,17 +95,25 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// # Note
     /// Allows unsorted matrices.
     pub fn sort_indices(&mut self) {
+        let len = self.symbolic.row_ind.len();
         utils::sort_indices::<I, E>(
             &self.symbolic.col_ptr,
             self.symbolic.col_nnz.as_deref(),
-            &mut self.symbolic.row_ind,
+            unsafe {
+                core::slice::from_raw_parts_mut(self.symbolic.row_ind.as_mut_ptr() as _, len)
+            },
             self.values.as_slice_mut().into_inner(),
         );
     }
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn parts(&self) -> (SymbolicSparseColMatRef<'_, I>, GroupFor<E, &'_ [E::Unit]>) {
+    pub fn parts(
+        &self,
+    ) -> (
+        SymbolicSparseColMatRef<'_, I, R, C>,
+        GroupFor<E, &'_ [E::Unit]>,
+    ) {
         self.as_ref().parts()
     }
 
@@ -116,7 +122,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     pub fn parts_mut(
         &mut self,
     ) -> (
-        SymbolicSparseColMatRef<'_, I>,
+        SymbolicSparseColMatRef<'_, I, R, C>,
         GroupFor<E, &'_ mut [E::Unit]>,
     ) {
         self.as_mut().parts_mut()
@@ -127,7 +133,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     pub fn into_parts(
         self,
     ) -> (
-        SymbolicSparseColMat<I>,
+        SymbolicSparseColMat<I, R, C>,
         GroupFor<E, alloc::vec::Vec<E::Unit>>,
     ) {
         (self.symbolic, self.values.into_inner())
@@ -135,7 +141,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns a view over `self`.
     #[inline]
-    pub fn as_ref(&self) -> SparseColMatRef<'_, I, E> {
+    pub fn as_ref(&self) -> SparseColMatRef<'_, I, E, R, C> {
         SparseColMatRef {
             symbolic: self.symbolic.as_ref(),
             values: self.values.as_slice(),
@@ -146,7 +152,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     ///
     /// Note that the symbolic structure cannot be changed through this view.
     #[inline]
-    pub fn as_mut(&mut self) -> SparseColMatMut<'_, I, E> {
+    pub fn as_mut(&mut self) -> SparseColMatMut<'_, I, E, R, C> {
         SparseColMatMut {
             symbolic: self.symbolic.as_ref(),
             values: self.values.as_slice_mut(),
@@ -167,19 +173,19 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns a view over the transpose of `self` in row-major format.
     #[inline]
-    pub fn transpose(&self) -> SparseRowMatRef<'_, I, E> {
+    pub fn transpose(&self) -> SparseRowMatRef<'_, I, E, C, R> {
         self.as_ref().transpose()
     }
 
     /// Returns a view over the transpose of `self` in row-major format.
     #[inline]
-    pub fn transpose_mut(&mut self) -> SparseRowMatMut<'_, I, E> {
+    pub fn transpose_mut(&mut self) -> SparseRowMatMut<'_, I, E, C, R> {
         self.as_mut().transpose_mut()
     }
 
     /// Returns a view over the conjugate of `self`.
     #[inline]
-    pub fn conjugate(&self) -> SparseColMatRef<'_, I, E::Conj>
+    pub fn conjugate(&self) -> SparseColMatRef<'_, I, E::Conj, R, C>
     where
         E: Conjugate,
     {
@@ -188,7 +194,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns a view over the conjugate of `self`.
     #[inline]
-    pub fn conjugate_mut(&mut self) -> SparseColMatMut<'_, I, E::Conj>
+    pub fn conjugate_mut(&mut self) -> SparseColMatMut<'_, I, E::Conj, R, C>
     where
         E: Conjugate,
     {
@@ -197,7 +203,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
-    pub fn adjoint(&self) -> SparseRowMatRef<'_, I, E::Conj>
+    pub fn adjoint(&self) -> SparseRowMatRef<'_, I, E::Conj, C, R>
     where
         E: Conjugate,
     {
@@ -206,7 +212,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
-    pub fn adjoint_mut(&mut self) -> SparseRowMatMut<'_, I, E::Conj>
+    pub fn adjoint_mut(&mut self) -> SparseRowMatMut<'_, I, E::Conj, C, R>
     where
         E: Conjugate,
     {
@@ -216,7 +222,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Returns a view over the canonical representation of `self`, and whether it needs to be
     /// conjugated or not.
     #[inline]
-    pub fn canonicalize(&self) -> (SparseColMatRef<'_, I, E::Canonical>, Conj)
+    pub fn canonicalize(&self) -> (SparseColMatRef<'_, I, E::Canonical, R, C>, Conj)
     where
         E: Conjugate,
     {
@@ -226,7 +232,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Returns a view over the canonical representation of `self`, and whether it needs to be
     /// conjugated or not.
     #[inline]
-    pub fn canonicalize_mut(&mut self) -> (SparseColMatMut<'_, I, E::Canonical>, Conj)
+    pub fn canonicalize_mut(&mut self) -> (SparseColMatMut<'_, I, E::Canonical, R, C>, Conj)
     where
         E: Conjugate,
     {
@@ -258,7 +264,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
-    pub fn into_transpose(self) -> SparseRowMat<I, E> {
+    pub fn into_transpose(self) -> SparseRowMat<I, E, C, R> {
         SparseRowMat {
             symbolic: SymbolicSparseRowMat {
                 nrows: self.symbolic.ncols,
@@ -273,7 +279,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns the conjugate of `self`.
     #[inline]
-    pub fn into_conjugate(self) -> SparseColMat<I, E::Conj>
+    pub fn into_conjugate(self) -> SparseColMat<I, E::Conj, R, C>
     where
         E: Conjugate,
     {
@@ -285,7 +291,9 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
                     GroupFor<E::Conj, alloc::vec::Vec<UnitFor<E::Conj>>>,
                 >(E::faer_map(
                     self.values.into_inner(),
-                    |mut slice| {
+                    |slice| {
+                        let mut slice = core::mem::ManuallyDrop::new(slice);
+
                         let len = slice.len();
                         let cap = slice.capacity();
                         let ptr = slice.as_mut_ptr() as *mut UnitFor<E> as *mut UnitFor<E::Conj>;
@@ -299,11 +307,11 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
-    pub fn into_adjoint(self) -> SparseRowMat<I, E::Conj>
+    pub fn into_adjoint(self) -> SparseRowMat<I, E::Conj, C, R>
     where
         E: Conjugate,
     {
-        self.into_transpose().into_conjugate()
+        self.into_conjugate().into_transpose()
     }
 
     /// Returns the number of symbolic non-zeros in the matrix.
@@ -332,7 +340,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
 
     /// Returns the row indices.
     #[inline]
-    pub fn row_indices(&self) -> &'_ [I] {
+    pub fn row_indices(&self) -> &'_ [Idx<R, I>] {
         &self.symbolic.row_ind
     }
 
@@ -343,7 +351,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub fn row_indices_of_col_raw(&self, j: usize) -> &'_ [I] {
+    pub fn row_indices_of_col_raw(&self, j: Idx<C>) -> &'_ [Idx<R, I>] {
         self.symbolic.row_indices_of_col_raw(j)
     }
 
@@ -356,8 +364,8 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     #[track_caller]
     pub fn row_indices_of_col(
         &self,
-        j: usize,
-    ) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = usize> {
+        j: Idx<C>,
+    ) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = Idx<R>> {
         self.symbolic.row_indices_of_col(j)
     }
 
@@ -368,7 +376,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `j >= ncols`.
     #[inline]
     #[track_caller]
-    pub fn values_of_col(&self, j: usize) -> GroupFor<E, &[E::Unit]> {
+    pub fn values_of_col(&self, j: Idx<C>) -> GroupFor<E, &[E::Unit]> {
         self.as_ref().values_of_col(j)
     }
 
@@ -379,13 +387,13 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `j >= ncols`.
     #[inline]
     #[track_caller]
-    pub fn values_of_col_mut(&mut self, j: usize) -> GroupFor<E, &mut [E::Unit]> {
+    pub fn values_of_col_mut(&mut self, j: Idx<C>) -> GroupFor<E, &mut [E::Unit]> {
         self.as_mut().values_of_col_mut(j)
     }
 
     /// Returns the symbolic structure of the matrix.
     #[inline]
-    pub fn symbolic(&self) -> SymbolicSparseColMatRef<'_, I> {
+    pub fn symbolic(&self) -> SymbolicSparseColMatRef<'_, I, R, C> {
         self.symbolic.as_ref()
     }
 
@@ -396,7 +404,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub fn col_range(&self, j: usize) -> Range<usize> {
+    pub fn col_range(&self, j: Idx<C>) -> Range<usize> {
         self.symbolic.col_range(j)
     }
 
@@ -407,7 +415,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// The behavior is undefined if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub unsafe fn col_range_unchecked(&self, j: usize) -> Range<usize> {
+    pub unsafe fn col_range_unchecked(&self, j: Idx<C>) -> Range<usize> {
         self.symbolic.col_range_unchecked(j)
     }
 
@@ -418,7 +426,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get(&self, row: usize, col: usize) -> Option<GroupFor<E, &'_ E::Unit>> {
+    pub fn get(&self, row: Idx<R>, col: Idx<C>) -> Option<GroupFor<E, &'_ E::Unit>> {
         self.as_ref().get(row, col)
     }
 
@@ -429,7 +437,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_mut(&mut self, row: usize, col: usize) -> Option<GroupFor<E, &'_ mut E::Unit>> {
+    pub fn get_mut(&mut self, row: Idx<R>, col: Idx<C>) -> Option<GroupFor<E, &'_ mut E::Unit>> {
         self.as_mut().get_mut(row, col)
     }
 
@@ -440,7 +448,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_all(&self, row: usize, col: usize) -> GroupFor<E, &'_ [E::Unit]> {
+    pub fn get_all(&self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, &'_ [E::Unit]> {
         self.as_ref().get_all(row, col)
     }
 
@@ -451,19 +459,20 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_all_mut(&mut self, row: usize, col: usize) -> GroupFor<E, &'_ mut [E::Unit]> {
+    pub fn get_all_mut(&mut self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, &'_ mut [E::Unit]> {
         self.as_mut().get_all_mut(row, col)
     }
-}
 
-impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     #[track_caller]
     pub(crate) fn new_from_order_and_values_impl(
-        symbolic: SymbolicSparseColMat<I>,
+        symbolic: SymbolicSparseColMat<I, R, C>,
         order: &ValuesOrder<I>,
         all_values: impl Fn(usize) -> E,
         values_len: usize,
-    ) -> Result<Self, FaerError> {
+    ) -> Result<Self, FaerError>
+    where
+        E: ComplexField,
+    {
         {
             let nnz = order.argsort.len();
             assert!(values_len == nnz);
@@ -510,10 +519,13 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     /// function call from which the order was created.
     #[track_caller]
     pub fn new_from_order_and_values(
-        symbolic: SymbolicSparseColMat<I>,
+        symbolic: SymbolicSparseColMat<I, R, C>,
         order: &ValuesOrder<I>,
         values: GroupFor<E, &[E::Unit]>,
-    ) -> Result<Self, FaerError> {
+    ) -> Result<Self, FaerError>
+    where
+        E: ComplexField,
+    {
         let values = SliceGroup::<'_, E>::new(values);
         Self::new_from_order_and_values_impl(symbolic, order, |i| values.read(i), values.len())
     }
@@ -521,10 +533,13 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     /// Create a new matrix from triplets `(row, col, value)`.
     #[track_caller]
     pub fn try_new_from_triplets(
-        nrows: usize,
-        ncols: usize,
-        triplets: &[(I, I, E)],
-    ) -> Result<Self, CreationError> {
+        nrows: R,
+        ncols: C,
+        triplets: &[(Idx<R, I>, Idx<C, I>, E)],
+    ) -> Result<Self, CreationError>
+    where
+        E: ComplexField,
+    {
         let (symbolic, order) = SymbolicSparseColMat::try_new_from_indices_impl(
             nrows,
             ncols,
@@ -541,14 +556,19 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
             triplets.len(),
         )?)
     }
+}
 
+impl<I: Index, E: Entity> SparseColMat<I, E> {
     /// Create a new matrix from triplets `(row, col, value)`. Negative indices are ignored.
     #[track_caller]
     pub fn try_new_from_nonnegative_triplets(
         nrows: usize,
         ncols: usize,
         triplets: &[(I::Signed, I::Signed, E)],
-    ) -> Result<Self, CreationError> {
+    ) -> Result<Self, CreationError>
+    where
+        E: ComplexField,
+    {
         let (symbolic, order) = SymbolicSparseColMat::<I>::try_new_from_nonnegative_indices_impl(
             nrows,
             ncols,

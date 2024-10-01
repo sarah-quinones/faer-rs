@@ -306,7 +306,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
         unsafe { (canonical.const_cast(), conj) }
     }
 
-    /// Returns a view over the matrix.
+    /// Returns the input matrix with dynamic shape.
     #[inline]
     pub fn as_dyn(self) -> MatRef<'a, E> {
         let nrows = self.nrows().unbound();
@@ -316,7 +316,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
         unsafe { from_raw_parts(self.as_ptr(), nrows, ncols, row_stride, col_stride) }
     }
 
-    /// Returns a view over the matrix.
+    /// Returns the input matrix with dynamic shape.
     #[inline]
     pub fn as_dyn_mut(self) -> MatMut<'a, E> {
         let nrows = self.nrows().unbound();
@@ -324,6 +324,20 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
         let row_stride = self.row_stride();
         let col_stride = self.col_stride();
         unsafe { from_raw_parts_mut(self.as_ptr_mut(), nrows, ncols, row_stride, col_stride) }
+    }
+
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> MatRef<'a, E, V, H> {
+        self.into_const().as_shape(nrows, ncols)
+    }
+
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape_mut<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> MatMut<'a, E, V, H> {
+        unsafe { self.into_const().as_shape(nrows, ncols).const_cast() }
     }
 
     #[inline(always)]

@@ -215,28 +215,28 @@ pub fn permute_rows<I: Index, E: ComplexField>(
             perm_indices.len() == src.nrows(),
         ));
 
-        constrained::Size::with2(src.nrows(), src.ncols(), |m, n| {
-            let mut dst = constrained::mat::MatMut::new(dst, m, n);
-            let src = constrained::mat::MatRef::new(src, m, n);
-            let perm = constrained::perm::PermRef::new(perm_indices, m).arrays().0;
+        with_dim!(m, src.nrows());
+        with_dim!(n, src.ncols());
+        let mut dst = constrained::mat::MatMut::new(dst, m, n);
+        let src = constrained::mat::MatRef::new(src, m, n);
+        let perm = constrained::perm::PermRef::new(perm_indices, m).arrays().0;
 
-            if dst.rb().into_inner().row_stride().unsigned_abs()
-                < dst.rb().into_inner().col_stride().unsigned_abs()
-            {
-                for j in n.indices() {
-                    for i in m.indices() {
-                        dst.rb_mut().write(i, j, src.read(perm[i].zx(), j));
-                    }
-                }
-            } else {
+        if dst.rb().into_inner().row_stride().unsigned_abs()
+            < dst.rb().into_inner().col_stride().unsigned_abs()
+        {
+            for j in n.indices() {
                 for i in m.indices() {
-                    let src_i = src.into_inner().row(perm[i].zx().into_inner());
-                    let mut dst_i = dst.rb_mut().into_inner().row_mut(i.into_inner());
-
-                    dst_i.copy_from(src_i);
+                    dst.rb_mut().write(i, j, src.read(perm[i].zx(), j));
                 }
             }
-        });
+        } else {
+            for i in m.indices() {
+                let src_i = src.into_inner().row(perm[i].zx().unbound());
+                let mut dst_i = dst.rb_mut().into_inner().row_mut(i.unbound());
+
+                dst_i.copy_from(src_i);
+            }
+        }
     }
 
     implementation(dst, src, perm_indices.canonicalized())

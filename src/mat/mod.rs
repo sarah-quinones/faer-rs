@@ -248,7 +248,10 @@ mod tests {
     fn test_alloc() {
         let mut a = crate::Mat::<f64>::zeros(2, 2);
 
-        a.reserve_exact(128, 0);
-        a.reserve_exact(129, 1);
+        a.reserve_exact(32, 0);
+        a.reserve_exact(33, 1);
+        a.resize_with(40, 1, |_, _| 0.0);
+        a.resize_with(50, 2, |_, _| 0.0);
+        a.resize_with(60, 1, |_, _| 0.0);
     }
 }

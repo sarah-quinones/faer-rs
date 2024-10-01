@@ -211,7 +211,7 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
         self.ptr_at_mut_unchecked(row.unbound())
     }
 
-    /// Returns a view over the column.
+    /// Returns the input column with dynamic shape.
     #[inline]
     pub fn as_dyn(self) -> ColRef<'a, E> {
         let nrows = self.nrows().unbound();
@@ -219,12 +219,26 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
         unsafe { from_raw_parts(self.as_ptr(), nrows, row_stride) }
     }
 
-    /// Returns a view over the column.
+    /// Returns the input column with dynamic shape.
     #[inline]
     pub fn as_dyn_mut(self) -> ColMut<'a, E> {
         let nrows = self.nrows().unbound();
         let row_stride = self.row_stride();
         unsafe { from_raw_parts_mut(self.as_ptr_mut(), nrows, row_stride) }
+    }
+
+    /// Returns the input column with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<V: Shape>(self, nrows: V) -> ColRef<'a, E, V> {
+        self.into_const().as_shape(nrows)
+    }
+
+    /// Returns the input column with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape_mut<V: Shape>(self, nrows: V) -> ColMut<'a, E, V> {
+        unsafe { self.into_const().as_shape(nrows).const_cast() }
     }
 
     #[track_caller]
@@ -722,7 +736,7 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
 
     /// Returns an owning [`Col`] of the data.
     #[inline]
-    pub fn to_owned(&self) -> Col<E::Canonical>
+    pub fn to_owned(&self) -> Col<E::Canonical, R>
     where
         E: Conjugate,
     {
@@ -1082,17 +1096,17 @@ pub fn from_slice_mut<E: SimpleEntity>(slice: &mut [E]) -> ColMut<'_, E> {
     from_slice_mut_generic(slice)
 }
 
-impl<E: Entity> As2D<E> for ColMut<'_, E> {
+impl<E: Entity, R: Shape> As2D<E> for ColMut<'_, E, R> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (*self).rb().as_2d()
+        (*self).rb().as_2d().as_dyn()
     }
 }
 
-impl<E: Entity> As2DMut<E> for ColMut<'_, E> {
+impl<E: Entity, R: Shape> As2DMut<E> for ColMut<'_, E, R> {
     #[inline]
     fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (*self).rb_mut().as_2d_mut()
+        (*self).rb_mut().as_2d_mut().as_dyn_mut()
     }
 }
 

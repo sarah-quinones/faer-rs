@@ -705,15 +705,14 @@ fn amd_2<I: Index>(
         }
     }
 
-    ghost::with_size(n, |N| {
-        postorder(
-            Array::from_mut(w, N),
-            Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(pe, N), N),
-            Array::from_ref(nv, N),
-            Array::from_ref(elen, N),
-            stack.rb_mut(),
-        );
-    });
+    with_dim!(N, n);
+    postorder(
+        Array::from_mut(w, N),
+        Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(pe, N), N),
+        Array::from_ref(nv, N),
+        Array::from_ref(elen, N),
+        stack.rb_mut(),
+    );
 
     let (head, _) = stack.make_raw::<I::Signed>(n);
 
@@ -797,7 +796,8 @@ fn amd_1<I: Index>(
     // least size-n elbow room is enforced.
     assert!(iwlen >= pfree + n);
 
-    ghost::with_size(n, |N| {
+    {
+        with_dim!(N, n);
         let (t_p, _) = stack.rb_mut().make_raw::<I::Signed>(n);
 
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
@@ -883,7 +883,7 @@ fn amd_1<I: Index>(
                 s_p[j] += one;
             }
         }
-    });
+    }
 
     debug_assert!(s_p[n - 1] == I(pfree));
 
@@ -898,64 +898,63 @@ fn preprocess<'out, I: Index>(
 ) -> SymbolicSparseColMatRef<'out, I> {
     let n = A.nrows();
 
-    ghost::with_size(n, |N| {
-        let I = I::Signed::truncate;
-        let zero = I(0);
-        let one = I(1);
+    with_dim!(N, n);
+    let I = I::Signed::truncate;
+    let zero = I(0);
+    let one = I(1);
 
-        let (w, stack) = stack.make_raw::<I::Signed>(n);
-        let (flag, _) = stack.make_raw::<I::Signed>(n);
+    let (w, stack) = stack.make_raw::<I::Signed>(n);
+    let (flag, _) = stack.make_raw::<I::Signed>(n);
 
-        let w = Array::from_mut(w, N);
-        let flag = Array::from_mut(flag, N);
-        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+    let w = Array::from_mut(w, N);
+    let flag = Array::from_mut(flag, N);
+    let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
-        mem::fill_zero(w.as_mut());
-        mem::fill_none(flag.as_mut());
+    mem::fill_zero(w.as_mut());
+    mem::fill_none(flag.as_mut());
 
-        for j in N.indices() {
-            let j_ = I(*j);
-            for i in A.row_indices_of_col(j) {
-                if flag[i] != j_ {
-                    w[i] += one;
-                    flag[i] = j_;
-                }
+    for j in N.indices() {
+        let j_ = I(*j);
+        for i in A.row_indices_of_col(j) {
+            if flag[i] != j_ {
+                w[i] += one;
+                flag[i] = j_;
             }
         }
+    }
 
-        new_col_ptrs[0] = I::from_signed(zero);
-        for (i, [r, r_next]) in zip(
-            N.indices(),
-            windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-        ) {
-            r_next.set(r.get() + I::from_signed(w[i]));
-        }
+    new_col_ptrs[0] = I::from_signed(zero);
+    for (i, [r, r_next]) in zip(
+        N.indices(),
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
+    ) {
+        r_next.set(r.get() + I::from_signed(w[i]));
+    }
 
-        w.as_mut()
-            .copy_from_slice(bytemuck::cast_slice(&new_col_ptrs[..n]));
-        mem::fill_none(flag.as_mut());
+    w.as_mut()
+        .copy_from_slice(bytemuck::cast_slice(&new_col_ptrs[..n]));
+    mem::fill_none(flag.as_mut());
 
-        for j in N.indices() {
-            let j_ = I(*j);
-            for i in A.row_indices_of_col(j) {
-                if flag[i] != j_ {
-                    new_row_indices[w[i].zx()] = I::from_signed(j_);
-                    w[i] += one;
-                    flag[i] = j_;
-                }
+    for j in N.indices() {
+        let j_ = I(*j);
+        for i in A.row_indices_of_col(j) {
+            if flag[i] != j_ {
+                new_row_indices[w[i].zx()] = I::from_signed(j_);
+                w[i] += one;
+                flag[i] = j_;
             }
         }
+    }
 
-        unsafe {
-            SymbolicSparseColMatRef::new_unchecked(
-                n,
-                n,
-                &*new_col_ptrs,
-                None,
-                &new_row_indices[..new_col_ptrs[n].zx()],
-            )
-        }
-    })
+    unsafe {
+        SymbolicSparseColMatRef::new_unchecked(
+            n,
+            n,
+            &*new_col_ptrs,
+            None,
+            &new_row_indices[..new_col_ptrs[n].zx()],
+        )
+    }
 }
 
 #[allow(clippy::comparison_chain)]
@@ -964,7 +963,8 @@ fn aat<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     stack: &mut PodStack,
 ) -> Result<usize, FaerError> {
-    ghost::with_size(A.nrows(), |N| {
+    {
+        with_dim!(N, A.nrows());
         let I = I::Signed::truncate;
         let zero = I(0);
         let one = I(1);
@@ -1038,7 +1038,7 @@ fn aat<I: Index>(
                 len[j] += one;
             }
         }
-    });
+    }
     let nzaat = I::Signed::sum_nonnegative(len).map(I::from_signed);
     nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }

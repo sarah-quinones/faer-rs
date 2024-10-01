@@ -11,9 +11,9 @@ pub(crate) struct VecImpl<E: Entity, N: Shape = usize> {
     pub(crate) stride: isize,
 }
 #[repr(C)]
-pub(crate) struct VecOwnImpl<E: Entity> {
+pub(crate) struct VecOwnImpl<E: Entity, N: Shape = usize> {
     pub(crate) ptr: GroupCopyFor<E, NonNull<E::Unit>>,
-    pub(crate) len: usize,
+    pub(crate) len: N,
 }
 
 impl<E: Entity, N: Shape> Copy for VecImpl<E, N> {}
@@ -26,8 +26,8 @@ impl<E: Entity, N: Shape> Clone for VecImpl<E, N> {
 
 unsafe impl<E: Entity, N: Shape> Sync for VecImpl<E, N> {}
 unsafe impl<E: Entity, N: Shape> Send for VecImpl<E, N> {}
-unsafe impl<E: Entity> Sync for VecOwnImpl<E> {}
-unsafe impl<E: Entity> Send for VecOwnImpl<E> {}
+unsafe impl<E: Entity, N: Shape> Sync for VecOwnImpl<E, N> {}
+unsafe impl<E: Entity, N: Shape> Send for VecOwnImpl<E, N> {}
 
 /// Represents a type that can be used to slice a column, such as an index or a range of indices.
 pub trait ColIndex<RowRange>: crate::seal::Seal + Sized {

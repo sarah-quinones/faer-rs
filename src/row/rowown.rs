@@ -1,11 +1,8 @@
 use super::*;
 use crate::{
-    col::{ColMut, ColRef},
-    debug_assert, iter,
-    mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
-    utils::DivCeil,
+    col::{Col, ColMut, ColRef},
+    iter, Idx, IdxInc,
 };
-use core::mem::ManuallyDrop;
 
 /// Heap allocated resizable row vector.
 ///
@@ -14,35 +11,15 @@ use core::mem::ManuallyDrop;
 /// The memory layout of `Col` is guaranteed to be row-major, meaning that it has a column stride
 /// of `1`.
 #[repr(C)]
-pub struct Row<E: Entity> {
-    inner: VecOwnImpl<E>,
-    col_capacity: usize,
-    __marker: PhantomData<E>,
-}
-
-impl<E: Entity> Drop for Row<E> {
-    #[inline]
-    fn drop(&mut self) {
-        drop(RawMat::<E> {
-            ptr: self.inner.ptr,
-            row_capacity: self.col_capacity,
-            col_capacity: 1,
-        });
-    }
+pub struct Row<E: Entity, C: Shape = usize> {
+    inner: Col<E, C>,
 }
 
 impl<E: Entity> Row<E> {
     /// Returns an empty row of dimension `0`.
     #[inline]
     pub fn new() -> Self {
-        Self {
-            inner: VecOwnImpl {
-                ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| NonNull::<E::Unit>::dangling())),
-                len: 0,
-            },
-            col_capacity: 0,
-            __marker: PhantomData,
-        }
+        Self { inner: Col::new() }
     }
 
     /// Returns a new column vector with 0 columns, with enough capacity to hold a maximum of
@@ -53,14 +30,19 @@ impl<E: Entity> Row<E> {
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
     pub fn with_capacity(col_capacity: usize) -> Self {
-        let raw = ManuallyDrop::new(RawMat::<E>::new(col_capacity, 1));
         Self {
-            inner: VecOwnImpl {
-                ptr: raw.ptr,
-                len: 0,
-            },
-            col_capacity: raw.row_capacity,
-            __marker: PhantomData,
+            inner: Col::with_capacity(col_capacity),
+        }
+    }
+}
+impl<E: Entity, C: Shape> Row<E, C> {
+    /// Returns the input matrix with the given shape after checking that it matches the
+    /// current shape.
+    pub fn into_shape<H: Shape>(self, ncols: H) -> Row<E, H> {
+        crate::assert!(ncols.unbound() == self.ncols().unbound());
+
+        Row {
+            inner: self.inner.into_shape(ncols),
         }
     }
 
@@ -69,10 +51,10 @@ impl<E: Entity> Row<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn from_fn(ncols: usize, f: impl FnMut(usize) -> E) -> Self {
-        let mut this = Self::new();
-        this.resize_with(ncols, f);
-        this
+    pub fn from_fn(ncols: C, f: impl FnMut(Idx<C>) -> E) -> Self {
+        Self {
+            inner: Col::from_fn(ncols, f),
+        }
     }
 
     /// Returns a new matrix with number of columns `ncols`, filled with zeros.
@@ -80,8 +62,10 @@ impl<E: Entity> Row<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn zeros(ncols: usize) -> Self {
-        Self::from_fn(ncols, |_| unsafe { core::mem::zeroed() })
+    pub fn zeros(ncols: C) -> Self {
+        Self {
+            inner: Col::zeros(ncols),
+        }
     }
 
     /// Returns a new matrix with number of columns `ncols`, filled with ones.
@@ -89,11 +73,13 @@ impl<E: Entity> Row<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn ones(ncols: usize) -> Self
+    pub fn ones(ncols: C) -> Self
     where
         E: ComplexField,
     {
-        Self::full(ncols, E::faer_one())
+        Self {
+            inner: Col::ones(ncols),
+        }
     }
 
     /// Returns a new matrix with number of columns `ncols`, filled with a constant value.
@@ -101,11 +87,13 @@ impl<E: Entity> Row<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn full(ncols: usize, constant: E) -> Self
+    pub fn full(ncols: C, constant: E) -> Self
     where
         E: ComplexField,
     {
-        Self::from_fn(ncols, |_| constant)
+        Self {
+            inner: Col::full(ncols, constant),
+        }
     }
 
     /// Returns the number of rows of the row. This is always equal to `1`.
@@ -115,8 +103,8 @@ impl<E: Entity> Row<E> {
     }
     /// Returns the number of columns of the row.
     #[inline(always)]
-    pub fn ncols(&self) -> usize {
-        self.inner.len
+    pub fn ncols(&self) -> C {
+        self.inner.nrows()
     }
 
     /// Set the dimensions of the matrix.
@@ -127,29 +115,27 @@ impl<E: Entity> Row<E> {
     /// * The elements that were previously out of bounds but are now in bounds must be
     /// initialized.
     #[inline]
-    pub unsafe fn set_ncols(&mut self, ncols: usize) {
-        self.inner.len = ncols;
+    pub unsafe fn set_ncols(&mut self, ncols: C) {
+        self.inner.set_nrows(ncols);
     }
 
     /// Returns a pointer to the data of the matrix.
     #[inline]
     pub fn as_ptr(&self) -> PtrConst<E> {
-        E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| {
-            ptr.as_ptr() as *const E::Unit
-        })
+        self.inner.as_ptr()
     }
 
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
     pub fn as_ptr_mut(&mut self) -> PtrMut<E> {
-        E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| ptr.as_ptr())
+        self.inner.as_ptr_mut()
     }
 
     /// Returns the col capacity, that is, the number of cols that the matrix is able to hold
     /// without needing to reallocate, excluding column insertions.
     #[inline]
     pub fn col_capacity(&self) -> usize {
-        self.col_capacity
+        self.inner.row_capacity()
     }
 
     /// Returns the offset between the first elements of two successive columns in the matrix.
@@ -159,15 +145,41 @@ impl<E: Entity> Row<E> {
         1
     }
 
+    /// Returns the input row with dynamic shape.
+    #[inline]
+    pub fn as_dyn(&self) -> RowRef<'_, E> {
+        self.as_ref().as_dyn()
+    }
+
+    /// Returns the input row with dynamic shape.
+    #[inline]
+    pub fn as_dyn_mut(&mut self) -> RowMut<'_, E> {
+        self.as_mut().as_dyn_mut()
+    }
+
+    /// Returns the input row with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<H: Shape>(&self, ncols: H) -> RowRef<'_, E, H> {
+        self.as_ref().as_shape(ncols)
+    }
+
+    /// Returns the input row with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape_mut<H: Shape>(&mut self, ncols: H) -> RowMut<'_, E, H> {
+        self.as_mut().as_shape_mut(ncols)
+    }
+
     /// Returns `self` as a matrix view.
     #[inline(always)]
-    pub fn as_2d(&self) -> MatRef<'_, E> {
+    pub fn as_2d(&self) -> MatRef<'_, E, usize, C> {
         self.as_ref().as_2d()
     }
 
     /// Returns `self` as a mutable matrix view.
     #[inline(always)]
-    pub fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+    pub fn as_2d_mut(&mut self) -> MatMut<'_, E, usize, C> {
         self.as_mut().as_2d_mut()
     }
 
@@ -197,13 +209,13 @@ impl<E: Entity> Row<E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(&self, col: usize) -> PtrConst<E> {
+    pub unsafe fn overflowing_ptr_at(&self, col: IdxInc<C>) -> PtrConst<E> {
         self.as_ref().overflowing_ptr_at(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(&mut self, col: usize) -> PtrMut<E> {
+    pub unsafe fn overflowing_ptr_at_mut(&mut self, col: IdxInc<C>) -> PtrMut<E> {
         self.as_mut().overflowing_ptr_at_mut(col)
     }
 
@@ -215,7 +227,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(&self, col: usize) -> PtrConst<E> {
+    pub unsafe fn ptr_inbounds_at(&self, col: Idx<C>) -> PtrConst<E> {
         self.as_ref().ptr_inbounds_at(col)
     }
 
@@ -227,7 +239,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(&mut self, col: usize) -> PtrMut<E> {
+    pub unsafe fn ptr_inbounds_at_mut(&mut self, col: Idx<C>) -> PtrMut<E> {
         self.as_mut().ptr_inbounds_at_mut(col)
     }
 
@@ -241,7 +253,7 @@ impl<E: Entity> Row<E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_unchecked(&self, col: usize) -> (RowRef<'_, E>, RowRef<'_, E>) {
+    pub unsafe fn split_at_unchecked(&self, col: IdxInc<C>) -> (RowRef<'_, E>, RowRef<'_, E>) {
         self.as_ref().split_at_unchecked(col)
     }
 
@@ -255,7 +267,10 @@ impl<E: Entity> Row<E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_mut_unchecked(&mut self, col: usize) -> (RowMut<'_, E>, RowMut<'_, E>) {
+    pub unsafe fn split_at_mut_unchecked(
+        &mut self,
+        col: IdxInc<C>,
+    ) -> (RowMut<'_, E>, RowMut<'_, E>) {
         self.as_mut().split_at_mut_unchecked(col)
     }
 
@@ -269,7 +284,7 @@ impl<E: Entity> Row<E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at(&self, col: usize) -> (RowRef<'_, E>, RowRef<'_, E>) {
+    pub unsafe fn split_at(&self, col: IdxInc<C>) -> (RowRef<'_, E>, RowRef<'_, E>) {
         self.as_ref().split_at(col)
     }
 
@@ -283,44 +298,8 @@ impl<E: Entity> Row<E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at_mut(&mut self, col: usize) -> (RowMut<'_, E>, RowMut<'_, E>) {
+    pub fn split_at_mut(&mut self, col: IdxInc<C>) -> (RowMut<'_, E>, RowMut<'_, E>) {
         self.as_mut().split_at_mut(col)
-    }
-
-    #[cold]
-    fn do_reserve_exact(&mut self, mut new_col_capacity: usize) {
-        if is_vectorizable::<E::Unit>() {
-            let align_factor = align_for::<E::Unit>() / core::mem::size_of::<E::Unit>();
-            new_col_capacity = new_col_capacity
-                .msrv_checked_next_multiple_of(align_factor)
-                .unwrap();
-        }
-
-        let ncols = self.inner.len;
-        let old_col_capacity = self.col_capacity;
-
-        let mut this = ManuallyDrop::new(core::mem::take(self));
-        {
-            let mut this_group = E::faer_map(from_copy::<E, _>(this.inner.ptr), |ptr| MatUnit {
-                raw: RawMatUnit {
-                    ptr,
-                    row_capacity: old_col_capacity,
-                    col_capacity: 1,
-                },
-                nrows: ncols,
-                ncols: 1,
-            });
-
-            E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
-                mat_unit.do_reserve_exact(new_col_capacity, 1, E::N_COMPONENTS <= 1);
-            });
-
-            let this_group = E::faer_map(this_group, ManuallyDrop::new);
-            this.inner.ptr =
-                into_copy::<E, _>(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
-            this.col_capacity = new_col_capacity;
-        }
-        *self = ManuallyDrop::into_inner(this);
     }
 
     /// Reserves the minimum capacity for `col_capacity` columns without reallocating. Does nothing
@@ -330,70 +309,14 @@ impl<E: Entity> Row<E> {
     /// The function panics if the new total capacity in bytes exceeds `isize::MAX`.
     #[inline]
     pub fn reserve_exact(&mut self, col_capacity: usize) {
-        if self.col_capacity() >= col_capacity {
-            // do nothing
-        } else if core::mem::size_of::<E::Unit>() == 0 {
-            self.col_capacity = self.col_capacity().max(col_capacity);
-        } else {
-            self.do_reserve_exact(col_capacity);
-        }
-    }
-
-    unsafe fn insert_block_with<F: FnMut(usize) -> E>(
-        &mut self,
-        f: &mut F,
-        col_start: usize,
-        col_end: usize,
-    ) {
-        debug_assert!(col_start <= col_end);
-
-        let ptr = self.as_ptr_mut();
-
-        for j in col_start..col_end {
-            // SAFETY:
-            // * pointer to element at index (i, j), which is within the
-            // allocation since we reserved enough space
-            // * writing to this memory region is sound since it is properly
-            // aligned and valid for writes
-            let ptr_ij = E::faer_map(E::faer_copy(&ptr), |ptr| ptr.add(j));
-            let value = E::faer_into_units(f(j));
-
-            E::faer_map(E::faer_zip(ptr_ij, value), |(ptr_ij, value)| {
-                core::ptr::write(ptr_ij, value)
-            });
-        }
-    }
-
-    fn erase_last_cols(&mut self, new_ncols: usize) {
-        let old_ncols = self.ncols();
-        debug_assert!(new_ncols <= old_ncols);
-        self.inner.len = new_ncols;
-    }
-
-    unsafe fn insert_last_cols_with<F: FnMut(usize) -> E>(&mut self, f: &mut F, new_ncols: usize) {
-        let old_ncols = self.ncols();
-
-        debug_assert!(new_ncols > old_ncols);
-
-        self.insert_block_with(f, old_ncols, new_ncols);
-        self.inner.len = new_ncols;
+        self.inner.reserve_exact(col_capacity);
     }
 
     /// Resizes the vector in-place so that the new number of columns is `new_ncols`.
     /// New elements are created with the given function `f`, so that elements at index `i`
     /// are created by calling `f(i)`.
-    pub fn resize_with(&mut self, new_ncols: usize, f: impl FnMut(usize) -> E) {
-        let mut f = f;
-        let old_ncols = self.ncols();
-
-        if new_ncols <= old_ncols {
-            self.erase_last_cols(new_ncols);
-        } else {
-            self.reserve_exact(new_ncols);
-            unsafe {
-                self.insert_last_cols_with(&mut f, new_ncols);
-            }
-        }
+    pub fn resize_with(&mut self, new_ncols: C, f: impl FnMut(Idx<C>) -> E) {
+        self.inner.resize_with(new_ncols, f)
     }
 
     /// Truncates the matrix so that its new number of columns is `new_ncols`.  
@@ -402,35 +325,22 @@ impl<E: Entity> Row<E> {
     /// # Panics
     /// - Panics if `new_ncols > self.ncols()`.
     #[inline]
-    pub fn truncate(&mut self, new_ncols: usize) {
-        assert!(new_ncols <= self.ncols());
-        self.erase_last_cols(new_ncols);
+    pub fn truncate(&mut self, new_ncols: C) {
+        self.inner.truncate(new_ncols)
     }
 
     /// Returns a reference to a slice over the row.
     #[inline]
     #[track_caller]
     pub fn as_slice(&self) -> Slice<'_, E> {
-        let ncols = self.ncols();
-        let ptr = self.as_ref().as_ptr();
-        E::faer_map(
-            ptr,
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts(ptr, ncols) },
-        )
+        self.inner.as_slice()
     }
 
     /// Returns a mutable reference to a slice over the row.
     #[inline]
     #[track_caller]
     pub fn as_slice_mut(&mut self) -> SliceMut<'_, E> {
-        let ncols = self.ncols();
-        let ptr = self.as_ptr_mut();
-        E::faer_map(
-            ptr,
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, ncols) },
-        )
+        self.inner.as_slice_mut()
     }
 
     /// Returns the row as a contiguous slice if its column stride is equal to `1`.
@@ -469,13 +379,7 @@ impl<E: Entity> Row<E> {
     /// If uninit data is written to the slice, it must not be later read.
     #[inline]
     pub unsafe fn as_uninit_slice_mut(&mut self) -> UninitSliceMut<'_, E> {
-        let nrows = self.nrows();
-        let ptr = self.as_ptr_mut();
-        E::faer_map(
-            ptr,
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr as _, nrows) },
-        )
+        self.inner.as_uninit_slice_mut()
     }
 
     /// Returns a view over the subvector starting at column `col_start`, and with number of
@@ -487,7 +391,11 @@ impl<E: Entity> Row<E> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn subcols_unchecked(&self, col_start: usize, ncols: usize) -> RowRef<'_, E> {
+    pub unsafe fn subcols_unchecked<H: Shape>(
+        &self,
+        col_start: IdxInc<C>,
+        ncols: H,
+    ) -> RowRef<'_, E, H> {
         self.as_ref().subcols_unchecked(col_start, ncols)
     }
 
@@ -500,7 +408,7 @@ impl<E: Entity> Row<E> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subcols(&self, col_start: usize, ncols: usize) -> RowRef<'_, E> {
+    pub fn subcols<H: Shape>(&self, col_start: IdxInc<C>, ncols: H) -> RowRef<'_, E, H> {
         self.as_ref().subcols(col_start, ncols)
     }
 
@@ -513,11 +421,11 @@ impl<E: Entity> Row<E> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn subcols_mut_unchecked(
+    pub unsafe fn subcols_mut_unchecked<H: Shape>(
         &mut self,
-        col_start: usize,
-        ncols: usize,
-    ) -> RowMut<'_, E> {
+        col_start: IdxInc<C>,
+        ncols: H,
+    ) -> RowMut<'_, E, H> {
         self.as_mut().subcols_mut_unchecked(col_start, ncols)
     }
 
@@ -530,19 +438,19 @@ impl<E: Entity> Row<E> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subcols_mut(&mut self, col_start: usize, ncols: usize) -> RowMut<'_, E> {
+    pub fn subcols_mut<H: Shape>(&mut self, col_start: IdxInc<C>, ncols: H) -> RowMut<'_, E, H> {
         self.as_mut().subcols_mut(col_start, ncols)
     }
 
     /// Returns a view over the vector.
     #[inline]
-    pub fn as_ref(&self) -> RowRef<'_, E> {
+    pub fn as_ref(&self) -> RowRef<'_, E, C> {
         unsafe { super::from_raw_parts(self.as_ptr(), self.ncols(), 1) }
     }
 
     /// Returns a mutable view over the vector.
     #[inline]
-    pub fn as_mut(&mut self) -> RowMut<'_, E> {
+    pub fn as_mut(&mut self) -> RowMut<'_, E, C> {
         unsafe { super::from_raw_parts_mut(self.as_ptr_mut(), self.ncols(), 1) }
     }
 
@@ -559,9 +467,9 @@ impl<E: Entity> Row<E> {
     pub unsafe fn get_unchecked<ColRange>(
         &self,
         col: ColRange,
-    ) -> <RowRef<'_, E> as RowIndex<ColRange>>::Target
+    ) -> <RowRef<'_, E, C> as RowIndex<ColRange>>::Target
     where
-        for<'a> RowRef<'a, E>: RowIndex<ColRange>,
+        for<'a> RowRef<'a, E, C>: RowIndex<ColRange>,
     {
         self.as_ref().get_unchecked(col)
     }
@@ -577,9 +485,9 @@ impl<E: Entity> Row<E> {
     /// The function panics if any of the following conditions are violated:
     /// * `col` must be contained in `[0, self.ncols())`.
     #[inline]
-    pub fn get<ColRange>(&self, col: ColRange) -> <RowRef<'_, E> as RowIndex<ColRange>>::Target
+    pub fn get<ColRange>(&self, col: ColRange) -> <RowRef<'_, E, C> as RowIndex<ColRange>>::Target
     where
-        for<'a> RowRef<'a, E>: RowIndex<ColRange>,
+        for<'a> RowRef<'a, E, C>: RowIndex<ColRange>,
     {
         self.as_ref().get(col)
     }
@@ -598,9 +506,9 @@ impl<E: Entity> Row<E> {
     pub unsafe fn get_mut_unchecked<ColRange>(
         &mut self,
         col: ColRange,
-    ) -> <RowMut<'_, E> as RowIndex<ColRange>>::Target
+    ) -> <RowMut<'_, E, C> as RowIndex<ColRange>>::Target
     where
-        for<'a> RowMut<'a, E>: RowIndex<ColRange>,
+        for<'a> RowMut<'a, E, C>: RowIndex<ColRange>,
     {
         self.as_mut().get_mut_unchecked(col)
     }
@@ -619,9 +527,9 @@ impl<E: Entity> Row<E> {
     pub fn get_mut<ColRange>(
         &mut self,
         col: ColRange,
-    ) -> <RowMut<'_, E> as RowIndex<ColRange>>::Target
+    ) -> <RowMut<'_, E, C> as RowIndex<ColRange>>::Target
     where
-        for<'a> RowMut<'a, E>: RowIndex<ColRange>,
+        for<'a> RowMut<'a, E, C>: RowIndex<ColRange>,
     {
         self.as_mut().get_mut(col)
     }
@@ -633,7 +541,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, col: usize) -> E {
+    pub unsafe fn read_unchecked(&self, col: Idx<C>) -> E {
         self.as_ref().read_unchecked(col)
     }
 
@@ -644,7 +552,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, col: usize) -> E {
+    pub fn read(&self, col: Idx<C>) -> E {
         self.as_ref().read(col)
     }
 
@@ -655,7 +563,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn write_unchecked(&mut self, col: usize, value: E) {
+    pub unsafe fn write_unchecked(&mut self, col: Idx<C>, value: E) {
         self.as_mut().write_unchecked(col, value);
     }
 
@@ -666,7 +574,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn write(&mut self, col: usize, value: E) {
+    pub fn write(&mut self, col: Idx<C>, value: E) {
         self.as_mut().write(col, value);
     }
 
@@ -675,22 +583,9 @@ impl<E: Entity> Row<E> {
     #[track_caller]
     pub fn copy_from<ViewE: Conjugate<Canonical = E>>(
         &mut self,
-        other: impl AsRowRef<ViewE, C = usize>,
+        other: impl AsRowRef<ViewE, C = C>,
     ) {
-        #[track_caller]
-        #[inline(always)]
-        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
-            this: &mut Row<E>,
-            other: RowRef<'_, ViewE>,
-        ) {
-            this.resize_with(0, |_| E::zeroed());
-            this.resize_with(
-                other.nrows(),
-                #[inline(always)]
-                |row| unsafe { other.read_unchecked(row).canonicalize() },
-            );
-        }
-        implementation(self, other.as_row_ref());
+        self.inner.copy_from(other.as_row_ref().transpose())
     }
 
     /// Fills the elements of `self` with zeros.
@@ -712,19 +607,19 @@ impl<E: Entity> Row<E> {
 
     /// Returns a view over the transpose of `self`.
     #[inline]
-    pub fn transpose(&self) -> ColRef<'_, E> {
+    pub fn transpose(&self) -> ColRef<'_, E, C> {
         self.as_ref().transpose()
     }
 
     /// Returns a view over the transpose of `self`.
     #[inline]
-    pub fn transpose_mut(&mut self) -> ColMut<'_, E> {
+    pub fn transpose_mut(&mut self) -> ColMut<'_, E, C> {
         self.as_mut().transpose_mut()
     }
 
     /// Returns a view over the conjugate of `self`.
     #[inline]
-    pub fn conjugate(&self) -> RowRef<'_, E::Conj>
+    pub fn conjugate(&self) -> RowRef<'_, E::Conj, C>
     where
         E: Conjugate,
     {
@@ -733,7 +628,7 @@ impl<E: Entity> Row<E> {
 
     /// Returns a view over the conjugate of `self`.
     #[inline]
-    pub fn conjugate_mut(&mut self) -> RowMut<'_, E::Conj>
+    pub fn conjugate_mut(&mut self) -> RowMut<'_, E::Conj, C>
     where
         E: Conjugate,
     {
@@ -742,7 +637,7 @@ impl<E: Entity> Row<E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
-    pub fn adjoint(&self) -> ColRef<'_, E::Conj>
+    pub fn adjoint(&self) -> ColRef<'_, E::Conj, C>
     where
         E: Conjugate,
     {
@@ -751,7 +646,7 @@ impl<E: Entity> Row<E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
-    pub fn adjoint_mut(&mut self) -> ColMut<'_, E::Conj>
+    pub fn adjoint_mut(&mut self) -> ColMut<'_, E::Conj, C>
     where
         E: Conjugate,
     {
@@ -761,7 +656,7 @@ impl<E: Entity> Row<E> {
     /// Returns a view over the canonical representation of `self`, as well as a flag declaring
     /// whether `self` is implicitly conjugated or not.
     #[inline(always)]
-    pub fn canonicalize(&self) -> (RowRef<'_, E::Canonical>, Conj)
+    pub fn canonicalize(&self) -> (RowRef<'_, E::Canonical, C>, Conj)
     where
         E: Conjugate,
     {
@@ -771,7 +666,7 @@ impl<E: Entity> Row<E> {
     /// Returns a view over the canonical representation of `self`, as well as a flag declaring
     /// whether `self` is implicitly conjugated or not.
     #[inline(always)]
-    pub fn canonicalize_mut(&mut self) -> (RowMut<'_, E::Canonical>, Conj)
+    pub fn canonicalize_mut(&mut self) -> (RowMut<'_, E::Canonical, C>, Conj)
     where
         E: Conjugate,
     {
@@ -781,20 +676,20 @@ impl<E: Entity> Row<E> {
     /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
-    pub fn reverse_cols(&self) -> RowRef<'_, E> {
+    pub fn reverse_cols(&self) -> RowRef<'_, E, C> {
         self.as_ref().reverse_cols()
     }
 
     /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
-    pub fn reverse_cols_mut(&mut self) -> RowMut<'_, E> {
+    pub fn reverse_cols_mut(&mut self) -> RowMut<'_, E, C> {
         self.as_mut().reverse_cols_mut()
     }
 
     /// Returns an owning [`Row`] of the data
     #[inline]
-    pub fn to_owned(&self) -> Row<E::Canonical>
+    pub fn to_owned(&self) -> Row<E::Canonical, C>
     where
         E: Conjugate,
     {
@@ -873,7 +768,7 @@ impl<E: Entity> Row<E> {
     where
         E: ComplexField,
     {
-        self.as_2d_ref().kron(rhs)
+        self.as_ref().kron(rhs)
     }
 
     /// Returns a reference to the first element and a view over the remaining ones if the row is
@@ -1010,7 +905,7 @@ impl<E: Entity> Row<E> {
 
     #[doc(hidden)]
     #[inline(always)]
-    pub unsafe fn const_cast(&self) -> RowMut<'_, E> {
+    pub unsafe fn const_cast(&self) -> RowMut<'_, E, C> {
         self.as_ref().const_cast()
     }
 }
@@ -1022,77 +917,69 @@ impl<E: Entity> Default for Row<E> {
     }
 }
 
-impl<E: Entity> Clone for Row<E> {
+impl<E: Entity, C: Shape> Clone for Row<E, C> {
     fn clone(&self) -> Self {
-        let this = self.as_ref();
-        unsafe {
-            Self::from_fn(self.ncols(), |j| {
-                E::faer_from_units(E::faer_deref(this.get_unchecked(j)))
-            })
+        Self {
+            inner: self.inner.clone(),
         }
     }
 
     fn clone_from(&mut self, other: &Self) {
-        self.resize_with(0, |_| E::zeroed());
-        self.resize_with(
-            other.nrows(),
-            #[inline(always)]
-            |row| unsafe { other.read_unchecked(row) },
-        );
+        self.inner.clone_from(&other.inner)
     }
 }
 
-impl<E: Entity> As2D<E> for Row<E> {
+impl<E: Entity, C: Shape> As2D<E> for Row<E, C> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (*self).as_ref().as_2d()
+        (*self).as_ref().as_2d().as_dyn()
     }
 }
 
-impl<E: Entity> As2DMut<E> for Row<E> {
+impl<E: Entity, C: Shape> As2DMut<E> for Row<E, C> {
     #[inline]
     fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (*self).as_mut().as_2d_mut()
+        (*self).as_mut().as_2d_mut().as_dyn_mut()
     }
 }
 
-impl<E: Entity> AsRowRef<E> for Row<E> {
-    type C = usize;
+impl<E: Entity, C: Shape> AsRowRef<E> for Row<E, C> {
+    type C = C;
 
     #[inline]
-    fn as_row_ref(&self) -> RowRef<'_, E> {
+    fn as_row_ref(&self) -> RowRef<'_, E, C> {
         (*self).as_ref()
     }
 }
 
-impl<E: Entity> AsRowMut<E> for Row<E> {
+impl<E: Entity, C: Shape> AsRowMut<E> for Row<E, C> {
     #[inline]
-    fn as_row_mut(&mut self) -> RowMut<'_, E> {
+    fn as_row_mut(&mut self) -> RowMut<'_, E, C> {
         (*self).as_mut()
     }
 }
 
-impl<E: Entity> core::fmt::Debug for Row<E> {
+impl<E: Entity, C: Shape> core::fmt::Debug for Row<E, C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_ref().fmt(f)
     }
 }
 
-impl<E: SimpleEntity> core::ops::Index<usize> for Row<E> {
+impl<E: SimpleEntity, C: Shape> core::ops::Index<Idx<C>> for Row<E, C> {
     type Output = E;
 
     #[inline]
     #[track_caller]
-    fn index(&self, col: usize) -> &E {
-        self.as_ref().get(col)
+    fn index(&self, col: Idx<C>) -> &E {
+        self.as_ref().at(col)
     }
 }
 
-impl<E: SimpleEntity> core::ops::IndexMut<usize> for Row<E> {
+impl<E: SimpleEntity, C: Shape> core::ops::IndexMut<Idx<C>> for Row<E, C> {
     #[inline]
     #[track_caller]
-    fn index_mut(&mut self, col: usize) -> &mut E {
-        self.as_mut().get_mut(col)
+    fn index_mut(&mut self, col: Idx<C>) -> &mut E {
+        self.as_mut().at_mut(col)
     }
 }
 

@@ -398,144 +398,131 @@ pub mod utils {
         let new_row_indices = &mut new_row_indices[..nnz];
         let mut new_values = new_values.subslice(0..nnz);
 
-        ghost::Size::with(
-            nnz,
-            #[inline(always)]
-            |NNZ| {
-                let mut new_values =
-                    ghost::ArrayGroupMut::new(new_values.rb_mut().into_inner(), NNZ);
-                let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
+        {
+            with_dim!(NNZ, nnz);
+            let mut new_values = ghost::ArrayGroupMut::new(new_values.rb_mut().into_inner(), NNZ);
+            let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
 
-                let conj_if = |cond: bool, x: E| {
-                    if !E::IS_REAL && cond {
-                        x.faer_conj()
-                    } else {
-                        x
-                    }
-                };
+            let conj_if = |cond: bool, x: E| {
+                if !E::IS_REAL && cond {
+                    x.faer_conj()
+                } else {
+                    x
+                }
+            };
 
-                match (in_side, out_side) {
-                    (Side::Lower, Side::Lower) => {
-                        for old_j in N.indices() {
-                            let new_j_ = perm_inv[old_j];
-                            let new_j = new_j_.zx();
+            match (in_side, out_side) {
+                (Side::Lower, Side::Lower) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
 
-                            for (old_i, val) in zip(
-                                A.row_indices_of_col(old_j),
-                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                            ) {
-                                if old_i >= old_j {
-                                    let new_i_ = perm_inv[old_i];
-                                    let new_i = new_i_.zx();
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                        ) {
+                            if old_i >= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
 
-                                    let new_max = Ord::max(new_i_, new_j_);
-                                    let new_min = Ord::min(new_i, new_j);
-                                    let current_row_pos: &mut I =
-                                        &mut current_row_position[new_min];
-                                    // SAFETY: current_row_pos < NNZ
-                                    let row_pos = unsafe {
-                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
-                                    };
-                                    *current_row_pos += I::truncate(1);
-                                    new_values
-                                        .write(row_pos, conj_if(new_min == new_i, val.read()));
-                                    // (2)
-                                    new_row_indices[row_pos] = *new_max;
-                                }
-                            }
-                        }
-                    }
-                    (Side::Lower, Side::Upper) => {
-                        for old_j in N.indices() {
-                            let new_j_ = perm_inv[old_j];
-                            let new_j = new_j_.zx();
-
-                            for (old_i, val) in zip(
-                                A.row_indices_of_col(old_j),
-                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                            ) {
-                                if old_i >= old_j {
-                                    let new_i_ = perm_inv[old_i];
-                                    let new_i = new_i_.zx();
-
-                                    let new_max = Ord::max(new_i, new_j);
-                                    let new_min = Ord::min(new_i_, new_j_);
-                                    let current_row_pos = &mut current_row_position[new_max];
-                                    // SAFETY: current_row_pos < NNZ
-                                    let row_pos = unsafe {
-                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
-                                    };
-                                    *current_row_pos += I::truncate(1);
-                                    new_values
-                                        .write(row_pos, conj_if(new_max == new_i, val.read()));
-                                    // (2)
-                                    new_row_indices[row_pos] = *new_min;
-                                }
-                            }
-                        }
-                    }
-                    (Side::Upper, Side::Lower) => {
-                        for old_j in N.indices() {
-                            let new_j_ = perm_inv[old_j];
-                            let new_j = new_j_.zx();
-
-                            for (old_i, val) in zip(
-                                A.row_indices_of_col(old_j),
-                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                            ) {
-                                if old_i <= old_j {
-                                    let new_i_ = perm_inv[old_i];
-                                    let new_i = new_i_.zx();
-
-                                    let new_max = Ord::max(new_i_, new_j_);
-                                    let new_min = Ord::min(new_i, new_j);
-                                    let current_row_pos = &mut current_row_position[new_min];
-                                    // SAFETY: current_row_pos < NNZ
-                                    let row_pos = unsafe {
-                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
-                                    };
-                                    *current_row_pos += I::truncate(1);
-                                    new_values
-                                        .write(row_pos, conj_if(new_min == new_i, val.read()));
-                                    // (2)
-                                    new_row_indices[row_pos] = *new_max;
-                                }
-                            }
-                        }
-                    }
-                    (Side::Upper, Side::Upper) => {
-                        for old_j in N.indices() {
-                            let new_j_ = perm_inv[old_j];
-                            let new_j = new_j_.zx();
-
-                            for (old_i, val) in zip(
-                                A.row_indices_of_col(old_j),
-                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                            ) {
-                                if old_i <= old_j {
-                                    let new_i_ = perm_inv[old_i];
-                                    let new_i = new_i_.zx();
-
-                                    let new_max = Ord::max(new_i, new_j);
-                                    let new_min = Ord::min(new_i_, new_j_);
-                                    let current_row_pos = &mut current_row_position[new_max];
-                                    // SAFETY: current_row_pos < NNZ
-                                    let row_pos = unsafe {
-                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
-                                    };
-                                    *current_row_pos += I::truncate(1);
-                                    new_values
-                                        .write(row_pos, conj_if(new_max == new_i, val.read()));
-                                    // (2)
-                                    new_row_indices[row_pos] = *new_min;
-                                }
+                                let new_max = Ord::max(new_i_, new_j_);
+                                let new_min = Ord::min(new_i, new_j);
+                                let current_row_pos: &mut I = &mut current_row_position[new_min];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                *current_row_pos += I::truncate(1);
+                                new_values.write(row_pos, conj_if(new_min == new_i, val.read()));
+                                // (2)
+                                new_row_indices[row_pos] = *new_max;
                             }
                         }
                     }
                 }
-                debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
-            },
-        );
+                (Side::Lower, Side::Upper) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
+
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                        ) {
+                            if old_i >= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i, new_j);
+                                let new_min = Ord::min(new_i_, new_j_);
+                                let current_row_pos = &mut current_row_position[new_max];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                *current_row_pos += I::truncate(1);
+                                new_values.write(row_pos, conj_if(new_max == new_i, val.read()));
+                                // (2)
+                                new_row_indices[row_pos] = *new_min;
+                            }
+                        }
+                    }
+                }
+                (Side::Upper, Side::Lower) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
+
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                        ) {
+                            if old_i <= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i_, new_j_);
+                                let new_min = Ord::min(new_i, new_j);
+                                let current_row_pos = &mut current_row_position[new_min];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                *current_row_pos += I::truncate(1);
+                                new_values.write(row_pos, conj_if(new_min == new_i, val.read()));
+                                // (2)
+                                new_row_indices[row_pos] = *new_max;
+                            }
+                        }
+                    }
+                }
+                (Side::Upper, Side::Upper) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
+
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                        ) {
+                            if old_i <= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i, new_j);
+                                let new_min = Ord::min(new_i_, new_j_);
+                                let current_row_pos = &mut current_row_position[new_max];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                *current_row_pos += I::truncate(1);
+                                new_values.write(row_pos, conj_if(new_max == new_i, val.read()));
+                                // (2)
+                                new_row_indices[row_pos] = *new_min;
+                            }
+                        }
+                    }
+                }
+            }
+            debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
+        }
 
         if sort {
             sort_indices::<I, E>(
@@ -612,21 +599,20 @@ pub mod utils {
         out_side: Side,
         stack: &mut PodStack,
     ) -> SparseColMatMut<'out, I, E> {
-        ghost::Size::with(A.nrows(), |N| {
-            assert!(A.nrows() == A.ncols());
-            ghost_permute_hermitian_unsorted(
-                SliceGroupMut::new(new_values),
-                new_col_ptrs,
-                new_row_indices,
-                ghost::SparseColMatRef::new(A, N, N),
-                ghost::PermRef::new(perm, N),
-                in_side,
-                out_side,
-                false,
-                stack,
-            )
-            .into_inner()
-        })
+        with_dim!(N, A.nrows());
+        assert!(A.nrows() == A.ncols());
+        ghost_permute_hermitian_unsorted(
+            SliceGroupMut::new(new_values),
+            new_col_ptrs,
+            new_row_indices,
+            ghost::SparseColMatRef::new(A, N, N),
+            ghost::PermRef::new(perm, N),
+            in_side,
+            out_side,
+            false,
+            stack,
+        )
+        .into_inner()
     }
 
     /// Computes the size and alignment of the workspace required to compute a two-sided permutation
@@ -653,23 +639,22 @@ pub mod utils {
         out_side: Side,
         stack: &mut PodStack,
     ) -> SparseColMatMut<'out, I, E> {
-        ghost::Size::with(A.nrows(), |N| {
-            assert!(A.nrows() == A.ncols());
-            unsafe {
-                ghost_permute_hermitian_unsorted(
-                    SliceGroupMut::new(new_values),
-                    new_col_ptrs,
-                    new_row_indices,
-                    ghost::SparseColMatRef::new(A, N, N),
-                    ghost::PermRef::new(perm, N),
-                    in_side,
-                    out_side,
-                    true,
-                    stack,
-                )
-            }
-            .into_inner()
-        })
+        with_dim!(N, A.nrows());
+        assert!(A.nrows() == A.ncols());
+        unsafe {
+            ghost_permute_hermitian_unsorted(
+                SliceGroupMut::new(new_values),
+                new_col_ptrs,
+                new_row_indices,
+                ghost::SparseColMatRef::new(A, N, N),
+                ghost::PermRef::new(perm, N),
+                in_side,
+                out_side,
+                true,
+                stack,
+            )
+        }
+        .into_inner()
     }
 
     #[doc(hidden)]
@@ -864,14 +849,19 @@ pub mod utils {
     ///
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-    pub fn transpose<'a, I: Index, E: Entity>(
+    pub fn transpose<'a, I: Index, E: Entity, R: Shape, C: Shape>(
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
         new_values: GroupFor<E, &'a mut [E::Unit]>,
-        A: SparseColMatRef<'_, I, E>,
+        A: SparseColMatRef<'_, I, E, R, C>,
         stack: &mut PodStack,
-    ) -> SparseColMatMut<'a, I, E> {
-        ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
+    ) -> SparseColMatMut<'a, I, E, C, R> {
+        let M = A.nrows();
+        let N = A.ncols();
+        let A = A.as_dyn();
+        {
+            with_dim!(M, A.nrows());
+            with_dim!(N, A.ncols());
             ghost_transpose(
                 new_col_ptrs,
                 new_row_indices,
@@ -880,7 +870,8 @@ pub mod utils {
                 stack,
             )
             .into_inner()
-        })
+        }
+        .as_shape_mut(N, M)
     }
 
     /// Computes the adjoint of the matrix `A` and returns a view over it.
@@ -889,14 +880,19 @@ pub mod utils {
     ///
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-    pub fn adjoint<'a, I: Index, E: ComplexField>(
+    pub fn adjoint<'a, I: Index, E: ComplexField, R: Shape, C: Shape>(
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
         new_values: GroupFor<E, &'a mut [E::Unit]>,
-        A: SparseColMatRef<'_, I, E>,
+        A: SparseColMatRef<'_, I, E, R, C>,
         stack: &mut PodStack,
-    ) -> SparseColMatMut<'a, I, E> {
-        ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
+    ) -> SparseColMatMut<'a, I, E, C, R> {
+        let M = A.nrows();
+        let N = A.ncols();
+        let A = A.as_dyn();
+        {
+            with_dim!(M, A.nrows());
+            with_dim!(N, A.ncols());
             ghost_adjoint(
                 new_col_ptrs,
                 new_row_indices,
@@ -905,7 +901,8 @@ pub mod utils {
                 stack,
             )
             .into_inner()
-        })
+        }
+        .as_shape_mut(N, M)
     }
 
     /// Computes the adjoint of the symbolic matrix `A` and returns a view over it.
@@ -914,13 +911,18 @@ pub mod utils {
     ///
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-    pub fn adjoint_symbolic<'a, I: Index>(
+    pub fn adjoint_symbolic<'a, I: Index, R: Shape, C: Shape>(
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
-        A: SymbolicSparseColMatRef<'_, I>,
+        A: SymbolicSparseColMatRef<'_, I, R, C>,
         stack: &mut PodStack,
-    ) -> SymbolicSparseColMatRef<'a, I> {
-        ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
+    ) -> SymbolicSparseColMatRef<'a, I, C, R> {
+        let M = A.nrows();
+        let N = A.ncols();
+        let A = A.as_dyn();
+        {
+            with_dim!(M, A.nrows());
+            with_dim!(N, A.ncols());
             ghost_adjoint_symbolic(
                 new_col_ptrs,
                 new_row_indices,
@@ -928,7 +930,8 @@ pub mod utils {
                 stack,
             )
             .into_inner()
-        })
+        }
+        .as_shape(N, M)
     }
 }
 
@@ -1544,47 +1547,6 @@ mod tests {
             for i in 0..5 {
                 assert!(
                     sum[(i, j)] == lhs.get(i, j).unwrap_or(&0.0) + rhs.get(i, j).unwrap_or(&0.0)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_add_duplicates() {
-        let lhs = SparseColMat::<usize, f64>::new(
-            SymbolicSparseColMat::<usize>::new_checked(
-                5,
-                4,
-                vec![0, 4, 6, 9, 12],
-                None,
-                vec![0, 0, 2, 4, 1, 3, 0, 2, 4, 1, 3, 3],
-            ),
-            vec![1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 10.5],
-        );
-
-        let rhs = SparseColMat::<usize, f64>::new(
-            SymbolicSparseColMat::<usize>::new_checked(
-                5,
-                4,
-                vec![0, 2, 6, 8, 12],
-                None,
-                vec![1, 3, 0, 2, 2, 4, 1, 3, 0, 2, 4, 4],
-            ),
-            vec![
-                11.0, 12.0, 13.0, 14.0, 14.5, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0,
-            ],
-        );
-
-        let sum = ops::add(lhs.as_ref(), rhs.as_ref()).unwrap();
-
-        assert!(sum.compute_nnz() == lhs.compute_nnz() + rhs.compute_nnz());
-
-        for j in 0..4 {
-            for i in 0..5 {
-                assert!(
-                    sum.get_all(i, j).iter().sum::<f64>()
-                        == lhs.get_all(i, j).iter().sum::<f64>()
-                            + rhs.get_all(i, j).iter().sum::<f64>()
                 );
             }
         }

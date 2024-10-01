@@ -168,12 +168,20 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
         self.ptr_at_unchecked(row.unbound())
     }
 
-    /// Returns a view over the column.
+    /// Returns the input column with dynamic shape.
     #[inline]
     pub fn as_dyn(self) -> ColRef<'a, E> {
         let nrows = self.nrows().unbound();
         let row_stride = self.row_stride();
         unsafe { from_raw_parts(self.as_ptr(), nrows, row_stride) }
+    }
+
+    /// Returns the input column with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<V: Shape>(self, nrows: V) -> ColRef<'a, E, V> {
+        assert!(nrows.unbound() == self.nrows().unbound());
+        unsafe { from_raw_parts(self.as_ptr(), nrows, self.row_stride()) }
     }
 
     #[doc(hidden)]
@@ -478,18 +486,15 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 
     /// Returns an owning [`Col`] of the data.
     #[inline]
-    pub fn to_owned(&self) -> Col<E::Canonical>
+    pub fn to_owned(&self) -> Col<E::Canonical, R>
     where
         E: Conjugate,
     {
-        let this = self.as_dyn();
-        let mut mat = Col::new();
-        mat.resize_with(
-            this.nrows(),
+        Col::from_fn(
+            self.nrows(),
             #[inline(always)]
-            |row| unsafe { this.read_unchecked(row).canonicalize() },
-        );
-        mat
+            |row| unsafe { self.read_unchecked(row).canonicalize() },
+        )
     }
 
     /// Returns `true` if any of the elements is NaN, otherwise returns `false`.
@@ -738,10 +743,10 @@ pub fn from_slice<E: SimpleEntity>(slice: &[E]) -> ColRef<'_, E> {
     from_slice_generic(slice)
 }
 
-impl<E: Entity> As2D<E> for ColRef<'_, E> {
+impl<E: Entity, R: Shape> As2D<E> for ColRef<'_, E, R> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (*self).as_2d()
+        (*self).as_2d().as_dyn()
     }
 }
 

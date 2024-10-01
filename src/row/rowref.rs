@@ -167,12 +167,20 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
         self.ptr_at_unchecked(col.unbound())
     }
 
-    /// Returns a view over the row.
+    /// Returns the input row with dynamic shape.
     #[inline]
     pub fn as_dyn(self) -> RowRef<'a, E> {
         let ncols = self.ncols().unbound();
         let col_stride = self.col_stride();
         unsafe { from_raw_parts(self.as_ptr(), ncols, col_stride) }
+    }
+
+    /// Returns the input row with the given shape after checking that it matches the
+    /// current shape.
+    #[inline]
+    pub fn as_shape<H: Shape>(self, ncols: H) -> RowRef<'a, E, H> {
+        assert!(ncols.unbound() == self.ncols().unbound());
+        unsafe { from_raw_parts(self.as_ptr(), ncols, self.col_stride()) }
     }
 
     #[doc(hidden)]
@@ -452,11 +460,15 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 
     /// Returns an owning [`Row`] of the data.
     #[inline]
-    pub fn to_owned(&self) -> Row<E::Canonical>
+    pub fn to_owned(&self) -> Row<E::Canonical, C>
     where
         E: Conjugate,
     {
-        crate::zipped!(self).map(|crate::unzipped!(x)| x.read().canonicalize())
+        Row::from_fn(
+            self.ncols(),
+            #[inline(always)]
+            |i| unsafe { self.read_unchecked(i) }.canonicalize(),
+        )
     }
 
     /// Returns `true` if any of the elements is NaN, otherwise returns `false`.
@@ -705,10 +717,10 @@ pub fn from_slice<E: SimpleEntity>(slice: &[E]) -> RowRef<'_, E> {
     from_slice_generic(slice)
 }
 
-impl<E: Entity> As2D<E> for RowRef<'_, E> {
+impl<E: Entity, C: Shape> As2D<E> for RowRef<'_, E, C> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (*self).as_2d()
+        (*self).as_2d().as_dyn()
     }
 }
 
@@ -727,13 +739,13 @@ impl<'a, E: Entity, C: Shape> core::fmt::Debug for RowRef<'a, E, C> {
     }
 }
 
-impl<E: SimpleEntity> core::ops::Index<usize> for RowRef<'_, E> {
+impl<E: SimpleEntity, C: Shape> core::ops::Index<Idx<C>> for RowRef<'_, E, C> {
     type Output = E;
 
     #[inline]
     #[track_caller]
-    fn index(&self, col: usize) -> &E {
-        self.get(col)
+    fn index(&self, col: Idx<C>) -> &E {
+        self.at(col)
     }
 }
 
