@@ -5,10 +5,201 @@ use crate::{
 use dyn_stack::*;
 use reborrow::*;
 
-pub use crate::{
-    linalg::cholesky::llt::CholeskyError,
-    sparse::linalg::solvers::{SpSolver, SpSolverCore, SpSolverLstsq, SpSolverLstsqCore},
-};
+#[cfg(feature = "cholesky")]
+pub use crate::linalg::cholesky::llt::CholeskyError;
+
+#[track_caller]
+fn solve_with_conj_impl<
+    E: ComplexField,
+    D: ?Sized + SpSolverCore<E>,
+    ViewE: Conjugate<Canonical = E>,
+    B: ColBatch<ViewE>,
+>(
+    d: &D,
+    rhs: B,
+    conj: Conj,
+) -> B::Owned {
+    let mut rhs = B::new_owned_copied(&rhs);
+    d.solve_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
+    rhs
+}
+
+#[track_caller]
+fn solve_transpose_with_conj_impl<
+    E: ComplexField,
+    D: ?Sized + SpSolverCore<E>,
+    ViewE: Conjugate<Canonical = E>,
+    B: ColBatch<ViewE>,
+>(
+    d: &D,
+    rhs: B,
+    conj: Conj,
+) -> B::Owned {
+    let mut rhs = B::new_owned_copied(&rhs);
+    d.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
+    rhs
+}
+
+#[track_caller]
+fn solve_lstsq_with_conj_impl<
+    E: ComplexField,
+    D: ?Sized + SpSolverLstsqCore<E>,
+    ViewE: Conjugate<Canonical = E>,
+    B: ColBatch<ViewE>,
+>(
+    d: &D,
+    rhs: B,
+    conj: Conj,
+) -> B::Owned {
+    let mut rhs = B::new_owned_copied(&rhs);
+    d.solve_lstsq_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
+    let ncols = rhs.as_2d_ref().ncols();
+    B::resize_owned(&mut rhs, d.ncols(), ncols);
+    rhs
+}
+
+impl<E: ComplexField, Dec: ?Sized + SpSolverCore<E>> SpSolver<E> for Dec {
+    #[track_caller]
+    fn solve_in_place(&self, rhs: impl ColBatchMut<E>) {
+        let mut rhs = rhs;
+        self.solve_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::No)
+    }
+
+    #[track_caller]
+    fn solve_conj_in_place(&self, rhs: impl ColBatchMut<E>) {
+        let mut rhs = rhs;
+        self.solve_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::Yes)
+    }
+
+    #[track_caller]
+    fn solve_transpose_in_place(&self, rhs: impl ColBatchMut<E>) {
+        let mut rhs = rhs;
+        self.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::No)
+    }
+
+    #[track_caller]
+    fn solve_conj_transpose_in_place(&self, rhs: impl ColBatchMut<E>) {
+        let mut rhs = rhs;
+        self.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::Yes)
+    }
+
+    #[track_caller]
+    fn solve<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned {
+        solve_with_conj_impl::<E, _, _, _>(self, rhs, Conj::No)
+    }
+
+    #[track_caller]
+    fn solve_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned {
+        solve_with_conj_impl::<E, _, _, _>(self, rhs, Conj::Yes)
+    }
+
+    #[track_caller]
+    fn solve_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned {
+        solve_transpose_with_conj_impl::<E, _, _, _>(self, rhs, Conj::No)
+    }
+
+    #[track_caller]
+    fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned {
+        solve_transpose_with_conj_impl::<E, _, _, _>(self, rhs, Conj::Yes)
+    }
+}
+
+impl<E: ComplexField, Dec: ?Sized + SpSolverLstsqCore<E>> SpSolverLstsq<E> for Dec {
+    #[track_caller]
+    fn solve_lstsq_in_place(&self, rhs: impl ColBatchMut<E>) {
+        let mut rhs = rhs;
+        self.solve_lstsq_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::No)
+    }
+
+    #[track_caller]
+    fn solve_lstsq_conj_in_place(&self, rhs: impl ColBatchMut<E>) {
+        let mut rhs = rhs;
+        self.solve_lstsq_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::Yes)
+    }
+
+    #[track_caller]
+    fn solve_lstsq<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned {
+        solve_lstsq_with_conj_impl::<E, _, _, _>(self, rhs, Conj::No)
+    }
+
+    #[track_caller]
+    fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned {
+        solve_lstsq_with_conj_impl::<E, _, _, _>(self, rhs, Conj::Yes)
+    }
+}
+/// Object-safe base for [`SpSolver`]
+pub trait SpSolverCore<E: Entity> {
+    /// Returns the number of rows of the matrix used to construct this decomposition.
+    fn nrows(&self) -> usize;
+    /// Returns the number of columns of the matrix used to construct this decomposition.
+    fn ncols(&self) -> usize;
+
+    #[doc(hidden)]
+    fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+    #[doc(hidden)]
+    fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+}
+
+/// Object-safe base for [`SpSolverLstsq`]
+pub trait SpSolverLstsqCore<E: Entity>: SpSolverCore<E> {
+    #[doc(hidden)]
+    fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+}
+
+/// Solver that can compute solution of a linear system.
+pub trait SpSolver<E: ComplexField>: SpSolverCore<E> {
+    /// Solves the equation `self * X = rhs` when self is square, and stores the result in `rhs`.
+    fn solve_in_place(&self, rhs: impl ColBatchMut<E>);
+    /// Solves the equation `conjugate(self) * X = rhs` when self is square, and stores the result
+    /// in `rhs`.
+    fn solve_conj_in_place(&self, rhs: impl ColBatchMut<E>);
+    /// Solves the equation `transpose(self) * X = rhs` when self is square, and stores the result
+    /// in `rhs`.
+    fn solve_transpose_in_place(&self, rhs: impl ColBatchMut<E>);
+    /// Solves the equation `adjoint(self) * X = rhs` when self is square, and stores the result in
+    /// `rhs`.
+    fn solve_conj_transpose_in_place(&self, rhs: impl ColBatchMut<E>);
+    /// Solves the equation `self * X = rhs` when self is square, and returns the result.
+    fn solve<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
+    /// Solves the equation `conjugate(self) * X = rhs` when self is square, and returns the result.
+    fn solve_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
+    /// Solves the equation `transpose(self) * X = rhs` when self is square, and returns the result.
+    fn solve_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned;
+    /// Solves the equation `adjoint(self) * X = rhs` when self is square, and returns the result.
+    fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned;
+}
+
+/// Solver that can compute the least squares solution of an overdetermined linear system.
+pub trait SpSolverLstsq<E: ComplexField>: SpSolverLstsqCore<E> {
+    /// Solves the equation `self * X = rhs`, in the sense of least squares, and stores the
+    /// result in the top rows of `rhs`.
+    fn solve_lstsq_in_place(&self, rhs: impl ColBatchMut<E>);
+    /// Solves the equation `conjugate(self) * X = rhs`, in the sense of least squares, and
+    /// stores the result in the top rows of `rhs`.
+    fn solve_lstsq_conj_in_place(&self, rhs: impl ColBatchMut<E>);
+    /// Solves the equation `self * X = rhs`, and returns the result.
+    fn solve_lstsq<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
+    /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
+    fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned;
+}
 
 /// Object-safe base for [`Solver`]
 pub trait SolverCore<E: Entity>: SpSolverCore<E> {
@@ -40,12 +231,14 @@ impl<E: ComplexField, Dec: ?Sized + SolverLstsqCore<E>> SolverLstsq<E> for Dec {
 impl<E: ComplexField, Dec: ?Sized + SolverCore<E>> Solver<E> for Dec {}
 
 /// Cholesky decomposition.
+#[cfg(feature = "cholesky")]
 #[derive(Debug)]
 pub struct Cholesky<E: Entity> {
     factors: Mat<E>,
 }
 
 /// Bunch-Kaufman decomposition.
+#[cfg(feature = "cholesky")]
 #[derive(Debug)]
 pub struct Lblt<E: Entity> {
     factors: Mat<E>,
@@ -55,6 +248,7 @@ pub struct Lblt<E: Entity> {
 }
 
 /// LU decomposition with partial pivoting.
+#[cfg(feature = "lu")]
 #[derive(Debug)]
 pub struct PartialPivLu<E: Entity> {
     pub(crate) factors: Mat<E>,
@@ -64,6 +258,7 @@ pub struct PartialPivLu<E: Entity> {
 }
 /// LU decomposition with full pivoting.
 #[derive(Debug)]
+#[cfg(feature = "lu")]
 pub struct FullPivLu<E: Entity> {
     factors: Mat<E>,
     row_perm: alloc::vec::Vec<usize>,
@@ -74,12 +269,14 @@ pub struct FullPivLu<E: Entity> {
 }
 
 /// QR decomposition.
+#[cfg(feature = "qr")]
 #[derive(Debug)]
 pub struct Qr<E: Entity> {
     pub(crate) factors: Mat<E>,
     householder: Mat<E>,
 }
 /// QR decomposition with column pivoting.
+#[cfg(feature = "qr")]
 #[derive(Debug)]
 pub struct ColPivQr<E: Entity> {
     factors: Mat<E>,
@@ -89,6 +286,7 @@ pub struct ColPivQr<E: Entity> {
 }
 
 /// Singular value decomposition.
+#[cfg(feature = "svd")]
 #[derive(Debug)]
 pub struct Svd<E: Entity> {
     s: Col<E>,
@@ -96,11 +294,13 @@ pub struct Svd<E: Entity> {
     v: Mat<E>,
 }
 /// Thin singular value decomposition.
+#[cfg(feature = "svd")]
 #[derive(Debug)]
 pub struct ThinSvd<E: Entity> {
     inner: Svd<E>,
 }
 
+#[cfg(feature = "evd")]
 /// Self-adjoint eigendecomposition.
 #[derive(Debug)]
 pub struct SelfAdjointEigendecomposition<E: Entity> {
@@ -108,6 +308,7 @@ pub struct SelfAdjointEigendecomposition<E: Entity> {
     u: Mat<E>,
 }
 
+#[cfg(feature = "evd")]
 /// Complex eigendecomposition.
 #[derive(Debug)]
 pub struct Eigendecomposition<E: Entity> {
@@ -115,6 +316,7 @@ pub struct Eigendecomposition<E: Entity> {
     u: Mat<E>,
 }
 
+#[cfg(feature = "cholesky")]
 impl<E: ComplexField> Cholesky<E> {
     /// Returns the Cholesky factorization of the input
     /// matrix, or an error if the matrix is not positive definite.
@@ -181,6 +383,7 @@ impl<E: ComplexField> Cholesky<E> {
         factor
     }
 }
+#[cfg(feature = "cholesky")]
 impl<E: ComplexField> SpSolverCore<E> for Cholesky<E> {
     #[track_caller]
     fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -216,6 +419,7 @@ impl<E: ComplexField> SpSolverCore<E> for Cholesky<E> {
         self.factors.ncols()
     }
 }
+#[cfg(feature = "cholesky")]
 impl<E: ComplexField> SolverCore<E> for Cholesky<E> {
     fn inverse(&self) -> Mat<E> {
         let mut inv = Mat::<E>::zeros(self.dim(), self.dim());
@@ -267,6 +471,7 @@ impl<E: ComplexField> SolverCore<E> for Cholesky<E> {
     }
 }
 
+#[cfg(feature = "cholesky")]
 impl<E: ComplexField> Lblt<E> {
     /// Returns the Bunch-Kaufman factorization of the input matrix.
     ///
@@ -330,6 +535,7 @@ impl<E: ComplexField> Lblt<E> {
     }
 }
 
+#[cfg(feature = "cholesky")]
 impl<E: ComplexField> SpSolverCore<E> for Lblt<E> {
     #[track_caller]
     fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -367,6 +573,7 @@ impl<E: ComplexField> SpSolverCore<E> for Lblt<E> {
         self.factors.ncols()
     }
 }
+#[cfg(feature = "cholesky")]
 impl<E: ComplexField> SolverCore<E> for Lblt<E> {
     fn inverse(&self) -> Mat<E> {
         let n = self.dim();
@@ -452,6 +659,7 @@ impl<E: ComplexField> SolverCore<E> for Lblt<E> {
     }
 }
 
+#[cfg(feature = "lu")]
 impl<E: ComplexField> PartialPivLu<E> {
     /// Returns the LU decomposition of the input matrix with partial (row) pivoting.
     ///
@@ -534,6 +742,7 @@ impl<E: ComplexField> PartialPivLu<E> {
         factor
     }
 }
+#[cfg(feature = "lu")]
 impl<E: ComplexField> SpSolverCore<E> for PartialPivLu<E> {
     #[track_caller]
     fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -589,6 +798,7 @@ impl<E: ComplexField> SpSolverCore<E> for PartialPivLu<E> {
         self.factors.ncols()
     }
 }
+#[cfg(feature = "lu")]
 impl<E: ComplexField> SolverCore<E> for PartialPivLu<E> {
     fn inverse(&self) -> Mat<E> {
         let mut inv = Mat::<E>::zeros(self.dim(), self.dim());
@@ -635,6 +845,7 @@ impl<E: ComplexField> SolverCore<E> for PartialPivLu<E> {
     }
 }
 
+#[cfg(feature = "lu")]
 impl<E: ComplexField> FullPivLu<E> {
     /// Returns the LU decomposition of the input matrix with row and column pivoting.
     ///
@@ -733,6 +944,7 @@ impl<E: ComplexField> FullPivLu<E> {
         factor
     }
 }
+#[cfg(feature = "lu")]
 impl<E: ComplexField> SpSolverCore<E> for FullPivLu<E> {
     #[track_caller]
     fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -794,6 +1006,7 @@ impl<E: ComplexField> SpSolverCore<E> for FullPivLu<E> {
         self.factors.ncols()
     }
 }
+#[cfg(feature = "lu")]
 impl<E: ComplexField> SolverCore<E> for FullPivLu<E> {
     #[track_caller]
     fn inverse(&self) -> Mat<E> {
@@ -847,6 +1060,7 @@ impl<E: ComplexField> SolverCore<E> for FullPivLu<E> {
     }
 }
 
+#[cfg(feature = "qr")]
 impl<E: ComplexField> Qr<E> {
     /// Returns the QR decomposition of the input matrix without pivoting.
     ///
@@ -956,6 +1170,7 @@ impl<E: ComplexField> Qr<E> {
         q
     }
 }
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SpSolverCore<E> for Qr<E> {
     #[track_caller]
     fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -995,6 +1210,7 @@ impl<E: ComplexField> SpSolverCore<E> for Qr<E> {
         self.factors.ncols()
     }
 }
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SolverCore<E> for Qr<E> {
     fn reconstruct(&self) -> Mat<E> {
         let mut rec = Mat::<E>::zeros(self.nrows(), self.ncols());
@@ -1045,6 +1261,7 @@ impl<E: ComplexField> SolverCore<E> for Qr<E> {
     }
 }
 
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SpSolverLstsqCore<E> for Qr<E> {
     #[track_caller]
     fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -1068,8 +1285,10 @@ impl<E: ComplexField> SpSolverLstsqCore<E> for Qr<E> {
         );
     }
 }
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SolverLstsqCore<E> for Qr<E> {}
 
+#[cfg(feature = "qr")]
 impl<E: ComplexField> ColPivQr<E> {
     /// Returns the QR decomposition of the input matrix with column pivoting.
     ///
@@ -1162,6 +1381,7 @@ impl<E: ComplexField> ColPivQr<E> {
         Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)
     }
 }
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SpSolverCore<E> for ColPivQr<E> {
     #[track_caller]
     fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -1202,6 +1422,7 @@ impl<E: ComplexField> SpSolverCore<E> for ColPivQr<E> {
         self.factors.ncols()
     }
 }
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SolverCore<E> for ColPivQr<E> {
     fn reconstruct(&self) -> Mat<E> {
         let mut rec = Mat::<E>::zeros(self.nrows(), self.ncols());
@@ -1254,6 +1475,7 @@ impl<E: ComplexField> SolverCore<E> for ColPivQr<E> {
     }
 }
 
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SpSolverLstsqCore<E> for ColPivQr<E> {
     #[track_caller]
     fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
@@ -1278,8 +1500,10 @@ impl<E: ComplexField> SpSolverLstsqCore<E> for ColPivQr<E> {
         );
     }
 }
+#[cfg(feature = "qr")]
 impl<E: ComplexField> SolverLstsqCore<E> for ColPivQr<E> {}
 
+#[cfg(feature = "svd")]
 impl<E: ComplexField> Svd<E> {
     #[track_caller]
     fn __new_impl((matrix, conj): (MatRef<'_, E>, Conj), thin: bool) -> Self {
@@ -1368,6 +1592,7 @@ fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: ColRef<'_, E>) {
         });
     }
 }
+#[cfg(feature = "svd")]
 impl<E: ComplexField> SpSolverCore<E> for Svd<E> {
     fn nrows(&self) -> usize {
         self.u.nrows()
@@ -1423,6 +1648,7 @@ impl<E: ComplexField> SpSolverCore<E> for Svd<E> {
         }
     }
 }
+#[cfg(feature = "svd")]
 impl<E: ComplexField> SolverCore<E> for Svd<E> {
     fn reconstruct(&self) -> Mat<E> {
         let m = self.nrows();
@@ -1451,6 +1677,7 @@ impl<E: ComplexField> SolverCore<E> for Svd<E> {
     }
 }
 
+#[cfg(feature = "svd")]
 impl<E: ComplexField> ThinSvd<E> {
     /// Returns the thin SVD of the input matrix.
     ///
@@ -1485,6 +1712,7 @@ impl<E: ComplexField> ThinSvd<E> {
         )
     }
 }
+#[cfg(feature = "svd")]
 impl<E: ComplexField> SpSolverCore<E> for ThinSvd<E> {
     fn nrows(&self) -> usize {
         self.inner.nrows()
@@ -1505,6 +1733,7 @@ impl<E: ComplexField> SpSolverCore<E> for ThinSvd<E> {
             .solve_transpose_in_place_with_conj_impl(rhs, conj)
     }
 }
+#[cfg(feature = "svd")]
 impl<E: ComplexField> SolverCore<E> for ThinSvd<E> {
     fn reconstruct(&self) -> Mat<E> {
         self.inner.reconstruct()
@@ -1515,6 +1744,7 @@ impl<E: ComplexField> SolverCore<E> for ThinSvd<E> {
     }
 }
 
+#[cfg(feature = "evd")]
 impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
     #[track_caller]
     fn __new_impl((matrix, conj): (MatRef<'_, E>, Conj), side: Side) -> Self {
@@ -1580,6 +1810,7 @@ impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
         self.s.as_ref().column_vector_as_diagonal()
     }
 }
+#[cfg(feature = "evd")]
 impl<E: ComplexField> SpSolverCore<E> for SelfAdjointEigendecomposition<E> {
     fn nrows(&self) -> usize {
         self.u.nrows()
@@ -1633,6 +1864,7 @@ impl<E: ComplexField> SpSolverCore<E> for SelfAdjointEigendecomposition<E> {
         }
     }
 }
+#[cfg(feature = "evd")]
 impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
     fn reconstruct(&self) -> Mat<E> {
         let size = self.nrows();
@@ -1657,6 +1889,7 @@ impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
     }
 }
 
+#[cfg(feature = "evd")]
 impl<E: ComplexField> Eigendecomposition<E> {
     #[track_caller]
     pub(crate) fn __values_from_real(matrix: MatRef<'_, E::Real>) -> alloc::vec::Vec<E> {
@@ -2008,6 +2241,7 @@ where
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     #[doc(alias = "llt")]
+    #[cfg(feature = "cholesky")]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         Cholesky::try_new(self.as_ref(), side)
     }
@@ -2015,37 +2249,44 @@ where
     #[track_caller]
     #[doc(alias = "ldl")]
     #[doc(alias = "ldlt")]
+    #[cfg(feature = "cholesky")]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         Lblt::new(self.as_ref(), side)
     }
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
     #[doc(alias = "lu")]
+    #[cfg(feature = "lu")]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         PartialPivLu::<E::Canonical>::new(self.as_ref())
     }
     /// Returns the LU decomposition of `self` with full pivoting.
     #[track_caller]
+    #[cfg(feature = "lu")]
     pub fn full_piv_lu(&self) -> FullPivLu<E::Canonical> {
         FullPivLu::<E::Canonical>::new(self.as_ref())
     }
     /// Returns the QR decomposition of `self`.
     #[track_caller]
+    #[cfg(feature = "qr")]
     pub fn qr(&self) -> Qr<E::Canonical> {
         Qr::<E::Canonical>::new(self.as_ref())
     }
     /// Returns the QR decomposition of `self` with column pivoting.
     #[track_caller]
+    #[cfg(feature = "qr")]
     pub fn col_piv_qr(&self) -> ColPivQr<E::Canonical> {
         ColPivQr::<E::Canonical>::new(self.as_ref())
     }
     /// Returns the SVD of `self`.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn svd(&self) -> Svd<E::Canonical> {
         Svd::<E::Canonical>::new(self.as_ref())
     }
     /// Returns the thin SVD of `self`.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn thin_svd(&self) -> ThinSvd<E::Canonical> {
         ThinSvd::<E::Canonical>::new(self.as_ref())
     }
@@ -2053,6 +2294,7 @@ where
     /// side is accessed.
     #[track_caller]
     #[doc(alias = "hermitian_eigendecomposition")]
+    #[cfg(feature = "evd")]
     pub fn selfadjoint_eigendecomposition(
         &self,
         side: Side,
@@ -2062,6 +2304,7 @@ where
 
     /// Returns the eigendecomposition of `self`, as a complex matrix.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn eigendecomposition<
         ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>,
     >(
@@ -2085,12 +2328,14 @@ where
 
     /// Returns the eigendecomposition of `self`, when `E` is in the complex domain.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn complex_eigendecomposition(&self) -> Eigendecomposition<E::Canonical> {
         Eigendecomposition::<E::Canonical>::new_from_complex(self.as_ref())
     }
 
     /// Returns the determinant of `self`.
     #[track_caller]
+    #[cfg(feature = "lu")]
     pub fn determinant(&self) -> E::Canonical {
         assert!(self.nrows() == self.ncols());
         let lu = self.partial_piv_lu();
@@ -2109,6 +2354,7 @@ where
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
     #[doc(alias = "hermitian_eigenvalues")]
+    #[cfg(feature = "evd")]
     pub fn selfadjoint_eigenvalues(
         &self,
         side: Side,
@@ -2146,6 +2392,7 @@ where
 
     /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn singular_values(&self) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         let dim = Ord::min(self.nrows(), self.ncols());
         let parallelism = get_global_parallelism();
@@ -2178,6 +2425,7 @@ where
     /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is
     /// currently unspecified.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
     ) -> alloc::vec::Vec<ComplexE> {
@@ -2200,6 +2448,7 @@ where
     /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
     /// eigenvalues is currently unspecified.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn complex_eigenvalues(&self) -> alloc::vec::Vec<E::Canonical> {
         Eigendecomposition::<E::Canonical>::__values_from_complex_impl(self.canonicalize())
     }
@@ -2294,6 +2543,7 @@ where
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     #[doc(alias = "llt")]
+    #[cfg(feature = "cholesky")]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
     }
@@ -2301,37 +2551,44 @@ where
     #[track_caller]
     #[doc(alias = "ldl")]
     #[doc(alias = "ldlt")]
+    #[cfg(feature = "cholesky")]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         self.as_ref().lblt(side)
     }
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
     #[doc(alias = "lu")]
+    #[cfg(feature = "lu")]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
     /// Returns the LU decomposition of `self` with full pivoting.
     #[track_caller]
+    #[cfg(feature = "lu")]
     pub fn full_piv_lu(&self) -> FullPivLu<E::Canonical> {
         self.as_ref().full_piv_lu()
     }
     /// Returns the QR decomposition of `self`.
     #[track_caller]
+    #[cfg(feature = "qr")]
     pub fn qr(&self) -> Qr<E::Canonical> {
         self.as_ref().qr()
     }
     /// Returns the QR decomposition of `self` with column pivoting.
     #[track_caller]
+    #[cfg(feature = "qr")]
     pub fn col_piv_qr(&self) -> ColPivQr<E::Canonical> {
         self.as_ref().col_piv_qr()
     }
     /// Returns the SVD of `self`.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn svd(&self) -> Svd<E::Canonical> {
         self.as_ref().svd()
     }
     /// Returns the thin SVD of `self`.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn thin_svd(&self) -> ThinSvd<E::Canonical> {
         self.as_ref().thin_svd()
     }
@@ -2339,6 +2596,7 @@ where
     /// side is accessed.
     #[track_caller]
     #[doc(alias = "hermitian_eigendecomposition")]
+    #[cfg(feature = "evd")]
     pub fn selfadjoint_eigendecomposition(
         &self,
         side: Side,
@@ -2348,6 +2606,7 @@ where
 
     /// Returns the eigendecomposition of `self`, as a complex matrix.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn eigendecomposition<
         ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>,
     >(
@@ -2358,12 +2617,14 @@ where
 
     /// Returns the eigendecomposition of `self`, when `E` is in the complex domain.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn complex_eigendecomposition(&self) -> Eigendecomposition<E::Canonical> {
         self.as_ref().complex_eigendecomposition()
     }
 
     /// Returns the determinant of `self`.
     #[track_caller]
+    #[cfg(feature = "lu")]
     pub fn determinant(&self) -> E::Canonical {
         self.as_ref().determinant()
     }
@@ -2372,6 +2633,7 @@ where
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
     #[doc(alias = "hermitian_eigenvalues")]
+    #[cfg(feature = "evd")]
     pub fn selfadjoint_eigenvalues(
         &self,
         side: Side,
@@ -2381,6 +2643,7 @@ where
 
     /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn singular_values(&self) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().singular_values()
     }
@@ -2388,6 +2651,7 @@ where
     /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is
     /// currently unspecified.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
     ) -> alloc::vec::Vec<ComplexE> {
@@ -2397,6 +2661,7 @@ where
     /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
     /// eigenvalues is currently unspecified.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn complex_eigenvalues(&self) -> alloc::vec::Vec<E::Canonical> {
         self.as_ref().complex_eigenvalues()
     }
@@ -2491,6 +2756,7 @@ where
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     #[doc(alias = "llt")]
+    #[cfg(feature = "cholesky")]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
     }
@@ -2498,37 +2764,44 @@ where
     #[track_caller]
     #[doc(alias = "ldl")]
     #[doc(alias = "ldlt")]
+    #[cfg(feature = "cholesky")]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         self.as_ref().lblt(side)
     }
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
     #[doc(alias = "lu")]
+    #[cfg(feature = "lu")]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
     /// Returns the LU decomposition of `self` with full pivoting.
     #[track_caller]
+    #[cfg(feature = "lu")]
     pub fn full_piv_lu(&self) -> FullPivLu<E::Canonical> {
         self.as_ref().full_piv_lu()
     }
     /// Returns the QR decomposition of `self`.
     #[track_caller]
+    #[cfg(feature = "qr")]
     pub fn qr(&self) -> Qr<E::Canonical> {
         self.as_ref().qr()
     }
     /// Returns the QR decomposition of `self` with column pivoting.
     #[track_caller]
+    #[cfg(feature = "qr")]
     pub fn col_piv_qr(&self) -> ColPivQr<E::Canonical> {
         self.as_ref().col_piv_qr()
     }
     /// Returns the SVD of `self`.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn svd(&self) -> Svd<E::Canonical> {
         self.as_ref().svd()
     }
     /// Returns the thin SVD of `self`.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn thin_svd(&self) -> ThinSvd<E::Canonical> {
         self.as_ref().thin_svd()
     }
@@ -2536,6 +2809,7 @@ where
     /// side is accessed.
     #[track_caller]
     #[doc(alias = "hermitian_eigendecomposition")]
+    #[cfg(feature = "evd")]
     pub fn selfadjoint_eigendecomposition(
         &self,
         side: Side,
@@ -2545,6 +2819,7 @@ where
 
     /// Returns the eigendecomposition of `self`, as a complex matrix.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn eigendecomposition<
         ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>,
     >(
@@ -2555,12 +2830,14 @@ where
 
     /// Returns the eigendecomposition of `self`, when `E` is in the complex domain.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn complex_eigendecomposition(&self) -> Eigendecomposition<E::Canonical> {
         self.as_ref().complex_eigendecomposition()
     }
 
     /// Returns the determinant of `self`.
     #[track_caller]
+    #[cfg(feature = "lu")]
     pub fn determinant(&self) -> E::Canonical {
         self.as_ref().determinant()
     }
@@ -2569,6 +2846,7 @@ where
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
     #[doc(alias = "hermitian_eigenvalues")]
+    #[cfg(feature = "evd")]
     pub fn selfadjoint_eigenvalues(
         &self,
         side: Side,
@@ -2578,6 +2856,7 @@ where
 
     /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
+    #[cfg(feature = "svd")]
     pub fn singular_values(&self) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().singular_values()
     }
@@ -2585,6 +2864,7 @@ where
     /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is
     /// currently unspecified.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
     ) -> alloc::vec::Vec<ComplexE> {
@@ -2594,6 +2874,7 @@ where
     /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
     /// eigenvalues is currently unspecified.
     #[track_caller]
+    #[cfg(feature = "evd")]
     pub fn complex_eigenvalues(&self) -> alloc::vec::Vec<E::Canonical> {
         self.as_ref().complex_eigenvalues()
     }
@@ -2713,6 +2994,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "cholesky")]
     fn test_lblt_real() {
         let n = 7;
 
@@ -2725,6 +3007,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "cholesky")]
     fn test_lblt() {
         let n = 7;
 
@@ -2737,6 +3020,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "cholesky")]
     fn test_cholesky() {
         let n = 7;
 
@@ -2749,6 +3033,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lu")]
     fn test_partial_piv_lu() {
         let n = 7;
 
@@ -2759,6 +3044,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lu")]
     fn test_full_piv_lu() {
         let n = 7;
 
@@ -2769,6 +3055,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "qr")]
     fn test_qr_real() {
         let n = 7;
 
@@ -2787,6 +3074,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "qr")]
     fn test_qr() {
         let n = 7;
 
@@ -2808,6 +3096,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "qr")]
     fn test_col_piv_qr() {
         let n = 7;
 
@@ -2834,6 +3123,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "svd")]
     fn test_svd() {
         let n = 7;
 
@@ -2854,6 +3144,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "svd")]
     fn test_thin_svd() {
         let n = 7;
 
@@ -2865,6 +3156,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "svd")]
     fn pseudoinverse_square() {
         #[rustfmt::skip]
         let a = mat![
@@ -2886,6 +3178,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "svd")]
     fn pseudoinverse_stereo() {
         #[rustfmt::skip]
         let a: Mat<f64> = mat![
@@ -2905,6 +3198,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "svd")]
     fn pseudoinverse_stereo_cplx() {
         use crate::complex_native::c64;
 
@@ -2928,6 +3222,7 @@ mod tests {
         assert!((&ai - &ai_expected).norm_l2() < 2e-16);
     }
     #[test]
+    #[cfg(feature = "evd")]
     fn test_selfadjoint_eigendecomposition() {
         let n = 7;
 
@@ -2957,6 +3252,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "evd")]
+    #[cfg(feature = "lu")]
     fn test_eigendecomposition() {
         let n = 7;
 
@@ -2987,6 +3284,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "evd")]
     fn test_real_eigendecomposition() {
         let n = 7;
 
@@ -3001,6 +3299,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "evd")]
     fn this_other_tree_has_correct_maximum_eigenvalue_20() {
         let edges = [
             (3, 2),
@@ -3047,6 +3346,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "evd")]
     fn this_other_tree_has_correct_maximum_eigenvalue_3() {
         let edges = [(1, 0), (0, 2)];
         let mut a = Mat::zeros(3, 3);
@@ -3071,6 +3371,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lu")]
     fn test_plu() {
         let a = mat![
             [0.75026225, 0.35005635, -0.55833477],
@@ -3087,6 +3388,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lu")]
     fn test_flu() {
         let a = mat![
             [0.75026225, 0.35005635, -0.55833477],

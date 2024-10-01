@@ -26,6 +26,7 @@ pub mod mat;
 /// Permutations with compile-time checks.
 pub mod perm;
 /// Sparse matrices with compile-time access checks.
+#[cfg(feature = "sparse")]
 pub mod sparse;
 
 /// Immutable array group of length equal to the value tied to `'n`.

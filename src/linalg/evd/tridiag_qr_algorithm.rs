@@ -9,8 +9,8 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    linalg::svd::jacobi::JacobiRotation, perm::swap_cols_idx as swap_cols, unzipped, zipped,
-    MatMut, RealField,
+    linalg::jacobi::JacobiRotation, perm::swap_cols_idx as swap_cols, unzipped, zipped, MatMut,
+    RealField,
 };
 use reborrow::*;
 

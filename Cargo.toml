@@ -39,7 +39,14 @@ libm = "0.2.8"
 generativity = "1.1.0"
 
 [features]
-default = ["std", "rayon", "serde", "rand", "npy"]
+default = [
+  "std",
+  "rayon",
+  "serde",
+  "rand",
+  "npy",
+  "linalg",
+]
 unstable = []
 std = [
   "faer-entity/std",
@@ -60,6 +67,21 @@ nightly = [
 perf-warn = ["log"]
 serde = ["dep:serde"]
 npy = ["std", "dep:npyz"]
+
+linalg = [
+  "cholesky",
+  "qr",
+  "lu",
+  "svd",
+  "evd",
+  "sparse",
+]
+cholesky = []
+qr = []
+lu = []
+evd = ["qr"]
+svd = ["qr"]
+sparse = []
 
 [dev-dependencies]
 aligned-vec = "0.6.0"

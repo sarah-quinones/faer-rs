@@ -314,6 +314,7 @@ pub mod perm;
 /// Row vector type.
 pub mod row;
 /// Sparse data structures and algorithms.
+#[cfg(feature = "sparse")]
 pub mod sparse;
 
 pub use col::{Col, ColMut, ColRef};
@@ -980,195 +981,19 @@ pub mod prelude {
     pub use crate::{
         col,
         complex_native::{c32, c64},
-        linalg::solvers::{
-            Solver, SolverCore, SolverLstsq, SolverLstsqCore, SpSolver, SpSolverCore,
-            SpSolverLstsq, SpSolverLstsqCore,
-        },
         mat, row, unzipped, zipped, Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
     };
-}
 
-/// Matrix solvers and decompositions.
-#[deprecated = "moved to faer::linalg::solvers"]
-pub mod solvers {
-    pub use crate::linalg::solvers::*;
+    pub use crate::linalg::solvers::{
+        Solver, SolverCore, SolverLstsq, SolverLstsqCore, SpSolver, SpSolverCore, SpSolverLstsq,
+        SpSolverLstsqCore,
+    };
 }
 
 /// Statistics-related utilities.
 #[cfg(feature = "rand")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
 pub mod stats;
-
-/// Re-exports.
-#[deprecated]
-pub mod modules {
-    /// Emulation layer for `faer_core`
-    #[deprecated]
-    pub mod core {
-        #[deprecated = "moved to faer::col"]
-        pub use crate::col;
-
-        #[deprecated = "moved to faer::complex_native"]
-        pub use crate::complex_native;
-
-        #[deprecated = "moved to faer::utils::constrained"]
-        pub use crate::utils::constrained;
-
-        #[deprecated = "moved to faer::utils::{slice, simd, vec}"]
-        pub use crate::utils as group_helpers;
-
-        #[deprecated = "moved to faer::linalg::householder"]
-        pub use crate::linalg::householder;
-
-        #[deprecated = "moved to faer::linalg::triangular_inverse"]
-        pub use crate::linalg::triangular_inverse as inverse;
-
-        #[deprecated = "moved to faer::linalg::triangular_solve"]
-        pub use crate::linalg::triangular_inverse as solve;
-
-        #[deprecated = "moved to faer::mat"]
-        pub use crate::mat;
-
-        #[deprecated = "moved to faer::linalg::matmul"]
-        pub use crate::linalg::matmul as mul;
-
-        #[deprecated = "moved to faer::perm"]
-        pub use crate::perm as permutation;
-
-        #[deprecated = "moved to faer::row"]
-        pub use crate::row;
-
-        #[deprecated = "moved to faer::sparse"]
-        pub use crate::sparse;
-
-        #[deprecated = "moved to faer::linalg::zip"]
-        pub use crate::linalg::zip;
-
-        #[deprecated = "moved to faer::zipped"]
-        pub use crate::zipped;
-
-        #[deprecated = "moved to faer::unzipped"]
-        pub use crate::unzipped;
-
-        #[deprecated = "moved to faer::linalg::entity::IdentityGroup"]
-        pub use crate::linalg::entity::IdentityGroup;
-
-        #[deprecated = "moved to faer::Conj"]
-        pub use crate::Conj;
-
-        #[deprecated = "moved to faer::sparse::FaerError"]
-        pub use crate::sparse::FaerError;
-
-        #[deprecated = "moved to faer::Parallelism"]
-        pub use crate::Parallelism;
-
-        #[deprecated = "moved to faer::Side"]
-        pub use crate::Side;
-
-        #[deprecated = "moved to faer::col::AsColRef"]
-        pub use crate::col::AsColRef;
-
-        #[deprecated = "moved to faer::col::AsColMut"]
-        pub use crate::col::AsColMut;
-
-        #[deprecated = "moved to faer::row::AsRowRef"]
-        pub use crate::row::AsRowRef;
-
-        #[deprecated = "moved to faer::row::AsRowMut"]
-        pub use crate::row::AsRowMut;
-
-        #[deprecated = "moved to faer::mat::AsMatRef"]
-        pub use crate::mat::AsMatRef;
-
-        #[deprecated = "moved to faer::mat::AsMatMut"]
-        pub use crate::mat::AsMatMut;
-
-        #[deprecated = "moved to faer::mat::As2D"]
-        pub use crate::mat::As2D;
-
-        #[deprecated = "moved to faer::mat::As2DMut"]
-        pub use crate::mat::As2DMut;
-
-        #[deprecated = "moved to faer::ComplexField"]
-        pub use crate::ComplexField;
-
-        #[deprecated = "moved to faer::Conjugate"]
-        pub use crate::Conjugate;
-
-        #[deprecated = "moved to faer::RealField"]
-        pub use crate::RealField;
-
-        #[deprecated = "moved to faer::Entity"]
-        pub use crate::Entity;
-
-        #[deprecated = "moved to faer::SimpleEntity"]
-        pub use crate::SimpleEntity;
-
-        #[deprecated = "kronk, pull the lever"]
-        pub use crate::linalg::kron;
-
-        #[deprecated = "moved to faer::disable_global_parallelism"]
-        pub use crate::disable_global_parallelism;
-
-        #[deprecated = "moved to faer::set_global_parallelism"]
-        pub use crate::set_global_parallelism;
-
-        #[deprecated = "moved to faer::get_global_parallelism"]
-        pub use crate::get_global_parallelism;
-
-        #[deprecated = "moved to faer::linalg::temp_mat_req"]
-        pub use crate::linalg::temp_mat_req;
-
-        #[deprecated = "moved to faer::linalg::temp_mat_uninit"]
-        pub use crate::linalg::temp_mat_uninit;
-
-        #[deprecated = "moved to faer::linalg::temp_mat_constant"]
-        pub use crate::linalg::temp_mat_constant;
-
-        #[deprecated = "moved to faer::linalg::temp_mat_zeroed"]
-        pub use crate::linalg::temp_mat_zeroed;
-
-        #[deprecated = "moved to faer::Col"]
-        pub use crate::Col;
-        #[deprecated = "moved to faer::ColMut"]
-        pub use crate::ColMut;
-        #[deprecated = "moved to faer::ColRef"]
-        pub use crate::ColRef;
-
-        #[deprecated = "moved to faer::Row"]
-        pub use crate::Row;
-        #[deprecated = "moved to faer::RowMut"]
-        pub use crate::RowMut;
-        #[deprecated = "moved to faer::RowRef"]
-        pub use crate::RowRef;
-
-        #[deprecated = "moved to faer::Mat"]
-        pub use crate::Mat;
-        #[deprecated = "moved to faer::MatMut"]
-        pub use crate::MatMut;
-        #[deprecated = "moved to faer::MatRef"]
-        pub use crate::MatRef;
-
-        #[deprecated = "moved to faer::MatScale"]
-        pub use crate::Scale;
-
-        #[deprecated = "moved to faer::scale"]
-        pub use crate::scale;
-    }
-
-    #[deprecated = "moved to faer::cholesky"]
-    pub use crate::linalg::cholesky;
-    #[deprecated = "moved to faer::evd"]
-    pub use crate::linalg::evd;
-    #[deprecated = "moved to faer::lu"]
-    pub use crate::linalg::lu;
-    #[deprecated = "moved to faer::qr"]
-    pub use crate::linalg::qr;
-    #[deprecated = "moved to faer::svd"]
-    pub use crate::linalg::svd;
-    #[deprecated = "moved to faer::sparse::linalg"]
-    pub use crate::sparse::linalg as sparse;
-}
 
 #[cfg(test)]
 pub(crate) use tests::ApproxEq;

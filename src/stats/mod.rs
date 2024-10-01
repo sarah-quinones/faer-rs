@@ -79,6 +79,7 @@ pub struct StandardCol {
 }
 
 /// Uniformly samples a unitary matrix from the unitary group, in the sense of the [Haar measure](https://en.wikipedia.org/wiki/Haar_measure).
+#[cfg(feature = "qr")]
 pub struct UnitaryMat {
     /// Dimension of the sampled matrix.
     pub dimension: usize,
@@ -148,6 +149,7 @@ where
     }
 }
 
+#[cfg(feature = "qr")]
 impl<E: ComplexField> Distribution<Mat<E>> for UnitaryMat
 where
     StandardNormal: Distribution<E>,

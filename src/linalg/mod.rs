@@ -61,16 +61,25 @@ pub use faer_entity as entity;
 
 pub mod zip;
 
+#[cfg(feature = "qr")]
 pub mod householder;
+#[doc(hidden)]
+pub mod jacobi;
+
 pub mod matmul;
 pub mod triangular_inverse;
 pub mod triangular_solve;
 
+#[cfg(feature = "cholesky")]
 pub mod cholesky;
+#[cfg(feature = "lu")]
 pub mod lu;
+#[cfg(feature = "qr")]
 pub mod qr;
 
+#[cfg(feature = "evd")]
 pub mod evd;
+#[cfg(feature = "svd")]
 pub mod svd;
 
 /// High level linear system solvers.

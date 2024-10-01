@@ -12,10 +12,10 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use super::jacobi::{jacobi_svd, JacobiRotation, Skip};
+use super::jacobi::{jacobi_svd, Skip};
 use crate::{
     assert,
-    linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
+    linalg::{jacobi::JacobiRotation, temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::{simd::SimdFor, thread::join_raw},
     zipped, ColMut, ColRef, MatMut, Parallelism,
