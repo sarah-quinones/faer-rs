@@ -2201,7 +2201,7 @@ impl<E: Entity, R: Shape, C: Shape> Clone for Mat<E, R, C> {
         ) {
             let (rows, cols) = other.shape();
             if this.shape() == other.shape() {
-                crate::zipped!(__rw, this, other)
+                crate::zipped_rw!(this, other)
                     .for_each(|crate::unzipped!(mut dst, src)| dst.write(src.read()));
             } else {
                 if !R::IS_BOUND {

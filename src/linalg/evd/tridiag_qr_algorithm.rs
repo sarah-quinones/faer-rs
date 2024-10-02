@@ -9,7 +9,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    linalg::jacobi::JacobiRotation, perm::swap_cols_idx as swap_cols, unzipped, zipped, MatMut,
+    linalg::jacobi::JacobiRotation, perm::swap_cols_idx as swap_cols, unzipped, zipped_rw, MatMut,
     RealField,
 };
 use reborrow::*;
@@ -37,8 +37,8 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
     let mut u = u;
 
     if let Some(mut u) = u.rb_mut() {
-        zipped!(__rw, u.rb_mut()).for_each(|unzipped!(mut u)| u.write(E::faer_zero()));
-        zipped!(__rw, u.rb_mut().diagonal_mut().column_vector_mut())
+        zipped_rw!(u.rb_mut()).for_each(|unzipped!(mut u)| u.write(E::faer_zero()));
+        zipped_rw!(u.rb_mut().diagonal_mut().column_vector_mut())
             .for_each(|unzipped!(mut u)| u.write(E::faer_one()));
     }
 

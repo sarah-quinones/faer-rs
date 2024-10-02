@@ -1,5 +1,5 @@
 use crate::{
-    assert, linalg::triangular_solve as solve, unzipped, zipped, ComplexField, Conj, Entity,
+    assert, linalg::triangular_solve as solve, unzipped, zipped_rw, ComplexField, Conj, Entity,
     MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -184,7 +184,7 @@ pub fn solve_transpose_with_conj<E: ComplexField>(
     stack: &mut PodStack,
 ) {
     let mut dst = dst;
-    zipped!(__rw, dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped_rw!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_transpose_in_place_with_conj(cholesky_factors, conj_lhs, dst, parallelism, stack)
 }
 
@@ -216,6 +216,6 @@ pub fn solve_with_conj<E: ComplexField>(
     stack: &mut PodStack,
 ) {
     let mut dst = dst;
-    zipped!(__rw, dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped_rw!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_in_place_with_conj(cholesky_factors, conj_lhs, dst, parallelism, stack)
 }

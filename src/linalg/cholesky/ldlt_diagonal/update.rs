@@ -7,7 +7,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, ColMut, MatMut, Parallelism,
+    zipped_rw, ColMut, MatMut, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -422,7 +422,7 @@ fn rank_update_step_impl4<E: ComplexField>(
         let [p0, p1, p2, p3] = p_array;
         let [beta0, beta1, beta2, beta3] = beta_array;
 
-        zipped!(__rw, l_col, w0, w1, w2, w3).for_each(
+        zipped_rw!(l_col, w0, w1, w2, w3).for_each(
             |unzipped!(mut l, mut w0, mut w1, mut w2, mut w3)| {
                 let mut local_l = l.read();
                 let mut local_w0 = w0.read();
@@ -482,7 +482,7 @@ fn rank_update_step_impl3<E: ComplexField>(
         let [p0, p1, p2] = p_array;
         let [beta0, beta1, beta2] = beta_array;
 
-        zipped!(__rw, l_col, w0, w1, w2).for_each(|unzipped!(mut l, mut w0, mut w1, mut w2)| {
+        zipped_rw!(l_col, w0, w1, w2).for_each(|unzipped!(mut l, mut w0, mut w1, mut w2)| {
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
             let mut local_w1 = w1.read();
@@ -532,7 +532,7 @@ fn rank_update_step_impl2<E: ComplexField>(
         let [p0, p1] = p_array;
         let [beta0, beta1] = beta_array;
 
-        zipped!(__rw, l_col, w0, w1).for_each(|unzipped!(mut l, mut w0, mut w1)| {
+        zipped_rw!(l_col, w0, w1).for_each(|unzipped!(mut l, mut w0, mut w1)| {
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
             let mut local_w1 = w1.read();
@@ -574,7 +574,7 @@ fn rank_update_step_impl1<E: ComplexField>(
         let [p0] = p_array;
         let [beta0] = beta_array;
 
-        zipped!(__rw, l_col, w0).for_each(|unzipped!(mut l, mut w0)| {
+        zipped_rw!(l_col, w0).for_each(|unzipped!(mut l, mut w0)| {
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
 

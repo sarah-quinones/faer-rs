@@ -364,7 +364,7 @@ impl Conj {
 ///
 /// # Example
 /// ```
-/// use faer::{mat, unzipped, zipped, Mat};
+/// use faer::{mat, unzipped, zipped_rw, Mat};
 ///
 /// let nrows = 2;
 /// let ncols = 3;
@@ -385,28 +385,34 @@ impl Conj {
 /// ```
 #[macro_export]
 macro_rules! zipped {
-    (__rw, $head: expr $(,)?) => {
-        $crate::linalg::zip::LastEq($crate::linalg::zip::ViewMut::view_mut(&mut { $head }))
-    };
-
-    (__rw, $head: expr, $($tail: expr),* $(,)?) => {
-        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::ViewMut::view_mut(&mut { $head }), $crate::zipped!(__rw, $($tail,)*))
-    };
-
     ($head: expr $(,)?) => {
         $crate::linalg::zip::LastEq($crate::linalg::zip::RefWrapper($crate::linalg::zip::ViewMut::view_mut(&mut { $head })))
     };
 
     ($head: expr, $($tail: expr),* $(,)?) => {
-        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::RefWrapper($crate::linalg::zip::ViewMut::view_mut(&mut { $head })), $crate::zipped!($($tail,)*))
+        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::RefWrapper($crate::linalg::zip::ViewMut::view_mut(&mut { $head })), $crate::zipped!(  $($tail,)*))
+    };
+
+}
+
+/// Like the [`zipped!`] macro, but is compatible with potentially uninit values by not forming
+/// references.
+#[macro_export]
+macro_rules! zipped_rw {
+    ($head: expr $(,)?) => {
+        $crate::linalg::zip::LastEq($crate::linalg::zip::ViewMut::view_mut(&mut { $head }))
+    };
+
+    ($head: expr, $($tail: expr),* $(,)?) => {
+        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::ViewMut::view_mut(&mut { $head }), $crate::zipped_rw!($($tail,)*))
     };
 }
 
-/// Used to undo the zipping by the [`zipped!`] macro.
+/// Used to undo the zipping by the [`zipped_rw!`] macro.
 ///
 /// # Example
 /// ```
-/// use faer::{mat, unzipped, zipped, Mat};
+/// use faer::{mat, unzipped, zipped_rw, Mat};
 ///
 /// let nrows = 2;
 /// let ncols = 3;
@@ -415,7 +421,7 @@ macro_rules! zipped {
 /// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
 ///
-/// zipped!(sum.as_mut(), a.as_ref(), b.as_ref()).for_each(|unzipped!(mut sum, a, b)| {
+/// zipped_rw!(sum.as_mut(), a.as_ref(), b.as_ref()).for_each(|unzipped!(mut sum, a, b)| {
 ///     *sum = a + b;
 /// });
 ///
@@ -985,7 +991,8 @@ pub mod prelude {
     pub use crate::{
         col,
         complex_native::{c32, c64},
-        mat, row, unzipped, zipped, Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
+        mat, row, unzipped, zipped_rw, Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut,
+        RowRef,
     };
 
     pub use crate::linalg::solvers::{

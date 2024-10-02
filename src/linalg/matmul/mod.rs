@@ -6,7 +6,7 @@ use crate::{
     mat::{As2D, As2DMut, MatMut, MatRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
-    zipped, ColRef, ComplexField, Conj, Conjugate, Parallelism,
+    zipped_rw, ColRef, ComplexField, Conj, Conjugate, Parallelism,
 };
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use faer_entity::*;
@@ -1905,13 +1905,13 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 
         match alpha {
             Some(alpha) => match conj_a {
-                Conj::Yes => zipped!(__rw, acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                Conj::Yes => zipped_rw!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                     acc.write(E::faer_add(
                         acc.read().faer_mul(alpha),
                         tmp.read().faer_conj().faer_mul(beta),
                     ))
                 }),
-                Conj::No => zipped!(__rw, acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                Conj::No => zipped_rw!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                     acc.write(E::faer_add(
                         acc.read().faer_mul(alpha),
                         tmp.read().faer_mul(beta),
@@ -1920,12 +1920,12 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             },
             None => match conj_a {
                 Conj::Yes => {
-                    zipped!(__rw, acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                    zipped_rw!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                         acc.write(tmp.read().faer_conj().faer_mul(beta))
                     });
                 }
                 Conj::No => {
-                    zipped!(__rw, acc, tmp)
+                    zipped_rw!(acc, tmp)
                         .for_each(|unzipped!(mut acc, tmp)| acc.write(tmp.read().faer_mul(beta)));
                 }
             },
@@ -1958,7 +1958,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 /// # Example
 ///
 /// ```
-/// use faer::{linalg::matmul::matmul_with_conj, mat, unzipped, zipped, Conj, Mat, Parallelism};
+/// use faer::{
+///     linalg::matmul::matmul_with_conj, mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
+/// };
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
 /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
@@ -1986,7 +1988,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, acc.as_ref(), target.as_ref())
+/// zipped_rw!(acc.as_ref(), target.as_ref())
 ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[inline]
@@ -2033,7 +2035,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// # Example
 ///
 /// ```
-/// use faer::{linalg::matmul::matmul, mat, unzipped, zipped, Mat, Parallelism};
+/// use faer::{linalg::matmul::matmul, mat, unzipped, zipped_rw, Mat, Parallelism};
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
 /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
@@ -2059,7 +2061,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, acc.as_ref(), target.as_ref())
+/// zipped_rw!(acc.as_ref(), target.as_ref())
 ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]

@@ -4,7 +4,7 @@ use crate::{
         matmul::{inner_prod::inner_prod_with_conj, matmul},
         temp_mat_req, temp_mat_uninit,
     },
-    unzipped, zipped, ColMut, ColRef, Conj, Entity, MatMut, Parallelism, RealField,
+    unzipped, zipped_rw, ColMut, ColRef, Conj, Entity, MatMut, Parallelism, RealField,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
@@ -731,14 +731,14 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let (mut z0, mut z1) = z.rb_mut().split_at_mut(n1);
     z0.rb_mut().copy_from(u0.rb().row(n1 - 1).transpose());
     if rho < E::faer_zero() {
-        zipped!(__rw, z1.rb_mut(), u1.rb().row(0).transpose())
+        zipped_rw!(z1.rb_mut(), u1.rb().row(0).transpose())
             .for_each(|unzipped!(mut z, u)| z.write(u.read().faer_neg()));
     } else {
         z1.rb_mut().copy_from(u1.rb().row(0).transpose());
     }
 
     let inv_sqrt2 = E::faer_from_f64(2.0).faer_sqrt().faer_inv();
-    zipped!(__rw, z.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(inv_sqrt2)));
+    zipped_rw!(z.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(inv_sqrt2)));
 
     rho = rho
         .faer_scale_power_of_two(E::faer_from_f64(2.0))
@@ -774,13 +774,13 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let mut dmax = E::faer_zero();
     let mut zmax = E::faer_zero();
 
-    zipped!(__rw, permuted_diag.rb()).for_each(|unzipped!(x)| {
+    zipped_rw!(permuted_diag.rb()).for_each(|unzipped!(x)| {
         let x = x.read().faer_abs();
         if x > dmax {
             dmax = x
         }
     });
-    zipped!(__rw, permuted_z.rb()).for_each(|unzipped!(x)| {
+    zipped_rw!(permuted_z.rb()).for_each(|unzipped!(x)| {
         let x = x.read().faer_abs();
         if x > zmax {
             zmax = x
@@ -992,7 +992,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             }
 
             let inv_norm = repaired_u.rb().col(j).norm_l2().faer_inv();
-            zipped!(__rw, repaired_u.rb_mut().col_mut(j))
+            zipped_rw!(repaired_u.rb_mut().col_mut(j))
                 .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(inv_norm)));
         }
     }
@@ -1020,7 +1020,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                         col.rb(),
                         Conj::No,
                     ));
-                    zipped!(__rw, col.rb_mut(), householder).for_each(|unzipped!(mut u, h)| {
+                    zipped_rw!(col.rb_mut(), householder).for_each(|unzipped!(mut u, h)| {
                         u.write(u.read().faer_sub(dot.faer_mul(h.read())))
                     });
                 }

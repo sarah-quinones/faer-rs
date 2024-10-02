@@ -40,15 +40,9 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for DiagRef<'_, 
         _ = stack;
         let mut out = out;
         for j in 0..k {
-            crate::zipped!(
-                __rw,
-                out.rb_mut().col_mut(j),
-                rhs.col(j),
-                self.column_vector()
-            )
-            .for_each(|crate::unzipped!(mut out, rhs, d)| {
-                out.write(rhs.read() * d.read().canonicalize())
-            });
+            crate::zipped_rw!(out.rb_mut().col_mut(j), rhs.col(j), self.column_vector()).for_each(
+                |crate::unzipped!(mut out, rhs, d)| out.write(rhs.read() * d.read().canonicalize()),
+            );
         }
     }
 
@@ -114,7 +108,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> Precond<E> for DiagRef<'_
         let mut rhs = rhs;
         let k = rhs.ncols();
         for j in 0..k {
-            crate::zipped!(__rw, rhs.rb_mut().col_mut(j), self.column_vector()).for_each(
+            crate::zipped_rw!(rhs.rb_mut().col_mut(j), self.column_vector()).for_each(
                 |crate::unzipped!(mut out, d)| out.write(out.read() * d.read().canonicalize()),
             );
         }

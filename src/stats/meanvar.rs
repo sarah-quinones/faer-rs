@@ -1338,7 +1338,7 @@ fn col_mean_propagate<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
         for j in 0..n {
             out += mat.col(j);
         }
-        zipped!(__rw, out).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(one_n)));
+        zipped_rw!(out).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(one_n)));
     }
 }
 
@@ -1732,14 +1732,12 @@ fn col_varm_propagate<E: ComplexField>(
 
         out.fill_zero();
         for j in 0..n {
-            zipped!(__rw, &mut out, col_mean, mat.col(j)).for_each(
-                |unzipped!(mut out, mean, x)| {
-                    let diff = x.read().faer_sub(mean.read());
-                    out.write(out.read().faer_add(diff.faer_abs2()))
-                },
-            );
+            zipped_rw!(&mut out, col_mean, mat.col(j)).for_each(|unzipped!(mut out, mean, x)| {
+                let diff = x.read().faer_sub(mean.read());
+                out.write(out.read().faer_add(diff.faer_abs2()))
+            });
         }
-        zipped!(__rw, out).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(one_n1)));
+        zipped_rw!(out).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(one_n1)));
     }
 }
 

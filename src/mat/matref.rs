@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped,
-    utils::bound::*, zipped, Idx, IdxInc, Shape, Unbind,
+    utils::bound::*, zipped_rw, Idx, IdxInc, Shape, Unbind,
 };
 use core::ops::Range;
 use generativity::make_guard;
@@ -1019,7 +1019,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         E: ComplexField,
     {
         let mut found_nan = false;
-        zipped!(__rw, *self).for_each(|unzipped!(x)| {
+        zipped_rw!(*self).for_each(|unzipped!(x)| {
             found_nan |= x.read().faer_is_nan();
         });
         found_nan
@@ -1032,7 +1032,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         E: ComplexField,
     {
         let mut all_finite = true;
-        zipped!(__rw, *self).for_each(|unzipped!(x)| {
+        zipped_rw!(*self).for_each(|unzipped!(x)| {
             all_finite &= x.read().faer_is_finite();
         });
         all_finite

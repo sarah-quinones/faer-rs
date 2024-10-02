@@ -1,7 +1,7 @@
 use crate::{
     linalg::{temp_mat_req, temp_mat_uninit, triangular_solve::*},
     perm::{permute_rows, PermRef},
-    unzipped, zipped, ComplexField, Conj, Entity, Index, MatMut, MatRef, Parallelism,
+    unzipped, zipped_rw, ComplexField, Conj, Entity, Index, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
@@ -45,7 +45,7 @@ fn solve_impl<I: Index, E: ComplexField>(
     solve_upper_triangular_in_place_with_conj(lu_factors, conj_lhs, temp.rb_mut(), parallelism);
 
     // dst <- ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) B
-    zipped!(__rw, dst, temp.rb()).for_each(|unzipped!(mut dst, tmp)| dst.write(tmp.read()));
+    zipped_rw!(dst, temp.rb()).for_each(|unzipped!(mut dst, tmp)| dst.write(tmp.read()));
 }
 
 fn solve_transpose_impl<I: Index, E: ComplexField>(
@@ -74,7 +74,7 @@ fn solve_transpose_impl<I: Index, E: ComplexField>(
         Some(rhs) => rhs,
         None => dst.rb(),
     };
-    zipped!(__rw, temp.rb_mut(), src).for_each(|unzipped!(mut dst, tmp)| dst.write(tmp.read()));
+    zipped_rw!(temp.rb_mut(), src).for_each(|unzipped!(mut dst, tmp)| dst.write(tmp.read()));
 
     // temp <- ConjA?(U).T^-1 P(col_fwd) ConjB?(B)
     solve_lower_triangular_in_place_with_conj(

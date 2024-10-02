@@ -30,7 +30,7 @@ use crate::{
         bound::{Array, Dim, Idx, MaybeIdx},
         slice::*,
     },
-    zipped, Conj, MatMut, Parallelism, SignedIndex,
+    zipped_rw, Conj, MatMut, Parallelism, SignedIndex,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -1391,8 +1391,7 @@ pub mod supernodal {
                     s_ncols,
                 );
                 let nrows = Ord::min(s_H.nrows(), s_L.ncols());
-                zipped!(
-                    __rw,
+                zipped_rw!(
                     s_L.rb_mut().transpose_mut().subrows_mut(0, nrows),
                     s_H.rb().subrows(0, nrows)
                 )

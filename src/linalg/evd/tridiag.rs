@@ -3,7 +3,7 @@ use crate::{
     linalg::{matmul::inner_prod::inner_prod_with_conj, temp_mat_req, temp_mat_zeroed},
     unzipped,
     utils::thread::parallelism_degree,
-    zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
+    zipped_rw, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -1036,7 +1036,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 ),
             );
 
-            zipped!(__rw, a21.rb_mut(), u21.rb(), y21.rb()).for_each(|unzipped!(mut a, u, y)| {
+            zipped_rw!(a21.rb_mut(), u21.rb(), y21.rb()).for_each(|unzipped!(mut a, u, y)| {
                 let u = u.read();
                 let y = y.read();
                 a.write(
@@ -1080,10 +1080,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     let mut v21 = unsafe { v21.rb().col(idx).const_cast() };
                     let mut w21 = unsafe { w21.rb().col(idx).const_cast() };
 
-                    zipped!(__rw, v21.rb_mut())
-                        .for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
-                    zipped!(__rw, w21.rb_mut())
-                        .for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
+                    zipped_rw!(v21.rb_mut()).for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
+                    zipped_rw!(w21.rb_mut()).for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
 
                     let acc = v21.rb_mut();
                     let acct = w21.rb_mut();
@@ -1107,10 +1105,10 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 parallelism,
             );
 
-            zipped!(__rw, y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
+            zipped_rw!(y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
                 .for_each(|unzipped!(mut y, v, w)| y.write(v.read().faer_add(w.read())));
             for i in 1..n_threads as usize {
-                zipped!(__rw, y21.rb_mut(), v21.rb().col(i), w21.rb().col(i)).for_each(
+                zipped_rw!(y21.rb_mut(), v21.rb().col(i), w21.rb().col(i)).for_each(
                     |unzipped!(mut y, v, w)| {
                         y.write(y.read().faer_add(v.read().faer_add(w.read())))
                     },
@@ -1132,8 +1130,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 last_col,
             });
 
-            zipped!(
-                __rw,
+            zipped_rw!(
                 y21.rb_mut(),
                 acc.rb(),
                 a22.rb().diagonal().column_vector(),
@@ -1144,14 +1141,14 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             });
         }
 
-        zipped!(__rw, u21.rb_mut(), a21.rb())
+        zipped_rw!(u21.rb_mut(), a21.rb())
             .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         a21.write(0, new_head);
 
         let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, y21.rb(), Conj::No)
             .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));
 
-        zipped!(__rw, y21.rb_mut(), u21.rb()).for_each(|unzipped!(mut y, u)| {
+        zipped_rw!(y21.rb_mut(), u21.rb()).for_each(|unzipped!(mut y, u)| {
             let u = u.read();
             y.write(
                 y.read()
@@ -1190,7 +1187,7 @@ mod tests {
             let mut mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
             let transpose = mat.transpose().to_owned();
 
-            zipped!(__rw, mat.as_mut(), transpose.as_ref())
+            zipped_rw!(mat.as_mut(), transpose.as_ref())
                 .for_each(|unzipped!(mut x, y)| x.write(x.read() + y.read()));
 
             let n = mat.ncols();
@@ -1245,7 +1242,7 @@ mod tests {
         for (n, parallelism) in [(10, Parallelism::None), (64, Parallelism::Rayon(4))] {
             let mut mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
             let transpose = mat.adjoint().to_owned();
-            zipped!(__rw, mat.as_mut(), transpose.as_ref())
+            zipped_rw!(mat.as_mut(), transpose.as_ref())
                 .for_each(|unzipped!(mut x, y)| x.write(x.read() + y.read()));
 
             let n = mat.ncols();

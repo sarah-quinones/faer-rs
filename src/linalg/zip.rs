@@ -1,4 +1,4 @@
-//! Implementation of [`zipped!`] structures.
+//! Implementation of [`zipped_rw!`] structures.
 
 use crate::{assert, debug_assert, *};
 use core::mem::MaybeUninit;
@@ -2732,7 +2732,7 @@ mod tests {
                                 let mut target = Mat::from_fn(m, n, |_, _| f64::faer_zero());
                                 let target_src = Mat::from_fn(m, n, |_, _| f64::faer_one());
 
-                                zipped!(__rw, target.as_mut(), target_src.as_ref())
+                                zipped_rw!(target.as_mut(), target_src.as_ref())
                                     .for_each_triangular_lower(diag, |unzipped!(mut dst, src)| {
                                         dst.write(src.read())
                                     });
@@ -2754,7 +2754,7 @@ mod tests {
                                     src = src.reverse_rows();
                                 }
 
-                                zipped!(__rw, dst.rb_mut(), src)
+                                zipped_rw!(dst.rb_mut(), src)
                                     .for_each_triangular_lower(diag, |unzipped!(mut dst, src)| {
                                         dst.write(src.read())
                                     });
@@ -2778,7 +2778,7 @@ mod tests {
                     let target_src =
                         Col::from_fn(m, |i| if rev_src { m - i } else { i + 1 } as f64);
 
-                    zipped!(__rw, target.as_mut(), target_src.as_ref())
+                    zipped_rw!(target.as_mut(), target_src.as_ref())
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     let mut dst = dst.as_mut();
@@ -2791,7 +2791,7 @@ mod tests {
                         src = src.reverse_rows();
                     }
 
-                    zipped!(__rw, dst.rb_mut(), src)
+                    zipped_rw!(dst.rb_mut(), src)
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     assert!(dst.rb() == target.as_ref());
@@ -2810,7 +2810,7 @@ mod tests {
                     let target_src =
                         Row::from_fn(m, |i| if rev_src { m - i } else { i + 1 } as f64);
 
-                    zipped!(__rw, target.as_mut(), target_src.as_ref())
+                    zipped_rw!(target.as_mut(), target_src.as_ref())
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     let mut dst = dst.as_mut();
@@ -2823,7 +2823,7 @@ mod tests {
                         src = src.reverse_cols();
                     }
 
-                    zipped!(__rw, &mut dst, src)
+                    zipped_rw!(&mut dst, src)
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     assert!(dst.rb() == target.as_ref());
@@ -2865,12 +2865,12 @@ mod tests {
         for m in [m.as_ref(), m_non_contiguous] {
             {
                 let m = m.as_ref();
-                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (j + i * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(__rw, m).for_each_triangular_lower_with_index(
+                    zipped_rw!(m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2881,7 +2881,7 @@ mod tests {
                             assert!(*val == (j + i * 3) as f64);
                         },
                     );
-                    zipped!(__rw, m).for_each_triangular_upper_with_index(
+                    zipped_rw!(m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2896,12 +2896,12 @@ mod tests {
             }
             {
                 let m = m.as_ref().reverse_rows();
-                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (j + (3 - i) * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(__rw, m).for_each_triangular_lower_with_index(
+                    zipped_rw!(m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2913,7 +2913,7 @@ mod tests {
                             assert!(*val == (j + (3 - i) * 3) as f64);
                         },
                     );
-                    zipped!(__rw, m).for_each_triangular_upper_with_index(
+                    zipped_rw!(m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2929,12 +2929,12 @@ mod tests {
             }
             {
                 let m = m.as_ref().transpose();
-                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (i + j * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(__rw, m).for_each_triangular_lower_with_index(
+                    zipped_rw!(m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2946,7 +2946,7 @@ mod tests {
                             assert!(*val == (i + j * 3) as f64);
                         },
                     );
-                    zipped!(__rw, m).for_each_triangular_upper_with_index(
+                    zipped_rw!(m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2962,12 +2962,12 @@ mod tests {
             }
             {
                 let m = m.as_ref().reverse_rows().transpose();
-                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (i + (3 - j) * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(__rw, m).for_each_triangular_lower_with_index(
+                    zipped_rw!(m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2979,7 +2979,7 @@ mod tests {
                             assert!(*val == (i + (3 - j) * 3) as f64);
                         },
                     );
-                    zipped!(__rw, m).for_each_triangular_upper_with_index(
+                    zipped_rw!(m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2997,17 +2997,17 @@ mod tests {
 
         for m in [m.as_ref().col(0), m_non_contiguous.col(0)] {
             {
-                zipped!(__rw, m).for_each_with_index(|i, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, unzipped!(val)| {
                     assert!(*val == (i * 3) as f64);
                 });
-                zipped!(m).for_each_with_index(|i, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, unzipped!(val)| {
                     assert!(*val == (i * 3) as f64);
                 });
             }
 
             {
                 let m = m.reverse_rows();
-                zipped!(__rw, m).for_each_with_index(|i, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|i, unzipped!(val)| {
                     assert!(*val == ((3 - i) * 3) as f64);
                 });
             }
@@ -3015,14 +3015,18 @@ mod tests {
 
         for m in [m.as_ref().row(0), m_non_contiguous.row(0)] {
             {
-                zipped!(__rw, m).for_each_with_index(|j, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|j, unzipped!(val)| {
+                    assert!(*val == j as f64);
+                });
+
+                zipped!(m).for_each_with_index(|j, unzipped!(val)| {
                     assert!(*val == j as f64);
                 });
             }
 
             {
                 let m = m.reverse_cols();
-                zipped!(__rw, m).for_each_with_index(|j, unzipped!(val)| {
+                zipped_rw!(m).for_each_with_index(|j, unzipped!(val)| {
                     assert!(*val == (2 - j) as f64);
                 });
             }

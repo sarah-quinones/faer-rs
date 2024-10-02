@@ -18,7 +18,7 @@ use crate::{
     linalg::{jacobi::JacobiRotation, temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::{simd::SimdFor, thread::join_raw},
-    zipped, ColMut, ColRef, MatMut, Parallelism,
+    zipped_rw, ColMut, ColRef, MatMut, Parallelism,
 };
 use coe::Coerce;
 use core::{iter::zip, mem::swap};
@@ -195,7 +195,7 @@ fn compute_singular_vectors<E: RealField>(
             }
             u.write(n, E::faer_zero());
             let norm_inv = u.norm_l2().faer_inv();
-            zipped!(__rw, u.rb_mut())
+            zipped_rw!(u.rb_mut())
                 .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(norm_inv)));
         }
 
@@ -212,7 +212,7 @@ fn compute_singular_vectors<E: RealField>(
             }
             v.write(outer_perm[0], E::faer_one().faer_neg());
             let norm_inv = v.norm_l2().faer_inv();
-            zipped!(__rw, v.rb_mut())
+            zipped_rw!(v.rb_mut())
                 .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(norm_inv)));
         }
     }
@@ -233,7 +233,7 @@ fn perturb_col0<E: RealField>(
     let n = diag.len();
     let m = perm.len();
     if m == 0 {
-        zipped!(__rw, zhat).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+        zipped_rw!(zhat).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
         return;
     }
 
@@ -1528,10 +1528,8 @@ pub fn compute_bidiag_real_svd<E: RealField>(
             *diag = s.read(i, i);
         }
         if let Some(mut u) = u {
-            zipped!(__rw, u.rb_mut().row_mut(n))
-                .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
-            zipped!(__rw, u.rb_mut().col_mut(n))
-                .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+            zipped_rw!(u.rb_mut().row_mut(n)).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+            zipped_rw!(u.rb_mut().col_mut(n)).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
             u.write(n, n, E::faer_one());
         }
     } else if n <= bidiag_qr_fallback_threshold {
@@ -1718,10 +1716,10 @@ fn bidiag_svd_impl<E: RealField>(
 
         if cfg!(debug_assertions) {
             if let Some(v1) = v1 {
-                zipped!(__rw, v1.col_mut(k)).for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
+                zipped_rw!(v1.col_mut(k)).for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
             }
             if let Some(v2) = v2 {
-                zipped!(__rw, v2.col_mut(0)).for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
+                zipped_rw!(v2.col_mut(0)).for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
             }
         }
 
@@ -1738,16 +1736,14 @@ fn bidiag_svd_impl<E: RealField>(
             // NOTE: we handle the rotation of (Q1, q1) here, so no need to handle it later when
             // compact_u == 1
             for (row, row1, row2) in [(0, 0, 0), (1, k, rem)] {
-                zipped!(
-                    __rw,
+                zipped_rw!(
                     u.rb_mut().row_mut(row).subcols_mut(1, k),
                     u1_alloc.rb().row(row1).subcols(0, k),
                 )
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                 u.write(row, 0, u1_alloc.read(row1, k));
 
-                zipped!(
-                    __rw,
+                zipped_rw!(
                     u.rb_mut().row_mut(row).subcols_mut(k + 1, rem),
                     u2_alloc.rb().row(row2).subcols(1, rem),
                 )
@@ -1766,7 +1762,7 @@ fn bidiag_svd_impl<E: RealField>(
             let (left, right) = u2.split_at_col_mut(k + 1);
             let left = left.col_mut(k);
             let right = right.col_mut(rem);
-            zipped!(__rw, right, left).for_each(|unzipped!(mut right, mut left)| {
+            zipped_rw!(right, left).for_each(|unzipped!(mut right, mut left)| {
                 right.write(left.read());
 
                 if cfg!(debug_assertions) {
@@ -1897,8 +1893,7 @@ fn bidiag_svd_impl<E: RealField>(
             col0[j + 1 + k] = beta.faer_mul(u2.read(0, j + k));
         }
 
-        zipped!(
-            __rw,
+        zipped_rw!(
             u0_top.rb_mut().col_mut(0),
             un_top.rb_mut().col_mut(0),
             u1.col_mut(k),
@@ -1912,7 +1907,7 @@ fn bidiag_svd_impl<E: RealField>(
             }
         });
 
-        zipped!(__rw, u0_bot.rb_mut().col_mut(0), un_bot.rb_mut().col_mut(0),).for_each(
+        zipped_rw!(u0_bot.rb_mut().col_mut(0), un_bot.rb_mut().col_mut(0),).for_each(
             |unzipped!(mut dst0, mut dstn)| {
                 let src_ = dstn.read();
                 dst0.write(s0.faer_mul(src_));
@@ -2060,7 +2055,7 @@ fn bidiag_svd_impl<E: RealField>(
                 parallelism,
             );
 
-            zipped!(__rw, v.rb_mut(), combined_v.rb())
+            zipped_rw!(v.rb_mut(), combined_v.rb())
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         }
     };
@@ -2123,7 +2118,7 @@ fn bidiag_svd_impl<E: RealField>(
                 parallelism,
             );
 
-            zipped!(__rw, u.rb_mut(), combined_u.rb())
+            zipped_rw!(u.rb_mut(), combined_u.rb())
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         }
     };
@@ -2141,7 +2136,7 @@ fn bidiag_svd_impl<E: RealField>(
                 E::faer_one(),
                 parallelism,
             );
-            zipped!(__rw, u.rb_mut(), combined_u.rb())
+            zipped_rw!(u.rb_mut(), combined_u.rb())
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         }
     } else {

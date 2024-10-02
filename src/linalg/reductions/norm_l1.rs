@@ -270,7 +270,7 @@ pub fn norm_l1<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
 
 #[cfg(test)]
 mod tests {
-    use crate::{assert, prelude::*, unzipped, zipped};
+    use crate::{assert, prelude::*, unzipped, zipped_rw};
 
     #[test]
     fn test_norm_l1() {
@@ -280,7 +280,7 @@ mod tests {
             for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
                 let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
                 let mut target = 0.0;
-                zipped!(__rw, mat.as_ref()).for_each(|unzipped!(x)| {
+                zipped_rw!(mat.as_ref()).for_each(|unzipped!(x)| {
                     target += (*x).abs();
                 });
 

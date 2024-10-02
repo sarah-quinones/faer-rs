@@ -4,7 +4,7 @@ use crate::{
         householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj,
         temp_mat_req, temp_mat_uninit, triangular_inverse::invert_upper_triangular,
     },
-    unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    unzipped, zipped_rw, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
@@ -42,7 +42,7 @@ pub fn invert<E: ComplexField>(
     invert_upper_triangular(dst.rb_mut(), qr_factors, parallelism);
 
     // zero bottom part
-    zipped!(__rw, dst.rb_mut())
+    zipped_rw!(dst.rb_mut())
         .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
             dst.write(E::faer_zero())
         });
@@ -85,7 +85,7 @@ pub fn invert_in_place<E: ComplexField>(
         stack,
     );
 
-    zipped!(__rw, qr_factors, dst.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped_rw!(qr_factors, dst.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a

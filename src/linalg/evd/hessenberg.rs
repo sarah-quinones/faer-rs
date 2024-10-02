@@ -12,7 +12,7 @@ use crate::{
     },
     unzipped,
     utils::{thread::parallelism_degree, DivCeil},
-    zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
+    zipped_rw, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -502,28 +502,22 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
                         (nu.faer_mul(psi.faer_conj())).faer_add(zeta.faer_mul(nu.faer_conj())),
                     ),
                 );
-                zipped!(
-                    __rw,
-                    a12.rb_mut(),
-                    y21.rb().transpose(),
-                    u21.rb().transpose()
-                )
-                .for_each(|unzipped!(mut a, y, u)| {
-                    let y = y.read();
-                    let u = u.read();
-                    a.write(a.read().faer_sub(
-                        (nu.faer_mul(y.faer_conj())).faer_add(zeta.faer_mul(u.faer_conj())),
-                    ));
-                });
-                zipped!(__rw, a21.rb_mut(), u21.rb(), z21.rb()).for_each(
-                    |unzipped!(mut a, u, z)| {
-                        let z = z.read();
+                zipped_rw!(a12.rb_mut(), y21.rb().transpose(), u21.rb().transpose()).for_each(
+                    |unzipped!(mut a, y, u)| {
+                        let y = y.read();
                         let u = u.read();
                         a.write(a.read().faer_sub(
-                            (u.faer_mul(psi.faer_conj())).faer_add(z.faer_mul(nu.faer_conj())),
+                            (nu.faer_mul(y.faer_conj())).faer_add(zeta.faer_mul(u.faer_conj())),
                         ));
                     },
                 );
+                zipped_rw!(a21.rb_mut(), u21.rb(), z21.rb()).for_each(|unzipped!(mut a, u, z)| {
+                    let z = z.read();
+                    let u = u.read();
+                    a.write(a.read().faer_sub(
+                        (u.faer_mul(psi.faer_conj())).faer_add(z.faer_mul(nu.faer_conj())),
+                    ));
+                });
             }
 
             let (tau, new_head) = {
@@ -568,14 +562,14 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
                 );
             }
 
-            zipped!(__rw, u21.rb_mut(), a21.rb())
+            zipped_rw!(u21.rb_mut(), a21.rb())
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
             a21.write(0, new_head);
 
             let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, z21.rb(), Conj::No)
                 .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));
 
-            zipped!(__rw, y21.rb_mut(), u21.rb()).for_each(|unzipped!(mut y, u)| {
+            zipped_rw!(y21.rb_mut(), u21.rb()).for_each(|unzipped!(mut y, u)| {
                 let u = u.read();
                 let beta = beta.faer_conj();
                 y.write(
@@ -584,7 +578,7 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
                         .faer_mul(tau_inv),
                 );
             });
-            zipped!(__rw, z21.rb_mut(), u21.rb()).for_each(|unzipped!(mut z, u)| {
+            zipped_rw!(z21.rb_mut(), u21.rb()).for_each(|unzipped!(mut z, u)| {
                 let u = u.read();
                 z.write(
                     z.read()
@@ -709,7 +703,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
         let u_0 = u.rb().get(.., ..k);
         let u10_adjoint = u_0.rb().get(k, ..);
 
-        zipped!(__rw, tmp.rb_mut(), u10_adjoint.transpose())
+        zipped_rw!(tmp.rb_mut(), u10_adjoint.transpose())
             .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_conj()));
         if k > 0 {
             tmp.write(k - 1, one);

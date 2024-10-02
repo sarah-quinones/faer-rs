@@ -17,7 +17,7 @@ use crate::{
         temp_mat_req,
         zip::Diag,
     },
-    unzipped, zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
+    unzipped, zipped_rw, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -256,7 +256,7 @@ pub fn rot<E: ComplexField>(x: ColMut<'_, E>, y: ColMut<'_, E>, c: E::Real, s: E
         return;
     }
 
-    zipped!(__rw, x, y).for_each(|unzipped!(mut x, mut y)| {
+    zipped_rw!(x, y).for_each(|unzipped!(mut x, mut y)| {
         let mut x_ = x.read();
         let mut y_ = y.read();
 
@@ -575,7 +575,7 @@ pub fn lahqr<E: ComplexField>(
             let ai = unsafe { a.rb().row(i).subcols(i, istop_m - i).const_cast() };
             let aip1 = unsafe { a.rb().row(i + 1).subcols(i, istop_m - i).const_cast() };
 
-            zipped!(__rw, ai, aip1).for_each(|unzipped!(mut ai, mut aip1)| {
+            zipped_rw!(ai, aip1).for_each(|unzipped!(mut ai, mut aip1)| {
                 let ai_ = ai.read();
                 let aip1_ = aip1.read();
                 let tmp = (ai_.faer_scale_real(cs)).faer_add(aip1_.faer_mul(sn));
@@ -598,7 +598,7 @@ pub fn lahqr<E: ComplexField>(
                     s: sn,
                 });
             } else {
-                zipped!(__rw, ai, aip1).for_each(|unzipped!(mut ai, mut aip1)| {
+                zipped_rw!(ai, aip1).for_each(|unzipped!(mut ai, mut aip1)| {
                     let ai_ = ai.read();
                     let aip1_ = aip1.read();
                     let tmp = (ai_.faer_scale_real(cs)).faer_add(aip1_.faer_mul(sn.faer_conj()));
@@ -619,7 +619,7 @@ pub fn lahqr<E: ComplexField>(
                         s: sn,
                     });
                 } else {
-                    zipped!(__rw, zi, zip1).for_each(|unzipped!(mut zi, mut zip1)| {
+                    zipped_rw!(zi, zip1).for_each(|unzipped!(mut zi, mut zip1)| {
                         let zi_ = zi.read();
                         let zip1_ = zip1.read();
                         let tmp =
@@ -778,7 +778,7 @@ fn aggressive_early_deflation<E: ComplexField>(
     // window (note the use of infqr later in the code).
     let a_window = a.rb().submatrix(kwtop, kwtop, ihi - kwtop, ihi - kwtop);
     let mut s_window = unsafe { s.rb().subrows(kwtop, ihi - kwtop).const_cast() };
-    zipped!(__rw, tw.rb_mut())
+    zipped_rw!(tw.rb_mut())
         .for_each_triangular_lower(Diag::Include, |unzipped!(mut x)| x.write(E::faer_zero()));
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
@@ -13499,7 +13499,7 @@ mod tests {
                 0.0, 0.0, 0.0, 0.0,
             ],
         ];
-        let mut a = zipped!(__rw, a.as_ref()).map(|unzipped!(x)| c64::new(x.read(), 0.0));
+        let mut a = zipped_rw!(a.as_ref()).map(|unzipped!(x)| c64::new(x.read(), 0.0));
 
         let mut w = Col::zeros(20);
         lahqr(

@@ -3,7 +3,7 @@ use crate::{
     linalg::{matmul::matmul, temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::thread::{for_each_raw, par_split_indices, parallelism_degree},
-    zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism, RowMut, RowRef,
+    zipped_rw, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism, RowMut, RowRef,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -70,7 +70,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
             let f0 = y.read(0).faer_conj().faer_mul(tl.faer_inv());
             let f1 = v.read(0).faer_conj().faer_mul(tr.faer_inv());
 
-            zipped!(__rw, a_col.rb_mut(), u, z).for_each(|unzipped!(mut a, b, c)| {
+            zipped_rw!(a_col.rb_mut(), u, z).for_each(|unzipped!(mut a, b, c)| {
                 a.write(
                     a.read()
                         .faer_sub(f0.faer_mul(b.read()))
@@ -80,8 +80,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
 
             let f0 = u.read(0).faer_mul(tl.faer_inv());
             let f1 = z.read(0).faer_mul(tr.faer_inv());
-            zipped!(
-                __rw,
+            zipped_rw!(
                 a_row.rb_mut(),
                 y.subrows(1, n - 1).transpose(),
                 v.rb().subcols(1, n - 1),
@@ -148,10 +147,10 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
 
         if diff != E::faer_zero() {
             let f = diff.faer_inv().faer_conj();
-            zipped!(__rw, a_row.rb_mut().subcols_mut(1, n - 2).transpose_mut())
+            zipped_rw!(a_row.rb_mut().subcols_mut(1, n - 2).transpose_mut())
                 .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj().faer_mul(f)));
 
-            zipped!(__rw, z.rb_mut(), a_next.rb().col(0),).for_each(|unzipped!(mut z, a)| {
+            zipped_rw!(z.rb_mut(), a_next.rb().col(0),).for_each(|unzipped!(mut z, a)| {
                 z.write(f.faer_mul(z.read().faer_sub(a01.faer_conj().faer_mul(a.read()))))
             });
         }
@@ -165,7 +164,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
         );
 
         let factor = b.faer_mul(tl.faer_inv()).faer_neg();
-        zipped!(__rw, z.rb_mut(), u)
+        zipped_rw!(z.rb_mut(), u)
             .for_each(|unzipped!(mut z, u)| z.write(z.read().faer_add(u.read().faer_mul(factor))));
     }
 }
@@ -216,11 +215,11 @@ fn bidiag_fused_op_reference<E: ComplexField>(
             E::faer_one(),
             parallelism,
         );
-        zipped!(__rw, y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+        zipped_rw!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_add(src.read().faer_conj()))
         });
         let tl_inv = tl.faer_inv();
-        zipped!(__rw, a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+        zipped_rw!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
         });
         matmul(
@@ -240,11 +239,11 @@ fn bidiag_fused_op_reference<E: ComplexField>(
             E::faer_one(),
             parallelism,
         );
-        zipped!(__rw, y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+        zipped_rw!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_add(src.read().faer_conj()))
         });
         let tl_inv = tl.faer_inv();
-        zipped!(__rw, a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+        zipped_rw!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
         });
         matmul(
@@ -675,12 +674,12 @@ fn bidiag_fused_op<E: ComplexField>(
                     1 => {
                         let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         if first_init {
-                            zipped!(__rw, z.rb_mut(), z0).for_each(|unzipped!(mut z, mut z0)| {
+                            zipped_rw!(z.rb_mut(), z0).for_each(|unzipped!(mut z, mut z0)| {
                                 z.write(z0.read());
                                 z0.write(E::faer_zero());
                             });
                         } else {
-                            zipped!(__rw, z.rb_mut(), z0).for_each(|unzipped!(mut z, mut z0)| {
+                            zipped_rw!(z.rb_mut(), z0).for_each(|unzipped!(mut z, mut z0)| {
                                 z.write(z.read().faer_add(z0.read()));
                                 z0.write(E::faer_zero());
                             });
@@ -690,7 +689,7 @@ fn bidiag_fused_op<E: ComplexField>(
                         let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         let z1 = unsafe { z_block.rb().col(1).const_cast() };
                         if first_init {
-                            zipped!(__rw, z.rb_mut(), z0, z1).for_each(
+                            zipped_rw!(z.rb_mut(), z0, z1).for_each(
                                 |unzipped!(mut z, mut z0, mut z1)| {
                                     z.write(z0.read().faer_add(z1.read()));
                                     z0.write(E::faer_zero());
@@ -698,7 +697,7 @@ fn bidiag_fused_op<E: ComplexField>(
                                 },
                             );
                         } else {
-                            zipped!(__rw, z.rb_mut(), z0, z1).for_each(
+                            zipped_rw!(z.rb_mut(), z0, z1).for_each(
                                 |unzipped!(mut z, mut z0, mut z1)| {
                                     z.write(z.read().faer_add(z0.read().faer_add(z1.read())));
                                     z0.write(E::faer_zero());
@@ -740,15 +739,13 @@ fn bidiag_fused_op<E: ComplexField>(
                 E::faer_one(),
                 parallelism,
             );
-            zipped!(__rw, y.rb_mut(), a_row.rb().transpose()).for_each(
-                |unzipped!(mut dst, src)| dst.write(dst.read().faer_add(src.read().faer_conj())),
-            );
+            zipped_rw!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+                dst.write(dst.read().faer_add(src.read().faer_conj()))
+            });
             let tl_inv = tl.faer_inv();
-            zipped!(__rw, a_row.rb_mut(), y.rb().transpose()).for_each(
-                |unzipped!(mut dst, src)| {
-                    dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
-                },
-            );
+            zipped_rw!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+                dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
+            });
             matmul(
                 z.rb_mut().as_2d_mut(),
                 a_next.rb(),
@@ -767,11 +764,11 @@ fn bidiag_fused_op<E: ComplexField>(
             E::faer_one(),
             parallelism,
         );
-        zipped!(__rw, y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+        zipped_rw!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_add(src.read().faer_conj()))
         });
         let tl_inv = tl.faer_inv();
-        zipped!(__rw, a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+        zipped_rw!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
         });
 

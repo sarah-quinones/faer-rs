@@ -543,7 +543,7 @@ use crate::{
     linalg::{temp_mat_req, temp_mat_uninit},
     unzipped,
     utils::bound::{Array, Dim, Idx, MaybeIdx},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SignedIndex,
+    zipped_rw, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SignedIndex,
 };
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -3587,7 +3587,7 @@ pub mod supernodal {
                     params,
                 )
                 .dynamic_regularization_count;
-            zipped!(__rw, Ls_top.rb_mut())
+            zipped_rw!(Ls_top.rb_mut())
                 .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut x)| {
                     x.write(E::faer_zero())
                 });
@@ -3859,7 +3859,7 @@ pub mod supernodal {
                 params,
             );
             dynamic_regularization_count += info.dynamic_regularization_count;
-            zipped!(__rw, Ls_top.rb_mut())
+            zipped_rw!(Ls_top.rb_mut())
                 .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut x)| {
                     x.write(E::faer_zero())
                 });
@@ -5390,8 +5390,7 @@ pub(crate) mod tests {
         }
 
         let mut D = Mat::<E>::zeros(n, n);
-        zipped!(
-            __rw,
+        zipped_rw!(
             D.as_mut().diagonal_mut().column_vector_mut(),
             dense.as_ref().diagonal().column_vector()
         )

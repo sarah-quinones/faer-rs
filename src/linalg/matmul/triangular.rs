@@ -49,7 +49,7 @@ unsafe fn accum_lower<E: ComplexField>(
 
     match alpha {
         Some(alpha) => {
-            zipped!(__rw, dst, src).for_each_triangular_lower(
+            zipped_rw!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
                 |unzipped!(mut dst, src)| {
                     dst.write(alpha.faer_mul(dst.read()).faer_add(src.read()))
@@ -57,7 +57,7 @@ unsafe fn accum_lower<E: ComplexField>(
             );
         }
         None => {
-            zipped!(__rw, dst, src).for_each_triangular_lower(
+            zipped_rw!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
                 |unzipped!(mut dst, src)| dst.write(src.read()),
             );
@@ -972,7 +972,7 @@ impl BlockStructure {
 /// ```
 /// use faer::{
 ///     linalg::matmul::triangular::{matmul_with_conj, BlockStructure},
-///     mat, unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
 /// };
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
@@ -1004,7 +1004,7 @@ impl BlockStructure {
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, acc.as_ref(), target.as_ref())
+/// zipped_rw!(acc.as_ref(), target.as_ref())
 ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
@@ -1094,7 +1094,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// ```
 /// use faer::{
 ///     linalg::matmul::triangular::{matmul, BlockStructure},
-///     mat, unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
 /// };
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
@@ -1124,7 +1124,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, acc.as_ref(), target.as_ref())
+/// zipped_rw!(acc.as_ref(), target.as_ref())
 ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
@@ -1237,12 +1237,12 @@ unsafe fn matmul_unchecked<E: ComplexField>(
     };
 
     let clear_upper = |acc: MatMut<'_, E>, skip_diag: bool| match &alpha {
-        &Some(alpha) => zipped!(__rw, acc).for_each_triangular_upper(
+        &Some(alpha) => zipped_rw!(acc).for_each_triangular_upper(
             if skip_diag { Diag::Skip } else { Diag::Include },
             |unzipped!(mut acc)| acc.write(alpha.faer_mul(acc.read())),
         ),
 
-        None => zipped!(__rw, acc).for_each_triangular_upper(
+        None => zipped_rw!(acc).for_each_triangular_upper(
             if skip_diag { Diag::Skip } else { Diag::Include },
             |unzipped!(mut acc)| acc.write(E::faer_zero()),
         ),
@@ -1398,8 +1398,7 @@ unsafe fn matmul_unchecked<E: ComplexField>(
             if !skip_diag {
                 match &alpha {
                     &Some(alpha) => {
-                        zipped!(
-                            __rw,
+                        zipped_rw!(
                             acc.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                             lhs.diagonal().column_vector().as_2d(),
                             rhs.diagonal().column_vector().as_2d(),
@@ -1412,8 +1411,7 @@ unsafe fn matmul_unchecked<E: ComplexField>(
                         });
                     }
                     None => {
-                        zipped!(
-                            __rw,
+                        zipped_rw!(
                             acc.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                             lhs.diagonal().column_vector().as_2d(),
                             rhs.diagonal().column_vector().as_2d(),

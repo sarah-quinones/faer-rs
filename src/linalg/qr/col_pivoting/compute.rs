@@ -10,7 +10,7 @@ use crate::{
     perm::{swap_cols_idx as swap_cols, PermRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
-    zipped, ColMut, ColRef, Conj, Index, MatMut, Parallelism, SignedIndex,
+    zipped_rw, ColMut, ColRef, Conj, Index, MatMut, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -540,7 +540,7 @@ fn update_and_norm2<E: ComplexField>(
 ) -> E::Real {
     let _ = arch;
     let mut acc = E::Real::faer_zero();
-    zipped!(__rw, a, b).for_each(|unzipped!(mut a_, b)| {
+    zipped_rw!(a, b).for_each(|unzipped!(mut a_, b)| {
         let a = a_.read();
         let b = b.read();
 
@@ -1021,14 +1021,11 @@ mod tests {
         let mut q = Mat::<E>::zeros(m, m);
         let mut r = Mat::<E>::zeros(m, n);
 
-        zipped!(__rw, r.as_mut(), qr_factors)
+        zipped_rw!(r.as_mut(), qr_factors)
             .for_each_triangular_upper(Diag::Include, |unzipped!(mut a, b)| a.write(b.read()));
 
-        zipped!(
-            __rw,
-            q.as_mut().diagonal_mut().column_vector_mut().as_2d_mut()
-        )
-        .for_each(|unzipped!(mut a)| a.write(E::faer_one()));
+        zipped_rw!(q.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+            .for_each(|unzipped!(mut a)| a.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
             qr_factors,

@@ -1,8 +1,8 @@
 //! Triangular solve module.
 
 use crate::{
-    assert, debug_assert, unzipped, utils::thread::join_raw, zipped, ComplexField, Conj, Conjugate,
-    MatMut, MatRef, Parallelism,
+    assert, debug_assert, unzipped, utils::thread::join_raw, zipped_rw, ComplexField, Conj,
+    Conjugate, MatMut, MatRef, Parallelism,
 };
 use faer_entity::SimdCtx;
 use reborrow::*;
@@ -33,7 +33,7 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: Co
             let x0 = x0.subrows_mut(0, 1);
             let x1 = x1.subrows_mut(0, 1);
 
-            zipped!(__rw, x0, x1).for_each(|unzipped!(x0, mut x1)| {
+            zipped_rw!(x0, x1).for_each(|unzipped!(x0, mut x1)| {
                 x1.write(x1.read().faer_add(nl10_div_l11.faer_mul(x0.read())));
             });
         }
@@ -48,7 +48,7 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: Co
             let x1 = x1.subrows_mut(0, 1);
             let x2 = x2.subrows_mut(0, 1);
 
-            zipped!(__rw, x0, x1, x2).for_each(|unzipped!(mut x0, mut x1, mut x2)| {
+            zipped_rw!(x0, x1, x2).for_each(|unzipped!(mut x0, mut x1, mut x2)| {
                 let y0 = x0.read();
                 let mut y1 = x1.read();
                 let mut y2 = x2.read();
@@ -77,7 +77,7 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: Co
             let x2 = x2.subrows_mut(0, 1);
             let x3 = x3.subrows_mut(0, 1);
 
-            zipped!(__rw, x0, x1, x2, x3).for_each(|unzipped!(mut x0, mut x1, mut x2, mut x3)| {
+            zipped_rw!(x0, x1, x2, x3).for_each(|unzipped!(mut x0, mut x1, mut x2, mut x3)| {
                 let y0 = x0.read();
                 let mut y1 = x1.read();
                 let mut y2 = x2.read();
@@ -115,7 +115,7 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
         1 => {
             let inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).faer_inv();
             let x0 = rhs.subrows_mut(0, 1);
-            zipped!(__rw, x0).for_each(|unzipped!(mut x0)| x0.write(x0.read().faer_mul(inv)));
+            zipped_rw!(x0).for_each(|unzipped!(mut x0)| x0.write(x0.read().faer_mul(inv)));
         }
         2 => {
             let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).faer_inv();
@@ -127,7 +127,7 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
             let x0 = x0.subrows_mut(0, 1);
             let x1 = x1.subrows_mut(0, 1);
 
-            zipped!(__rw, x0, x1).for_each(|unzipped!(mut x0, mut x1)| {
+            zipped_rw!(x0, x1).for_each(|unzipped!(mut x0, mut x1)| {
                 x0.write(x0.read().faer_mul(l00_inv));
                 x1.write(
                     x1.read()
@@ -153,7 +153,7 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
             let x1 = x1.subrows_mut(0, 1);
             let x2 = x2.subrows_mut(0, 1);
 
-            zipped!(__rw, x0, x1, x2).for_each(|unzipped!(mut x0, mut x1, mut x2)| {
+            zipped_rw!(x0, x1, x2).for_each(|unzipped!(mut x0, mut x1, mut x2)| {
                 let mut y0 = x0.read();
                 let mut y1 = x1.read();
                 let mut y2 = x2.read();
@@ -194,7 +194,7 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
             let x2 = x2.subrows_mut(0, 1);
             let x3 = x3.subrows_mut(0, 1);
 
-            zipped!(__rw, x0, x1, x2, x3).for_each(|unzipped!(mut x0, mut x1, mut x2, mut x3)| {
+            zipped_rw!(x0, x1, x2, x3).for_each(|unzipped!(mut x0, mut x1, mut x2, mut x3)| {
                 let mut y0 = x0.read();
                 let mut y1 = x1.read();
                 let mut y2 = x2.read();
@@ -264,7 +264,7 @@ fn recursion_threshold() -> usize {
 ///         matmul::triangular::{matmul, BlockStructure},
 ///         triangular_solve::solve_lower_triangular_in_place_with_conj,
 ///     },
-///     mat, unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[1.0, 0.0], [2.0, 3.0]];
@@ -291,7 +291,7 @@ fn recursion_threshold() -> usize {
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, m_times_sol.as_ref(), rhs.as_ref())
+/// zipped_rw!(m_times_sol.as_ref(), rhs.as_ref())
 ///     .for_each(|unzipped!(x, target)| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
@@ -350,7 +350,7 @@ pub fn solve_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 ///         matmul::triangular::{matmul, BlockStructure},
 ///         triangular_solve::solve_upper_triangular_in_place_with_conj,
 ///     },
-///     mat, unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[1.0, 2.0], [0.0, 3.0]];
@@ -377,7 +377,7 @@ pub fn solve_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, m_times_sol.as_ref(), rhs.as_ref())
+/// zipped_rw!(m_times_sol.as_ref(), rhs.as_ref())
 ///     .for_each(|unzipped!(x, target)| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
@@ -436,7 +436,7 @@ pub fn solve_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 ///         matmul::triangular::{matmul, BlockStructure},
 ///         triangular_solve::solve_unit_lower_triangular_in_place_with_conj,
 ///     },
-///     mat, unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[0.0, 0.0], [2.0, 0.0]];
@@ -463,7 +463,7 @@ pub fn solve_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, m_times_sol.as_ref(), rhs.as_ref())
+/// zipped_rw!(m_times_sol.as_ref(), rhs.as_ref())
 ///     .for_each(|unzipped!(x, target)| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
@@ -525,7 +525,7 @@ pub fn solve_unit_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Can
 ///         matmul::triangular::{matmul, BlockStructure},
 ///         triangular_solve::solve_unit_upper_triangular_in_place_with_conj,
 ///     },
-///     mat, unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped_rw, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[0.0, 2.0], [0.0, 0.0]];
@@ -552,7 +552,7 @@ pub fn solve_unit_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Can
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(__rw, m_times_sol.as_ref(), rhs.as_ref())
+/// zipped_rw!(m_times_sol.as_ref(), rhs.as_ref())
 ///     .for_each(|unzipped!(x, target)| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]

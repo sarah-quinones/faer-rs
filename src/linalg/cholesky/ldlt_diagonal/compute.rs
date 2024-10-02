@@ -10,7 +10,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
-    zipped, ComplexField, MatMut, MatRef, Parallelism,
+    zipped_rw, ComplexField, MatMut, MatRef, Parallelism,
 };
 use core::{convert::Infallible, marker::PhantomData};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -1426,7 +1426,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 let a10_col = a10.rb_mut().col_mut(j);
                 let d0_elem = d0.read(j).faer_real().faer_inv();
 
-                zipped!(__rw, l10xd0_col, a10_col).for_each(
+                zipped_rw!(l10xd0_col, a10_col).for_each(
                     |unzipped!(mut l10xd0_elem, mut a10_elem)| {
                         let a10_elem_read = a10_elem.read();
                         a10_elem.write(a10_elem_read.faer_scale_real(d0_elem));

@@ -39,7 +39,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*, thread::join_raw, DivCeil},
-    zipped, ColMut, Conj, MatMut, MatRef, Parallelism,
+    zipped_rw, ColMut, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -83,7 +83,7 @@ pub fn make_householder_in_place<E: ComplexField>(
 
     if head_with_beta != E::faer_zero() {
         if let Some(essential) = essential {
-            zipped!(__rw, essential)
+            zipped_rw!(essential)
                 .for_each(|unzipped!(mut e)| e.write(e.read().faer_mul(head_with_beta_inv)));
         }
         let tau = one_half.faer_mul(

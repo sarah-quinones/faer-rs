@@ -1163,7 +1163,7 @@ impl<E: Entity, R: Shape> Clone for Col<E, R> {
     }
     fn clone_from(&mut self, other: &Self) {
         if self.nrows() == other.nrows() {
-            crate::zipped!(__rw, self, other)
+            crate::zipped_rw!(self, other)
                 .for_each(|crate::unzipped!(mut dst, src)| dst.write(src.read()));
         } else {
             if !R::IS_BOUND {

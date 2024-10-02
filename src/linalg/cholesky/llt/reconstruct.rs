@@ -5,7 +5,7 @@ use crate::{
         temp_mat_req, temp_mat_uninit,
         zip::Diag,
     },
-    unzipped, zipped, ComplexField, Entity, MatMut, MatRef, Parallelism,
+    unzipped, zipped_rw, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
@@ -78,7 +78,7 @@ pub fn reconstruct_lower_in_place<E: ComplexField>(
     let (mut tmp, stack) = temp_mat_uninit::<E>(n, n, stack);
     let mut tmp = tmp.as_mut();
     reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
-    zipped!(__rw, cholesky_factor, tmp.rb())
+    zipped_rw!(cholesky_factor, tmp.rb())
         .for_each_triangular_lower(Diag::Include, |unzipped!(mut dst, src)| {
             dst.write(src.read())
         });

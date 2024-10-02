@@ -193,7 +193,7 @@ pub fn bicgstab<E: ComplexField>(
 
         let abs_residual = if params.initial_guess == InitialGuessStatus::MaybeNonZero {
             A.apply(r.rb_mut(), x.rb(), parallelism, stack.rb_mut());
-            zipped!(__rw, &mut r, &b)
+            zipped_rw!(&mut r, &b)
                 .for_each(|unzipped!(mut r, b)| r.write(b.read().faer_sub(r.read())));
 
             r.norm_l2()
@@ -340,12 +340,12 @@ pub fn bicgstab<E: ComplexField>(
                 compute_w(kt.rb(), ks.rb())
             };
 
-            zipped!(__rw, &mut r, &s, &t).for_each(|unzipped!(mut r, s, t)| {
+            zipped_rw!(&mut r, &s, &t).for_each(|unzipped!(mut r, s, t)| {
                 r.write(s.read().faer_sub(w.faer_mul(t.read())))
             });
-            zipped!(__rw, &mut x, &z)
+            zipped_rw!(&mut x, &z)
                 .for_each(|unzipped!(mut x, z)| x.write(x.read().faer_add(w.faer_mul(z.read()))));
-            zipped!(__rw, &mut p, &v)
+            zipped_rw!(&mut p, &v)
                 .for_each(|unzipped!(mut p, v)| p.write(p.read().faer_sub(w.faer_mul(v.read()))));
 
             callback(x.rb());
@@ -396,7 +396,7 @@ pub fn bicgstab<E: ComplexField>(
                 E::faer_one(),
                 parallelism,
             );
-            zipped!(__rw, &mut p, &r, &tmp)
+            zipped_rw!(&mut p, &r, &tmp)
                 .for_each(|unzipped!(mut p, r, tmp)| p.write(r.read().faer_sub(tmp.read())));
         }
         Err(BicgError::NoConvergence {

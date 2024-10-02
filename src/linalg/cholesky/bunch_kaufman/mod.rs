@@ -13,7 +13,7 @@ use crate::{
         },
     },
     perm::{permute_rows, swap_cols_idx as swap_cols, swap_rows_idx as swap_rows, PermRef},
-    unzipped, zipped, ColMut, ColRef, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
+    unzipped, zipped_rw, ColMut, ColRef, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::{ComplexField, Entity, RealField};
@@ -235,8 +235,7 @@ pub mod compute {
                 if abs_akk >= colmax.faer_mul(alpha) {
                     kp = k;
                 } else {
-                    zipped!(
-                        __rw,
+                    zipped_rw!(
                         w.rb_mut().subrows_mut(k, imax - k).col_mut(k + 1),
                         a.rb().row(imax).subcols(k, imax - k).transpose(),
                     )
@@ -326,9 +325,9 @@ pub mod compute {
                     let d11 = d11.faer_inv();
 
                     let x = a.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k);
-                    zipped!(__rw, x)
+                    zipped_rw!(x)
                         .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d11)));
-                    zipped!(__rw, w.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k))
+                    zipped_rw!(w.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k))
                         .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
                 } else {
                     let dd = w.read(k + 1, k).faer_abs();
@@ -406,13 +405,10 @@ pub mod compute {
                         a.write(j, k + 1, wkp1);
                     }
 
-                    zipped!(__rw, w.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k))
+                    zipped_rw!(w.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k))
                         .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
-                    zipped!(
-                        __rw,
-                        w.rb_mut().subrows_mut(k + 2, n - k - 2).col_mut(k + 1)
-                    )
-                    .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+                    zipped_rw!(w.rb_mut().subrows_mut(k + 2, n - k - 2).col_mut(k + 1))
+                        .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
                 }
             }
 
@@ -439,7 +435,7 @@ pub mod compute {
             parallelism,
         );
 
-        zipped!(__rw, a_right.diagonal_mut().column_vector_mut())
+        zipped_rw!(a_right.diagonal_mut().column_vector_mut())
             .for_each(|unzipped!(mut x)| x.write(E::faer_from_real(x.read().faer_real())));
 
         let mut j = k - 1;
@@ -596,7 +592,7 @@ pub mod compute {
                         }
                         make_real(trailing.rb_mut(), j, j);
                     }
-                    zipped!(__rw, x)
+                    zipped_rw!(x)
                         .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d11)));
                 } else {
                     let d21 = a.read(k + 1, k).faer_abs();
@@ -1042,7 +1038,7 @@ mod tests {
 
             let err = &a * &x - &rhs;
             let mut max = 0.0;
-            zipped!(__rw, err.as_ref()).for_each(|unzipped!(err)| {
+            zipped_rw!(err.as_ref()).for_each(|unzipped!(err)| {
                 let err = err.read().abs();
                 if err > max {
                     max = err
@@ -1099,7 +1095,7 @@ mod tests {
 
             let err = a.conjugate() * &x - &rhs;
             let mut max = 0.0;
-            zipped!(__rw, err.as_ref()).for_each(|unzipped!(err)| {
+            zipped_rw!(err.as_ref()).for_each(|unzipped!(err)| {
                 let err = err.read().abs();
                 if err > max {
                     max = err

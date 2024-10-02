@@ -140,8 +140,7 @@ pub mod compute {
                             crate::perm::swap_rows_idx(a.rb_mut().get_mut(.., ..j), j, pvt);
                             crate::perm::swap_cols_idx(a.rb_mut().get_mut(pvt + 1.., ..), j, pvt);
                             unsafe {
-                                zipped!(
-                                    __rw,
+                                zipped_rw!(
                                     a.rb().get(j + 1..pvt, j).const_cast(),
                                     a.rb().get(pvt, j + 1..pvt).const_cast().transpose_mut(),
                                 )
@@ -173,7 +172,7 @@ pub mod compute {
                             );
                         }
                         let ajj = ajj.faer_inv();
-                        zipped!(__rw, a.rb_mut().get_mut(j + 1.., j))
+                        zipped_rw!(a.rb_mut().get_mut(j + 1.., j))
                             .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(ajj)));
                     }
 

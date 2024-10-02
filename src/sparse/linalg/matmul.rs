@@ -298,7 +298,7 @@ pub fn sparse_dense_matmul<
         match alpha {
             Some(alpha) => {
                 if alpha != E::faer_one() {
-                    zipped!(__rw, acc.rb_mut())
+                    zipped_rw!(acc.rb_mut())
                         .for_each(|unzipped!(mut dst)| dst.write(dst.read().faer_mul(alpha)))
                 }
             }
@@ -390,7 +390,7 @@ pub fn dense_sparse_matmul<
         match alpha {
             Some(alpha) => {
                 if alpha != E::faer_one() {
-                    zipped!(__rw, acc.rb_mut())
+                    zipped_rw!(acc.rb_mut())
                         .for_each(|unzipped!(mut dst)| dst.write(dst.read().faer_mul(alpha)))
                 }
             }

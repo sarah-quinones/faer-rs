@@ -1,5 +1,5 @@
 //! Computes the pseudo inverse; see:
-//! https://en.wikipedia.org//wiki/Singular_value_decomposition#Pseudoinverse
+//! <https://en.wikipedia.org//wiki/Singular_value_decomposition#Pseudoinverse>
 
 use crate::prelude::*;
 use faer_entity::{ComplexField, RealField};
@@ -24,7 +24,7 @@ pub(crate) fn compute_pseudoinverse<E: ComplexField>(
         r += 1;
     }
 
-    let s_inv = zipped!(__rw, s.get(..r))
+    let s_inv = zipped_rw!(s.get(..r))
         .map(|unzipped!(s)| E::faer_from_real(s.read().faer_real().faer_inv()));
 
     (v.get(.., ..r) * s_inv.as_ref().column_vector_as_diagonal()) * u.get(.., ..r).adjoint()

@@ -1186,8 +1186,8 @@ pub use crate::sparse::linalg::CholeskyError;
 
 /// Sparse solvers.
 ///
-/// Each solver satisfies the [`SpSolver`](crate::sparse::linalg::solvers::SpSolver) and/or
-/// [`SpSolverLstsq`](crate::sparse::linalg::solvers::SpSolverLstsq) traits, which can be used to
+/// Each solver satisfies the [`SpSolver`](crate::linalg::solvers::SpSolver) and/or
+/// [`SpSolverLstsq`](crate::linalg::solvers::SpSolverLstsq) traits, which can be used to
 /// solve linear systems.
 
 #[deprecated = "moved to faer::linalg::solvers"]

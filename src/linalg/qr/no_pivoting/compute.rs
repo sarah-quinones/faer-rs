@@ -13,7 +13,7 @@ use crate::{
         simd::{SimdFor, YesConj},
         slice::*,
     },
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped_rw, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -144,7 +144,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
                 ));
                 let k = (dot.faer_mul(tau_inv)).faer_neg();
                 col_head.write(0, col_head_.faer_add(k));
-                zipped!(__rw, col_tail.as_2d_mut(), first_col_tail.rb().as_2d()).for_each(
+                zipped_rw!(col_tail.as_2d_mut(), first_col_tail.rb().as_2d()).for_each(
                     |unzipped!(mut a, b)| a.write(a.read().faer_add(k.faer_mul(b.read()))),
                 );
             }
@@ -454,14 +454,11 @@ mod tests {
         let mut q = Mat::<E>::zeros(m, m);
         let mut r = Mat::<E>::zeros(m, n);
 
-        zipped!(__rw, r.as_mut(), qr_factors)
+        zipped_rw!(r.as_mut(), qr_factors)
             .for_each_triangular_upper(Diag::Include, |unzipped!(mut a, b)| a.write(b.read()));
 
-        zipped!(
-            __rw,
-            q.as_mut().diagonal_mut().column_vector_mut().as_2d_mut()
-        )
-        .for_each(|unzipped!(mut a)| a.write(E::faer_one()));
+        zipped_rw!(q.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+            .for_each(|unzipped!(mut a)| a.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
             qr_factors,

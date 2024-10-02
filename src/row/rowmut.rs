@@ -4,7 +4,7 @@ use crate::{
     col::{ColMut, ColRef},
     debug_assert, iter,
     iter::chunks::ChunkPolicy,
-    mat, unzipped, zipped, Idx, IdxInc, Shape, Unbind,
+    mat, unzipped, zipped_rw, Idx, IdxInc, Shape, Unbind,
 };
 
 /// Mutable view over a row vector, similar to a mutable reference to a strided [prim@slice].
@@ -523,7 +523,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
             this: RowMut<'_, E, C>,
             other: RowRef<'_, ViewE, C>,
         ) {
-            zipped!(__rw, this, other)
+            zipped_rw!(this, other)
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read().canonicalize()));
         }
         implementation(self.rb_mut(), other.as_row_ref())
@@ -535,7 +535,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     where
         E: ComplexField,
     {
-        zipped!(__rw, self.rb_mut().as_2d_mut()).for_each(
+        zipped_rw!(self.rb_mut().as_2d_mut()).for_each(
             #[inline(always)]
             |unzipped!(mut x)| x.write(E::faer_zero()),
         );
@@ -544,7 +544,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// Fills the elements of `self` with copies of `constant`.
     #[track_caller]
     pub fn fill(&mut self, constant: E) {
-        zipped!(__rw, (*self).rb_mut().as_2d_mut()).for_each(
+        zipped_rw!((*self).rb_mut().as_2d_mut()).for_each(
             #[inline(always)]
             |unzipped!(mut x)| x.write(constant),
         );
