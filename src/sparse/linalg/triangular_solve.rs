@@ -1,6 +1,14 @@
-use crate::{assert, sparse::SparseColMatRef, utils::slice::*, Conj, Index, MatMut, Parallelism};
-use core::iter::zip;
+use crate::{
+    assert,
+    sparse::SparseColMatRef,
+    utils::{bound, slice::*},
+    Conj, Index, MatMut, Parallelism,
+};
+use core::iter;
 use faer_entity::ComplexField;
+use reborrow::*;
+
+// FIXME: unsound get_unchecked(1..) calls
 
 /// Assuming `self` is a lower triangular matrix, solves the equation `Op(self) * X = rhs`, and
 /// stores the result in `rhs`, where `Op` is either the conjugate or the identity depending on the
@@ -23,161 +31,161 @@ pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
 
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let l = crate::utils::constrained::sparse::SparseColMatRef::new(l, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let l = l.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices() {
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let xj0 = x.read(j, k0).faer_mul(d);
-                    x.write(j, k0, xj0);
+            for j in N.indices() {
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                    }
+                let xj0 = x0.read(j).faer_mul(d);
+                x0.write(j, xj0);
+                let xj1 = x1.read(j).faer_mul(d);
+                x1.write(j, xj1);
+                let xj2 = x2.read(j).faer_mul(d);
+                x2.write(j, xj2);
+                let xj3 = x3.read(j).faer_mul(d);
+                x3.write(j, xj3);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
+                    x1.write(i, x1.read(i).faer_sub(lij.faer_mul(xj1)));
+                    x2.write(i, x2.read(i).faer_sub(lij.faer_mul(xj2)));
+                    x3.write(i, x3.read(i).faer_sub(lij.faer_mul(xj3)));
                 }
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                for j in N.indices() {
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                    let xj0 = x.read(j, k0).faer_mul(d);
-                    x.write(j, k0, xj0);
-                    let xj1 = x.read(j, k1).faer_mul(d);
-                    x.write(j, k1, xj1);
+            for j in N.indices() {
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(lij.faer_mul(xj1)));
-                    }
+                let xj0 = x0.read(j).faer_mul(d);
+                x0.write(j, xj0);
+                let xj1 = x1.read(j).faer_mul(d);
+                x1.write(j, xj1);
+                let xj2 = x2.read(j).faer_mul(d);
+                x2.write(j, xj2);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
+                    x1.write(i, x1.read(i).faer_sub(lij.faer_mul(xj1)));
+                    x2.write(i, x2.read(i).faer_sub(lij.faer_mul(xj2)));
                 }
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                for j in N.indices() {
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                    let xj0 = x.read(j, k0).faer_mul(d);
-                    x.write(j, k0, xj0);
-                    let xj1 = x.read(j, k1).faer_mul(d);
-                    x.write(j, k1, xj1);
-                    let xj2 = x.read(j, k2).faer_mul(d);
-                    x.write(j, k2, xj2);
+            for j in N.indices() {
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(lij.faer_mul(xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(lij.faer_mul(xj2)));
-                    }
+                let xj0 = x0.read(j).faer_mul(d);
+                x0.write(j, xj0);
+                let xj1 = x1.read(j).faer_mul(d);
+                x1.write(j, xj1);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
+                    x1.write(i, x1.read(i).faer_sub(lij.faer_mul(xj1)));
                 }
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
-                for j in N.indices() {
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                    let xj0 = x.read(j, k0).faer_mul(d);
-                    x.write(j, k0, xj0);
-                    let xj1 = x.read(j, k1).faer_mul(d);
-                    x.write(j, k1, xj1);
-                    let xj2 = x.read(j, k2).faer_mul(d);
-                    x.write(j, k2, xj2);
-                    let xj3 = x.read(j, k3).faer_mul(d);
-                    x.write(j, k3, xj3);
+            for j in N.indices() {
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(lij.faer_mul(xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(lij.faer_mul(xj2)));
-                        x.write(i, k3, x.read(i, k3).faer_sub(lij.faer_mul(xj3)));
-                    }
+                let xj0 = x0.read(j).faer_mul(d);
+                x0.write(j, xj0);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
                 }
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -202,168 +210,165 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
 
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let l = crate::utils::constrained::sparse::SparseColMatRef::new(l, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let l = l.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                    }
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
+                let mut acc3a = E::faer_zero();
 
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(d));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
+                    acc2a = acc2a.faer_add(lij.faer_mul(x2.read(i)));
+                    acc3a = acc3a.faer_add(lij.faer_mul(x3.read(i)));
                 }
+
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+                x0.write(j, x0.read(j).faer_sub(acc0a).faer_mul(d));
+                x1.write(j, x1.read(j).faer_sub(acc1a).faer_mul(d));
+                x2.write(j, x2.read(j).faer_sub(acc2a).faer_mul(d));
+                x3.write(j, x3.read(j).faer_sub(acc3a).faer_mul(d));
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                    }
-
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(d));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a).faer_mul(d));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
+                    acc2a = acc2a.faer_add(lij.faer_mul(x2.read(i)));
                 }
+
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+                x0.write(j, x0.read(j).faer_sub(acc0a).faer_mul(d));
+                x1.write(j, x1.read(j).faer_sub(acc1a).faer_mul(d));
+                x2.write(j, x2.read(j).faer_sub(acc2a).faer_mul(d));
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                        acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
-                    }
-
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(d));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a).faer_mul(d));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a).faer_mul(d));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
                 }
+
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+                x0.write(j, x0.read(j).faer_sub(acc0a).faer_mul(d));
+                x1.write(j, x1.read(j).faer_sub(acc1a).faer_mul(d));
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
-                    let mut acc3a = E::faer_zero();
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                        acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
-                        acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, k3)));
-                    }
-
-                    let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
-                    let d = if conj == Conj::Yes { d.faer_conj() } else { d };
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(d));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a).faer_mul(d));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a).faer_mul(d));
-                    x.write(j, k3, x.read(j, k3).faer_sub(acc3a).faer_mul(d));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in iter::zip(
+                    &row_ind[1..],
+                    slice_group(l.values_of_col(j))
+                        .subslice(1..len)
+                        .into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
                 }
+
+                let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
+                let d = if conj == Conj::Yes { d.faer_conj() } else { d };
+                x0.write(j, x0.read(j).faer_sub(acc0a).faer_mul(d));
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -389,144 +394,151 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let l = crate::utils::constrained::sparse::SparseColMatRef::new(l, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let l = l.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices() {
-                    let xj0 = x.read(j, k0);
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                    }
+            for j in N.indices() {
+                let xj0 = x0.read(j);
+                let xj1 = x1.read(j);
+                let xj2 = x2.read(j);
+                let xj3 = x3.read(j);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
+                    x1.write(i, x1.read(i).faer_sub(lij.faer_mul(xj1)));
+                    x2.write(i, x2.read(i).faer_sub(lij.faer_mul(xj2)));
+                    x3.write(i, x3.read(i).faer_sub(lij.faer_mul(xj3)));
                 }
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                for j in N.indices() {
-                    let xj0 = x.read(j, k0);
-                    let xj1 = x.read(j, k1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(lij.faer_mul(xj1)));
-                    }
+            for j in N.indices() {
+                let xj0 = x0.read(j);
+                let xj1 = x1.read(j);
+                let xj2 = x2.read(j);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
+                    x1.write(i, x1.read(i).faer_sub(lij.faer_mul(xj1)));
+                    x2.write(i, x2.read(i).faer_sub(lij.faer_mul(xj2)));
                 }
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                for j in N.indices() {
-                    let xj0 = x.read(j, k0);
-                    let xj1 = x.read(j, k1);
-                    let xj2 = x.read(j, k2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(lij.faer_mul(xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(lij.faer_mul(xj2)));
-                    }
+            for j in N.indices() {
+                let xj0 = x0.read(j);
+                let xj1 = x1.read(j);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
+                    x1.write(i, x1.read(i).faer_sub(lij.faer_mul(xj1)));
                 }
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
-                for j in N.indices() {
-                    let xj0 = x.read(j, k0);
-                    let xj1 = x.read(j, k1);
-                    let xj2 = x.read(j, k2);
-                    let xj3 = x.read(j, k3);
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        x.write(i, k0, x.read(i, k0).faer_sub(lij.faer_mul(xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(lij.faer_mul(xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(lij.faer_mul(xj2)));
-                        x.write(i, k3, x.read(i, k3).faer_sub(lij.faer_mul(xj3)));
-                    }
+            for j in N.indices() {
+                let xj0 = x0.read(j);
+
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    x0.write(i, x0.read(i).faer_sub(lij.faer_mul(xj0)));
                 }
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-
-        k += bs;
     }
 }
 
@@ -552,160 +564,165 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let l = crate::utils::constrained::sparse::SparseColMatRef::new(l, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let l = l.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                    }
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
+                let mut acc3a = E::faer_zero();
 
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
+                    acc2a = acc2a.faer_add(lij.faer_mul(x2.read(i)));
+                    acc3a = acc3a.faer_add(lij.faer_mul(x3.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_sub(acc1a));
+                x2.write(j, x2.read(j).faer_sub(acc2a));
+                x3.write(j, x3.read(j).faer_sub(acc3a));
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
+                    acc2a = acc2a.faer_add(lij.faer_mul(x2.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_sub(acc1a));
+                x2.write(j, x2.read(j).faer_sub(acc2a));
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                        acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_sub(acc1a));
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                for j in N.indices().rev() {
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
-                    let mut acc3a = E::faer_zero();
+            for j in N.indices().rev() {
+                let mut acc0a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                        acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
-                        acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, k3)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a));
-                    x.write(j, k3, x.read(j, k3).faer_sub(acc3a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a));
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -725,180 +742,185 @@ pub fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place<I: Index, E: Co
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let l = crate::utils::constrained::sparse::SparseColMatRef::new(l, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let l = l.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices().rev() {
-                    let d = slice_group(l.values_of_col(j))
-                        .read(0)
-                        .faer_real()
-                        .faer_inv();
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let mut acc0a = E::faer_zero();
+            for j in N.indices().rev() {
+                let d = slice_group(l.values_of_col(j))
+                    .read(0)
+                    .faer_real()
+                    .faer_inv();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                    }
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
+                let mut acc3a = E::faer_zero();
 
-                    x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
+                    acc2a = acc2a.faer_add(lij.faer_mul(x2.read(i)));
+                    acc3a = acc3a.faer_add(lij.faer_mul(x3.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_scale_real(d).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_scale_real(d).faer_sub(acc1a));
+                x2.write(j, x2.read(j).faer_scale_real(d).faer_sub(acc2a));
+                x3.write(j, x3.read(j).faer_scale_real(d).faer_sub(acc3a));
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let d = slice_group(l.values_of_col(j))
-                        .read(0)
-                        .faer_real()
-                        .faer_inv();
+            for j in N.indices().rev() {
+                let d = slice_group(l.values_of_col(j))
+                    .read(0)
+                    .faer_real()
+                    .faer_inv();
 
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_scale_real(d).faer_sub(acc1a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
+                    acc2a = acc2a.faer_add(lij.faer_mul(x2.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_scale_real(d).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_scale_real(d).faer_sub(acc1a));
+                x2.write(j, x2.read(j).faer_scale_real(d).faer_sub(acc2a));
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let d = slice_group(l.values_of_col(j))
-                        .read(0)
-                        .faer_real()
-                        .faer_inv();
+            for j in N.indices().rev() {
+                let d = slice_group(l.values_of_col(j))
+                    .read(0)
+                    .faer_real()
+                    .faer_inv();
 
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                        acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_scale_real(d).faer_sub(acc1a));
-                    x.write(j, k2, x.read(j, k2).faer_scale_real(d).faer_sub(acc2a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
+                    acc1a = acc1a.faer_add(lij.faer_mul(x1.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_scale_real(d).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_scale_real(d).faer_sub(acc1a));
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                for j in N.indices().rev() {
-                    let d = slice_group(l.values_of_col(j))
-                        .read(0)
-                        .faer_real()
-                        .faer_inv();
+            for j in N.indices().rev() {
+                let d = slice_group(l.values_of_col(j))
+                    .read(0)
+                    .faer_real()
+                    .faer_inv();
 
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
-                    let mut acc3a = E::faer_zero();
+                let mut acc0a = E::faer_zero();
 
-                    let row_ind = l.row_indices_of_col_raw(j);
-                    let len = row_ind.len();
-                    assert!(len >= 1);
-                    for (i, lij) in unsafe {
-                        zip(
-                            row_ind.get_unchecked(1..),
-                            slice_group(l.values_of_col(j))
-                                .subslice_unchecked(1..len)
-                                .into_ref_iter(),
-                        )
-                    } {
-                        let i = i.zx();
-                        let lij = lij.read();
-                        let lij = if conj == Conj::Yes {
-                            lij.faer_conj()
-                        } else {
-                            lij
-                        };
-                        acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
-                        acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
-                        acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
-                        acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, k3)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_scale_real(d).faer_sub(acc1a));
-                    x.write(j, k2, x.read(j, k2).faer_scale_real(d).faer_sub(acc2a));
-                    x.write(j, k3, x.read(j, k3).faer_scale_real(d).faer_sub(acc3a));
+                let row_ind = l.row_indices_of_col_raw(j);
+                let len = row_ind.len();
+                assert!(len >= 1);
+                for (i, lij) in unsafe {
+                    iter::zip(
+                        row_ind.get_unchecked(1..),
+                        slice_group(l.values_of_col(j))
+                            .subslice_unchecked(1..len)
+                            .into_ref_iter(),
+                    )
+                } {
+                    let i = i.zx();
+                    let lij = lij.read();
+                    let lij = if conj == Conj::Yes {
+                        lij.faer_conj()
+                    } else {
+                        lij
+                    };
+                    acc0a = acc0a.faer_add(lij.faer_mul(x0.read(i)));
                 }
+
+                x0.write(j, x0.read(j).faer_scale_real(d).faer_sub(acc0a));
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -922,164 +944,169 @@ pub fn solve_upper_triangular_in_place<I: Index, E: ComplexField>(
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let u = crate::utils::constrained::sparse::SparseColMatRef::new(u, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let u = u.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+                let xj0 = x0.read(j).faer_mul(u_inv);
+                let xj1 = x1.read(j).faer_mul(u_inv);
+                let xj2 = x2.read(j).faer_mul(u_inv);
+                let xj3 = x3.read(j).faer_mul(u_inv);
+                x0.write(j, xj0);
+                x1.write(j, xj1);
+                x2.write(j, xj2);
+                x3.write(j, xj3);
+
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
                     } else {
-                        u_inv
+                        u.read()
                     };
-                    let xj = x.read(j, k0).faer_mul(u_inv);
-                    x.write(j, k0, xj);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
-
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj0)));
+                    x1.write(i, x1.read(i).faer_sub(E::faer_mul(u, xj1)));
+                    x2.write(i, x2.read(i).faer_sub(E::faer_mul(u, xj2)));
+                    x3.write(i, x3.read(i).faer_sub(E::faer_mul(u, xj3)));
                 }
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+                let xj0 = x0.read(j).faer_mul(u_inv);
+                let xj1 = x1.read(j).faer_mul(u_inv);
+                let xj2 = x2.read(j).faer_mul(u_inv);
+                x0.write(j, xj0);
+                x1.write(j, xj1);
+                x2.write(j, xj2);
+
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
                     } else {
-                        u_inv
+                        u.read()
                     };
-                    let xj0 = x.read(j, k0).faer_mul(u_inv);
-                    let xj1 = x.read(j, k1).faer_mul(u_inv);
-                    x.write(j, k0, xj0);
-                    x.write(j, k1, xj1);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
-
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(E::faer_mul(u, xj1)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj0)));
+                    x1.write(i, x1.read(i).faer_sub(E::faer_mul(u, xj1)));
+                    x2.write(i, x2.read(i).faer_sub(E::faer_mul(u, xj2)));
                 }
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+                let xj0 = x0.read(j).faer_mul(u_inv);
+                let xj1 = x1.read(j).faer_mul(u_inv);
+                x0.write(j, xj0);
+                x1.write(j, xj1);
+
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
                     } else {
-                        u_inv
+                        u.read()
                     };
-                    let xj0 = x.read(j, k0).faer_mul(u_inv);
-                    let xj1 = x.read(j, k1).faer_mul(u_inv);
-                    let xj2 = x.read(j, k2).faer_mul(u_inv);
-                    x.write(j, k0, xj0);
-                    x.write(j, k1, xj1);
-                    x.write(j, k2, xj2);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
-
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(E::faer_mul(u, xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(E::faer_mul(u, xj2)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj0)));
+                    x1.write(i, x1.read(i).faer_sub(E::faer_mul(u, xj1)));
                 }
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+                let xj = x0.read(j).faer_mul(u_inv);
+                x0.write(j, xj);
+
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
                     } else {
-                        u_inv
+                        u.read()
                     };
-                    let xj0 = x.read(j, k0).faer_mul(u_inv);
-                    let xj1 = x.read(j, k1).faer_mul(u_inv);
-                    let xj2 = x.read(j, k2).faer_mul(u_inv);
-                    let xj3 = x.read(j, k3).faer_mul(u_inv);
-                    x.write(j, k0, xj0);
-                    x.write(j, k1, xj1);
-                    x.write(j, k2, xj2);
-                    x.write(j, k3, xj3);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
-
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(E::faer_mul(u, xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(E::faer_mul(u, xj2)));
-                        x.write(i, k3, x.read(i, k3).faer_sub(E::faer_mul(u, xj3)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj)));
                 }
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -1103,252 +1130,249 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, E: ComplexField>(
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let u = crate::utils::constrained::sparse::SparseColMatRef::new(u, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let u = u.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
+
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
+                let mut acc3a = E::faer_zero();
+
+                let rows = &ui[..ui.len() - 1];
+                let values = ux.subslice(0..ui.len() - 1);
+
+                for (i, uij) in iter::zip(rows, values.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
                     } else {
-                        u_inv
+                        uija
                     };
-
-                    let mut acc0a = E::faer_zero();
-                    let mut acc0b = E::faer_zero();
-                    let mut acc0c = E::faer_zero();
-                    let mut acc0d = E::faer_zero();
-
-                    let a = 0;
-                    let b = 1;
-                    let c = 2;
-                    let d = 3;
-
-                    let rows_head = ui[..ui.len() - 1].chunks_exact(4);
-                    let rows_tail = rows_head.remainder();
-                    let (values_head, values_tail) =
-                        ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
-
-                    for (i, uij) in zip(rows_head, values_head) {
-                        let uija = uij.read(a);
-                        let uijb = uij.read(b);
-                        let uijc = uij.read(c);
-                        let uijd = uij.read(d);
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        let uijb = if conj == Conj::Yes {
-                            uijb.faer_conj()
-                        } else {
-                            uijb
-                        };
-                        let uijc = if conj == Conj::Yes {
-                            uijc.faer_conj()
-                        } else {
-                            uijc
-                        };
-                        let uijd = if conj == Conj::Yes {
-                            uijd.faer_conj()
-                        } else {
-                            uijd
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i[a].zx(), k0)));
-                        acc0b = acc0b.faer_add(uijb.faer_mul(x.read(i[b].zx(), k0)));
-                        acc0c = acc0c.faer_add(uijc.faer_mul(x.read(i[c].zx(), k0)));
-                        acc0d = acc0d.faer_add(uijd.faer_mul(x.read(i[d].zx(), k0)));
-                    }
-
-                    for (i, uij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                    }
-
-                    x.write(
-                        j,
-                        k0,
-                        x.read(j, k0)
-                            .faer_sub(acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)))
-                            .faer_mul(u_inv),
-                    );
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i.zx())));
+                    acc2a = acc2a.faer_add(uija.faer_mul(x2.read(i.zx())));
+                    acc3a = acc3a.faer_add(uija.faer_mul(x3.read(i.zx())));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a).faer_mul(u_inv));
+                x1.write(j, x1.read(j).faer_sub(acc1a).faer_mul(u_inv));
+                x2.write(j, x2.read(j).faer_sub(acc2a).faer_mul(u_inv));
+                x3.write(j, x3.read(j).faer_sub(acc3a).faer_mul(u_inv));
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
+
+                let rows = &ui[..ui.len() - 1];
+                let values = ux.subslice(0..ui.len() - 1);
+
+                for (i, uij) in iter::zip(rows, values.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
                     } else {
-                        u_inv
+                        uija
                     };
-
-                    let mut acc0a = E::faer_zero();
-                    let mut acc0b = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc1b = E::faer_zero();
-
-                    let a = 0;
-                    let b = 1;
-
-                    let rows_head = ui[..ui.len() - 1].chunks_exact(2);
-                    let rows_tail = rows_head.remainder();
-                    let (values_head, values_tail) =
-                        ux.subslice(0..ui.len() - 1).into_chunks_exact(2);
-
-                    for (i, uij) in zip(rows_head, values_head) {
-                        let uija = uij.read(a);
-                        let uijb = uij.read(b);
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        let uijb = if conj == Conj::Yes {
-                            uijb.faer_conj()
-                        } else {
-                            uijb
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i[a].zx(), k0)));
-                        acc0b = acc0b.faer_add(uijb.faer_mul(x.read(i[b].zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i[a].zx(), k1)));
-                        acc1b = acc1b.faer_add(uijb.faer_mul(x.read(i[b].zx(), k1)));
-                    }
-
-                    for (i, uij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i.zx(), k1)));
-                    }
-
-                    x.write(
-                        j,
-                        k0,
-                        x.read(j, k0)
-                            .faer_sub(acc0a.faer_add(acc0b))
-                            .faer_mul(u_inv),
-                    );
-                    x.write(
-                        j,
-                        k1,
-                        x.read(j, k1)
-                            .faer_sub(acc1a.faer_add(acc1b))
-                            .faer_mul(u_inv),
-                    );
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i.zx())));
+                    acc2a = acc2a.faer_add(uija.faer_mul(x2.read(i.zx())));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a).faer_mul(u_inv));
+                x1.write(j, x1.read(j).faer_sub(acc1a).faer_mul(u_inv));
+                x2.write(j, x2.read(j).faer_sub(acc2a).faer_mul(u_inv));
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+
+                let mut acc0a = E::faer_zero();
+                let mut acc0b = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc1b = E::faer_zero();
+
+                let a = 0;
+                let b = 1;
+
+                let rows_head = ui[..ui.len() - 1].chunks_exact(2);
+                let rows_tail = rows_head.remainder();
+                let (values_head, values_tail) = ux.subslice(0..ui.len() - 1).into_chunks_exact(2);
+
+                for (i, uij) in iter::zip(rows_head, values_head) {
+                    let uija = uij.read(a);
+                    let uijb = uij.read(b);
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
                     } else {
-                        u_inv
+                        uija
                     };
-
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
-
-                    let rows = &ui[..ui.len() - 1];
-                    let values = ux.subslice(0..ui.len() - 1);
-
-                    for (i, uij) in zip(rows, values.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i.zx(), k1)));
-                        acc2a = acc2a.faer_add(uija.faer_mul(x.read(i.zx(), k2)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(u_inv));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a).faer_mul(u_inv));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a).faer_mul(u_inv));
-                }
-            }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
-
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
-
-                    let u_inv = ux.read(ui.len() - 1).faer_inv();
-                    let u_inv = if conj == Conj::Yes {
-                        u_inv.faer_conj()
+                    let uijb = if conj == Conj::Yes {
+                        uijb.faer_conj()
                     } else {
-                        u_inv
+                        uijb
                     };
-
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
-                    let mut acc3a = E::faer_zero();
-
-                    let rows = &ui[..ui.len() - 1];
-                    let values = ux.subslice(0..ui.len() - 1);
-
-                    for (i, uij) in zip(rows, values.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i.zx(), k1)));
-                        acc2a = acc2a.faer_add(uija.faer_mul(x.read(i.zx(), k2)));
-                        acc3a = acc3a.faer_add(uija.faer_mul(x.read(i.zx(), k3)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(u_inv));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a).faer_mul(u_inv));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a).faer_mul(u_inv));
-                    x.write(j, k3, x.read(j, k3).faer_sub(acc3a).faer_mul(u_inv));
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i[a].zx())));
+                    acc0b = acc0b.faer_add(uijb.faer_mul(x0.read(i[b].zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i[a].zx())));
+                    acc1b = acc1b.faer_add(uijb.faer_mul(x1.read(i[b].zx())));
                 }
+
+                for (i, uij) in iter::zip(rows_tail, values_tail.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i.zx())));
+                }
+
+                x0.write(
+                    j,
+                    x0.read(j).faer_sub(acc0a.faer_add(acc0b)).faer_mul(u_inv),
+                );
+                x1.write(
+                    j,
+                    x1.read(j).faer_sub(acc1a.faer_add(acc1b)).faer_mul(u_inv),
+                );
             }
-            _ => unreachable!(),
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
+
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+
+                let u_inv = ux.read(ui.len() - 1).faer_inv();
+                let u_inv = if conj == Conj::Yes {
+                    u_inv.faer_conj()
+                } else {
+                    u_inv
+                };
+
+                let mut acc0a = E::faer_zero();
+                let mut acc0b = E::faer_zero();
+                let mut acc0c = E::faer_zero();
+                let mut acc0d = E::faer_zero();
+
+                let a = 0;
+                let b = 1;
+                let c = 2;
+                let d = 3;
+
+                let rows_head = ui[..ui.len() - 1].chunks_exact(4);
+                let rows_tail = rows_head.remainder();
+                let (values_head, values_tail) = ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
+
+                for (i, uij) in iter::zip(rows_head, values_head) {
+                    let uija = uij.read(a);
+                    let uijb = uij.read(b);
+                    let uijc = uij.read(c);
+                    let uijd = uij.read(d);
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    let uijb = if conj == Conj::Yes {
+                        uijb.faer_conj()
+                    } else {
+                        uijb
+                    };
+                    let uijc = if conj == Conj::Yes {
+                        uijc.faer_conj()
+                    } else {
+                        uijc
+                    };
+                    let uijd = if conj == Conj::Yes {
+                        uijd.faer_conj()
+                    } else {
+                        uijd
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i[a].zx())));
+                    acc0b = acc0b.faer_add(uijb.faer_mul(x0.read(i[b].zx())));
+                    acc0c = acc0c.faer_add(uijc.faer_mul(x0.read(i[c].zx())));
+                    acc0d = acc0d.faer_add(uijd.faer_mul(x0.read(i[d].zx())));
+                }
+
+                for (i, uij) in iter::zip(rows_tail, values_tail.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                }
+
+                x0.write(
+                    j,
+                    x0.read(j)
+                        .faer_sub(acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)))
+                        .faer_mul(u_inv),
+                );
+            }
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -1372,130 +1396,135 @@ pub fn solve_unit_upper_triangular_in_place<I: Index, E: ComplexField>(
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let u = crate::utils::constrained::sparse::SparseColMatRef::new(u, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let u = u.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let xj = x.read(j, k0);
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
+                let xj0 = x0.read(j);
+                let xj1 = x1.read(j);
+                let xj2 = x2.read(j);
+                let xj3 = x3.read(j);
 
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj)));
-                    }
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
+                    } else {
+                        u.read()
+                    };
+
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj0)));
+                    x1.write(i, x1.read(i).faer_sub(E::faer_mul(u, xj1)));
+                    x2.write(i, x2.read(i).faer_sub(E::faer_mul(u, xj2)));
+                    x3.write(i, x3.read(i).faer_sub(E::faer_mul(u, xj3)));
                 }
             }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let xj0 = x.read(j, k0);
-                    let xj1 = x.read(j, k1);
+                let xj0 = x0.read(j);
+                let xj1 = x1.read(j);
+                let xj2 = x2.read(j);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
+                    } else {
+                        u.read()
+                    };
 
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(E::faer_mul(u, xj1)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj0)));
+                    x1.write(i, x1.read(i).faer_sub(E::faer_mul(u, xj1)));
+                    x2.write(i, x2.read(i).faer_sub(E::faer_mul(u, xj2)));
                 }
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let xj0 = x.read(j, k0);
-                    let xj1 = x.read(j, k1);
-                    let xj2 = x.read(j, k2);
+                let xj0 = x0.read(j);
+                let xj1 = x1.read(j);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
+                    } else {
+                        u.read()
+                    };
 
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(E::faer_mul(u, xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(E::faer_mul(u, xj2)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj0)));
+                    x1.write(i, x1.read(i).faer_sub(E::faer_mul(u, xj1)));
                 }
             }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
 
-                for j in N.indices().rev() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices().rev() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let xj0 = x.read(j, k0);
-                    let xj1 = x.read(j, k1);
-                    let xj2 = x.read(j, k2);
-                    let xj3 = x.read(j, k3);
+                let xj = x0.read(j);
 
-                    for (i, u) in zip(
-                        &ui[..ui.len() - 1],
-                        ux.subslice(0..ui.len() - 1).into_ref_iter(),
-                    ) {
-                        let i = i.zx();
-                        let u = if conj == Conj::Yes {
-                            u.read().faer_conj()
-                        } else {
-                            u.read()
-                        };
+                for (i, u) in iter::zip(
+                    &ui[..ui.len() - 1],
+                    ux.subslice(0..ui.len() - 1).into_ref_iter(),
+                ) {
+                    let i = i.zx();
+                    let u = if conj == Conj::Yes {
+                        u.read().faer_conj()
+                    } else {
+                        u.read()
+                    };
 
-                        x.write(i, k0, x.read(i, k0).faer_sub(E::faer_mul(u, xj0)));
-                        x.write(i, k1, x.read(i, k1).faer_sub(E::faer_mul(u, xj1)));
-                        x.write(i, k2, x.read(i, k2).faer_sub(E::faer_mul(u, xj2)));
-                        x.write(i, k3, x.read(i, k3).faer_sub(E::faer_mul(u, xj3)));
-                    }
+                    x0.write(i, x0.read(i).faer_sub(E::faer_mul(u, xj)));
                 }
             }
-            _ => unreachable!(),
+            k = k0.next();
         }
-        k += bs;
     }
 }
 
@@ -1519,243 +1548,244 @@ pub fn solve_unit_upper_triangular_transpose_in_place<I: Index, E: ComplexField>
     with_dim!(N, rhs.nrows());
     with_dim!(K, rhs.ncols());
 
-    let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
-    let u = crate::utils::constrained::sparse::SparseColMatRef::new(u, N, N);
+    let mut x = rhs.as_shape_mut(N, K);
+    let u = u.as_shape(N, N);
 
-    let mut k = 0usize;
-    while k < *K {
-        let bs = Ord::min(*K - k, 4);
-        match bs {
-            1 => {
-                let k0 = K.check(k);
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+    let mut k = bound::IdxInc::<usize>::zero();
+    while let Some(k0) = K.try_check(*k) {
+        let k1 = K.try_check(*k + 1);
+        let k2 = K.try_check(*k + 2);
+        let k3 = K.try_check(*k + 3);
 
-                    let mut acc0a = E::faer_zero();
-                    let mut acc0b = E::faer_zero();
-                    let mut acc0c = E::faer_zero();
-                    let mut acc0d = E::faer_zero();
+        if let Some(k3) = k3 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k3.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+                (x.next(), x.next(), x.next(), x.next())
+            else {
+                panic!()
+            };
 
-                    let a = 0;
-                    let b = 1;
-                    let c = 2;
-                    let d = 3;
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let rows_head = ui[..ui.len() - 1].chunks_exact(4);
-                    let rows_tail = rows_head.remainder();
-                    let (values_head, values_tail) =
-                        ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
+                let mut acc3a = E::faer_zero();
 
-                    for (i, uij) in zip(rows_head, values_head) {
-                        let uija = uij.read(a);
-                        let uijb = uij.read(b);
-                        let uijc = uij.read(c);
-                        let uijd = uij.read(d);
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        let uijb = if conj == Conj::Yes {
-                            uijb.faer_conj()
-                        } else {
-                            uijb
-                        };
-                        let uijc = if conj == Conj::Yes {
-                            uijc.faer_conj()
-                        } else {
-                            uijc
-                        };
-                        let uijd = if conj == Conj::Yes {
-                            uijd.faer_conj()
-                        } else {
-                            uijd
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i[a].zx(), k0)));
-                        acc0b = acc0b.faer_add(uijb.faer_mul(x.read(i[b].zx(), k0)));
-                        acc0c = acc0c.faer_add(uijc.faer_mul(x.read(i[c].zx(), k0)));
-                        acc0d = acc0d.faer_add(uijd.faer_mul(x.read(i[d].zx(), k0)));
-                    }
+                let a = 0;
 
-                    for (i, uij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                    }
+                let rows_head = ui[..ui.len() - 1].chunks_exact(4);
+                let rows_tail = rows_head.remainder();
+                let (values_head, values_tail) = ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
 
-                    x.write(
-                        j,
-                        k0,
-                        x.read(j, k0)
-                            .faer_sub(acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d))),
-                    );
+                for (i, uij) in iter::zip(rows_head, values_head) {
+                    let uija = uij.read(a);
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i[a].zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i[a].zx())));
+                    acc2a = acc2a.faer_add(uija.faer_mul(x2.read(i[a].zx())));
+                    acc3a = acc3a.faer_add(uija.faer_mul(x3.read(i[a].zx())));
                 }
-            }
-            2 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
 
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
-
-                    let mut acc0a = E::faer_zero();
-                    let mut acc0b = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc1b = E::faer_zero();
-
-                    let a = 0;
-                    let b = 1;
-
-                    let rows_head = ui[..ui.len() - 1].chunks_exact(4);
-                    let rows_tail = rows_head.remainder();
-                    let (values_head, values_tail) =
-                        ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
-
-                    for (i, uij) in zip(rows_head, values_head) {
-                        let uija = uij.read(a);
-                        let uijb = uij.read(b);
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        let uijb = if conj == Conj::Yes {
-                            uijb.faer_conj()
-                        } else {
-                            uijb
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i[a].zx(), k0)));
-                        acc0b = acc0b.faer_add(uijb.faer_mul(x.read(i[b].zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i[a].zx(), k1)));
-                        acc1b = acc1b.faer_add(uijb.faer_mul(x.read(i[b].zx(), k1)));
-                    }
-
-                    for (i, uij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i.zx(), k1)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a.faer_add(acc0b)));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a.faer_add(acc1b)));
+                for (i, uij) in iter::zip(rows_tail, values_tail.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i.zx())));
+                    acc2a = acc2a.faer_add(uija.faer_mul(x2.read(i.zx())));
+                    acc3a = acc3a.faer_add(uija.faer_mul(x3.read(i.zx())));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_sub(acc1a));
+                x2.write(j, x2.read(j).faer_sub(acc2a));
+                x3.write(j, x3.read(j).faer_sub(acc3a));
             }
-            3 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
+            k = k3.next();
+        } else if let Some(k2) = k2 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k2.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+                panic!()
+            };
 
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
 
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
+                let mut acc0a = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc2a = E::faer_zero();
 
-                    let a = 0;
+                let a = 0;
 
-                    let rows_head = ui[..ui.len() - 1].chunks_exact(4);
-                    let rows_tail = rows_head.remainder();
-                    let (values_head, values_tail) =
-                        ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
+                let rows_head = ui[..ui.len() - 1].chunks_exact(4);
+                let rows_tail = rows_head.remainder();
+                let (values_head, values_tail) = ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
 
-                    for (i, uij) in zip(rows_head, values_head) {
-                        let uija = uij.read(a);
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i[a].zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i[a].zx(), k1)));
-                        acc2a = acc2a.faer_add(uija.faer_mul(x.read(i[a].zx(), k2)));
-                    }
-
-                    for (i, uij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i.zx(), k1)));
-                        acc2a = acc2a.faer_add(uija.faer_mul(x.read(i.zx(), k2)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a));
+                for (i, uij) in iter::zip(rows_head, values_head) {
+                    let uija = uij.read(a);
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i[a].zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i[a].zx())));
+                    acc2a = acc2a.faer_add(uija.faer_mul(x2.read(i[a].zx())));
                 }
-            }
-            4 => {
-                let k0 = K.check(k);
-                let k1 = K.check(k + 1);
-                let k2 = K.check(k + 2);
-                let k3 = K.check(k + 3);
 
-                for j in N.indices() {
-                    let ui = u.row_indices_of_col_raw(j);
-                    let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
-
-                    let mut acc0a = E::faer_zero();
-                    let mut acc1a = E::faer_zero();
-                    let mut acc2a = E::faer_zero();
-                    let mut acc3a = E::faer_zero();
-
-                    let a = 0;
-
-                    let rows_head = ui[..ui.len() - 1].chunks_exact(4);
-                    let rows_tail = rows_head.remainder();
-                    let (values_head, values_tail) =
-                        ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
-
-                    for (i, uij) in zip(rows_head, values_head) {
-                        let uija = uij.read(a);
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i[a].zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i[a].zx(), k1)));
-                        acc2a = acc2a.faer_add(uija.faer_mul(x.read(i[a].zx(), k2)));
-                        acc3a = acc3a.faer_add(uija.faer_mul(x.read(i[a].zx(), k3)));
-                    }
-
-                    for (i, uij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                        let uija = uij.read();
-                        let uija = if conj == Conj::Yes {
-                            uija.faer_conj()
-                        } else {
-                            uija
-                        };
-                        acc0a = acc0a.faer_add(uija.faer_mul(x.read(i.zx(), k0)));
-                        acc1a = acc1a.faer_add(uija.faer_mul(x.read(i.zx(), k1)));
-                        acc2a = acc2a.faer_add(uija.faer_mul(x.read(i.zx(), k2)));
-                        acc3a = acc3a.faer_add(uija.faer_mul(x.read(i.zx(), k3)));
-                    }
-
-                    x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
-                    x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
-                    x.write(j, k2, x.read(j, k2).faer_sub(acc2a));
-                    x.write(j, k3, x.read(j, k3).faer_sub(acc3a));
+                for (i, uij) in iter::zip(rows_tail, values_tail.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i.zx())));
+                    acc2a = acc2a.faer_add(uija.faer_mul(x2.read(i.zx())));
                 }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a));
+                x1.write(j, x1.read(j).faer_sub(acc1a));
+                x2.write(j, x2.read(j).faer_sub(acc2a));
             }
-            _ => unreachable!(),
+            k = k2.next();
+        } else if let Some(k1) = k1 {
+            let mut x = x.rb_mut().subcols_range_mut(k..k1.next()).col_iter_mut();
+            let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+                panic!()
+            };
+
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+
+                let mut acc0a = E::faer_zero();
+                let mut acc0b = E::faer_zero();
+                let mut acc1a = E::faer_zero();
+                let mut acc1b = E::faer_zero();
+
+                let a = 0;
+                let b = 1;
+
+                let rows_head = ui[..ui.len() - 1].chunks_exact(4);
+                let rows_tail = rows_head.remainder();
+                let (values_head, values_tail) = ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
+
+                for (i, uij) in iter::zip(rows_head, values_head) {
+                    let uija = uij.read(a);
+                    let uijb = uij.read(b);
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    let uijb = if conj == Conj::Yes {
+                        uijb.faer_conj()
+                    } else {
+                        uijb
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i[a].zx())));
+                    acc0b = acc0b.faer_add(uijb.faer_mul(x0.read(i[b].zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i[a].zx())));
+                    acc1b = acc1b.faer_add(uijb.faer_mul(x1.read(i[b].zx())));
+                }
+
+                for (i, uij) in iter::zip(rows_tail, values_tail.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                    acc1a = acc1a.faer_add(uija.faer_mul(x1.read(i.zx())));
+                }
+
+                x0.write(j, x0.read(j).faer_sub(acc0a.faer_add(acc0b)));
+                x1.write(j, x1.read(j).faer_sub(acc1a.faer_add(acc1b)));
+            }
+            k = k1.next();
+        } else {
+            let mut x0 = x.rb_mut().col_mut(k0);
+
+            for j in N.indices() {
+                let ui = u.row_indices_of_col_raw(j);
+                let ux = SliceGroup::<'_, E>::new(u.values_of_col(j));
+
+                let mut acc0a = E::faer_zero();
+                let mut acc0b = E::faer_zero();
+                let mut acc0c = E::faer_zero();
+                let mut acc0d = E::faer_zero();
+
+                let a = 0;
+                let b = 1;
+                let c = 2;
+                let d = 3;
+
+                let rows_head = ui[..ui.len() - 1].chunks_exact(4);
+                let rows_tail = rows_head.remainder();
+                let (values_head, values_tail) = ux.subslice(0..ui.len() - 1).into_chunks_exact(4);
+
+                for (i, uij) in iter::zip(rows_head, values_head) {
+                    let uija = uij.read(a);
+                    let uijb = uij.read(b);
+                    let uijc = uij.read(c);
+                    let uijd = uij.read(d);
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    let uijb = if conj == Conj::Yes {
+                        uijb.faer_conj()
+                    } else {
+                        uijb
+                    };
+                    let uijc = if conj == Conj::Yes {
+                        uijc.faer_conj()
+                    } else {
+                        uijc
+                    };
+                    let uijd = if conj == Conj::Yes {
+                        uijd.faer_conj()
+                    } else {
+                        uijd
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i[a].zx())));
+                    acc0b = acc0b.faer_add(uijb.faer_mul(x0.read(i[b].zx())));
+                    acc0c = acc0c.faer_add(uijc.faer_mul(x0.read(i[c].zx())));
+                    acc0d = acc0d.faer_add(uijd.faer_mul(x0.read(i[d].zx())));
+                }
+
+                for (i, uij) in iter::zip(rows_tail, values_tail.into_ref_iter()) {
+                    let uija = uij.read();
+                    let uija = if conj == Conj::Yes {
+                        uija.faer_conj()
+                    } else {
+                        uija
+                    };
+                    acc0a = acc0a.faer_add(uija.faer_mul(x0.read(i.zx())));
+                }
+
+                x0.write(
+                    j,
+                    x0.read(j)
+                        .faer_sub(acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d))),
+                );
+            }
+            k = k0.next();
         }
-        k += bs;
     }
 }

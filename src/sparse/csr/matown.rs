@@ -340,7 +340,7 @@ impl<I: Index, E: Entity, R: Shape, C: Shape> SparseRowMat<I, E, R, C> {
 
     /// Returns the column indices.
     #[inline]
-    pub fn col_indices(&self) -> &'_ [Idx<C, I>] {
+    pub fn col_indices(&self) -> &'_ [I] {
         self.symbolic.col_indices()
     }
 

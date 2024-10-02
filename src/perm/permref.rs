@@ -1,5 +1,8 @@
 use super::*;
-use crate::assert;
+use crate::{
+    assert,
+    utils::bound::{Array, Dim},
+};
 
 /// Immutable permutation matrix view.
 #[derive(Debug)]
@@ -173,6 +176,24 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
                     self.inverse.len(),
                 ),
             }
+        }
+    }
+}
+
+impl<'a, 'N, I: Index> PermRef<'a, I, Dim<'N>> {
+    /// Returns the permutation as an array.
+    #[inline]
+    pub fn bound_arrays(
+        self,
+    ) -> (
+        &'a Array<'N, Idx<Dim<'N>, I>>,
+        &'a Array<'N, Idx<Dim<'N>, I>>,
+    ) {
+        unsafe {
+            (
+                &*(self.forward as *const [Idx<Dim<'N>, I>] as *const Array<'N, Idx<Dim<'N>, I>>),
+                &*(self.inverse as *const [Idx<Dim<'N>, I>] as *const Array<'N, Idx<Dim<'N>, I>>),
+            )
         }
     }
 }

@@ -1,4 +1,6 @@
-use crate::{linalg::entity::GroupFor, ColMut, ColRef, Entity, MatMut, MatRef, RowMut, RowRef};
+use crate::{
+    linalg::entity::GroupFor, mat, ColMut, ColRef, Entity, MatMut, MatRef, RowMut, RowRef, Shape,
+};
 
 use self::chunks::ChunkPolicy;
 
@@ -173,23 +175,23 @@ pub struct ElemIterMut<'a, E: Entity> {
 
 /// Iterator over the columns of a matrix.
 #[derive(Debug, Clone)]
-pub struct ColIter<'a, E: Entity> {
-    pub(crate) inner: MatRef<'a, E>,
+pub struct ColIter<'a, E: Entity, R: Shape = usize> {
+    pub(crate) inner: MatRef<'a, E, R>,
 }
 /// Iterator over the columns of a matrix.
 #[derive(Debug)]
-pub struct ColIterMut<'a, E: Entity> {
-    pub(crate) inner: MatMut<'a, E>,
+pub struct ColIterMut<'a, E: Entity, R: Shape = usize> {
+    pub(crate) inner: MatMut<'a, E, R>,
 }
 /// Iterator over the rows of a matrix.
 #[derive(Debug, Clone)]
-pub struct RowIter<'a, E: Entity> {
-    pub(crate) inner: MatRef<'a, E>,
+pub struct RowIter<'a, E: Entity, C: Shape = usize> {
+    pub(crate) inner: MatRef<'a, E, usize, C>,
 }
 /// Iterator over the rows of a matrix.
 #[derive(Debug)]
-pub struct RowIterMut<'a, E: Entity> {
-    pub(crate) inner: MatMut<'a, E>,
+pub struct RowIterMut<'a, E: Entity, C: Shape = usize> {
+    pub(crate) inner: MatMut<'a, E, usize, C>,
 }
 
 impl<'a, E: Entity> Iterator for ElemIter<'a, E> {
@@ -272,12 +274,22 @@ impl<'a, E: Entity> ExactSizeIterator for ElemIterMut<'a, E> {
     }
 }
 
-impl<'a, E: Entity> Iterator for ColIter<'a, E> {
-    type Item = ColRef<'a, E>;
+impl<'a, E: Entity, R: Shape> Iterator for ColIter<'a, E, R> {
+    type Item = ColRef<'a, E, R>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        match core::mem::take(&mut self.inner).split_first_col() {
+        let nrows = self.inner.nrows();
+        match core::mem::replace(
+            &mut self.inner,
+            mat::from_column_major_slice_generic(
+                E::faer_map(E::UNIT, |()| &[] as &[E::Unit]),
+                nrows,
+                0,
+            ),
+        )
+        .split_first_col()
+        {
             Some((head, tail)) => {
                 self.inner = tail;
                 Some(head)
@@ -291,10 +303,20 @@ impl<'a, E: Entity> Iterator for ColIter<'a, E> {
         (self.inner.ncols(), Some(self.inner.ncols()))
     }
 }
-impl<'a, E: Entity> DoubleEndedIterator for ColIter<'a, E> {
+impl<'a, E: Entity, R: Shape> DoubleEndedIterator for ColIter<'a, E, R> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        match core::mem::take(&mut self.inner).split_last_col() {
+        let nrows = self.inner.nrows();
+        match core::mem::replace(
+            &mut self.inner,
+            mat::from_column_major_slice_generic(
+                E::faer_map(E::UNIT, |()| &[] as &[E::Unit]),
+                nrows,
+                0,
+            ),
+        )
+        .split_last_col()
+        {
             Some((head, tail)) => {
                 self.inner = tail;
                 Some(head)
@@ -303,19 +325,29 @@ impl<'a, E: Entity> DoubleEndedIterator for ColIter<'a, E> {
         }
     }
 }
-impl<'a, E: Entity> ExactSizeIterator for ColIter<'a, E> {
+impl<'a, E: Entity, R: Shape> ExactSizeIterator for ColIter<'a, E, R> {
     #[inline]
     fn len(&self) -> usize {
         self.inner.ncols()
     }
 }
 
-impl<'a, E: Entity> Iterator for ColIterMut<'a, E> {
-    type Item = ColMut<'a, E>;
+impl<'a, E: Entity, R: Shape> Iterator for ColIterMut<'a, E, R> {
+    type Item = ColMut<'a, E, R>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        match core::mem::take(&mut self.inner).split_first_col_mut() {
+        let nrows = self.inner.nrows();
+        match core::mem::replace(
+            &mut self.inner,
+            mat::from_column_major_slice_mut_generic(
+                E::faer_map(E::UNIT, |()| &mut [] as &mut [E::Unit]),
+                nrows,
+                0,
+            ),
+        )
+        .split_first_col_mut()
+        {
             Some((head, tail)) => {
                 self.inner = tail;
                 Some(head)
@@ -329,10 +361,20 @@ impl<'a, E: Entity> Iterator for ColIterMut<'a, E> {
         (self.inner.ncols(), Some(self.inner.ncols()))
     }
 }
-impl<'a, E: Entity> DoubleEndedIterator for ColIterMut<'a, E> {
+impl<'a, E: Entity, R: Shape> DoubleEndedIterator for ColIterMut<'a, E, R> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        match core::mem::take(&mut self.inner).split_last_col_mut() {
+        let nrows = self.inner.nrows();
+        match core::mem::replace(
+            &mut self.inner,
+            mat::from_column_major_slice_mut_generic(
+                E::faer_map(E::UNIT, |()| &mut [] as &mut [E::Unit]),
+                nrows,
+                0,
+            ),
+        )
+        .split_last_col_mut()
+        {
             Some((head, tail)) => {
                 self.inner = tail;
                 Some(head)
@@ -341,7 +383,7 @@ impl<'a, E: Entity> DoubleEndedIterator for ColIterMut<'a, E> {
         }
     }
 }
-impl<'a, E: Entity> ExactSizeIterator for ColIterMut<'a, E> {
+impl<'a, E: Entity, R: Shape> ExactSizeIterator for ColIterMut<'a, E, R> {
     #[inline]
     fn len(&self) -> usize {
         self.inner.ncols()

@@ -372,7 +372,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C
 
     /// Returns the row indices.
     #[inline]
-    pub fn row_indices(&self) -> &'a [Idx<R, I>] {
+    pub fn row_indices(&self) -> &'a [I] {
         self.symbolic.row_ind
     }
 

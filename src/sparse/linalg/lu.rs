@@ -10,8 +10,6 @@
 use super::{
     cholesky::simplicial::EliminationTreeRef,
     colamd::Control,
-    ghost,
-    ghost::{Array, Idx, MaybeIdx},
     mem::{
         NONE, {self},
     },
@@ -23,7 +21,11 @@ use crate::{
     linalg::{matmul, temp_mat_req, temp_mat_uninit, triangular_solve as solve},
     perm::PermRef,
     sparse::SparseColMatRef,
-    utils::{slice::*, vec::*},
+    utils::{
+        bound::{Array, Idx, MaybeIdx},
+        slice::*,
+        vec::*,
+    },
     Conj, MatMut, Parallelism, SignedIndex,
 };
 use core::{iter::zip, mem::MaybeUninit};
@@ -583,7 +585,7 @@ pub mod supernodal {
         with_dim!(N, n);
 
         let I = I::truncate;
-        let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+        let A = A.as_shape(M, N);
         let min_col = Array::from_ref(
             MaybeIdx::from_slice_ref_checked(bytemuck::cast_slice(min_col), N),
             M,
@@ -593,7 +595,7 @@ pub mod supernodal {
 
         let L = crate::sparse::linalg::cholesky::supernodal::ghost_factorize_supernodal_symbolic(
             A,
-            col_perm.map(|perm| ghost::PermRef::new(perm, N)),
+            col_perm.map(|perm| perm.as_shape(N)),
             Some(min_col),
             crate::sparse::linalg::cholesky::supernodal::CholeskyInput::ATA,
             etree,
@@ -2202,7 +2204,7 @@ pub fn factorize_symbolic_lu<I: Index>(
     with_dim!(M, m);
     with_dim!(N, n);
 
-    let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+    let A = A.as_shape(M, N);
 
     let req = || -> Result<StackReq, SizeOverflow> {
         let n_req = StackReq::try_new::<I>(n)?;
@@ -2243,12 +2245,12 @@ pub fn factorize_symbolic_lu<I: Index>(
     crate::sparse::linalg::colamd::order(
         &mut col_perm_fwd,
         &mut col_perm_inv,
-        A.into_inner(),
+        A.as_dyn(),
         params.colamd_params,
         stack.rb_mut(),
     )?;
 
-    let col_perm = ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n), N);
+    let col_perm = PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n).as_shape(N);
 
     let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
     let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
@@ -2322,8 +2324,8 @@ pub fn factorize_symbolic_lu<I: Index>(
 
     if threshold == SupernodalThreshold::FORCE_SUPERNODAL {
         let symbolic = supernodal::factorize_supernodal_symbolic_lu::<I>(
-            A.into_inner(),
-            Some(col_perm.into_inner()),
+            A.as_dyn(),
+            Some(col_perm.as_shape(n)),
             &min_col,
             EliminationTreeRef::<'_, I> { inner: etree },
             col_counts,

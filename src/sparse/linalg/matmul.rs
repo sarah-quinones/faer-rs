@@ -6,7 +6,6 @@ use super::*;
 use crate::{
     assert,
     mat::{As2D, As2DMut},
-    utils::constrained::{self},
 };
 use core::cell::UnsafeCell;
 
@@ -310,9 +309,9 @@ pub fn sparse_dense_matmul<
         with_dim!(n, n);
         with_dim!(k, k);
 
-        let mut acc = constrained::mat::MatMut::new(acc, m, n);
-        let lhs = constrained::sparse::SparseColMatRef::new(lhs, m, k);
-        let rhs = constrained::mat::MatRef::new(rhs, k, n);
+        let mut acc = acc.as_shape_mut(m, n);
+        let lhs = lhs.as_shape(m, k);
+        let rhs = rhs.as_shape(k, n);
 
         for j in n.indices() {
             for depth in k.indices() {
@@ -401,9 +400,9 @@ pub fn dense_sparse_matmul<
         with_dim!(m, m);
         with_dim!(n, n);
         with_dim!(k, k);
-        let mut acc = constrained::mat::MatMut::new(acc, m, n);
-        let lhs = constrained::mat::MatRef::new(lhs, m, k);
-        let rhs = constrained::sparse::SparseColMatRef::new(rhs, k, n);
+        let mut acc = acc.as_shape_mut(m, n);
+        let lhs = lhs.as_shape(m, k);
+        let rhs = rhs.as_shape(k, n);
 
         for i in m.indices() {
             for j in n.indices() {

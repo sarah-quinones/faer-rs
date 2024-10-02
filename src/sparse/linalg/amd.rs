@@ -35,11 +35,15 @@
 //     DAMAGE.
 
 use super::{
-    ghost::{self, Array, Idx, MaybeIdx},
+    ghost,
     mem::{self, NONE},
     windows2, FaerError, Index, SignedIndex, SymbolicSparseColMatRef,
 };
-use crate::{assert, ComplexField};
+use crate::{
+    assert,
+    utils::bound::{Array, Idx, MaybeIdx},
+    ComplexField,
+};
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
@@ -800,7 +804,7 @@ fn amd_1<I: Index>(
         with_dim!(N, n);
         let (t_p, _) = stack.rb_mut().make_raw::<I::Signed>(n);
 
-        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+        let A = A.as_shape(N, N);
         let s_p = Array::from_mut(s_p, N);
         let t_p = Array::from_mut(t_p, N);
 
@@ -908,7 +912,7 @@ fn preprocess<'out, I: Index>(
 
     let w = Array::from_mut(w, N);
     let flag = Array::from_mut(flag, N);
-    let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+    let A = A.as_shape(N, N);
 
     mem::fill_zero(w.as_mut());
     mem::fill_none(flag.as_mut());
@@ -968,7 +972,7 @@ fn aat<I: Index>(
         let I = I::Signed::truncate;
         let zero = I(0);
         let one = I(1);
-        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+        let A = A.as_shape(N, N);
 
         let n = *N;
 

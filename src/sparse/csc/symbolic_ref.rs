@@ -29,7 +29,7 @@ pub struct SymbolicSparseColMatRef<'a, I: Index, R: Shape = usize, C: Shape = us
     pub(crate) ncols: C,
     pub(crate) col_ptr: &'a [I],
     pub(crate) col_nnz: Option<&'a [I]>,
-    pub(crate) row_ind: &'a [Idx<R, I>],
+    pub(crate) row_ind: &'a [I],
 }
 
 impl<I: Index, R: Shape, C: Shape> Copy for SymbolicSparseColMatRef<'_, I, R, C> {}
@@ -84,7 +84,7 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
         ncols: C,
         col_ptrs: &'a [I],
         nnz_per_col: Option<&'a [I]>,
-        row_indices: &'a [Idx<R, I>],
+        row_indices: &'a [I],
     ) -> Self {
         assert!(all(
             ncols.unbound() <= I::Signed::MAX.zx(),
@@ -99,34 +99,30 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
         if let Some(nnz_per_col) = nnz_per_col {
             for (&nnz_j, &[c, c_next]) in zip(nnz_per_col, windows2(col_ptrs)) {
                 assert!(nnz_j <= c_next - c);
-                if const { !R::IS_BOUND } {
-                    let row_indices = &row_indices[c.zx()..c.zx() + nnz_j.zx()];
-                    if !row_indices.is_empty() {
-                        let mut i_prev = row_indices[0];
-                        for &i in &row_indices[1..] {
-                            assert!(i_prev < i);
-                            i_prev = i;
-                        }
-                        let i_prev = i_prev.unbound();
-                        let nrows = I::truncate(nrows.unbound());
-                        assert!(i_prev < nrows);
+                let row_indices = &row_indices[c.zx()..c.zx() + nnz_j.zx()];
+                if !row_indices.is_empty() {
+                    let mut i_prev = row_indices[0];
+                    for &i in &row_indices[1..] {
+                        assert!(i_prev < i);
+                        i_prev = i;
                     }
+                    let i_prev = i_prev.unbound();
+                    let nrows = I::truncate(nrows.unbound());
+                    assert!(i_prev < nrows);
                 }
             }
         } else {
             for &[c, c_next] in windows2(col_ptrs) {
-                if const { !R::IS_BOUND } {
-                    let row_indices = &row_indices[c.zx()..c_next.zx()];
-                    if !row_indices.is_empty() {
-                        let mut i_prev = row_indices[0];
-                        for &i in &row_indices[1..] {
-                            assert!(i_prev <= i);
-                            i_prev = i;
-                        }
-                        let i_prev = i_prev.unbound();
-                        let nrows = I::truncate(nrows.unbound());
-                        assert!(i_prev < nrows);
+                let row_indices = &row_indices[c.zx()..c_next.zx()];
+                if !row_indices.is_empty() {
+                    let mut i_prev = row_indices[0];
+                    for &i in &row_indices[1..] {
+                        assert!(i_prev <= i);
+                        i_prev = i;
                     }
+                    let i_prev = i_prev.unbound();
+                    let nrows = I::truncate(nrows.unbound());
+                    assert!(i_prev < nrows);
                 }
             }
         }
@@ -153,7 +149,7 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
         ncols: C,
         col_ptrs: &'a [I],
         nnz_per_col: Option<&'a [I]>,
-        row_indices: &'a [Idx<R, I>],
+        row_indices: &'a [I],
     ) -> Self {
         #[track_caller]
         fn check_ptrs<I: Index>(
@@ -182,24 +178,22 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
         check_ptrs(nrows.unbound(), ncols.unbound(), col_ptrs, nnz_per_col);
         assert!(col_ptrs[ncols.unbound()].zx() <= row_indices.len());
 
-        if const { !R::IS_BOUND } {
-            if let Some(nnz_per_col) = nnz_per_col {
-                for (&nnz_j, &c) in zip(nnz_per_col, col_ptrs) {
-                    for &i in &row_indices[c.zx()..c.zx() + nnz_j.zx()] {
-                        let i = i.unbound();
-                        let nrows = nrows.unbound();
-                        assert!(i < I::truncate(nrows));
-                    }
-                }
-            } else {
-                let c0 = col_ptrs[0].zx();
-                let cn = col_ptrs[ncols.unbound()].zx();
-
-                for &i in &row_indices[c0..cn] {
+        if let Some(nnz_per_col) = nnz_per_col {
+            for (&nnz_j, &c) in zip(nnz_per_col, col_ptrs) {
+                for &i in &row_indices[c.zx()..c.zx() + nnz_j.zx()] {
                     let i = i.unbound();
                     let nrows = nrows.unbound();
                     assert!(i < I::truncate(nrows));
                 }
+            }
+        } else {
+            let c0 = col_ptrs[0].zx();
+            let cn = col_ptrs[ncols.unbound()].zx();
+
+            for &i in &row_indices[c0..cn] {
+                let i = i.unbound();
+                let nrows = nrows.unbound();
+                assert!(i < I::truncate(nrows));
             }
         }
 
@@ -224,7 +218,7 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
         ncols: C,
         col_ptrs: &'a [I],
         nnz_per_col: Option<&'a [I]>,
-        row_indices: &'a [Idx<R, I>],
+        row_indices: &'a [I],
     ) -> Self {
         assert!(all(
             ncols.unbound() <= <I::Signed as SignedIndex>::MAX.zx(),
@@ -359,7 +353,7 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
 
     /// Returns the row indices.
     #[inline]
-    pub fn row_indices(&self) -> &'a [Idx<R, I>] {
+    pub fn row_indices(&self) -> &'a [I] {
         self.row_ind
     }
 
@@ -370,7 +364,22 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
     /// Panics if `j >= self.ncols()`.
     #[inline]
     #[track_caller]
-    pub fn row_indices_of_col_raw(&self, j: Idx<C>) -> &'a [Idx<R, I>] {
+    pub fn row_indices_of_col_raw(self, j: Idx<C>) -> &'a [Idx<R, I>] {
+        unsafe {
+            let slice = __get_unchecked(self.row_ind, self.col_range(j));
+            let len = slice.len();
+            core::slice::from_raw_parts(slice.as_ptr() as *const Idx<R, I>, len)
+        }
+    }
+
+    /// Returns the row indices of column `j`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `j >= self.ncols()`.
+    #[inline]
+    #[track_caller]
+    pub fn row_indices_of_col_raw_unbound(self, j: Idx<C>) -> &'a [I] {
         unsafe { __get_unchecked(self.row_ind, self.col_range(j)) }
     }
 
@@ -382,12 +391,12 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseColMatRef<'a, I, R, C> {
     #[inline]
     #[track_caller]
     pub fn row_indices_of_col(
-        &self,
+        self,
         j: Idx<C>,
     ) -> impl 'a + Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<R>> {
-        self.row_indices_of_col_raw(j).iter().map(
+        self.row_indices_of_col_raw_unbound(j).iter().map(
             #[inline(always)]
-            |&i| unsafe { Idx::<R>::new_unbound(i.unbound().zx()) },
+            |&i| unsafe { Idx::<R>::new_unbound(i.zx()) },
         )
     }
 

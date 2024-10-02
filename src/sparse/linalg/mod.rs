@@ -239,7 +239,7 @@ impl From<crate::linalg::solvers::CholeskyError> for CholeskyError {
 pub mod solvers;
 
 mod ghost {
-    pub use crate::utils::constrained::{perm::*, sparse::*, *};
+    pub use crate::utils::bound::*;
     use crate::Index;
 
     pub const NONE_BYTE: u8 = u8::MAX;

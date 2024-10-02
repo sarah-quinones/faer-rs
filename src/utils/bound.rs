@@ -1,7 +1,8 @@
-use core::{fmt, marker::PhantomData};
+use crate::{utils::slice, Entity, Index, Shape, ShapeIdx, SignedIndex, Unbind};
+use core::{fmt, marker::PhantomData, ops::Range};
+use faer_entity::*;
 use generativity::Guard;
-
-use crate::{Index, Shape, ShapeIdx, SignedIndex, Unbind};
+use reborrow::*;
 
 type Invariant<'a> = fn(&'a ()) -> &'a ();
 
@@ -252,7 +253,7 @@ impl<'n, I: Index> Idx<'n, I> {
 
     /// Zero-extends the internal value into a `usize`.
     #[inline(always)]
-    pub fn zx(self) -> Idx<'n, usize> {
+    pub fn zx(self) -> Idx<'n> {
         Idx {
             unbound: self.unbound.zx(),
             __marker: PhantomData,
@@ -261,6 +262,17 @@ impl<'n, I: Index> Idx<'n, I> {
 }
 
 impl<'n, I: Index> IdxInc<'n, I> {
+    /// Create new branded value with an arbitrary brand.
+    /// # Safety
+    /// See struct safety invariant.
+    #[inline(always)]
+    pub const fn zero() -> Self {
+        Self {
+            unbound: unsafe { core::mem::zeroed() },
+            __marker: PhantomData,
+        }
+    }
+
     /// Create new branded value with an arbitrary brand.
     /// # Safety
     /// See struct safety invariant.
@@ -312,7 +324,7 @@ impl<'n, I: Index> IdxInc<'n, I> {
 
     /// Zero-extends the internal value into a `usize`.
     #[inline(always)]
-    pub fn zx(self) -> IdxInc<'n, usize> {
+    pub fn zx(self) -> IdxInc<'n> {
         IdxInc {
             unbound: self.unbound.zx(),
             __marker: PhantomData,
@@ -392,36 +404,6 @@ impl<'n, I: Index> From<Idx<'n, I>> for IdxInc<'n, I> {
 }
 
 impl<'size> Dim<'size> {
-    #[deprecated]
-    /// Create a new [`Dim`] with a lifetime tied to `n`.
-    #[track_caller]
-    #[inline]
-    pub fn with<R>(n: usize, f: impl for<'n> FnOnce(Dim<'n>) -> R) -> R {
-        f(unsafe { Dim::new_unbound(n) })
-    }
-
-    #[deprecated]
-    /// Create two new [`Dim`] with lifetimes tied to `m` and `n`.
-    #[track_caller]
-    #[inline]
-    pub fn with2<R>(m: usize, n: usize, f: impl for<'m, 'n> FnOnce(Dim<'m>, Dim<'n>) -> R) -> R {
-        unsafe { f(Dim::new_unbound(m), Dim::new_unbound(n)) }
-    }
-
-    #[deprecated]
-    /// Create a new [`Dim`] tied to the lifetime `'n`.
-    #[inline]
-    pub unsafe fn new_raw_unchecked(n: usize) -> Self {
-        Dim::new_unbound(n)
-    }
-
-    #[deprecated]
-    /// Returns the unconstrained value.
-    #[inline]
-    pub fn into_inner(self) -> usize {
-        self.unbound
-    }
-
     /// Check that the index is bounded by `self`, or panic otherwise.
     #[track_caller]
     #[inline]
@@ -429,7 +411,6 @@ impl<'size> Dim<'size> {
         Idx::new_checked(idx, self)
     }
 
-    #[deprecated]
     /// Check that the index is bounded by `self`, or return `None` otherwise.
     #[inline]
     pub fn try_check<I: Index>(self, idx: I) -> Option<Idx<'size, I>> {
@@ -441,7 +422,7 @@ impl<'size> Dim<'size> {
     }
 }
 
-impl<'n> Idx<'n, usize> {
+impl<'n> Idx<'n> {
     /// Truncate `self` to a smaller type `I`.
     pub fn truncate<I: Index>(self) -> Idx<'n, I> {
         unsafe { Idx::new_unbound(I::truncate(self.unbound())) }
@@ -449,21 +430,6 @@ impl<'n> Idx<'n, usize> {
 }
 
 impl<'n, I: Index> Idx<'n, I> {
-    /// Returns a new index without asserting that it's bounded by the value tied to the
-    /// lifetime `'n`.
-    #[inline]
-    #[deprecated]
-    pub unsafe fn new_raw_unchecked(idx: I) -> Self {
-        Self::new_unbound(idx)
-    }
-
-    /// Returns the unconstrained value.
-    #[inline]
-    #[deprecated]
-    pub fn into_inner(self) -> I {
-        self.unbound
-    }
-
     /// Returns the index, bounded inclusively by the value tied to `'n`.
     #[inline]
     pub const fn to_inclusive(self) -> IdxInc<'n, I> {
@@ -507,27 +473,10 @@ impl<'n, I: Index> Idx<'n, I> {
     }
 }
 
-impl<'n, I: Index> IdxInc<'n, I> {
-    /// Returns a constrained inclusive index, assuming that it's bounded (inclusively) by
-    /// the size tied to `'n`.
-    #[inline]
-    #[deprecated]
-    pub unsafe fn new_raw_unchecked(idx: I) -> Self {
-        Self::new_unbound(idx)
-    }
-
-    /// Returns the unconstrained value.
-    #[inline]
-    #[deprecated]
-    pub fn into_inner(self) -> I {
-        self.unbound
-    }
-}
-
 /// `I` value smaller than the size corresponding to the lifetime `'n`, or `None`.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct MaybeIdx<'n, I: Index> {
+pub struct MaybeIdx<'n, I: Index = usize> {
     unbound: I,
     __marker: PhantomData<Invariant<'n>>,
 }
@@ -565,29 +514,12 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
     }
 
     /// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
-    #[deprecated]
-    #[inline]
-    pub unsafe fn new_raw_unchecked(idx: I) -> Self {
-        Self {
-            unbound: idx,
-            __marker: PhantomData,
-        }
-    }
-
-    /// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
     #[inline]
     pub unsafe fn new_unbound(idx: I) -> Self {
         Self {
             unbound: idx,
             __marker: PhantomData,
         }
-    }
-
-    /// Returns the inner value.
-    #[inline]
-    #[deprecated]
-    pub fn into_inner(self) -> I {
-        self.unbound
     }
 
     /// Returns the inner value.
@@ -608,7 +540,7 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 
     /// Sign extend the value.
     #[inline]
-    pub fn sx(self) -> MaybeIdx<'n, usize> {
+    pub fn sx(self) -> MaybeIdx<'n> {
         unsafe { MaybeIdx::new_unbound(self.unbound.to_signed().sx()) }
     }
 
@@ -684,5 +616,272 @@ impl<I: Index> core::ops::Deref for IdxInc<'_, I> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.unbound
+    }
+}
+
+/// Array of length equal to the value tied to `'n`.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct Array<'n, T> {
+    __marker: PhantomData<Invariant<'n>>,
+    unbound: [T],
+}
+
+/// Immutable array group of length equal to the value tied to `'n`.
+pub struct ArrayGroup<'n, 'a, E: Entity> {
+    __marker: PhantomData<Invariant<'n>>,
+    unbound: slice::SliceGroup<'a, E>,
+}
+/// Mutable array group of length equal to the value tied to `'n`.
+pub struct ArrayGroupMut<'n, 'a, E: Entity> {
+    __marker: PhantomData<Invariant<'n>>,
+    unbound: slice::SliceGroupMut<'a, E>,
+}
+
+impl<E: Entity> core::fmt::Debug for ArrayGroup<'_, '_, E> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.unbound.fmt(f)
+    }
+}
+impl<E: Entity> core::fmt::Debug for ArrayGroupMut<'_, '_, E> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.unbound.fmt(f)
+    }
+}
+
+impl<E: Entity> Copy for ArrayGroup<'_, '_, E> {}
+impl<E: Entity> Clone for ArrayGroup<'_, '_, E> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'short, 'n, 'a, E: Entity> reborrow::ReborrowMut<'short> for ArrayGroup<'n, 'a, E> {
+    type Target = ArrayGroup<'n, 'short, E>;
+
+    #[inline]
+    fn rb_mut(&'short mut self) -> Self::Target {
+        *self
+    }
+}
+
+impl<'short, 'n, 'a, E: Entity> reborrow::Reborrow<'short> for ArrayGroup<'n, 'a, E> {
+    type Target = ArrayGroup<'n, 'short, E>;
+
+    #[inline]
+    fn rb(&'short self) -> Self::Target {
+        *self
+    }
+}
+
+impl<'short, 'n, 'a, E: Entity> reborrow::ReborrowMut<'short> for ArrayGroupMut<'n, 'a, E> {
+    type Target = ArrayGroupMut<'n, 'short, E>;
+
+    #[inline]
+    fn rb_mut(&'short mut self) -> Self::Target {
+        ArrayGroupMut {
+            __marker: PhantomData,
+            unbound: self.unbound.rb_mut(),
+        }
+    }
+}
+
+impl<'short, 'n, 'a, E: Entity> reborrow::Reborrow<'short> for ArrayGroupMut<'n, 'a, E> {
+    type Target = ArrayGroup<'n, 'short, E>;
+
+    #[inline]
+    fn rb(&'short self) -> Self::Target {
+        ArrayGroup {
+            __marker: PhantomData,
+            unbound: self.unbound.rb(),
+        }
+    }
+}
+
+impl<'n, 'a, E: Entity> ArrayGroupMut<'n, 'a, E> {
+    /// Returns an array group with length after checking that its length matches
+    /// the value tied to `'n`.
+    #[inline]
+    pub fn new(slice: GroupFor<E, &'a mut [E::Unit]>, len: Dim<'n>) -> Self {
+        let slice = slice::SliceGroupMut::<'_, E>::new(slice);
+        assert!(slice.len() == len.unbound());
+        ArrayGroupMut {
+            __marker: PhantomData,
+            unbound: slice,
+        }
+    }
+
+    /// Returns the unconstrained slice.
+    #[inline]
+    pub fn into_slice(self) -> GroupFor<E, &'a mut [E::Unit]> {
+        self.unbound.into_inner()
+    }
+
+    /// Returns a subslice at from the range start to its end.
+    #[inline]
+    pub fn subslice(self, range: Range<IdxInc<'n>>) -> GroupFor<E, &'a mut [E::Unit]> {
+        unsafe {
+            slice::SliceGroupMut::<'_, E>::new(self.into_slice())
+                .subslice_unchecked(range.start.unbound()..range.end.unbound())
+                .into_inner()
+        }
+    }
+
+    /// Read the element at position `j`.
+    #[inline]
+    pub fn read(&self, j: Idx<'n>) -> E {
+        self.rb().read(j)
+    }
+
+    /// Write `value` to the location at position `j`.
+    #[inline]
+    pub fn write(&mut self, j: Idx<'n>, value: E) {
+        unsafe {
+            slice::SliceGroupMut::new(self.rb_mut().into_slice())
+                .write_unchecked(j.unbound(), value)
+        }
+    }
+}
+
+impl<'n, 'a, E: Entity> ArrayGroup<'n, 'a, E> {
+    /// Returns an array group with length after checking that its length matches
+    /// the value tied to `'n`.
+    #[inline]
+    pub fn new(slice: GroupFor<E, &'a [E::Unit]>, len: Dim<'n>) -> Self {
+        let slice = slice::SliceGroup::<'_, E>::new(slice);
+        assert!(slice.rb().len() == len.unbound());
+        ArrayGroup {
+            __marker: PhantomData,
+            unbound: slice,
+        }
+    }
+
+    /// Returns the unconstrained slice.
+    #[inline]
+    pub fn into_slice(self) -> GroupFor<E, &'a [E::Unit]> {
+        self.unbound.into_inner()
+    }
+
+    /// Returns a subslice at from the range start to its end.
+    #[inline]
+    pub fn subslice(self, range: Range<IdxInc<'n>>) -> GroupFor<E, &'a [E::Unit]> {
+        unsafe {
+            slice::SliceGroup::<'_, E>::new(self.into_slice())
+                .subslice_unchecked(range.start.unbound()..range.end.unbound())
+                .into_inner()
+        }
+    }
+
+    /// Read the element at position `j`.
+    #[inline]
+    pub fn read(&self, j: Idx<'n>) -> E {
+        unsafe { slice::SliceGroup::new(self.into_slice()).read_unchecked(j.unbound()) }
+    }
+}
+
+impl<'n, T> Array<'n, T> {
+    /// Returns a constrained array after checking that its length matches `size`.
+    #[inline]
+    #[track_caller]
+    pub fn from_ref<'a>(slice: &'a [T], size: Dim<'n>) -> &'a Self {
+        assert!(slice.len() == size.unbound());
+        unsafe { &*(slice as *const [T] as *const Self) }
+    }
+
+    /// Returns a constrained array after checking that its length matches `size`.
+    #[inline]
+    #[track_caller]
+    pub fn from_mut<'a>(slice: &'a mut [T], size: Dim<'n>) -> &'a mut Self {
+        assert!(slice.len() == size.unbound());
+        unsafe { &mut *(slice as *mut [T] as *mut Self) }
+    }
+
+    /// Returns the unconstrained slice.
+    #[inline]
+    #[track_caller]
+    pub fn as_ref(&self) -> &[T] {
+        unsafe { &*(self as *const _ as *const _) }
+    }
+
+    /// Returns the unconstrained slice.
+    #[inline]
+    #[track_caller]
+    pub fn as_mut<'a>(&mut self) -> &'a mut [T] {
+        unsafe { &mut *(self as *mut _ as *mut _) }
+    }
+
+    /// Returns the length of `self`.
+    #[inline]
+    pub fn len(&self) -> Dim<'n> {
+        unsafe { Dim::new_unbound(self.unbound.len()) }
+    }
+}
+
+impl<T: core::fmt::Debug> core::fmt::Debug for Array<'_, T> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.unbound.fmt(f)
+    }
+}
+
+impl<'n, T> core::ops::Index<Range<IdxInc<'n>>> for Array<'n, T> {
+    type Output = [T];
+    #[track_caller]
+    fn index(&self, idx: Range<IdxInc<'n>>) -> &Self::Output {
+        #[cfg(debug_assertions)]
+        {
+            &self.unbound[idx.start.unbound()..idx.end.unbound()]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            self.0
+                .inner
+                .get_unchecked(idx.start.unbound()..idx.end.unbound())
+        }
+    }
+}
+impl<'n, T> core::ops::IndexMut<Range<IdxInc<'n>>> for Array<'n, T> {
+    #[track_caller]
+    fn index_mut(&mut self, idx: Range<IdxInc<'n>>) -> &mut Self::Output {
+        #[cfg(debug_assertions)]
+        {
+            &mut self.unbound[idx.start.unbound()..idx.end.unbound()]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            self.0
+                .inner
+                .get_unchecked_mut(idx.start.unbound()..idx.end.unbound())
+        }
+    }
+}
+impl<'n, T> core::ops::Index<Idx<'n>> for Array<'n, T> {
+    type Output = T;
+    #[track_caller]
+    fn index(&self, idx: Idx<'n>) -> &Self::Output {
+        #[cfg(debug_assertions)]
+        {
+            &self.unbound[idx.unbound()]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            self.unbound.get_unchecked(idx.unbound())
+        }
+    }
+}
+impl<'n, T> core::ops::IndexMut<Idx<'n>> for Array<'n, T> {
+    #[track_caller]
+    fn index_mut(&mut self, idx: Idx<'n>) -> &mut Self::Output {
+        #[cfg(debug_assertions)]
+        {
+            &mut self.unbound[idx.unbound()]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            self.unbound.get_unchecked_mut(idx.unbound())
+        }
     }
 }

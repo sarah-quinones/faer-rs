@@ -31,7 +31,7 @@ pub struct SymbolicSparseColMat<I: Index, R: Shape = usize, C: Shape = usize> {
     pub(crate) ncols: C,
     pub(crate) col_ptr: alloc::vec::Vec<I>,
     pub(crate) col_nnz: Option<alloc::vec::Vec<I>>,
-    pub(crate) row_ind: alloc::vec::Vec<Idx<R, I>>,
+    pub(crate) row_ind: alloc::vec::Vec<I>,
 }
 
 impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
@@ -47,7 +47,7 @@ impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
         ncols: C,
         col_ptrs: alloc::vec::Vec<I>,
         nnz_per_col: Option<alloc::vec::Vec<I>>,
-        row_indices: alloc::vec::Vec<Idx<R, I>>,
+        row_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseColMatRef::new_checked(
             nrows,
@@ -79,7 +79,7 @@ impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
         ncols: C,
         col_ptrs: alloc::vec::Vec<I>,
         nnz_per_col: Option<alloc::vec::Vec<I>>,
-        row_indices: alloc::vec::Vec<Idx<R, I>>,
+        row_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseColMatRef::new_unsorted_checked(
             nrows,
@@ -110,7 +110,7 @@ impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
         ncols: C,
         col_ptrs: alloc::vec::Vec<I>,
         nnz_per_col: Option<alloc::vec::Vec<I>>,
-        row_indices: alloc::vec::Vec<Idx<R, I>>,
+        row_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseColMatRef::new_unchecked(
             nrows,
@@ -143,7 +143,7 @@ impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
         C,
         alloc::vec::Vec<I>,
         Option<alloc::vec::Vec<I>>,
-        alloc::vec::Vec<Idx<R, I>>,
+        alloc::vec::Vec<I>,
     ) {
         (
             self.nrows,
@@ -242,7 +242,7 @@ impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
 
     /// Returns the row indices.
     #[inline]
-    pub fn row_indices(&self) -> &[Idx<R, I>] {
+    pub fn row_indices(&self) -> &[I] {
         &self.row_ind
     }
 
@@ -255,6 +255,17 @@ impl<I: Index, R: Shape, C: Shape> SymbolicSparseColMat<I, R, C> {
     #[track_caller]
     pub fn row_indices_of_col_raw(&self, j: Idx<C>) -> &[Idx<R, I>] {
         self.as_ref().row_indices_of_col_raw(j)
+    }
+
+    /// Returns the row indices of column `j`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `j >= self.ncols()`.
+    #[inline]
+    #[track_caller]
+    pub fn row_indices_of_col_raw_unbound(&self, j: Idx<C>) -> &[I] {
+        self.as_ref().row_indices_of_col_raw_unbound(j)
     }
 
     /// Returns the row indices of column `j`.

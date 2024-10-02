@@ -3,6 +3,7 @@ use crate::{
     assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped,
     utils::bound::*, zipped, Idx, IdxInc, Shape, Unbind,
 };
+use core::ops::Range;
 use generativity::make_guard;
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
@@ -818,6 +819,14 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         unsafe { self.subcols_unchecked(col_start, ncols) }
     }
 
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols_range(self, cols: Range<IdxInc<C>>) -> MatRef<'a, E, R, usize> {
+        assert!(all(cols.start <= self.ncols(), cols.end <= self.ncols()));
+        let ncols = cols.end.unbound().saturating_sub(cols.start.unbound());
+        unsafe { self.subcols_unchecked(cols.start, ncols) }
+    }
+
     /// Returns a view over the row at the given index.
     ///
     /// # Safety
@@ -1167,9 +1176,11 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn col_iter(self) -> iter::ColIter<'a, E> {
+    pub fn col_iter(self) -> iter::ColIter<'a, E, R> {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
         iter::ColIter {
-            inner: self.as_dyn(),
+            inner: self.as_shape(nrows, ncols.unbound()),
         }
     }
 

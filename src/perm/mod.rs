@@ -1,4 +1,4 @@
-use crate::{assert, col::*, linalg::temp_mat_uninit, mat::*, row::*, utils::constrained, *};
+use crate::{assert, col::*, linalg::temp_mat_uninit, mat::*, row::*, *};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
 
@@ -217,13 +217,11 @@ pub fn permute_rows<I: Index, E: ComplexField>(
 
         with_dim!(m, src.nrows());
         with_dim!(n, src.ncols());
-        let mut dst = constrained::mat::MatMut::new(dst, m, n);
-        let src = constrained::mat::MatRef::new(src, m, n);
-        let perm = constrained::perm::PermRef::new(perm_indices, m).arrays().0;
+        let mut dst = dst.as_shape_mut(m, n);
+        let src = src.as_shape(m, n);
+        let perm = perm_indices.as_shape(m).bound_arrays().0;
 
-        if dst.rb().into_inner().row_stride().unsigned_abs()
-            < dst.rb().into_inner().col_stride().unsigned_abs()
-        {
+        if dst.rb().row_stride().unsigned_abs() < dst.rb().col_stride().unsigned_abs() {
             for j in n.indices() {
                 for i in m.indices() {
                     dst.rb_mut().write(i, j, src.read(perm[i].zx(), j));
@@ -231,8 +229,8 @@ pub fn permute_rows<I: Index, E: ComplexField>(
             }
         } else {
             for i in m.indices() {
-                let src_i = src.into_inner().row(perm[i].zx().unbound());
-                let mut dst_i = dst.rb_mut().into_inner().row_mut(i.unbound());
+                let src_i = src.row(perm[i].zx());
+                let mut dst_i = dst.rb_mut().row_mut(i);
 
                 dst_i.copy_from(src_i);
             }

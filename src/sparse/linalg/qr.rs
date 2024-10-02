@@ -13,7 +13,7 @@ use super::{
         supernodal::{SupernodalLltRef, SymbolicSupernodalCholesky},
     },
     colamd::{self, Control},
-    ghost::{self, Array, Idx, MaybeIdx},
+    ghost,
     mem::{self, NONE},
     nomem, try_zeroed, FaerError, Index, SupernodalThreshold, SymbolicSupernodalParams,
 };
@@ -26,7 +26,10 @@ use crate::{
     perm::PermRef,
     sparse::{SparseColMatRef, SymbolicSparseColMatRef},
     unzipped,
-    utils::{constrained::Dim, slice::*},
+    utils::{
+        bound::{Array, Dim, Idx, MaybeIdx},
+        slice::*,
+    },
     zipped, Conj, MatMut, Parallelism, SignedIndex,
 };
 use core::iter::zip;
@@ -36,8 +39,8 @@ use reborrow::*;
 
 #[inline]
 pub(crate) fn ghost_col_etree<'n, I: Index>(
-    A: ghost::SymbolicSparseColMatRef<'_, 'n, '_, I>,
-    col_perm: Option<ghost::PermRef<'n, '_, I>>,
+    A: SymbolicSparseColMatRef<'_, I, Dim<'_>, Dim<'n>>,
+    col_perm: Option<PermRef<'_, I, Dim<'n>>>,
     etree: &mut Array<'n, I::Signed>,
     stack: &mut PodStack,
 ) {
@@ -54,7 +57,9 @@ pub(crate) fn ghost_col_etree<'n, I: Index>(
 
     mem::fill_none(etree.as_mut());
     for j in N.indices() {
-        let pj = col_perm.map(|perm| perm.arrays().0[j].zx()).unwrap_or(j);
+        let pj = col_perm
+            .map(|perm| perm.bound_arrays().0[j].zx())
+            .unwrap_or(j);
         for i_ in A.row_indices_of_col(pj) {
             let mut i = prev[i_].sx();
             while let Some(i_) = i.idx() {
@@ -98,8 +103,8 @@ pub fn col_etree<'out, I: Index>(
     with_dim!(M, A.nrows());
     with_dim!(N, A.ncols());
     ghost_col_etree(
-        ghost::SymbolicSparseColMatRef::new(A, M, N),
-        col_perm.map(|perm| ghost::PermRef::new(perm, N)),
+        A.as_shape(M, N),
+        col_perm.map(|perm| perm.as_shape(N)),
         Array::from_mut(bytemuck::cast_slice_mut(etree), N),
         stack,
     );
@@ -145,8 +150,8 @@ pub(crate) fn ghost_least_common_ancestor<'n, I: Index>(
 pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
     col_counts: &mut Array<'m, I>,
     min_row: &mut Array<'n, I::Signed>,
-    A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
-    row_perm: Option<ghost::PermRef<'m, '_, I>>,
+    A: SymbolicSparseColMatRef<'_, I, Dim<'m>, Dim<'n>>,
+    row_perm: Option<PermRef<'_, I, Dim<'m>>>,
     etree: &Array<'m, MaybeIdx<'m, I>>,
     post: &Array<'m, Idx<'m, I>>,
     stack: &mut PodStack,
@@ -177,7 +182,7 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
 
     for j in N.indices() {
         if let Some(perm) = row_perm {
-            let inv = perm.arrays().1;
+            let inv = perm.bound_arrays().1;
             min_row[j] = match Iterator::min(A.row_indices_of_col(j).map(|j| inv[j].zx())) {
                 Some(first_row) => I::Signed::truncate(*first_row),
                 None => *MaybeIdx::<'_, I>::none(),
@@ -190,7 +195,7 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
         }
 
         let min_row = if let Some(perm) = row_perm {
-            let inv = perm.arrays().1;
+            let inv = perm.bound_arrays().1;
             Iterator::min(A.row_indices_of_col(j).map(|row| post_inv[inv[row].zx()]))
         } else {
             Iterator::min(A.row_indices_of_col(j).map(|row| post_inv[row]))
@@ -248,7 +253,9 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
 
         while let Some(j_) = j.idx() {
             for i in A.row_indices_of_col(j_) {
-                let i = row_perm.map(|perm| perm.arrays().1[i].zx()).unwrap_or(i);
+                let i = row_perm
+                    .map(|perm| perm.bound_arrays().1[i].zx())
+                    .unwrap_or(i);
                 let lca =
                     ghost_least_common_ancestor::<I>(i, pk, first, max_first, prev_leaf, ancestor);
 
@@ -314,12 +321,12 @@ pub fn column_counts_ata<'m, 'n, I: Index>(
     with_dim!(M, AT.nrows());
     with_dim!(N, AT.ncols());
 
-    let A = ghost::SymbolicSparseColMatRef::new(AT, M, N);
+    let A = AT.as_shape(M, N);
     ghost_column_counts_aat(
         Array::from_mut(col_counts, M),
         Array::from_mut(bytemuck::cast_slice_mut(min_col), N),
         A,
-        col_perm.map(|perm| ghost::PermRef::new(perm, M)),
+        col_perm.map(|perm| perm.as_shape(M)),
         etree.ghost_inner(M),
         Array::from_ref(Idx::from_slice_ref_checked(post, M), M),
         stack,
@@ -493,7 +500,7 @@ pub mod supernodal {
 
         with_dim!(M, m);
         with_dim!(N, n);
-        let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+        let A = A.as_shape(M, N);
         let mut stack = stack;
         let (L, H) = {
             let etree = etree.ghost_inner(N);
@@ -504,7 +511,7 @@ pub mod supernodal {
             let L =
                 crate::sparse::linalg::cholesky::supernodal::ghost_factorize_supernodal_symbolic(
                     A,
-                    col_perm.map(|perm| ghost::PermRef::new(perm, N)),
+                    col_perm.map(|perm| perm.as_shape(N)),
                     Some(min_col),
                     crate::sparse::linalg::cholesky::supernodal::CholeskyInput::ATA,
                     etree,
@@ -2358,7 +2365,7 @@ pub fn factorize_symbolic_qr<I: Index>(
 
     with_dim!(M, m);
     with_dim!(N, n);
-    let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+    let A = A.as_shape(M, N);
 
     let req = || -> Result<StackReq, SizeOverflow> {
         let n_req = StackReq::try_new::<I>(n)?;
@@ -2400,12 +2407,12 @@ pub fn factorize_symbolic_qr<I: Index>(
     colamd::order(
         &mut col_perm_fwd,
         &mut col_perm_inv,
-        A.into_inner(),
+        A.as_dyn(),
         params.colamd_params,
         stack.rb_mut(),
     )?;
 
-    let col_perm = ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n), N);
+    let col_perm = PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n).as_shape(N);
 
     let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
     let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
@@ -2470,8 +2477,8 @@ pub fn factorize_symbolic_qr<I: Index>(
 
     if threshold == SupernodalThreshold::FORCE_SUPERNODAL {
         let symbolic = supernodal::factorize_supernodal_symbolic_qr::<I>(
-            A.into_inner(),
-            Some(col_perm.into_inner()),
+            A.as_dyn(),
+            Some(col_perm.as_shape(n)),
             min_col,
             EliminationTreeRef::<'_, I> { inner: etree },
             col_counts,
@@ -2586,7 +2593,7 @@ mod tests {
         let mut col_counts = vec![zero; n];
 
         with_dim!(N, n);
-        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+        let A = A.as_shape(N, N);
         ghost_col_etree(
             A,
             None,
@@ -2711,7 +2718,7 @@ mod tests {
         with_dim!(M, m);
         with_dim!(N, n);
 
-        let A = ghost::SparseColMatRef::new(A, M, N);
+        let A = A.as_shape(M, N);
         let mut new_col_ptrs = vec![zero; m + 1];
         let mut new_row_ind = vec![zero; nnz];
         let mut new_values = vec![0.0; nnz];
@@ -2731,7 +2738,7 @@ mod tests {
         let mut min_row = vec![zero; m];
 
         ghost_col_etree(
-            *A,
+            A.symbolic(),
             None,
             Array::from_mut(&mut etree, N),
             PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
@@ -2746,7 +2753,7 @@ mod tests {
         ghost_column_counts_aat(
             Array::from_mut(&mut col_counts, N),
             Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-            *AT,
+            AT.symbolic(),
             None,
             etree_,
             Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
@@ -2756,7 +2763,7 @@ mod tests {
         let min_col = min_row;
 
         let symbolic = factorize_supernodal_symbolic_qr::<I>(
-            A.symbolic().into_inner(),
+            A.symbolic().as_dyn(),
             None,
             min_col,
             EliminationTreeRef::<'_, I> { inner: &etree },
@@ -2797,7 +2804,7 @@ mod tests {
             &mut L_values,
             &mut householder_values,
             &mut tau_values,
-            AT.into_inner(),
+            AT.as_dyn(),
             None,
             &symbolic,
             crate::Parallelism::None,
@@ -2810,7 +2817,7 @@ mod tests {
             )),
         );
         let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_adjoint(), &L_values);
-        let a = sparse_to_dense(A.into_inner());
+        let a = sparse_to_dense(A.as_dyn());
         let ata = a.adjoint() * &a;
 
         let llt_diff = &llt - &ata;
@@ -2843,7 +2850,7 @@ mod tests {
 
         with_dim!(M, m);
         with_dim!(N, n);
-        let A = ghost::SparseColMatRef::new(A, M, N);
+        let A = A.as_shape(M, N);
         let mut new_col_ptrs = vec![zero; m + 1];
         let mut new_row_ind = vec![zero; nnz];
         let mut new_values = vec![E::faer_zero(); nnz];
@@ -2867,7 +2874,7 @@ mod tests {
         let mut min_row = vec![zero; m];
 
         ghost_col_etree(
-            *A,
+            A.symbolic(),
             None,
             Array::from_mut(&mut etree, N),
             PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
@@ -2882,7 +2889,7 @@ mod tests {
         ghost_column_counts_aat(
             Array::from_mut(&mut col_counts, N),
             Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-            *AT,
+            AT.symbolic(),
             None,
             etree_,
             Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
@@ -2892,7 +2899,7 @@ mod tests {
         let min_col = min_row;
 
         let symbolic = factorize_supernodal_symbolic_qr::<I>(
-            A.symbolic().into_inner(),
+            A.symbolic().as_dyn(),
             None,
             min_col,
             EliminationTreeRef::<'_, I> { inner: &etree },
@@ -2936,7 +2943,7 @@ mod tests {
             &mut L_values,
             &mut householder_values,
             &mut tau_values,
-            AT.into_inner(),
+            AT.as_dyn(),
             None,
             &symbolic,
             crate::Parallelism::None,
@@ -2949,7 +2956,7 @@ mod tests {
             )),
         );
 
-        let a = sparse_to_dense(A.into_inner());
+        let a = sparse_to_dense(A.as_dyn());
 
         let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
         let mut x = rhs.clone();
@@ -3002,7 +3009,7 @@ mod tests {
 
         with_dim!(M, m);
         with_dim!(N, n);
-        let A = ghost::SparseColMatRef::new(A, M, N);
+        let A = A.as_shape(M, N);
         let mut new_col_ptrs = vec![zero; m + 1];
         let mut new_row_ind = vec![zero; nnz];
         let mut new_values = vec![E::faer_zero(); nnz];
@@ -3026,7 +3033,7 @@ mod tests {
         let mut min_row = vec![zero; m];
 
         ghost_col_etree(
-            *A,
+            A.symbolic(),
             None,
             Array::from_mut(&mut etree, N),
             PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
@@ -3041,7 +3048,7 @@ mod tests {
         ghost_column_counts_aat(
             Array::from_mut(&mut col_counts, N),
             Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-            *AT,
+            AT.symbolic(),
             None,
             etree_,
             Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
@@ -3075,14 +3082,14 @@ mod tests {
             &mut householder_row_indices,
             &mut householder_values,
             &mut tau_values,
-            A.into_inner(),
+            A.as_dyn(),
             None,
             &symbolic,
             PodStack::new(&mut GlobalPodBuffer::new(
                 factorize_simplicial_numeric_qr_req::<usize, E>(&symbolic).unwrap(),
             )),
         );
-        let a = sparse_to_dense(A.into_inner());
+        let a = sparse_to_dense(A.as_dyn());
         let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
         {
             let mut x = rhs.clone();

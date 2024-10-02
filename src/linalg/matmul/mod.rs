@@ -555,22 +555,18 @@ pub mod inner_prod {
             }
         } else {
             with_dim!(nrows, nrows);
-            with_dim!(ncols, 1);
-            let zero_idx = ncols.check(0);
 
-            let a = crate::utils::constrained::mat::MatRef::new(a.as_2d(), nrows, ncols);
-            let b = crate::utils::constrained::mat::MatRef::new(b.as_2d(), nrows, ncols);
+            let a = a.as_shape(nrows);
+            let b = b.as_shape(nrows);
+
             let mut acc = E::faer_zero();
             if conj_lhs == conj_rhs {
                 for i in nrows.indices() {
-                    acc = acc.faer_add(E::faer_mul(a.read(i, zero_idx), b.read(i, zero_idx)));
+                    acc = acc.faer_add(E::faer_mul(a.read(i), b.read(i)));
                 }
             } else {
                 for i in nrows.indices() {
-                    acc = acc.faer_add(E::faer_mul(
-                        a.read(i, zero_idx).faer_conj(),
-                        b.read(i, zero_idx),
-                    ));
+                    acc = acc.faer_add(E::faer_mul(a.read(i).faer_conj(), b.read(i)));
                 }
             }
             acc

@@ -7,6 +7,7 @@ use crate::{
     linalg::zip,
     unzipped, zipped, Idx, IdxInc, Unbind,
 };
+use core::ops::Range;
 
 /// Mutable view over a matrix, similar to a mutable reference to a 2D strided [prim@slice].
 ///
@@ -1460,6 +1461,18 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
         unsafe { self.into_const().subcols(col_start, ncols).const_cast() }
     }
 
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols_range(self, cols: Range<IdxInc<C>>) -> MatRef<'a, E, R, usize> {
+        self.into_const().subcols_range(cols)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols_range_mut(self, cols: Range<IdxInc<C>>) -> MatMut<'a, E, R, usize> {
+        unsafe { self.into_const().subcols_range(cols).const_cast() }
+    }
+
     /// Returns a view over the row at the given index.
     ///
     /// # Safety
@@ -1755,7 +1768,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn col_iter(self) -> iter::ColIter<'a, E> {
+    pub fn col_iter(self) -> iter::ColIter<'a, E, R> {
         self.into_const().col_iter()
     }
 
@@ -1767,9 +1780,11 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn col_iter_mut(self) -> iter::ColIterMut<'a, E> {
+    pub fn col_iter_mut(self) -> iter::ColIterMut<'a, E, R> {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
         iter::ColIterMut {
-            inner: self.as_dyn_mut(),
+            inner: self.as_shape_mut(nrows, ncols.unbound()),
         }
     }
 

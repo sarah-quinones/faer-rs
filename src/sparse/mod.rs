@@ -35,7 +35,7 @@ use faer_entity::*;
 use reborrow::*;
 
 mod ghost {
-    pub use crate::utils::constrained::{perm::*, sparse::*, *};
+    pub use crate::utils::bound::*;
 }
 
 const TOP_BIT: usize = 1usize << (usize::BITS - 1);
@@ -224,7 +224,7 @@ pub use csr::*;
 /// Useful sparse matrix primitives.
 pub mod utils {
     use super::*;
-    use crate::{assert, debug_assert};
+    use crate::{assert, debug_assert, perm::PermRef, utils::bound::Dim};
 
     /// Sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
     pub fn sort_indices<I: Index, E: Entity>(
@@ -301,19 +301,19 @@ pub mod utils {
         new_values: SliceGroupMut<'out, E>,
         new_col_ptrs: &'out mut [I],
         new_row_indices: &'out mut [I],
-        A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
-        perm: ghost::PermRef<'n, '_, I>,
+        A: SparseColMatRef<'_, I, E, Dim<'n>, Dim<'n>>,
+        perm: PermRef<'_, I, Dim<'n>>,
         in_side: Side,
         out_side: Side,
         sort: bool,
         stack: &mut PodStack,
-    ) -> ghost::SparseColMatMut<'n, 'n, 'out, I, E> {
+    ) -> SparseColMatMut<'out, I, E, Dim<'n>, Dim<'n>> {
         let N = A.ncols();
         let n = *A.ncols();
 
         // (1)
         assert!(new_col_ptrs.len() == n + 1);
-        let (_, perm_inv) = perm.arrays();
+        let (_, perm_inv) = perm.bound_arrays();
 
         let (current_row_position, _) = stack.make_raw::<I>(n);
         let current_row_position = ghost::Array::from_mut(current_row_position, N);
@@ -538,20 +538,11 @@ pub mod utils {
         // 1. new_values.len() == new_row_indices.len()
         // 2. all written row indices are less than n
         unsafe {
-            ghost::SparseColMatMut::new(
-                SparseColMatMut::new(
-                    SymbolicSparseColMatRef::new_unchecked(
-                        n,
-                        n,
-                        new_col_ptrs,
-                        None,
-                        new_row_indices,
-                    ),
-                    new_values.into_inner(),
-                ),
-                N,
-                N,
+            SparseColMatMut::new(
+                SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
+                new_values.into_inner(),
             )
+            .as_shape_mut(N, N)
         }
     }
 
@@ -559,29 +550,26 @@ pub mod utils {
     pub unsafe fn ghost_permute_hermitian_unsorted_symbolic<'n, 'out, I: Index>(
         new_col_ptrs: &'out mut [I],
         new_row_indices: &'out mut [I],
-        A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
-        perm: ghost::PermRef<'n, '_, I>,
+        A: SymbolicSparseColMatRef<'_, I, Dim<'n>, Dim<'n>>,
+        perm: PermRef<'_, I, Dim<'n>>,
         in_side: Side,
         out_side: Side,
         stack: &mut PodStack,
-    ) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
-        let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
+    ) -> SymbolicSparseColMatRef<'out, I, Dim<'n>, Dim<'n>> {
+        let old_values = &*Symbolic::materialize(A.row_indices().len());
         let new_values = Symbolic::materialize(new_row_indices.len());
-        *ghost_permute_hermitian_unsorted(
+        ghost_permute_hermitian_unsorted(
             SliceGroupMut::<'_, Symbolic>::new(new_values),
             new_col_ptrs,
             new_row_indices,
-            ghost::SparseColMatRef::new(
-                SparseColMatRef::new(A.into_inner(), old_values),
-                A.nrows(),
-                A.ncols(),
-            ),
+            SparseColMatRef::new(A, old_values),
             perm,
             in_side,
             out_side,
             false,
             stack,
         )
+        .symbolic()
     }
 
     /// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` without sorting the row
@@ -605,14 +593,14 @@ pub mod utils {
             SliceGroupMut::new(new_values),
             new_col_ptrs,
             new_row_indices,
-            ghost::SparseColMatRef::new(A, N, N),
-            ghost::PermRef::new(perm, N),
+            A.as_shape(N, N),
+            perm.as_shape(N),
             in_side,
             out_side,
             false,
             stack,
         )
-        .into_inner()
+        .as_shape_mut(A.nrows(), A.nrows())
     }
 
     /// Computes the size and alignment of the workspace required to compute a two-sided permutation
@@ -646,37 +634,34 @@ pub mod utils {
                 SliceGroupMut::new(new_values),
                 new_col_ptrs,
                 new_row_indices,
-                ghost::SparseColMatRef::new(A, N, N),
-                ghost::PermRef::new(perm, N),
+                A.as_shape(N, N),
+                perm.as_shape(N),
                 in_side,
                 out_side,
                 true,
                 stack,
             )
         }
-        .into_inner()
+        .as_shape_mut(A.nrows(), A.nrows())
     }
 
     #[doc(hidden)]
     pub fn ghost_adjoint_symbolic<'m, 'n, 'a, I: Index>(
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
-        A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
+        A: SymbolicSparseColMatRef<'_, I, Dim<'m>, Dim<'n>>,
         stack: &mut PodStack,
-    ) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
-        let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
+    ) -> SymbolicSparseColMatRef<'a, I, Dim<'n>, Dim<'m>> {
+        let old_values = &*Symbolic::materialize(A.row_indices().len());
         let new_values = Symbolic::materialize(new_row_indices.len());
-        *ghost_adjoint(
+        ghost_adjoint(
             new_col_ptrs,
             new_row_indices,
             SliceGroupMut::<'_, Symbolic>::new(new_values),
-            ghost::SparseColMatRef::new(
-                SparseColMatRef::new(A.into_inner(), old_values),
-                A.nrows(),
-                A.ncols(),
-            ),
+            SparseColMatRef::new(A, old_values),
             stack,
         )
+        .symbolic()
     }
 
     #[doc(hidden)]
@@ -684,9 +669,9 @@ pub mod utils {
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
         new_values: SliceGroupMut<'a, E>,
-        A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+        A: SparseColMatRef<'_, I, E, Dim<'m>, Dim<'n>>,
         stack: &mut PodStack,
-    ) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
+    ) -> SparseColMatMut<'a, I, E, Dim<'n>, Dim<'m>> {
         let M = A.nrows();
         let N = A.ncols();
         assert!(new_col_ptrs.len() == *M + 1);
@@ -743,22 +728,12 @@ pub mod utils {
         // SAFETY:
         // 0. new_col_ptrs is non-decreasing
         // 1. all written row indices are less than n
-        ghost::SparseColMatMut::new(
-            unsafe {
-                SparseColMatMut::new(
-                    SymbolicSparseColMatRef::new_unchecked(
-                        *N,
-                        *M,
-                        new_col_ptrs,
-                        None,
-                        new_row_indices,
-                    ),
-                    new_values.into_inner(),
-                )
-            },
-            N,
-            M,
-        )
+        unsafe {
+            SparseColMatMut::new(
+                SymbolicSparseColMatRef::new_unchecked(N, M, new_col_ptrs, None, new_row_indices),
+                new_values.into_inner(),
+            )
+        }
     }
 
     #[doc(hidden)]
@@ -766,9 +741,9 @@ pub mod utils {
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
         new_values: SliceGroupMut<'a, E>,
-        A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+        A: SparseColMatRef<'_, I, E, Dim<'m>, Dim<'n>>,
         stack: &mut PodStack,
-    ) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
+    ) -> SparseColMatMut<'a, I, E, Dim<'n>, Dim<'m>> {
         let M = A.nrows();
         let N = A.ncols();
         assert!(new_col_ptrs.len() == *M + 1);
@@ -825,22 +800,12 @@ pub mod utils {
         // SAFETY:
         // 0. new_col_ptrs is non-decreasing
         // 1. all written row indices are less than n
-        ghost::SparseColMatMut::new(
-            unsafe {
-                SparseColMatMut::new(
-                    SymbolicSparseColMatRef::new_unchecked(
-                        *N,
-                        *M,
-                        new_col_ptrs,
-                        None,
-                        new_row_indices,
-                    ),
-                    new_values.into_inner(),
-                )
-            },
-            N,
-            M,
-        )
+        unsafe {
+            SparseColMatMut::new(
+                SymbolicSparseColMatRef::new_unchecked(N, M, new_col_ptrs, None, new_row_indices),
+                new_values.into_inner(),
+            )
+        }
     }
 
     /// Computes the transpose of the matrix `A` and returns a view over it.
@@ -856,22 +821,20 @@ pub mod utils {
         A: SparseColMatRef<'_, I, E, R, C>,
         stack: &mut PodStack,
     ) -> SparseColMatMut<'a, I, E, C, R> {
-        let M = A.nrows();
-        let N = A.ncols();
+        let m = A.nrows();
+        let n = A.ncols();
         let A = A.as_dyn();
-        {
-            with_dim!(M, A.nrows());
-            with_dim!(N, A.ncols());
-            ghost_transpose(
-                new_col_ptrs,
-                new_row_indices,
-                SliceGroupMut::new(new_values),
-                ghost::SparseColMatRef::new(A, M, N),
-                stack,
-            )
-            .into_inner()
-        }
-        .as_shape_mut(N, M)
+
+        with_dim!(M, A.nrows());
+        with_dim!(N, A.ncols());
+        ghost_transpose(
+            new_col_ptrs,
+            new_row_indices,
+            SliceGroupMut::new(new_values),
+            A.as_shape(M, N),
+            stack,
+        )
+        .as_shape_mut(n, m)
     }
 
     /// Computes the adjoint of the matrix `A` and returns a view over it.
@@ -887,22 +850,20 @@ pub mod utils {
         A: SparseColMatRef<'_, I, E, R, C>,
         stack: &mut PodStack,
     ) -> SparseColMatMut<'a, I, E, C, R> {
-        let M = A.nrows();
-        let N = A.ncols();
+        let m = A.nrows();
+        let n = A.ncols();
         let A = A.as_dyn();
-        {
-            with_dim!(M, A.nrows());
-            with_dim!(N, A.ncols());
-            ghost_adjoint(
-                new_col_ptrs,
-                new_row_indices,
-                SliceGroupMut::new(new_values),
-                ghost::SparseColMatRef::new(A, M, N),
-                stack,
-            )
-            .into_inner()
-        }
-        .as_shape_mut(N, M)
+
+        with_dim!(M, A.nrows());
+        with_dim!(N, A.ncols());
+        ghost_adjoint(
+            new_col_ptrs,
+            new_row_indices,
+            SliceGroupMut::new(new_values),
+            A.as_shape(M, N),
+            stack,
+        )
+        .as_shape_mut(n, m)
     }
 
     /// Computes the adjoint of the symbolic matrix `A` and returns a view over it.
@@ -917,21 +878,14 @@ pub mod utils {
         A: SymbolicSparseColMatRef<'_, I, R, C>,
         stack: &mut PodStack,
     ) -> SymbolicSparseColMatRef<'a, I, C, R> {
-        let M = A.nrows();
-        let N = A.ncols();
+        let m = A.nrows();
+        let n = A.ncols();
         let A = A.as_dyn();
-        {
-            with_dim!(M, A.nrows());
-            with_dim!(N, A.ncols());
-            ghost_adjoint_symbolic(
-                new_col_ptrs,
-                new_row_indices,
-                ghost::SymbolicSparseColMatRef::new(A, M, N),
-                stack,
-            )
-            .into_inner()
-        }
-        .as_shape(N, M)
+
+        with_dim!(M, A.nrows());
+        with_dim!(N, A.ncols());
+        ghost_adjoint_symbolic(new_col_ptrs, new_row_indices, A.as_shape(M, N), stack)
+            .as_shape(n, m)
     }
 }
 

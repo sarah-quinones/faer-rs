@@ -429,7 +429,7 @@ impl<E: Entity, R: Shape, C: Shape> Mat<E, R, C> {
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn col_iter(&self) -> iter::ColIter<'_, E> {
+    pub fn col_iter(&self) -> iter::ColIter<'_, E, R> {
         self.as_ref().col_iter()
     }
 
@@ -441,7 +441,7 @@ impl<E: Entity, R: Shape, C: Shape> Mat<E, R, C> {
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn col_iter_mut(&mut self) -> iter::ColIterMut<'_, E> {
+    pub fn col_iter_mut(&mut self) -> iter::ColIterMut<'_, E, R> {
         self.as_mut().col_iter_mut()
     }
 
