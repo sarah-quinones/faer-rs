@@ -24,8 +24,8 @@ pub(crate) fn compute_pseudoinverse<E: ComplexField>(
         r += 1;
     }
 
-    let s_inv =
-        zipped!(s.get(..r)).map(|unzipped!(s)| E::faer_from_real(s.read().faer_real().faer_inv()));
+    let s_inv = zipped!(__rw, s.get(..r))
+        .map(|unzipped!(s)| E::faer_from_real(s.read().faer_real().faer_inv()));
 
     (v.get(.., ..r) * s_inv.as_ref().column_vector_as_diagonal()) * u.get(.., ..r).adjoint()
 }

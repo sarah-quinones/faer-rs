@@ -469,7 +469,7 @@ pub fn lsmr<E: ComplexField>(
                     par,
                     stack.rb_mut(),
                 );
-                zipped!(qr.rb_mut().get_mut(.., ..actual_k), &b).for_each(
+                zipped!(__rw, qr.rb_mut().get_mut(.., ..actual_k), &b).for_each(
                     |unzipped!(mut ax, b)| ax.write(b.read().canonicalize().faer_sub(ax.read())),
                 );
                 qr.rb_mut().get_mut(.., actual_k..).fill_zero();

@@ -1392,6 +1392,7 @@ pub mod supernodal {
                 );
                 let nrows = Ord::min(s_H.nrows(), s_L.ncols());
                 zipped!(
+                    __rw,
                     s_L.rb_mut().transpose_mut().subrows_mut(0, nrows),
                     s_H.rb().subrows(0, nrows)
                 )

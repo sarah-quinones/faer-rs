@@ -7,9 +7,9 @@ use crate::{assert, sparse::csc::*};
 /// * `nrows <= I::Signed::MAX` (always checked)
 /// * `ncols <= I::Signed::MAX` (always checked)
 /// * `row_ptrs` has length `nrows + 1` (always checked)
-/// * `row_ptrs` is non-decreasing
+/// * `row_ptrs` is increasing
 /// * `row_ptrs[0]..row_ptrs[nrows]` is a valid range in row_indices (always checked, assuming
-///   non-decreasing)
+///   increasing)
 /// * if `nnz_per_row` is `None`, elements of `col_indices[row_ptrs[i]..row_ptrs[i + 1]]` are less
 ///   than `ncols`
 ///
@@ -17,7 +17,7 @@ use crate::{assert, sparse::csc::*};
 /// * if `nnz_per_row` is `Some(_)`, elements of `col_indices[row_ptrs[i]..][..nnz_per_row[i]]` are
 ///   less than `ncols`
 ///
-/// * Within each row, column indices are sorted in non-decreasing order.
+/// * Within each row, column indices are sorted in increasing order.
 ///
 /// # Note
 /// Some algorithms allow working with matrices containing unsorted row indices per column.
@@ -71,6 +71,115 @@ impl<'a, I: Index, R: Shape, C: Shape> IntoConst for SymbolicSparseRowMatRef<'a,
     }
 }
 
+#[inline(always)]
+#[track_caller]
+fn assume_row_ptrs<I: Index>(
+    nrows: usize,
+    ncols: usize,
+    row_ptrs: &[I],
+    nnz_per_row: Option<&[I]>,
+    col_indices: &[I],
+) {
+    assert!(all(
+        ncols <= I::Signed::MAX.zx(),
+        nrows <= I::Signed::MAX.zx(),
+    ));
+    assert!(row_ptrs.len() == nrows + 1);
+    assert!(row_ptrs[nrows].zx() <= col_indices.len());
+    if let Some(nnz_per_row) = nnz_per_row {
+        assert!(nnz_per_row.len() == nrows);
+    }
+}
+
+#[track_caller]
+fn check_row_ptrs<I: Index>(
+    nrows: usize,
+    ncols: usize,
+    row_ptrs: &[I],
+    nnz_per_row: Option<&[I]>,
+    col_indices: &[I],
+) {
+    assert!(all(
+        ncols <= I::Signed::MAX.zx(),
+        nrows <= I::Signed::MAX.zx(),
+    ));
+    assert!(row_ptrs.len() == nrows + 1);
+    if let Some(nnz_per_row) = nnz_per_row {
+        assert!(nnz_per_row.len() == nrows);
+        for (&nnz_i, &[row, row_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
+            assert!(row <= row_next);
+            assert!(nnz_i <= row_next - row);
+        }
+    } else {
+        for &[row, row_next] in windows2(row_ptrs) {
+            assert!(row <= row_next);
+        }
+    }
+    assert!(row_ptrs[nrows].zx() <= col_indices.len());
+}
+
+#[track_caller]
+fn check_col_indices<I: Index>(
+    nrows: usize,
+    ncols: usize,
+    row_ptrs: &[I],
+    nnz_per_row: Option<&[I]>,
+    col_indices: &[I],
+) {
+    _ = nrows;
+    if let Some(nnz_per_row) = nnz_per_row {
+        for (&nnz_i, &c) in zip(nnz_per_row, row_ptrs) {
+            let col_indices = &col_indices[c.zx()..c.zx() + nnz_i.zx()];
+            if !col_indices.is_empty() {
+                let mut j_prev = col_indices[0];
+                for &j in &col_indices[1..] {
+                    assert!(j_prev < j);
+                    j_prev = j;
+                }
+                let ncols = I::truncate(ncols);
+                assert!(j_prev < ncols);
+            }
+        }
+    } else {
+        for &[c, c_next] in windows2(row_ptrs) {
+            let col_indices = &col_indices[c.zx()..c_next.zx()];
+            if !col_indices.is_empty() {
+                let mut j_prev = col_indices[0];
+                for &j in &col_indices[1..] {
+                    assert!(j_prev < j);
+                    j_prev = j;
+                }
+                let ncols = I::truncate(ncols);
+                assert!(j_prev < ncols);
+            }
+        }
+    }
+}
+
+#[track_caller]
+fn check_col_indices_unsorted<I: Index>(
+    nrows: usize,
+    ncols: usize,
+    row_ptrs: &[I],
+    nnz_per_row: Option<&[I]>,
+    col_indices: &[I],
+) {
+    _ = nrows;
+    if let Some(nnz_per_row) = nnz_per_row {
+        for (&nnz_i, &c) in zip(nnz_per_row, row_ptrs) {
+            for &j in &col_indices[c.zx()..c.zx() + nnz_i.zx()] {
+                assert!(j < I::truncate(ncols));
+            }
+        }
+    } else {
+        let c0 = row_ptrs[0].zx();
+        let cn = row_ptrs[nrows].zx();
+        for &j in &col_indices[c0..cn] {
+            assert!(j < I::truncate(ncols));
+        }
+    }
+}
+
 impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseRowMatRef<'a, I, R, C> {
     /// Creates a new symbolic matrix view after asserting its invariants.
     ///
@@ -86,64 +195,20 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseRowMatRef<'a, I, R, C> {
         nnz_per_row: Option<&'a [I]>,
         col_indices: &'a [I],
     ) -> Self {
-        #[track_caller]
-        fn check_ptrs<I: Index>(
-            nrows: usize,
-            ncols: usize,
-            row_ptrs: &[I],
-            nnz_per_row: Option<&[I]>,
-        ) {
-            assert!(all(
-                ncols <= I::Signed::MAX.zx(),
-                nrows <= I::Signed::MAX.zx(),
-            ));
-            assert!(row_ptrs.len() == nrows + 1);
-            if let Some(nnz_per_row) = nnz_per_row {
-                assert!(nnz_per_row.len() <= nrows);
-                for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
-                    assert!(c <= c_next);
-                    assert!(nnz_i <= c_next - c);
-                }
-            } else {
-                for &[c, c_next] in windows2(row_ptrs) {
-                    assert!(c <= c_next);
-                }
-            }
-        }
-        check_ptrs(nrows.unbound(), ncols.unbound(), row_ptrs, nnz_per_row);
-        assert!(row_ptrs[nrows.unbound()].zx() <= col_indices.len());
-
-        if const { !C::IS_BOUND } {
-            if let Some(nnz_per_row) = nnz_per_row {
-                for (&nnz_i, &c) in zip(nnz_per_row, row_ptrs) {
-                    let col_indices = &col_indices[c.zx()..c.zx() + nnz_i.zx()];
-                    if !col_indices.is_empty() {
-                        let mut j_prev = col_indices[0];
-                        for &j in &col_indices[1..] {
-                            assert!(j_prev <= j);
-                            j_prev = j;
-                        }
-                        let j_prev = j_prev.unbound();
-                        let ncols = I::truncate(ncols.unbound());
-                        assert!(j_prev < ncols);
-                    }
-                }
-            } else {
-                for &[c, c_next] in windows2(row_ptrs) {
-                    let col_indices = &col_indices[c.zx()..c_next.zx()];
-                    if !col_indices.is_empty() {
-                        let mut j_prev = col_indices[0];
-                        for &j in &col_indices[1..] {
-                            assert!(j_prev <= j);
-                            j_prev = j;
-                        }
-                        let j_prev = j_prev.unbound();
-                        let ncols = I::truncate(ncols.unbound());
-                        assert!(j_prev < ncols);
-                    }
-                }
-            }
-        }
+        check_row_ptrs(
+            nrows.unbound(),
+            ncols.unbound(),
+            row_ptrs,
+            nnz_per_row,
+            col_indices,
+        );
+        check_col_indices(
+            nrows.unbound(),
+            ncols.unbound(),
+            row_ptrs,
+            nnz_per_row,
+            col_indices,
+        );
 
         Self {
             nrows,
@@ -169,38 +234,20 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseRowMatRef<'a, I, R, C> {
         nnz_per_row: Option<&'a [I]>,
         col_indices: &'a [I],
     ) -> Self {
-        assert!(all(
-            ncols.unbound() <= I::Signed::MAX.zx(),
-            nrows.unbound() <= I::Signed::MAX.zx(),
-        ));
-        assert!(row_ptrs.len() == nrows.unbound() + 1);
-        for &[c, c_next] in windows2(row_ptrs) {
-            assert!(c <= c_next);
-        }
-        assert!(row_ptrs[nrows.unbound()].zx() <= col_indices.len());
-
-        if let Some(nnz_per_row) = nnz_per_row {
-            for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
-                assert!(nnz_i <= c_next - c);
-                if const { !C::IS_BOUND } {
-                    for &j in &col_indices[c.zx()..c.zx() + nnz_i.zx()] {
-                        let j = j.unbound();
-                        let ncols = ncols.unbound();
-                        assert!(j < I::truncate(ncols));
-                    }
-                }
-            }
-        } else {
-            if const { !C::IS_BOUND } {
-                let c0 = row_ptrs[0].zx();
-                let cn = row_ptrs[nrows.unbound()].zx();
-                for &j in &col_indices[c0..cn] {
-                    let j = j.unbound();
-                    let ncols = ncols.unbound();
-                    assert!(j < I::truncate(ncols));
-                }
-            }
-        }
+        check_row_ptrs(
+            nrows.unbound(),
+            ncols.unbound(),
+            row_ptrs,
+            nnz_per_row,
+            col_indices,
+        );
+        check_col_indices_unsorted(
+            nrows.unbound(),
+            ncols.unbound(),
+            row_ptrs,
+            nnz_per_row,
+            col_indices,
+        );
 
         Self {
             nrows,
@@ -225,12 +272,13 @@ impl<'a, I: Index, R: Shape, C: Shape> SymbolicSparseRowMatRef<'a, I, R, C> {
         nnz_per_row: Option<&'a [I]>,
         col_indices: &'a [I],
     ) -> Self {
-        assert!(all(
-            ncols.unbound() <= <I::Signed as SignedIndex>::MAX.zx(),
-            nrows.unbound() <= <I::Signed as SignedIndex>::MAX.zx(),
-        ));
-        assert!(row_ptrs.len() == nrows.unbound() + 1);
-        assert!(row_ptrs[nrows.unbound()].zx() <= col_indices.len());
+        assume_row_ptrs(
+            nrows.unbound(),
+            ncols.unbound(),
+            row_ptrs,
+            nnz_per_row,
+            col_indices,
+        );
 
         Self {
             nrows,

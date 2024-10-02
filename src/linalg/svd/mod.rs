@@ -196,7 +196,7 @@ fn compute_real_svd_small<E: RealField>(
     if m == n {
         let (mut jacobi_mat, _) = temp_mat_uninit::<E>(m, n, stack);
         let mut jacobi_mat = jacobi_mat.as_mut();
-        zipped!(jacobi_mat.rb_mut(), matrix)
+        zipped!(__rw, jacobi_mat.rb_mut(), matrix)
             .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
         jacobi::jacobi_svd(
@@ -207,7 +207,7 @@ fn compute_real_svd_small<E: RealField>(
             epsilon,
             zero_threshold,
         );
-        zipped!(s, jacobi_mat.rb().diagonal().column_vector())
+        zipped!(__rw, s, jacobi_mat.rb().diagonal().column_vector())
             .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         return;
     }
@@ -223,7 +223,8 @@ fn compute_real_svd_small<E: RealField>(
         let (mut r, mut stack) = temp_mat_uninit::<E>(n, n, stack.rb_mut());
         let mut r = r.as_mut();
 
-        zipped!(qr.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+        zipped!(__rw, qr.rb_mut(), matrix)
+            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
         // matrix = q * r
         faer_qr::no_pivoting::compute::qr_in_place(
@@ -233,9 +234,9 @@ fn compute_real_svd_small<E: RealField>(
             stack.rb_mut(),
             Default::default(),
         );
-        zipped!(r.rb_mut())
+        zipped!(__rw, r.rb_mut())
             .for_each_triangular_lower(Diag::Skip, |unzipped!(mut dst)| dst.write(E::faer_zero()));
-        zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
+        zipped!(__rw, r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
             .for_each_triangular_upper(Diag::Include, |unzipped!(mut dst, src)| {
                 dst.write(src.read())
             });
@@ -249,23 +250,25 @@ fn compute_real_svd_small<E: RealField>(
             epsilon,
             zero_threshold,
         );
-        zipped!(s, r.rb().diagonal().column_vector())
+        zipped!(__rw, s, r.rb().diagonal().column_vector())
             .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     }
 
     // matrix = q u s v
     if let Some(mut u) = u.rb_mut() {
         let ncols = u.ncols();
-        zipped!(u.rb_mut().submatrix_mut(n, 0, m - n, n))
+        zipped!(__rw, u.rb_mut().submatrix_mut(n, 0, m - n, n))
             .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
-        zipped!(u.rb_mut().submatrix_mut(0, n, m, ncols - n))
+        zipped!(__rw, u.rb_mut().submatrix_mut(0, n, m, ncols - n))
             .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
         if ncols == m {
-            zipped!(u
-                .rb_mut()
-                .submatrix_mut(n, n, m - n, m - n)
-                .diagonal_mut()
-                .column_vector_mut())
+            zipped!(
+                __rw,
+                u.rb_mut()
+                    .submatrix_mut(n, n, m - n, m - n)
+                    .diagonal_mut()
+                    .column_vector_mut()
+            )
             .for_each(|unzipped!(mut dst)| dst.write(E::faer_one()));
         }
 
@@ -346,9 +349,9 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     let v_real = v_real.rb();
 
     if let Some(mut u) = u.rb_mut() {
-        zipped!(u.rb_mut().row_mut(0), u_real.row(0))
+        zipped!(__rw, u.rb_mut().row_mut(0), u_real.row(0))
             .for_each(|unzipped!(mut u, u_real)| u.write(E::faer_from_real(u_real.read())));
-        zipped!(u.rb_mut().row_mut(n), u_real.row(n))
+        zipped!(__rw, u.rb_mut().row_mut(n), u_real.row(n))
             .for_each(|unzipped!(mut u, u_real)| u.write(E::faer_from_real(u_real.read())));
 
         for col_idx in 0..u.ncols() {
@@ -441,7 +444,7 @@ fn compute_svd_big<E: ComplexField>(
         temp_mat_uninit::<E>(householder_blocksize, n - 1, stack);
     let mut householder_right = householder_right.as_mut();
 
-    zipped!(bid.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped!(__rw, bid.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
     bidiag::bidiagonalize_in_place(
         bid.rb_mut(),
@@ -511,20 +514,23 @@ fn compute_svd_big<E: ComplexField>(
     if let Some(mut u) = u {
         let ncols = u.ncols();
         zipped!(
+            __rw,
             u.rb_mut().submatrix_mut(0, 0, n, n),
             v_b.rb().submatrix(0, 0, n, n),
         )
         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
-        zipped!(u.rb_mut().submatrix_mut(n, 0, m - n, ncols))
+        zipped!(__rw, u.rb_mut().submatrix_mut(n, 0, m - n, ncols))
             .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
-        zipped!(u.rb_mut().submatrix_mut(0, n, n, ncols - n))
+        zipped!(__rw, u.rb_mut().submatrix_mut(0, n, n, ncols - n))
             .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
-        zipped!(u
-            .rb_mut()
-            .submatrix_mut(n, n, ncols - n, ncols - n)
-            .diagonal_mut()
-            .column_vector_mut())
+        zipped!(
+            __rw,
+            u.rb_mut()
+                .submatrix_mut(n, n, ncols - n, ncols - n)
+                .diagonal_mut()
+                .column_vector_mut()
+        )
         .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -538,6 +544,7 @@ fn compute_svd_big<E: ComplexField>(
     };
     if let Some(mut v) = v {
         zipped!(
+            __rw,
             v.rb_mut().submatrix_mut(0, 0, n, n),
             u_b.rb().submatrix(0, 0, n, n),
         )
@@ -547,6 +554,7 @@ fn compute_svd_big<E: ComplexField>(
             crate::linalg::temp_mat_uninit::<E>(n - 1, m, stack.rb_mut());
         let mut bid_col_major = bid_col_major.as_mut();
         zipped!(
+            __rw,
             bid_col_major.rb_mut(),
             bid.submatrix(0, 1, m, n - 1).transpose()
         )
@@ -771,11 +779,13 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
 
     if n == 0 {
         if let Some(mut u) = u {
-            zipped!(u.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
-            zipped!(u
-                .submatrix_mut(0, 0, n, n)
-                .diagonal_mut()
-                .column_vector_mut())
+            zipped!(__rw, u.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+            zipped!(
+                __rw,
+                u.submatrix_mut(0, 0, n, n)
+                    .diagonal_mut()
+                    .column_vector_mut()
+            )
             .for_each(|unzipped!(mut dst)| dst.write(E::faer_one()));
         }
 
@@ -808,7 +818,8 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
             let (mut r, mut stack) = temp_mat_uninit::<E>(n, n, stack.rb_mut());
             let mut r = r.as_mut();
 
-            zipped!(qr.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+            zipped!(__rw, qr.rb_mut(), matrix)
+                .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
             // matrix = q * r
             faer_qr::no_pivoting::compute::qr_in_place(
@@ -818,10 +829,11 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
                 stack.rb_mut(),
                 Default::default(),
             );
-            zipped!(r.rb_mut()).for_each_triangular_lower(Diag::Skip, |unzipped!(mut dst)| {
-                dst.write(E::faer_zero())
-            });
-            zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
+            zipped!(__rw, r.rb_mut())
+                .for_each_triangular_lower(Diag::Skip, |unzipped!(mut dst)| {
+                    dst.write(E::faer_zero())
+                });
+            zipped!(__rw, r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
                 .for_each_triangular_upper(Diag::Include, |unzipped!(mut dst, src)| {
                     dst.write(src.read())
                 });
@@ -842,16 +854,18 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
         // matrix = q u s v
         if let Some(mut u) = u.rb_mut() {
             let ncols = u.ncols();
-            zipped!(u.rb_mut().submatrix_mut(n, 0, m - n, n))
+            zipped!(__rw, u.rb_mut().submatrix_mut(n, 0, m - n, n))
                 .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
-            zipped!(u.rb_mut().submatrix_mut(0, n, m, ncols - n))
+            zipped!(__rw, u.rb_mut().submatrix_mut(0, n, m, ncols - n))
                 .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
             if ncols == m {
-                zipped!(u
-                    .rb_mut()
-                    .submatrix_mut(n, n, m - n, m - n)
-                    .diagonal_mut()
-                    .column_vector_mut())
+                zipped!(
+                    __rw,
+                    u.rb_mut()
+                        .submatrix_mut(n, n, m - n, m - n)
+                        .diagonal_mut()
+                        .column_vector_mut()
+                )
                 .for_each(|unzipped!(mut dst)| dst.write(E::faer_one()));
             }
 
@@ -869,10 +883,10 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     if do_transpose {
         // conjugate u and v
         if let Some(u) = u {
-            zipped!(u).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()))
+            zipped!(__rw, u).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()))
         }
         if let Some(v) = v {
-            zipped!(v).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()))
+            zipped!(__rw, v).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()))
         }
     }
 }

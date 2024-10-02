@@ -1905,13 +1905,13 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 
         match alpha {
             Some(alpha) => match conj_a {
-                Conj::Yes => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                Conj::Yes => zipped!(__rw, acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                     acc.write(E::faer_add(
                         acc.read().faer_mul(alpha),
                         tmp.read().faer_conj().faer_mul(beta),
                     ))
                 }),
-                Conj::No => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                Conj::No => zipped!(__rw, acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                     acc.write(E::faer_add(
                         acc.read().faer_mul(alpha),
                         tmp.read().faer_mul(beta),
@@ -1920,12 +1920,12 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             },
             None => match conj_a {
                 Conj::Yes => {
-                    zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                    zipped!(__rw, acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                         acc.write(tmp.read().faer_conj().faer_mul(beta))
                     });
                 }
                 Conj::No => {
-                    zipped!(acc, tmp)
+                    zipped!(__rw, acc, tmp)
                         .for_each(|unzipped!(mut acc, tmp)| acc.write(tmp.read().faer_mul(beta)));
                 }
             },
@@ -1986,7 +1986,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(acc.as_ref(), target.as_ref())
+/// zipped!(__rw, acc.as_ref(), target.as_ref())
 ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[inline]
@@ -2059,7 +2059,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 ///     Parallelism::None,
 /// );
 ///
-/// zipped!(acc.as_ref(), target.as_ref())
+/// zipped!(__rw, acc.as_ref(), target.as_ref())
 ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]

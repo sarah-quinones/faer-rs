@@ -37,8 +37,8 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
     let mut u = u;
 
     if let Some(mut u) = u.rb_mut() {
-        zipped!(u.rb_mut()).for_each(|unzipped!(mut u)| u.write(E::faer_zero()));
-        zipped!(u.rb_mut().diagonal_mut().column_vector_mut())
+        zipped!(__rw, u.rb_mut()).for_each(|unzipped!(mut u)| u.write(E::faer_zero()));
+        zipped!(__rw, u.rb_mut().diagonal_mut().column_vector_mut())
             .for_each(|unzipped!(mut u)| u.write(E::faer_one()));
     }
 

@@ -186,9 +186,12 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     }
 
     let mut all_finite = true;
-    zipped!(matrix).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzipped!(x)| {
-        all_finite &= x.read().faer_is_finite();
-    });
+    zipped!(__rw, matrix).for_each_triangular_lower(
+        crate::linalg::zip::Diag::Include,
+        |unzipped!(x)| {
+            all_finite &= x.read().faer_is_finite();
+        },
+    );
 
     if !all_finite {
         { s }.fill(E::faer_nan());
@@ -207,7 +210,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
 
     let mut trid = trid.as_mut();
 
-    zipped!(trid.rb_mut(), matrix).for_each_triangular_lower(
+    zipped!(__rw, trid.rb_mut(), matrix).for_each_triangular_lower(
         crate::linalg::zip::Diag::Include,
         |unzipped!(mut dst, src)| dst.write(src.read()),
     );
@@ -425,7 +428,7 @@ pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
     let (mut up, _stack) = temp_mat_uninit::<E>(n, r_take, stack);
     up.as_mut().copy_from(ru.as_ref());
     for i in 0..n {
-        zipped!(up.as_mut().row_mut(i), psigma_diag.as_ref().row(0)).for_each(
+        zipped!(__rw, up.as_mut().row_mut(i), psigma_diag.as_ref().row(0)).for_each(
             |unzipped!(mut dst, src)| dst.write(dst.read() * E::faer_from_real(src.read())),
         );
     }
@@ -1163,15 +1166,20 @@ pub fn real_schur_to_eigen<E: RealField>(S: MatRef<'_, E>, Q: MatMut<E>, paralle
     Q.fill_zero();
 
     let mut norm = zero_threshold;
-    zipped!(S.rb()).for_each_triangular_upper(crate::linalg::zip::Diag::Include, |unzipped!(x)| {
-        norm = norm.faer_add(x.read().faer_abs());
-    });
+    zipped!(__rw, S.rb()).for_each_triangular_upper(
+        crate::linalg::zip::Diag::Include,
+        |unzipped!(x)| {
+            norm = norm.faer_add(x.read().faer_abs());
+        },
+    );
     // subdiagonal
-    zipped!(S
-        .rb()
-        .submatrix(1, 0, n - 1, n - 1)
-        .diagonal()
-        .column_vector())
+    zipped!(
+        __rw,
+        S.rb()
+            .submatrix(1, 0, n - 1, n - 1)
+            .diagonal()
+            .column_vector()
+    )
     .for_each(|unzipped!(x)| {
         norm = norm.faer_add(x.read().faer_abs());
     });
@@ -1449,7 +1457,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
         let mut x = x.as_mut();
 
         let mut norm = zero_threshold;
-        zipped!(h.rb()).for_each_triangular_upper(
+        zipped!(__rw, h.rb()).for_each_triangular_upper(
             crate::linalg::zip::Diag::Include,
             |unzipped!(x)| {
                 norm = norm.faer_add(x.read().faer_abs2());

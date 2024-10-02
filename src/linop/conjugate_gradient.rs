@@ -181,7 +181,7 @@ pub fn conjugate_gradient<E: ComplexField>(
 
         let abs_residual = if params.initial_guess == InitialGuessStatus::MaybeNonZero {
             A.apply(r.rb_mut(), x.rb(), parallelism, stack.rb_mut());
-            zipped!(&mut r, &b)
+            zipped!(__rw, &mut r, &b)
                 .for_each(|unzipped!(mut res, rhs)| res.write(rhs.read().faer_sub(res.read())));
             r.norm_l2()
         } else {

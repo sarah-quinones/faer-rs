@@ -173,7 +173,7 @@ where
                 r.faer_scale_real(r.faer_abs().faer_inv())
             };
 
-            crate::zipped!(q.as_mut().col_mut(j)).for_each(|crate::unzipped!(mut q)| {
+            crate::zipped!(__rw, q.as_mut().col_mut(j)).for_each(|crate::unzipped!(mut q)| {
                 q.write(q.read().faer_mul(r));
             });
         }

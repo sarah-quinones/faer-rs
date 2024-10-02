@@ -384,7 +384,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn add(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
-        zipped!(self, rhs).map(|unzipped!(lhs, rhs)| {
+        zipped!(__rw, self, rhs).map(|unzipped!(lhs, rhs)| {
             lhs.read()
                 .canonicalize()
                 .faer_add(rhs.read().canonicalize())
@@ -399,7 +399,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn sub(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
-        zipped!(self, rhs).map(|unzipped!(lhs, rhs)| {
+        zipped!(__rw, self, rhs).map(|unzipped!(lhs, rhs)| {
             lhs.read()
                 .canonicalize()
                 .faer_sub(rhs.read().canonicalize())
@@ -412,7 +412,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<MatRef<'_,
 {
     #[track_caller]
     fn add_assign(&mut self, rhs: MatRef<'_, RhsE>) {
-        zipped!(self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
+        zipped!(__rw, self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
             lhs.write(lhs.read().faer_add(rhs.read().canonicalize()))
         })
     }
@@ -423,7 +423,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> SubAssign<MatRef<'_,
 {
     #[track_caller]
     fn sub_assign(&mut self, rhs: MatRef<'_, RhsE>) {
-        zipped!(self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
+        zipped!(__rw, self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
             lhs.write(lhs.read().faer_sub(rhs.read().canonicalize()))
         })
     }
@@ -436,7 +436,7 @@ where
     type Output = Mat<E::Canonical>;
 
     fn neg(self) -> Self::Output {
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_neg())
+        zipped!(__rw, self).map(|unzipped!(x)| x.read().canonicalize().faer_neg())
     }
 }
 
@@ -447,7 +447,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn add(self, rhs: ColRef<'_, RhsE>) -> Self::Output {
-        zipped!(self, rhs).map(|unzipped!(lhs, rhs)| {
+        zipped!(__rw, self, rhs).map(|unzipped!(lhs, rhs)| {
             lhs.read()
                 .canonicalize()
                 .faer_add(rhs.read().canonicalize())
@@ -462,7 +462,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn sub(self, rhs: ColRef<'_, RhsE>) -> Self::Output {
-        zipped!(self, rhs).map(|unzipped!(lhs, rhs)| {
+        zipped!(__rw, self, rhs).map(|unzipped!(lhs, rhs)| {
             lhs.read()
                 .canonicalize()
                 .faer_sub(rhs.read().canonicalize())
@@ -475,7 +475,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<ColRef<'_,
 {
     #[track_caller]
     fn add_assign(&mut self, rhs: ColRef<'_, RhsE>) {
-        zipped!(self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
+        zipped!(__rw, self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
             lhs.write(lhs.read().faer_add(rhs.read().canonicalize()))
         })
     }
@@ -486,7 +486,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> SubAssign<ColRef<'_,
 {
     #[track_caller]
     fn sub_assign(&mut self, rhs: ColRef<'_, RhsE>) {
-        zipped!(self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
+        zipped!(__rw, self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
             lhs.write(lhs.read().faer_sub(rhs.read().canonicalize()))
         })
     }
@@ -499,7 +499,7 @@ where
     type Output = Col<E::Canonical>;
 
     fn neg(self) -> Self::Output {
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_neg())
+        zipped!(__rw, self).map(|unzipped!(x)| x.read().canonicalize().faer_neg())
     }
 }
 
@@ -510,7 +510,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn add(self, rhs: RowRef<'_, RhsE>) -> Self::Output {
-        zipped!(self, rhs).map(|unzipped!(lhs, rhs)| {
+        zipped!(__rw, self, rhs).map(|unzipped!(lhs, rhs)| {
             lhs.read()
                 .canonicalize()
                 .faer_add(rhs.read().canonicalize())
@@ -525,7 +525,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn sub(self, rhs: RowRef<'_, RhsE>) -> Self::Output {
-        zipped!(self, rhs).map(|unzipped!(lhs, rhs)| {
+        zipped!(__rw, self, rhs).map(|unzipped!(lhs, rhs)| {
             lhs.read()
                 .canonicalize()
                 .faer_sub(rhs.read().canonicalize())
@@ -538,7 +538,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<RowRef<'_,
 {
     #[track_caller]
     fn add_assign(&mut self, rhs: RowRef<'_, RhsE>) {
-        zipped!(self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
+        zipped!(__rw, self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
             lhs.write(lhs.read().faer_add(rhs.read().canonicalize()))
         })
     }
@@ -549,7 +549,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> SubAssign<RowRef<'_,
 {
     #[track_caller]
     fn sub_assign(&mut self, rhs: RowRef<'_, RhsE>) {
-        zipped!(self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
+        zipped!(__rw, self.as_mut(), rhs).for_each(|unzipped!(mut lhs, rhs)| {
             lhs.write(lhs.read().faer_sub(rhs.read().canonicalize()))
         })
     }
@@ -562,7 +562,7 @@ where
     type Output = Row<E::Canonical>;
 
     fn neg(self) -> Self::Output {
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_neg())
+        zipped!(__rw, self).map(|unzipped!(x)| x.read().canonicalize().faer_neg())
     }
 }
 
@@ -573,7 +573,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn add(self, rhs: DiagRef<'_, RhsE>) -> Self::Output {
-        zipped!(self.column_vector(), rhs.column_vector())
+        zipped!(__rw, self.column_vector(), rhs.column_vector())
             .map(|unzipped!(lhs, rhs)| {
                 lhs.read()
                     .canonicalize()
@@ -590,7 +590,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     #[track_caller]
     fn sub(self, rhs: DiagRef<'_, RhsE>) -> Self::Output {
-        zipped!(self.column_vector(), rhs.column_vector())
+        zipped!(__rw, self.column_vector(), rhs.column_vector())
             .map(|unzipped!(lhs, rhs)| {
                 lhs.read()
                     .canonicalize()
@@ -605,7 +605,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<DiagRef<'_
 {
     #[track_caller]
     fn add_assign(&mut self, rhs: DiagRef<'_, RhsE>) {
-        zipped!(self.as_mut().column_vector_mut(), rhs.column_vector()).for_each(
+        zipped!(__rw, self.as_mut().column_vector_mut(), rhs.column_vector()).for_each(
             |unzipped!(mut lhs, rhs)| lhs.write(lhs.read().faer_add(rhs.read().canonicalize())),
         )
     }
@@ -616,7 +616,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> SubAssign<DiagRef<'_
 {
     #[track_caller]
     fn sub_assign(&mut self, rhs: DiagRef<'_, RhsE>) {
-        zipped!(self.as_mut().column_vector_mut(), rhs.column_vector()).for_each(
+        zipped!(__rw, self.as_mut().column_vector_mut(), rhs.column_vector()).for_each(
             |unzipped!(mut lhs, rhs)| lhs.write(lhs.read().faer_sub(rhs.read().canonicalize())),
         )
     }
@@ -629,7 +629,7 @@ where
     type Output = Diag<E::Canonical>;
 
     fn neg(self) -> Self::Output {
-        zipped!(self.column_vector())
+        zipped!(__rw, self.column_vector())
             .map(|unzipped!(x)| x.read().canonicalize().faer_neg())
             .column_vector_into_diagonal()
     }
@@ -1780,7 +1780,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
 
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
         let rhs = rhs.0.canonicalize();
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs))
+        zipped!(__rw, self).map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs))
     }
 }
 
@@ -1790,7 +1790,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Mat<E>;
 
     fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
-        zipped!(rhs).map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
+        zipped!(__rw, rhs)
+            .map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
     }
 }
 
@@ -1800,7 +1801,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Col<E>;
 
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs.0.canonicalize()))
+        zipped!(__rw, self)
+            .map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs.0.canonicalize()))
     }
 }
 impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>
@@ -1809,7 +1811,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Col<E>;
 
     fn mul(self, rhs: ColRef<'_, RhsE>) -> Self::Output {
-        zipped!(rhs).map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
+        zipped!(__rw, rhs)
+            .map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
     }
 }
 
@@ -1819,7 +1822,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Row<E>;
 
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs.0.canonicalize()))
+        zipped!(__rw, self)
+            .map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs.0.canonicalize()))
     }
 }
 impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>
@@ -1828,7 +1832,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Row<E>;
 
     fn mul(self, rhs: RowRef<'_, RhsE>) -> Self::Output {
-        zipped!(rhs).map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
+        zipped!(__rw, rhs)
+            .map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
     }
 }
 
@@ -1838,7 +1843,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Diag<E>;
 
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
-        zipped!(self.column_vector())
+        zipped!(__rw, self.column_vector())
             .map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs.0.canonicalize()))
             .column_vector_into_diagonal()
     }
@@ -1849,7 +1854,7 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Diag<E>;
 
     fn mul(self, rhs: DiagRef<'_, RhsE>) -> Self::Output {
-        zipped!(rhs.column_vector())
+        zipped!(__rw, rhs.column_vector())
             .map(|unzipped!(x)| x.read().canonicalize().faer_mul(self.0.canonicalize()))
             .column_vector_into_diagonal()
     }
@@ -1971,7 +1976,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE
     for MatMut<'_, LhsE>
 {
     fn mul_assign(&mut self, rhs: Scale<RhsE>) {
-        zipped!(self.as_mut())
+        zipped!(__rw, self.as_mut())
             .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(rhs.0.canonicalize())))
     }
 }
@@ -1979,7 +1984,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE
     for ColMut<'_, LhsE>
 {
     fn mul_assign(&mut self, rhs: Scale<RhsE>) {
-        zipped!(self.as_mut())
+        zipped!(__rw, self.as_mut())
             .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(rhs.0.canonicalize())))
     }
 }
@@ -1987,7 +1992,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE
     for RowMut<'_, LhsE>
 {
     fn mul_assign(&mut self, rhs: Scale<RhsE>) {
-        zipped!(self.as_mut())
+        zipped!(__rw, self.as_mut())
             .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(rhs.0.canonicalize())))
     }
 }
@@ -1995,7 +2000,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE
     for DiagMut<'_, LhsE>
 {
     fn mul_assign(&mut self, rhs: Scale<RhsE>) {
-        zipped!(self.as_mut().column_vector_mut())
+        zipped!(__rw, self.as_mut().column_vector_mut())
             .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(rhs.0.canonicalize())))
     }
 }

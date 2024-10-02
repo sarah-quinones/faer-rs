@@ -5,6 +5,9 @@ use core::mem::MaybeUninit;
 use faer_entity::*;
 use reborrow::*;
 
+#[doc(hidden)]
+pub struct RefWrapper<M>(pub M);
+
 /// Read only view over a single matrix element.
 pub struct Read<'a, E: Entity> {
     ptr: GroupFor<E, &'a MaybeUninit<E::Unit>>,
@@ -444,6 +447,12 @@ pub unsafe trait MaybeContiguous: MatShape {
 pub unsafe trait MatIndex: MaybeContiguous {
     /// Item produced by the zipped views.
     type Item;
+    /// Reference item produced by the zipped views.
+    type RefItem;
+
+    /// Convert item to reference.
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem;
+
     /// Matrix type with type erased dimensions.
     type Dyn: MatIndex;
 
@@ -521,6 +530,19 @@ impl<
 {
     type Rows = Rows;
     type Cols = Cols;
+    #[inline(always)]
+    fn nrows(this: &Self) -> Self::Rows {
+        Mat::nrows(&this.0)
+    }
+    #[inline(always)]
+    fn ncols(this: &Self) -> Self::Cols {
+        Mat::ncols(&this.0)
+    }
+}
+
+impl<Mat: MatShape> MatShape for RefWrapper<Mat> {
+    type Rows = Mat::Rows;
+    type Cols = Mat::Cols;
     #[inline(always)]
     fn nrows(this: &Self) -> Self::Rows {
         Mat::nrows(&this.0)
@@ -638,6 +660,20 @@ unsafe impl<
     }
 }
 
+unsafe impl<Mat: MaybeContiguous> MaybeContiguous for RefWrapper<Mat> {
+    type Index = Mat::Index;
+    type Slice = Mat::Slice;
+    type LayoutTransform = Mat::LayoutTransform;
+    #[inline(always)]
+    unsafe fn get_slice_unchecked(
+        this: &mut Self,
+        idx: Self::Index,
+        n_elems: usize,
+    ) -> Self::Slice {
+        Mat::get_slice_unchecked(&mut this.0, idx, n_elems)
+    }
+}
+
 unsafe impl<
         Rows: Copy + Eq + core::fmt::Debug,
         Cols: Copy + Eq + core::fmt::Debug,
@@ -645,7 +681,13 @@ unsafe impl<
     > MatIndex for LastEq<Rows, Cols, Mat>
 {
     type Item = Last<Mat::Item>;
+    type RefItem = Last<Mat::RefItem>;
     type Dyn = LastEq<<Mat::Dyn as MatShape>::Rows, <Mat::Dyn as MatShape>::Cols, Mat::Dyn>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        Last(Mat::to_ref(item.0))
+    }
 
     #[inline(always)]
     unsafe fn get_unchecked(this: &mut Self, index: Self::Index) -> Self::Item {
@@ -673,6 +715,45 @@ unsafe impl<
     #[inline(always)]
     fn with_layout(this: Self, layout: Self::LayoutTransform) -> Self::Dyn {
         LastEq(Mat::with_layout(this.0, layout))
+    }
+}
+
+unsafe impl<Mat: MatIndex> MatIndex for RefWrapper<Mat> {
+    type Item = Mat::RefItem;
+    type RefItem = Mat::RefItem;
+    type Dyn = RefWrapper<Mat::Dyn>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        item
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(this: &mut Self, index: Self::Index) -> Self::Item {
+        Mat::to_ref(Mat::get_unchecked(&mut this.0, index))
+    }
+
+    #[inline(always)]
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        Mat::from_dyn_idx(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        Mat::to_ref(Mat::next_unchecked(slice))
+    }
+
+    #[inline(always)]
+    fn is_contiguous(this: &Self) -> bool {
+        Mat::is_contiguous(&this.0)
+    }
+    #[inline(always)]
+    fn preferred_layout(this: &Self) -> Self::LayoutTransform {
+        Mat::preferred_layout(&this.0)
+    }
+    #[inline(always)]
+    fn with_layout(this: Self, layout: Self::LayoutTransform) -> Self::Dyn {
+        RefWrapper(Mat::with_layout(this.0, layout))
     }
 }
 
@@ -724,6 +805,13 @@ unsafe impl<
     > MatIndex for ZipEq<Rows, Cols, Head, Tail>
 {
     type Item = Zip<Head::Item, Tail::Item>;
+    type RefItem = Zip<Head::RefItem, Tail::RefItem>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        Zip(Head::to_ref(item.0), Tail::to_ref(item.1))
+    }
+
     type Dyn =
         ZipEq<<Head::Dyn as MatShape>::Rows, <Head::Dyn as MatShape>::Cols, Head::Dyn, Tail::Dyn>;
 
@@ -781,7 +869,17 @@ unsafe impl<E: Entity, R: Shape> MaybeContiguous for ColRef<'_, E, R> {
 }
 unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColRef<'a, E, R> {
     type Item = Read<'a, E>;
+    type RefItem = Ref<'a, E>;
     type Dyn = ColRef<'a, E>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        E::faer_map(
+            item.ptr,
+            #[inline(always)]
+            |x| unsafe { &*(x as *const MaybeUninit<E::Unit> as *const E::Unit) },
+        )
+    }
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
@@ -852,7 +950,17 @@ unsafe impl<E: Entity, R: Shape> MaybeContiguous for ColMut<'_, E, R> {
 }
 unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColMut<'a, E, R> {
     type Item = ReadWrite<'a, E>;
+    type RefItem = Mut<'a, E>;
     type Dyn = ColMut<'a, E>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        E::faer_map(
+            item.ptr,
+            #[inline(always)]
+            |x| unsafe { &mut *(x as *mut MaybeUninit<E::Unit> as *mut E::Unit) },
+        )
+    }
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
@@ -923,7 +1031,17 @@ unsafe impl<E: Entity, C: Shape> MaybeContiguous for RowRef<'_, E, C> {
 }
 unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowRef<'a, E, C> {
     type Item = Read<'a, E>;
+    type RefItem = Ref<'a, E>;
     type Dyn = RowRef<'a, E>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        E::faer_map(
+            item.ptr,
+            #[inline(always)]
+            |x| unsafe { &*(x as *const MaybeUninit<E::Unit> as *const E::Unit) },
+        )
+    }
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
@@ -995,7 +1113,17 @@ unsafe impl<E: Entity, C: Shape> MaybeContiguous for RowMut<'_, E, C> {
 }
 unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowMut<'a, E, C> {
     type Item = ReadWrite<'a, E>;
+    type RefItem = Mut<'a, E>;
     type Dyn = RowMut<'a, E>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        E::faer_map(
+            item.ptr,
+            #[inline(always)]
+            |x| unsafe { &mut *(x as *mut MaybeUninit<E::Unit> as *mut E::Unit) },
+        )
+    }
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
@@ -1070,7 +1198,17 @@ unsafe impl<E: Entity, R: Shape, C: Shape> MaybeContiguous for MatRef<'_, E, R, 
 }
 unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatRef<'a, E, R, C> {
     type Item = Read<'a, E>;
+    type RefItem = Ref<'a, E>;
     type Dyn = MatRef<'a, E>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        E::faer_map(
+            item.ptr,
+            #[inline(always)]
+            |x| unsafe { &*(x as *const MaybeUninit<E::Unit> as *const E::Unit) },
+        )
+    }
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
@@ -1155,7 +1293,17 @@ unsafe impl<E: Entity, R: Shape, C: Shape> MaybeContiguous for MatMut<'_, E, R, 
 
 unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatMut<'a, E, R, C> {
     type Item = ReadWrite<'a, E>;
+    type RefItem = Mut<'a, E>;
     type Dyn = MatMut<'a, E>;
+
+    #[inline(always)]
+    unsafe fn to_ref(item: Self::Item) -> Self::RefItem {
+        E::faer_map(
+            item.ptr,
+            #[inline(always)]
+            |x| unsafe { &mut *(x as *mut MaybeUninit<E::Unit> as *mut E::Unit) },
+        )
+    }
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
@@ -2584,7 +2732,7 @@ mod tests {
                                 let mut target = Mat::from_fn(m, n, |_, _| f64::faer_zero());
                                 let target_src = Mat::from_fn(m, n, |_, _| f64::faer_one());
 
-                                zipped!(target.as_mut(), target_src.as_ref())
+                                zipped!(__rw, target.as_mut(), target_src.as_ref())
                                     .for_each_triangular_lower(diag, |unzipped!(mut dst, src)| {
                                         dst.write(src.read())
                                     });
@@ -2606,7 +2754,7 @@ mod tests {
                                     src = src.reverse_rows();
                                 }
 
-                                zipped!(dst.rb_mut(), src)
+                                zipped!(__rw, dst.rb_mut(), src)
                                     .for_each_triangular_lower(diag, |unzipped!(mut dst, src)| {
                                         dst.write(src.read())
                                     });
@@ -2630,7 +2778,7 @@ mod tests {
                     let target_src =
                         Col::from_fn(m, |i| if rev_src { m - i } else { i + 1 } as f64);
 
-                    zipped!(target.as_mut(), target_src.as_ref())
+                    zipped!(__rw, target.as_mut(), target_src.as_ref())
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     let mut dst = dst.as_mut();
@@ -2643,7 +2791,7 @@ mod tests {
                         src = src.reverse_rows();
                     }
 
-                    zipped!(dst.rb_mut(), src)
+                    zipped!(__rw, dst.rb_mut(), src)
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     assert!(dst.rb() == target.as_ref());
@@ -2662,7 +2810,7 @@ mod tests {
                     let target_src =
                         Row::from_fn(m, |i| if rev_src { m - i } else { i + 1 } as f64);
 
-                    zipped!(target.as_mut(), target_src.as_ref())
+                    zipped!(__rw, target.as_mut(), target_src.as_ref())
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     let mut dst = dst.as_mut();
@@ -2675,7 +2823,7 @@ mod tests {
                         src = src.reverse_cols();
                     }
 
-                    zipped!(&mut dst, src)
+                    zipped!(__rw, &mut dst, src)
                         .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     assert!(dst.rb() == target.as_ref());
@@ -2717,12 +2865,12 @@ mod tests {
         for m in [m.as_ref(), m_non_contiguous] {
             {
                 let m = m.as_ref();
-                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (j + i * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(m).for_each_triangular_lower_with_index(
+                    zipped!(__rw, m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2733,7 +2881,7 @@ mod tests {
                             assert!(*val == (j + i * 3) as f64);
                         },
                     );
-                    zipped!(m).for_each_triangular_upper_with_index(
+                    zipped!(__rw, m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2748,12 +2896,12 @@ mod tests {
             }
             {
                 let m = m.as_ref().reverse_rows();
-                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (j + (3 - i) * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(m).for_each_triangular_lower_with_index(
+                    zipped!(__rw, m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2765,7 +2913,7 @@ mod tests {
                             assert!(*val == (j + (3 - i) * 3) as f64);
                         },
                     );
-                    zipped!(m).for_each_triangular_upper_with_index(
+                    zipped!(__rw, m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2781,12 +2929,12 @@ mod tests {
             }
             {
                 let m = m.as_ref().transpose();
-                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (i + j * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(m).for_each_triangular_lower_with_index(
+                    zipped!(__rw, m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2798,7 +2946,7 @@ mod tests {
                             assert!(*val == (i + j * 3) as f64);
                         },
                     );
-                    zipped!(m).for_each_triangular_upper_with_index(
+                    zipped!(__rw, m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2814,12 +2962,12 @@ mod tests {
             }
             {
                 let m = m.as_ref().reverse_rows().transpose();
-                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|i, j, unzipped!(val)| {
                     assert!(*val == (i + (3 - j) * 3) as f64);
                 });
 
                 for diag in [Diag::Include, Diag::Skip] {
-                    zipped!(m).for_each_triangular_lower_with_index(
+                    zipped!(__rw, m).for_each_triangular_lower_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2831,7 +2979,7 @@ mod tests {
                             assert!(*val == (i + (3 - j) * 3) as f64);
                         },
                     );
-                    zipped!(m).for_each_triangular_upper_with_index(
+                    zipped!(__rw, m).for_each_triangular_upper_with_index(
                         diag,
                         |i, j, unzipped!(val)| {
                             if diag == Diag::Include {
@@ -2849,6 +2997,9 @@ mod tests {
 
         for m in [m.as_ref().col(0), m_non_contiguous.col(0)] {
             {
+                zipped!(__rw, m).for_each_with_index(|i, unzipped!(val)| {
+                    assert!(*val == (i * 3) as f64);
+                });
                 zipped!(m).for_each_with_index(|i, unzipped!(val)| {
                     assert!(*val == (i * 3) as f64);
                 });
@@ -2856,7 +3007,7 @@ mod tests {
 
             {
                 let m = m.reverse_rows();
-                zipped!(m).for_each_with_index(|i, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|i, unzipped!(val)| {
                     assert!(*val == ((3 - i) * 3) as f64);
                 });
             }
@@ -2864,14 +3015,14 @@ mod tests {
 
         for m in [m.as_ref().row(0), m_non_contiguous.row(0)] {
             {
-                zipped!(m).for_each_with_index(|j, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|j, unzipped!(val)| {
                     assert!(*val == j as f64);
                 });
             }
 
             {
                 let m = m.reverse_cols();
-                zipped!(m).for_each_with_index(|j, unzipped!(val)| {
+                zipped!(__rw, m).for_each_with_index(|j, unzipped!(val)| {
                     assert!(*val == (2 - j) as f64);
                 });
             }

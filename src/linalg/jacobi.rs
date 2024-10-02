@@ -119,7 +119,7 @@ impl<E: RealField> JacobiRotation<E> {
     #[inline(never)]
     fn apply_on_the_left_in_place_fallback(&self, x: RowMut<'_, E>, y: RowMut<'_, E>) {
         let Self { c, s } = *self;
-        zipped!(x, y).for_each(move |unzipped!(mut x, mut y)| {
+        zipped!(__rw, x, y).for_each(move |unzipped!(mut x, mut y)| {
             let x_ = x.read();
             let y_ = y.read();
             x.write(c.faer_mul(x_).faer_add(s.faer_mul(y_)));
@@ -267,7 +267,7 @@ impl<E: RealField> JacobiRotation<E> {
         if x.col_stride() == 1 && y.col_stride() == 1 {
             arch.dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
         } else {
-            zipped!(x, y).for_each(move |unzipped!(mut x, mut y)| {
+            zipped!(__rw, x, y).for_each(move |unzipped!(mut x, mut y)| {
                 let x_ = x.read();
                 let y_ = y.read();
                 x.write(c.faer_mul(x_).faer_add(s.faer_mul(y_)));

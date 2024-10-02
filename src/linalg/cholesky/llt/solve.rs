@@ -135,7 +135,7 @@ pub fn solve_with_conj<E: ComplexField>(
     stack: &mut PodStack,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped!(__rw, dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_in_place_with_conj(cholesky_factor, conj_lhs, dst, parallelism, stack)
 }
 
@@ -202,6 +202,6 @@ pub fn solve_transpose_with_conj<E: ComplexField>(
     stack: &mut PodStack,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped!(__rw, dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_transpose_in_place_with_conj(cholesky_factor, conj_lhs, dst, parallelism, stack)
 }

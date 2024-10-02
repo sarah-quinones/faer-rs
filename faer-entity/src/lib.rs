@@ -175,6 +175,9 @@ pub type Slice<'a, E> = GroupFor<E, &'a [<E as Entity>::Unit]>;
 pub type SliceMut<'a, E> = GroupFor<E, &'a mut [<E as Entity>::Unit]>;
 pub type UninitSliceMut<'a, E> = GroupFor<E, &'a mut [core::mem::MaybeUninit<<E as Entity>::Unit>]>;
 
+extern crate alloc;
+pub type Vector<E> = GroupFor<E, alloc::vec::Vec<<E as Entity>::Unit>>;
+
 pub type GroupFor<E, T> = <<E as Entity>::Group as ForType>::FaerOf<T>;
 pub type GroupCopyFor<E, T> = <<E as Entity>::Group as ForCopyType>::FaerOfCopy<T>;
 pub type GroupDebugFor<E, T> = <<E as Entity>::Group as ForDebugType>::FaerOfDebug<T>;

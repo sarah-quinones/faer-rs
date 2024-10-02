@@ -55,10 +55,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseRowMatRef<'a, I, E, R, C
     /// `symbolic.col_indices()`.
     #[inline]
     #[track_caller]
-    pub fn new(
-        symbolic: SymbolicSparseRowMatRef<'a, I, R, C>,
-        values: GroupFor<E, &'a [E::Unit]>,
-    ) -> Self {
+    pub fn new(symbolic: SymbolicSparseRowMatRef<'a, I, R, C>, values: Slice<'a, E>) -> Self {
         let values = SliceGroup::new(values);
         assert!(symbolic.col_indices().len() == values.len());
         Self { symbolic, values }
@@ -89,7 +86,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseRowMatRef<'a, I, E, R, C
 
     /// Returns the numerical values of the matrix.
     #[inline]
-    pub fn values(self) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn values(self) -> Slice<'a, E> {
         self.values.into_inner()
     }
 
@@ -260,7 +257,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseRowMatRef<'a, I, E, R, C
     /// Panics if `i >= nrows`.
     #[inline]
     #[track_caller]
-    pub fn values_of_row(self, i: Idx<R>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn values_of_row(self, i: Idx<R>) -> Slice<'a, E> {
         self.values.subslice(self.row_range(i)).into_inner()
     }
 
@@ -272,12 +269,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseRowMatRef<'a, I, E, R, C
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn parts(
-        self,
-    ) -> (
-        SymbolicSparseRowMatRef<'a, I, R, C>,
-        GroupFor<E, &'a [E::Unit]>,
-    ) {
+    pub fn parts(self) -> (SymbolicSparseRowMatRef<'a, I, R, C>, Slice<'a, E>) {
         (self.symbolic, self.values.into_inner())
     }
 
@@ -365,13 +357,10 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseRowMatRef<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`  
     /// Panics if `col >= self.ncols()`  
     #[track_caller]
-    pub fn get(self, row: Idx<R>, col: Idx<C>) -> Option<GroupFor<E, &'a E::Unit>> {
-        let values = self.get_all(row, col);
-        if E::faer_first(E::faer_as_ref(&values)).len() == 1 {
-            Some(E::faer_map(values, |slice| &slice[0]))
-        } else {
-            None
-        }
+    pub fn get(self, row: Idx<R>, col: Idx<C>) -> Option<Ref<'a, E>> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+        self.transpose().get(col, row)
     }
 
     /// Returns a reference to a slice containing the values at the given index using a binary
@@ -381,18 +370,10 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseRowMatRef<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_all(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn get_all(self, row: Idx<R>, col: Idx<C>) -> Slice<'a, E> {
         assert!(row < self.nrows());
         assert!(col < self.ncols());
-
-        let col = I::truncate(col.unbound());
-        let start = self
-            .col_indices_of_row_raw(row)
-            .partition_point(|&p| p.unbound() < col);
-        let end = start
-            + self.col_indices_of_row_raw(row)[start..].partition_point(|&p| p.unbound() <= col);
-
-        E::faer_map(self.values_of_row(row), |slice| &slice[start..end])
+        self.transpose().get_all(col, row)
     }
 
     /// Returns the input matrix with the given shape after checking that it matches the

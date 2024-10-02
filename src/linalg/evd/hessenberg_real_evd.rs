@@ -62,7 +62,7 @@ fn abs1<E: RealField>(a: E) -> E::Real {
 }
 
 pub fn rot<E: RealField>(x: ColMut<'_, E>, y: ColMut<'_, E>, c: E, s: E) {
-    zipped!(x, y).for_each(|unzipped!(mut x, mut y)| {
+    zipped!(__rw, x, y).for_each(|unzipped!(mut x, mut y)| {
         let mut x_ = x.read();
         let mut y_ = y.read();
 
@@ -1024,7 +1024,7 @@ pub fn schur_swap<E: RealField>(
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
         d.copy_from(ad_slice);
         let mut dnorm = E::faer_zero();
-        zipped!(d.rb()).for_each(|unzipped!(d)| dnorm = max(dnorm, d.read().faer_abs()));
+        zipped!(__rw, d.rb()).for_each(|unzipped!(d)| dnorm = max(dnorm, d.read().faer_abs()));
 
         let eps = epsilon;
         let small_num = zero_threshold.faer_div(eps);
@@ -1467,7 +1467,7 @@ fn aggressive_early_deflation<E: RealField>(
     let a_window = a.rb().submatrix(kwtop, kwtop, ihi - kwtop, ihi - kwtop);
     let mut s_re_window = unsafe { s_re.rb().subrows(kwtop, ihi - kwtop).const_cast() };
     let mut s_im_window = unsafe { s_im.rb().subrows(kwtop, ihi - kwtop).const_cast() };
-    zipped!(tw.rb_mut())
+    zipped!(__rw, tw.rb_mut())
         .for_each_triangular_lower(Diag::Include, |unzipped!(mut x)| x.write(E::faer_zero()));
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {

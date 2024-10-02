@@ -8,9 +8,9 @@ use core::marker::PhantomData;
 /// * `nrows <= I::Signed::MAX` (always checked)
 /// * `ncols <= I::Signed::MAX` (always checked)
 /// * `col_ptrs` has length `ncols + 1` (always checked)
-/// * `col_ptrs` is non-decreasing
+/// * `col_ptrs` is increasing
 /// * `col_ptrs[0]..col_ptrs[ncols]` is a valid range in row_indices (always checked, assuming
-///   non-decreasing)
+///   increasing)
 /// * if `nnz_per_col` is `None`, elements of `row_indices[col_ptrs[j]..col_ptrs[j + 1]]` are less
 ///   than `nrows`
 ///
@@ -18,7 +18,7 @@ use core::marker::PhantomData;
 /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]` are
 ///   less than `nrows`
 ///
-/// * Within each column, row indices are sorted in non-decreasing order.
+/// * Within each column, row indices are sorted in increasing order.
 ///
 /// # Note
 /// Some algorithms allow working with matrices containing unsorted row indices per column.

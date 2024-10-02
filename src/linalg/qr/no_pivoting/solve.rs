@@ -203,7 +203,7 @@ pub fn solve<E: ComplexField>(
     stack: &mut PodStack,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped!(__rw, dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_in_place(
         qr_factors,
         householder_factor,
@@ -242,7 +242,7 @@ pub fn solve_transpose<E: ComplexField>(
     stack: &mut PodStack,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped!(__rw, dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_transpose_in_place(
         qr_factors,
         householder_factor,

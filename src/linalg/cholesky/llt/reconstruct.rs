@@ -78,7 +78,7 @@ pub fn reconstruct_lower_in_place<E: ComplexField>(
     let (mut tmp, stack) = temp_mat_uninit::<E>(n, n, stack);
     let mut tmp = tmp.as_mut();
     reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
-    zipped!(cholesky_factor, tmp.rb())
+    zipped!(__rw, cholesky_factor, tmp.rb())
         .for_each_triangular_lower(Diag::Include, |unzipped!(mut dst, src)| {
             dst.write(src.read())
         });

@@ -7,9 +7,9 @@ use crate::sparse::csc::*;
 /// * `nrows <= I::Signed::MAX` (always checked)
 /// * `ncols <= I::Signed::MAX` (always checked)
 /// * `row_ptrs` has length `nrows + 1` (always checked)
-/// * `row_ptrs` is non-decreasing
+/// * `row_ptrs` is increasing
 /// * `row_ptrs[0]..row_ptrs[nrows]` is a valid range in row_indices (always checked, assuming
-///   non-decreasing)
+///   increasing)
 /// * if `nnz_per_row` is `None`, elements of `col_indices[row_ptrs[i]..row_ptrs[i + 1]]` are less
 ///   than `ncols`
 ///
@@ -17,7 +17,7 @@ use crate::sparse::csc::*;
 /// * if `nnz_per_row` is `Some(_)`, elements of `col_indices[row_ptrs[i]..][..nnz_per_row[i]]` are
 ///   less than `ncols`
 ///
-/// * Within each row, column indices are sorted in non-decreasing order.
+/// * Within each row, column indices are sorted in increasing order.
 ///
 /// # Note
 /// Some algorithms allow working with matrices containing unsorted row indices per column.

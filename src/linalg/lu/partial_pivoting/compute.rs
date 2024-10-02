@@ -188,7 +188,7 @@ fn update<E: ComplexField>(arch: E::Simd, mut matrix: MatMut<E>, j: usize) {
         for k in 0..mat.ncols() {
             let col = mat.rb_mut().col_mut(k);
             let rhs = rhs.read(k);
-            zipped!(col, lhs).for_each(|unzipped!(mut x, lhs)| {
+            zipped!(__rw, col, lhs).for_each(|unzipped!(mut x, lhs)| {
                 x.write(x.read().faer_sub(lhs.read().faer_mul(rhs)))
             });
         }

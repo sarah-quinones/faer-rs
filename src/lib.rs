@@ -374,9 +374,7 @@ impl Conj {
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
 ///
 /// zipped!(sum.as_mut(), a.as_ref(), b.as_ref()).for_each(|unzipped!(mut sum, a, b)| {
-///     let a = a.read();
-///     let b = b.read();
-///     sum.write(a + b);
+///     *sum = a + b;
 /// });
 ///
 /// for i in 0..nrows {
@@ -387,12 +385,20 @@ impl Conj {
 /// ```
 #[macro_export]
 macro_rules! zipped {
-    ($head: expr $(,)?) => {
+    (__rw, $head: expr $(,)?) => {
         $crate::linalg::zip::LastEq($crate::linalg::zip::ViewMut::view_mut(&mut { $head }))
     };
 
+    (__rw, $head: expr, $($tail: expr),* $(,)?) => {
+        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::ViewMut::view_mut(&mut { $head }), $crate::zipped!(__rw, $($tail,)*))
+    };
+
+    ($head: expr $(,)?) => {
+        $crate::linalg::zip::LastEq($crate::linalg::zip::RefWrapper($crate::linalg::zip::ViewMut::view_mut(&mut { $head })))
+    };
+
     ($head: expr, $($tail: expr),* $(,)?) => {
-        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::ViewMut::view_mut(&mut { $head }), $crate::zipped!($($tail,)*))
+        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::RefWrapper($crate::linalg::zip::ViewMut::view_mut(&mut { $head })), $crate::zipped!($($tail,)*))
     };
 }
 
@@ -410,9 +416,7 @@ macro_rules! zipped {
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
 ///
 /// zipped!(sum.as_mut(), a.as_ref(), b.as_ref()).for_each(|unzipped!(mut sum, a, b)| {
-///     let a = a.read();
-///     let b = b.read();
-///     sum.write(a + b);
+///     *sum = a + b;
 /// });
 ///
 /// for i in 0..nrows {

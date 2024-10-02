@@ -83,7 +83,7 @@ pub fn make_householder_in_place<E: ComplexField>(
 
     if head_with_beta != E::faer_zero() {
         if let Some(essential) = essential {
-            zipped!(essential)
+            zipped!(__rw, essential)
                 .for_each(|unzipped!(mut e)| e.write(e.read().faer_mul(head_with_beta_inv)));
         }
         let tau = one_half.faer_mul(

@@ -1,3 +1,5 @@
+use matref::{partition_by_le, partition_by_lt};
+
 use super::*;
 use crate::assert;
 
@@ -56,10 +58,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// `symbolic.row_indices()`.
     #[inline]
     #[track_caller]
-    pub fn new(
-        symbolic: SymbolicSparseColMatRef<'a, I, R, C>,
-        values: GroupFor<E, &'a mut [E::Unit]>,
-    ) -> Self {
+    pub fn new(symbolic: SymbolicSparseColMatRef<'a, I, R, C>, values: SliceMut<'a, E>) -> Self {
         let values = SliceGroupMut::new(values);
         assert!(symbolic.row_indices().len() == values.len());
         Self { symbolic, values }
@@ -262,13 +261,13 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
 
     /// Returns the numerical values of the matrix.
     #[inline]
-    pub fn values(self) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn values(self) -> Slice<'a, E> {
         self.into_const().values()
     }
 
     /// Returns the numerical values of the matrix.
     #[inline]
-    pub fn values_mut(self) -> GroupFor<E, &'a mut [E::Unit]> {
+    pub fn values_mut(self) -> SliceMut<'a, E> {
         self.values.into_inner()
     }
 
@@ -279,7 +278,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// Panics if `j >= ncols`.
     #[inline]
     #[track_caller]
-    pub fn values_of_col(self, j: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn values_of_col(self, j: Idx<C>) -> Slice<'a, E> {
         self.into_const().values_of_col(j)
     }
 
@@ -290,7 +289,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// Panics if `j >= ncols`.
     #[inline]
     #[track_caller]
-    pub fn values_of_col_mut(self, j: Idx<C>) -> GroupFor<E, &'a mut [E::Unit]> {
+    pub fn values_of_col_mut(self, j: Idx<C>) -> SliceMut<'a, E> {
         let range = self.symbolic().col_range(j);
         self.values.subslice(range).into_inner()
     }
@@ -303,23 +302,13 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn parts(
-        self,
-    ) -> (
-        SymbolicSparseColMatRef<'a, I, R, C>,
-        GroupFor<E, &'a [E::Unit]>,
-    ) {
+    pub fn parts(self) -> (SymbolicSparseColMatRef<'a, I, R, C>, Slice<'a, E>) {
         self.into_const().parts()
     }
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn parts_mut(
-        self,
-    ) -> (
-        SymbolicSparseColMatRef<'a, I, R, C>,
-        GroupFor<E, &'a mut [E::Unit]>,
-    ) {
+    pub fn parts_mut(self) -> (SymbolicSparseColMatRef<'a, I, R, C>, SliceMut<'a, E>) {
         (self.symbolic, self.values.into_inner())
     }
 
@@ -407,7 +396,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`  
     /// Panics if `col >= self.ncols()`  
     #[track_caller]
-    pub fn get(self, row: Idx<R>, col: Idx<C>) -> Option<GroupFor<E, &'a E::Unit>> {
+    pub fn get(self, row: Idx<R>, col: Idx<C>) -> Option<Ref<'a, E>> {
         self.into_const().get(row, col)
     }
 
@@ -418,7 +407,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_mut(self, row: Idx<R>, col: Idx<C>) -> Option<GroupFor<E, &'a mut E::Unit>> {
+    pub fn get_mut(self, row: Idx<R>, col: Idx<C>) -> Option<Mut<'a, E>> {
         let values = self.get_all_mut(row, col);
         if E::faer_first(E::faer_as_ref(&values)).len() == 1 {
             Some(E::faer_map(values, |slice| &mut slice[0]))
@@ -434,7 +423,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_all(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn get_all(self, row: Idx<R>, col: Idx<C>) -> Slice<'a, E> {
         self.into_const().get_all(row, col)
     }
 
@@ -445,16 +434,18 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_all_mut(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, &'a mut [E::Unit]> {
+    pub fn get_all_mut(self, row: Idx<R>, col: Idx<C>) -> SliceMut<'a, E> {
         assert!(row < self.nrows());
         assert!(col < self.ncols());
 
         let row = I::truncate(row.unbound());
         let start = self
-            .row_indices_of_col_raw(col)
-            .partition_point(|&p| p.unbound() < row);
+            .symbolic()
+            .row_indices_of_col_raw_unbound(col)
+            .partition_point(partition_by_lt(row));
         let end = start
-            + self.row_indices_of_col_raw(col)[start..].partition_point(|&p| p.unbound() <= row);
+            + self.symbolic().row_indices_of_col_raw_unbound(col)[start..]
+                .partition_point(partition_by_le(row));
 
         E::faer_map(self.values_of_col_mut(col), |slice| &mut slice[start..end])
     }
@@ -470,7 +461,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatMut<'a, I, E, R, C
     pub fn fill_from_order_and_values(
         &mut self,
         order: &ValuesOrder<I>,
-        values: GroupFor<E, &[E::Unit]>,
+        values: Slice<'_, E>,
         mode: FillMode,
     ) where
         E: ComplexField,

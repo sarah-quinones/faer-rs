@@ -3587,7 +3587,7 @@ pub mod supernodal {
                     params,
                 )
                 .dynamic_regularization_count;
-            zipped!(Ls_top.rb_mut())
+            zipped!(__rw, Ls_top.rb_mut())
                 .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut x)| {
                     x.write(E::faer_zero())
                 });
@@ -3859,7 +3859,7 @@ pub mod supernodal {
                 params,
             );
             dynamic_regularization_count += info.dynamic_regularization_count;
-            zipped!(Ls_top.rb_mut())
+            zipped!(__rw, Ls_top.rb_mut())
                 .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut x)| {
                     x.write(E::faer_zero())
                 });
@@ -5391,6 +5391,7 @@ pub(crate) mod tests {
 
         let mut D = Mat::<E>::zeros(n, n);
         zipped!(
+            __rw,
             D.as_mut().diagonal_mut().column_vector_mut(),
             dense.as_ref().diagonal().column_vector()
         )

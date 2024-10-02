@@ -35,7 +35,7 @@ use reborrow::*;
 #[track_caller]
 #[inline]
 pub fn swap_cols<E: ComplexField>(a: ColMut<'_, E>, b: ColMut<'_, E>) {
-    zipped!(a, b).for_each(|unzipped!(mut a, mut b)| {
+    zipped!(__rw, a, b).for_each(|unzipped!(mut a, mut b)| {
         let (a_read, b_read) = (a.read(), b.read());
         a.write(b_read);
         b.write(a_read);

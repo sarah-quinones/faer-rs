@@ -337,13 +337,13 @@ impl<E: ComplexField> Cholesky<E> {
         let mut factors = Mat::<E>::zeros(dim, dim);
         match side {
             Side::Lower => {
-                zipped!(factors.as_mut(), matrix).for_each_triangular_lower(
+                zipped!(__rw, factors.as_mut(), matrix).for_each_triangular_lower(
                     crate::linalg::zip::Diag::Include,
                     |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                 );
             }
             Side::Upper => {
-                zipped!(factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
+                zipped!(__rw, factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
                     crate::linalg::zip::Diag::Include,
                     |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                 );
@@ -376,7 +376,7 @@ impl<E: ComplexField> Cholesky<E> {
     /// Returns the factor $L$ of the Cholesky decomposition.
     pub fn compute_l(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -490,13 +490,13 @@ impl<E: ComplexField> Lblt<E> {
 
         match side {
             Side::Lower => {
-                zipped!(factors.as_mut(), matrix).for_each_triangular_lower(
+                zipped!(__rw, factors.as_mut(), matrix).for_each_triangular_lower(
                     crate::linalg::zip::Diag::Include,
                     |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                 );
             }
             Side::Upper => {
-                zipped!(factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
+                zipped!(__rw, factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
                     crate::linalg::zip::Diag::Include,
                     |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                 );
@@ -721,7 +721,7 @@ impl<E: ComplexField> PartialPivLu<E> {
     /// Returns the factor $L$ of the LU decomposition.
     pub fn compute_l(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -735,7 +735,7 @@ impl<E: ComplexField> PartialPivLu<E> {
     /// Returns the factor $U$ of the LU decomposition.
     pub fn compute_u(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -918,7 +918,7 @@ impl<E: ComplexField> FullPivLu<E> {
             .as_ref()
             .submatrix(0, 0, self.nrows(), size)
             .to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_upper(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -937,7 +937,7 @@ impl<E: ComplexField> FullPivLu<E> {
             .as_ref()
             .submatrix(0, 0, size, self.ncols())
             .to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -1109,7 +1109,7 @@ impl<E: ComplexField> Qr<E> {
     /// Returns the factor $R$ of the QR decomposition.
     pub fn compute_r(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -1127,7 +1127,7 @@ impl<E: ComplexField> Qr<E> {
         let m = self.nrows();
         let n = self.ncols();
         let mut factor = self.factors.as_ref().subrows(0, Ord::min(m, n)).to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -1350,7 +1350,7 @@ impl<E: ComplexField> ColPivQr<E> {
     /// Returns the factor $R$ of the QR decomposition.
     pub fn compute_r(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -1368,7 +1368,7 @@ impl<E: ComplexField> ColPivQr<E> {
         let m = self.nrows();
         let n = self.ncols();
         let mut factor = self.factors.as_ref().subrows(0, Ord::min(m, n)).to_owned();
-        zipped!(factor.as_mut())
+        zipped!(__rw, factor.as_mut())
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
@@ -1545,8 +1545,8 @@ impl<E: ComplexField> Svd<E> {
         );
 
         if matches!(conj, Conj::Yes) {
-            zipped!(u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
-            zipped!(v.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+            zipped!(__rw, u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+            zipped!(__rw, v.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
         }
 
         Self { s, u, v }
@@ -1587,7 +1587,7 @@ impl<E: ComplexField> Svd<E> {
 fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: ColRef<'_, E>) {
     let mut rhs = rhs;
     for j in 0..rhs.ncols() {
-        zipped!(rhs.rb_mut().col_mut(j), s).for_each(|unzipped!(mut rhs, s)| {
+        zipped!(__rw, rhs.rb_mut().col_mut(j), s).for_each(|unzipped!(mut rhs, s)| {
             rhs.write(rhs.read().faer_scale_real(s.read().faer_real().faer_inv()))
         });
     }
@@ -1784,7 +1784,7 @@ impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
         );
 
         if matches!(conj, Conj::Yes) {
-            zipped!(u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+            zipped!(__rw, u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
         }
 
         Self { s, u }
@@ -1972,7 +1972,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
         );
 
         if matches!(conj, Conj::Yes) {
-            zipped!(s.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+            zipped!(__rw, s.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
         }
 
         (0..dim).map(|i| s.read(i)).collect()
@@ -2031,13 +2031,18 @@ impl<E: ComplexField> Eigendecomposition<E> {
         let mut j = 0usize;
         while j < dim {
             if s_im.read(j) == E::Real::faer_zero() {
-                zipped!(u.as_mut().col_mut(j).as_2d_mut(), u_real.col(j).as_2d())
-                    .for_each(|unzipped!(mut dst, src)| dst.write(E::faer_from_real(src.read())));
+                zipped!(
+                    __rw,
+                    u.as_mut().col_mut(j).as_2d_mut(),
+                    u_real.col(j).as_2d()
+                )
+                .for_each(|unzipped!(mut dst, src)| dst.write(E::faer_from_real(src.read())));
                 j += 1;
             } else {
                 let (u_left, u_right) = u.as_mut().split_at_col_mut(j + 1);
 
                 zipped!(
+                    __rw,
                     u_left.col_mut(j).as_2d_mut(),
                     u_right.col_mut(0).as_2d_mut(),
                     u_real.col(j).as_2d(),
@@ -2093,9 +2098,9 @@ impl<E: ComplexField> Eigendecomposition<E> {
         );
 
         if matches!(conj, Conj::Yes) {
-            zipped!(s.as_mut().as_2d_mut())
+            zipped!(__rw, s.as_mut().as_2d_mut())
                 .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
-            zipped!(u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+            zipped!(__rw, u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
         }
 
         Self { s, u }

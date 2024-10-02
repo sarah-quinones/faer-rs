@@ -34,13 +34,13 @@ pub fn reconstruct<E: ComplexField>(
     let mut dst = dst;
 
     // copy R
-    zipped!(dst.rb_mut(), qr_factors).for_each_triangular_upper(
+    zipped!(__rw, dst.rb_mut(), qr_factors).for_each_triangular_upper(
         crate::linalg::zip::Diag::Include,
         |unzipped!(mut dst, src)| dst.write(src.read()),
     );
 
     // zero bottom part
-    zipped!(dst.rb_mut())
+    zipped!(__rw, dst.rb_mut())
         .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
             dst.write(E::faer_zero())
         });
@@ -82,7 +82,7 @@ pub fn reconstruct_in_place<E: ComplexField>(
         stack,
     );
 
-    zipped!(qr_factors, dst.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    zipped!(__rw, qr_factors, dst.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,

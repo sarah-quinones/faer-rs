@@ -46,6 +46,13 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> IntoConst for SparseColMatRef<
     }
 }
 
+pub(crate) fn partition_by_lt<I: Index>(upper: I) -> impl Fn(&I) -> bool {
+    move |&p| p < upper
+}
+pub(crate) fn partition_by_le<I: Index>(upper: I) -> impl Fn(&I) -> bool {
+    move |&p| p <= upper
+}
+
 impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C> {
     /// Creates a new sparse matrix view.
     ///
@@ -310,7 +317,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C
 
     /// Returns the numerical values of the matrix.
     #[inline]
-    pub fn values(self) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn values(self) -> Slice<'a, E> {
         self.values.into_inner()
     }
 
@@ -321,7 +328,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C
     /// Panics if `j >= ncols`.
     #[inline]
     #[track_caller]
-    pub fn values_of_col(self, j: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn values_of_col(self, j: Idx<C>) -> Slice<'a, E> {
         unsafe {
             self.values
                 .subslice_unchecked(self.col_range(j))
@@ -337,12 +344,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn parts(
-        self,
-    ) -> (
-        SymbolicSparseColMatRef<'a, I, R, C>,
-        GroupFor<E, &'a [E::Unit]>,
-    ) {
+    pub fn parts(self) -> (SymbolicSparseColMatRef<'a, I, R, C>, Slice<'a, E>) {
         (self.symbolic, self.values.into_inner())
     }
 
@@ -430,7 +432,7 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get(self, row: Idx<R>, col: Idx<C>) -> Option<GroupFor<E, &'a E::Unit>> {
+    pub fn get(self, row: Idx<R>, col: Idx<C>) -> Option<Ref<'a, E>> {
         let values = self.get_all(row, col);
         if E::faer_first(E::faer_as_ref(&values)).len() == 1 {
             Some(E::faer_map(values, |slice| &slice[0]))
@@ -446,16 +448,18 @@ impl<'a, I: Index, E: Entity, R: Shape, C: Shape> SparseColMatRef<'a, I, E, R, C
     /// Panics if `row >= self.nrows()`.  
     /// Panics if `col >= self.ncols()`.  
     #[track_caller]
-    pub fn get_all(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn get_all(self, row: Idx<R>, col: Idx<C>) -> Slice<'a, E> {
         assert!(row < self.nrows());
         assert!(col < self.ncols());
 
         let row = I::truncate(row.unbound());
         let start = self
-            .row_indices_of_col_raw(col)
-            .partition_point(|&p| p.unbound() < row);
+            .symbolic()
+            .row_indices_of_col_raw_unbound(col)
+            .partition_point(partition_by_lt(row));
         let end = start
-            + self.row_indices_of_col_raw(col)[start..].partition_point(|&p| p.unbound() <= row);
+            + self.symbolic().row_indices_of_col_raw_unbound(col)[start..]
+                .partition_point(partition_by_le(row));
 
         E::faer_map(self.values_of_col(col), |slice| &slice[start..end])
     }

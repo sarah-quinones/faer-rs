@@ -542,7 +542,7 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
             this: ColMut<'_, E, R>,
             other: ColRef<'_, ViewE, R>,
         ) {
-            zipped!(this.as_2d_mut(), other.as_2d())
+            zipped!(__rw, this, other)
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read().canonicalize()));
         }
         implementation(self.rb_mut(), other.as_col_ref())
@@ -554,7 +554,7 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
     where
         E: ComplexField,
     {
-        zipped!(self.rb_mut().as_2d_mut()).for_each(
+        zipped!(__rw, self.rb_mut()).for_each(
             #[inline(always)]
             |unzipped!(mut x)| x.write(E::faer_zero()),
         );
@@ -563,7 +563,7 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
     /// Fills the elements of `self` with copies of `constant`.
     #[track_caller]
     pub fn fill(&mut self, constant: E) {
-        zipped!((*self).rb_mut().as_2d_mut()).for_each(
+        zipped!(__rw, (*self).rb_mut()).for_each(
             #[inline(always)]
             |unzipped!(mut x)| x.write(constant),
         );

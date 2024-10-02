@@ -1019,7 +1019,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         E: ComplexField,
     {
         let mut found_nan = false;
-        zipped!(*self).for_each(|unzipped!(x)| {
+        zipped!(__rw, *self).for_each(|unzipped!(x)| {
             found_nan |= x.read().faer_is_nan();
         });
         found_nan
@@ -1032,7 +1032,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         E: ComplexField,
     {
         let mut all_finite = true;
-        zipped!(*self).for_each(|unzipped!(x)| {
+        zipped!(__rw, *self).for_each(|unzipped!(x)| {
             all_finite &= x.read().faer_is_finite();
         });
         all_finite
