@@ -837,8 +837,7 @@ impl<'n, T> core::ops::Index<Range<IdxInc<'n>>> for Array<'n, T> {
         }
         #[cfg(not(debug_assertions))]
         unsafe {
-            self.0
-                .inner
+            self.unbound
                 .get_unchecked(idx.start.unbound()..idx.end.unbound())
         }
     }
@@ -852,8 +851,7 @@ impl<'n, T> core::ops::IndexMut<Range<IdxInc<'n>>> for Array<'n, T> {
         }
         #[cfg(not(debug_assertions))]
         unsafe {
-            self.0
-                .inner
+            self.unbound
                 .get_unchecked_mut(idx.start.unbound()..idx.end.unbound())
         }
     }
