@@ -1,0 +1,14 @@
+[package]
+name = "faer-traits"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = "1.18.0"
+dyn-stack = { path = "../../dynstack" }
+num-complex = "0.4.6"
+pulp = { path = "../../pulp/pulp" }
+reborrow = "0.5.5"
+
+faer-macros = { path = "../faer-macros" }
+generativity = "1.1.0"
