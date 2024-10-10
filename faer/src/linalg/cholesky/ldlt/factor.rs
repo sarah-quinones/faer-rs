@@ -401,12 +401,9 @@ mod tests {
                     L[(i, j)] = c64::ZERO;
                 }
             }
-            __dbg!(
-                L.rb().as_dyn_stride().as_dyn()
-                    * D.rb().as_dyn_cols().as_diagonal()
-                    * L.rb().as_dyn_stride().as_dyn().adjoint()
-                    - &A.as_dyn_stride().as_dyn()
-            );
+            let L = L.rb().as_dyn_stride();
+
+            __dbg!(L.rb() * D.rb().as_diagonal() * L.adjoint() - &A);
         }
     }
 }

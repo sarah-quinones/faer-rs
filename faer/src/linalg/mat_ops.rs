@@ -12,6 +12,27 @@ macro_rules! impl_partial_eq {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
+            > PartialEq<$rhs> for $lhs
+        {
+            fn eq(&self, other: &$rhs) -> bool {
+                self.as_ref().eq(&other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_partial_eq {
+    ($lhs: ty, $rhs: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
             > PartialEq<$rhs> for $lhs
         {
             fn eq(&self, other: &$rhs) -> bool {
@@ -30,6 +51,8 @@ macro_rules! impl_add_sub {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Add<$rhs> for $lhs
         {
             type Output = $out;
@@ -46,6 +69,8 @@ macro_rules! impl_add_sub {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Sub<$rhs> for $lhs
         {
             type Output = $out;
@@ -64,6 +89,8 @@ macro_rules! impl_add_sub_assign {
                 RhsC: Container<Canonical = LhsC>,
                 LhsT: ComplexField<LhsC, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = LhsT>,
+                Rows: Shape,
+                Cols: Shape,
             > AddAssign<$rhs> for $lhs
         {
             #[track_caller]
@@ -77,6 +104,8 @@ macro_rules! impl_add_sub_assign {
                 RhsC: Container<Canonical = LhsC>,
                 LhsT: ComplexField<LhsC, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = LhsT>,
+                Rows: Shape,
+                Cols: Shape,
             > SubAssign<$rhs> for $lhs
         {
             #[track_caller]
@@ -94,6 +123,97 @@ macro_rules! impl_neg {
                 CC: Container<Canonical = C>,
                 T: ComplexField<C, MathCtx: Default>,
                 TT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
+            > Neg for $mat
+        {
+            type Output = $out;
+            #[track_caller]
+            fn neg(self) -> Self::Output {
+                self.as_ref().neg()
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_add_sub {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Add<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn add(self, other: $rhs) -> Self::Output {
+                self.as_ref().add(other.as_ref())
+            }
+        }
+
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Sub<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn sub(self, other: $rhs) -> Self::Output {
+                self.as_ref().sub(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_add_sub_assign {
+    ($lhs: ty, $rhs: ty) => {
+        impl<
+                LhsC: ComplexContainer,
+                RhsC: Container<Canonical = LhsC>,
+                LhsT: ComplexField<LhsC, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = LhsT>,
+                Len: Shape,
+            > AddAssign<$rhs> for $lhs
+        {
+            #[track_caller]
+            fn add_assign(&mut self, other: $rhs) {
+                self.as_mut().add_assign(other.as_ref())
+            }
+        }
+
+        impl<
+                LhsC: ComplexContainer,
+                RhsC: Container<Canonical = LhsC>,
+                LhsT: ComplexField<LhsC, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = LhsT>,
+                Len: Shape,
+            > SubAssign<$rhs> for $lhs
+        {
+            #[track_caller]
+            fn sub_assign(&mut self, other: $rhs) {
+                self.as_mut().sub_assign(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_neg {
+    ($mat: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                CC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                TT: ConjUnit<Canonical = T>,
+                Len: Shape,
             > Neg for $mat
         {
             type Output = $out;
@@ -114,6 +234,181 @@ macro_rules! impl_mul {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                M: Shape,
+                N: Shape,
+                K: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_mat_col {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                M: Shape,
+                K: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_row_mat {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                N: Shape,
+                K: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+macro_rules! impl_mul_row_col {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                K: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_col_row {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                M: Shape,
+                N: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_diag_mat {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                M: Shape,
+                N: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_diag_col {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                M: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_mat_diag {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                M: Shape,
+                N: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_row_diag {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                N: Shape,
             > Mul<$rhs> for $lhs
         {
             type Output = $out;
@@ -133,6 +428,27 @@ macro_rules! impl_perm {
                 CC: Container<Canonical = C>,
                 T: ComplexField<C, MathCtx: Default>,
                 TT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other.as_ref())
+            }
+        }
+    };
+}
+macro_rules! impl_1d_perm {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                I: Index,
+                C: ComplexContainer,
+                CC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                TT: ConjUnit<Canonical = T>,
+                Len: Shape,
             > Mul<$rhs> for $lhs
         {
             type Output = $out;
@@ -165,6 +481,8 @@ macro_rules! impl_scalar_mul {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Mul<$rhs> for $lhs
         {
             type Output = $out;
@@ -185,6 +503,8 @@ macro_rules! impl_mul_scalar {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Mul<$rhs> for $lhs
         {
             type Output = $out;
@@ -205,6 +525,8 @@ macro_rules! impl_div_scalar {
                 T: ComplexField<C, MathCtx: Default>,
                 LhsT: ConjUnit<Canonical = T>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Div<$rhs> for $lhs
         {
             type Output = $out;
@@ -226,6 +548,8 @@ macro_rules! impl_mul_primitive {
                 RhsC: Container<Canonical = C>,
                 T: ComplexField<C, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Mul<$rhs> for f64
         {
             type Output = $out;
@@ -240,6 +564,8 @@ macro_rules! impl_mul_primitive {
                 RhsC: Container<Canonical = C>,
                 T: ComplexField<C, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Mul<f64> for $rhs
         {
             type Output = $out;
@@ -253,6 +579,8 @@ macro_rules! impl_mul_primitive {
                 RhsC: Container<Canonical = C>,
                 T: ComplexField<C, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = T>,
+                Rows: Shape,
+                Cols: Shape,
             > Div<f64> for $rhs
         {
             type Output = $out;
@@ -269,8 +597,12 @@ macro_rules! impl_mul_primitive {
 
 macro_rules! impl_mul_assign_primitive {
     ($lhs: ty) => {
-        impl<LhsC: ComplexContainer, LhsT: ComplexField<LhsC, MathCtx: Default>> MulAssign<f64>
-            for $lhs
+        impl<
+                LhsC: ComplexContainer,
+                LhsT: ComplexField<LhsC, MathCtx: Default>,
+                Rows: Shape,
+                Cols: Shape,
+            > MulAssign<f64> for $lhs
         {
             #[track_caller]
             fn mul_assign(&mut self, other: f64) {
@@ -280,8 +612,12 @@ macro_rules! impl_mul_assign_primitive {
                 )))
             }
         }
-        impl<LhsC: ComplexContainer, LhsT: ComplexField<LhsC, MathCtx: Default>> DivAssign<f64>
-            for $lhs
+        impl<
+                LhsC: ComplexContainer,
+                LhsT: ComplexField<LhsC, MathCtx: Default>,
+                Rows: Shape,
+                Cols: Shape,
+            > DivAssign<f64> for $lhs
         {
             #[track_caller]
             fn div_assign(&mut self, other: f64) {
@@ -301,6 +637,8 @@ macro_rules! impl_mul_assign_scalar {
                 RhsC: Container<Canonical = LhsC>,
                 LhsT: ComplexField<LhsC, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = LhsT>,
+                Rows: Shape,
+                Cols: Shape,
             > MulAssign<$rhs> for $lhs
         {
             #[track_caller]
@@ -318,6 +656,195 @@ macro_rules! impl_div_assign_scalar {
                 RhsC: Container<Canonical = LhsC>,
                 LhsT: ComplexField<LhsC, MathCtx: Default>,
                 RhsT: ConjUnit<Canonical = LhsT>,
+                Rows: Shape,
+                Cols: Shape,
+            > DivAssign<$rhs> for $lhs
+        {
+            #[track_caller]
+            fn div_assign(&mut self, other: $rhs) {
+                let ctx = &Ctx::<LhsC, LhsT>(LhsT::MathCtx::default());
+                self.as_mut()
+                    .mul_assign(ScaleGeneric::<LhsC, LhsT>(ctx.recip(&Conj::apply_val::<
+                        RhsC,
+                        RhsT,
+                    >(
+                        ctx, &other.0
+                    ))))
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_scalar_mul {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.mul(other.as_ref())
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_mul_scalar {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Mul<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(other)
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_div_scalar {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                LhsC: Container<Canonical = C>,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                LhsT: ConjUnit<Canonical = T>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Div<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: $rhs) -> Self::Output {
+                let ctx = &Ctx::<C, T>(T::MathCtx::default());
+                self.as_ref().mul(ScaleGeneric::<C, T>(
+                    ctx.recip(&Conj::apply_val::<RhsC, RhsT>(ctx, &other.0)),
+                ))
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_mul_primitive {
+    ($rhs: ty, $out: ty) => {
+        impl<
+                C: ComplexContainer,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Mul<$rhs> for f64
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                ScaleGeneric::<C, T>(T::from_f64_impl(&default(), self)).mul(other)
+            }
+        }
+
+        impl<
+                C: ComplexContainer,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Mul<f64> for $rhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: f64) -> Self::Output {
+                self.mul(ScaleGeneric::<C, T>(T::from_f64_impl(&default(), other)))
+            }
+        }
+        impl<
+                C: ComplexContainer,
+                RhsC: Container<Canonical = C>,
+                T: ComplexField<C, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = T>,
+                Len: Shape,
+            > Div<f64> for $rhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: f64) -> Self::Output {
+                self.mul(ScaleGeneric::<C, T>(T::from_f64_impl(
+                    &default(),
+                    other.recip(),
+                )))
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_mul_assign_primitive {
+    ($lhs: ty) => {
+        impl<LhsC: ComplexContainer, LhsT: ComplexField<LhsC, MathCtx: Default>, Len: Shape>
+            MulAssign<f64> for $lhs
+        {
+            #[track_caller]
+            fn mul_assign(&mut self, other: f64) {
+                self.mul_assign(ScaleGeneric::<LhsC, LhsT>(LhsT::from_f64_impl(
+                    &default(),
+                    other,
+                )))
+            }
+        }
+        impl<LhsC: ComplexContainer, LhsT: ComplexField<LhsC, MathCtx: Default>, Len: Shape>
+            DivAssign<f64> for $lhs
+        {
+            #[track_caller]
+            fn div_assign(&mut self, other: f64) {
+                self.mul_assign(ScaleGeneric::<LhsC, LhsT>(LhsT::from_f64_impl(
+                    &default(),
+                    other.recip(),
+                )))
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_mul_assign_scalar {
+    ($lhs: ty, $rhs: ty) => {
+        impl<
+                LhsC: ComplexContainer,
+                RhsC: Container<Canonical = LhsC>,
+                LhsT: ComplexField<LhsC, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = LhsT>,
+                Len: Shape,
+            > MulAssign<$rhs> for $lhs
+        {
+            #[track_caller]
+            fn mul_assign(&mut self, other: $rhs) {
+                self.as_mut().mul_assign(other)
+            }
+        }
+    };
+}
+
+macro_rules! impl_1d_div_assign_scalar {
+    ($lhs: ty, $rhs: ty) => {
+        impl<
+                LhsC: ComplexContainer,
+                RhsC: Container<Canonical = LhsC>,
+                LhsT: ComplexField<LhsC, MathCtx: Default>,
+                RhsT: ConjUnit<Canonical = LhsT>,
+                Len: Shape,
             > DivAssign<$rhs> for $lhs
         {
             #[track_caller]
@@ -342,46 +869,78 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > PartialEq<MatRef<'_, RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > PartialEq<MatRef<'_, RhsC, RhsT, Rows, Cols>> for MatRef<'_, LhsC, LhsT, Rows, Cols>
 {
     #[math]
-    fn eq(&self, other: &MatRef<'_, RhsC, RhsT>) -> bool {
+    fn eq(&self, other: &MatRef<'_, RhsC, RhsT, Rows, Cols>) -> bool {
         let lhs = *self;
         let rhs = *other;
 
-        if (lhs.nrows(), lhs.ncols()) != (rhs.nrows(), rhs.ncols()) {
+        if (lhs.nrows().unbound(), lhs.ncols().unbound())
+            != (rhs.nrows().unbound(), rhs.ncols().unbound())
+        {
             return false;
         }
-        let ctx = &Ctx::<C, T>(T::MathCtx::default());
 
-        let m = lhs.nrows();
-        let n = lhs.ncols();
-        for j in 0..n {
-            for i in 0..m {
-                if !math(
-                    Conj::apply::<LhsC, LhsT>(ctx, lhs[(i, j)])
-                        == Conj::apply::<RhsC, RhsT>(ctx, rhs[(i, j)]),
-                ) {
-                    return false;
+        fn imp<
+            'M,
+            'N,
+            C: ComplexContainer,
+            LhsC: Container<Canonical = C>,
+            RhsC: Container<Canonical = C>,
+            T: ComplexField<C, MathCtx: Default>,
+            LhsT: ConjUnit<Canonical = T>,
+            RhsT: ConjUnit<Canonical = T>,
+        >(
+            lhs: MatRef<'_, LhsC, LhsT, Dim<'M>, Dim<'N>>,
+            rhs: MatRef<'_, RhsC, RhsT, Dim<'M>, Dim<'N>>,
+        ) -> bool {
+            let ctx = &Ctx::<C, T>(T::MathCtx::default());
+
+            let m = lhs.nrows();
+            let n = lhs.ncols();
+            for j in n.indices() {
+                for i in m.indices() {
+                    if !math(
+                        Conj::apply::<LhsC, LhsT>(ctx, lhs[(i, j)])
+                            == Conj::apply::<RhsC, RhsT>(ctx, rhs[(i, j)]),
+                    ) {
+                        return false;
+                    }
                 }
             }
+
+            true
         }
 
-        true
+        with_dim!(M, lhs.nrows().unbound());
+        with_dim!(N, lhs.ncols().unbound());
+        imp(lhs.as_shape(M, N), rhs.as_shape(M, N))
     }
 }
 
 // impl_partial_eq!(MatRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>);
-impl_partial_eq!(MatRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>);
-impl_partial_eq!(MatRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>);
+impl_partial_eq!(
+    MatRef<'_, LhsC, LhsT, Rows, Cols>,
+    MatMut<'_, RhsC, RhsT, Rows, Cols>
+);
+impl_partial_eq!(MatRef<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>);
 
-impl_partial_eq!(MatMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>);
-impl_partial_eq!(MatMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>);
-impl_partial_eq!(MatMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>);
+impl_partial_eq!(
+    MatMut<'_, LhsC, LhsT, Rows, Cols>,
+    MatRef<'_, RhsC, RhsT, Rows, Cols>
+);
+impl_partial_eq!(
+    MatMut<'_, LhsC, LhsT, Rows, Cols>,
+    MatMut<'_, RhsC, RhsT, Rows, Cols>
+);
+impl_partial_eq!(MatMut<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols, >);
 
-impl_partial_eq!(Mat<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>);
-impl_partial_eq!(Mat<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>);
-impl_partial_eq!(Mat<LhsC, LhsT>, Mat<RhsC, RhsT>);
+impl_partial_eq!(Mat<LhsC, LhsT, Rows, Cols,>, MatRef<'_, RhsC, RhsT, Rows, Cols>);
+impl_partial_eq!(Mat<LhsC, LhsT, Rows, Cols,>, MatMut<'_, RhsC, RhsT, Rows, Cols>);
+impl_partial_eq!(Mat<LhsC, LhsT, Rows, Cols,>, Mat<RhsC, RhsT, Rows, Cols>);
 
 impl<
         C: ComplexContainer,
@@ -390,24 +949,25 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > PartialEq<ColRef<'_, RhsC, RhsT>> for ColRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > PartialEq<ColRef<'_, RhsC, RhsT, Len>> for ColRef<'_, LhsC, LhsT, Len>
 {
-    fn eq(&self, other: &ColRef<'_, RhsC, RhsT>) -> bool {
+    fn eq(&self, other: &ColRef<'_, RhsC, RhsT, Len>) -> bool {
         self.transpose() == other.transpose()
     }
 }
 
 // impl_partial_eq!(ColRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>);
-impl_partial_eq!(ColRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>);
-impl_partial_eq!(ColRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>);
+impl_1d_partial_eq!(ColRef<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(ColRef<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>);
 
-impl_partial_eq!(ColMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>);
-impl_partial_eq!(ColMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>);
-impl_partial_eq!(ColMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>);
+impl_1d_partial_eq!(ColMut<'_, LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(ColMut<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(ColMut<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>);
 
-impl_partial_eq!(Col<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>);
-impl_partial_eq!(Col<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>);
-impl_partial_eq!(Col<LhsC, LhsT>, Col<RhsC, RhsT>);
+impl_1d_partial_eq!(Col<LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(Col<LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(Col<LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>);
 
 impl<
         C: ComplexContainer,
@@ -416,42 +976,60 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > PartialEq<RowRef<'_, RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > PartialEq<RowRef<'_, RhsC, RhsT, Len>> for RowRef<'_, LhsC, LhsT, Len>
 {
     #[math]
-    fn eq(&self, other: &RowRef<'_, RhsC, RhsT>) -> bool {
+    fn eq(&self, other: &RowRef<'_, RhsC, RhsT, Len>) -> bool {
         let lhs = *self;
         let rhs = *other;
 
         if lhs.ncols() != rhs.ncols() {
             return false;
         }
-        let ctx = &Ctx::<C, T>(T::MathCtx::default());
 
-        let n = lhs.ncols();
-        for j in 0..n {
-            if !math(
-                Conj::apply::<LhsC, LhsT>(ctx, lhs[j]) == Conj::apply::<RhsC, RhsT>(ctx, rhs[j]),
-            ) {
-                return false;
+        fn imp<
+            'N,
+            C: ComplexContainer,
+            LhsC: Container<Canonical = C>,
+            RhsC: Container<Canonical = C>,
+            T: ComplexField<C, MathCtx: Default>,
+            LhsT: ConjUnit<Canonical = T>,
+            RhsT: ConjUnit<Canonical = T>,
+        >(
+            lhs: RowRef<'_, LhsC, LhsT, Dim<'N>>,
+            rhs: RowRef<'_, RhsC, RhsT, Dim<'N>>,
+        ) -> bool {
+            let ctx = &Ctx::<C, T>(T::MathCtx::default());
+
+            let n = lhs.ncols();
+            for j in n.indices() {
+                if !math(
+                    Conj::apply::<LhsC, LhsT>(ctx, lhs[j])
+                        == Conj::apply::<RhsC, RhsT>(ctx, rhs[j]),
+                ) {
+                    return false;
+                }
             }
-        }
 
-        true
+            true
+        }
+        with_dim!(N, lhs.ncols().unbound());
+        imp(self.as_col_shape(N), other.as_col_shape(N))
     }
 }
 
 // impl_partial_eq!(RowRef<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>);
-impl_partial_eq!(RowRef<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>);
-impl_partial_eq!(RowRef<'_, LhsC, LhsT>, Row<RhsC, RhsT>);
+impl_1d_partial_eq!(RowRef<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(RowRef<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>);
 
-impl_partial_eq!(RowMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>);
-impl_partial_eq!(RowMut<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>);
-impl_partial_eq!(RowMut<'_, LhsC, LhsT>, Row<RhsC, RhsT>);
+impl_1d_partial_eq!(RowMut<'_, LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(RowMut<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(RowMut<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>);
 
-impl_partial_eq!(Row<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>);
-impl_partial_eq!(Row<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>);
-impl_partial_eq!(Row<LhsC, LhsT>, Row<RhsC, RhsT>);
+impl_1d_partial_eq!(Row<LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(Row<LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(Row<LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>);
 
 impl<
         C: ComplexContainer,
@@ -460,24 +1038,25 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > PartialEq<DiagRef<'_, RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > PartialEq<DiagRef<'_, RhsC, RhsT, Len>> for DiagRef<'_, LhsC, LhsT, Len>
 {
-    fn eq(&self, other: &DiagRef<'_, RhsC, RhsT>) -> bool {
+    fn eq(&self, other: &DiagRef<'_, RhsC, RhsT, Len>) -> bool {
         self.column_vector().eq(&other.column_vector())
     }
 }
 
 // impl_partial_eq!(DiagRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>);
-impl_partial_eq!(DiagRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>);
-impl_partial_eq!(DiagRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>);
+impl_1d_partial_eq!(DiagRef<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(DiagRef<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>);
 
-impl_partial_eq!(DiagMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>);
-impl_partial_eq!(DiagMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>);
-impl_partial_eq!(DiagMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>);
+impl_1d_partial_eq!(DiagMut<'_, LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(DiagMut<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(DiagMut<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>);
 
-impl_partial_eq!(Diag<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>);
-impl_partial_eq!(Diag<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>);
-impl_partial_eq!(Diag<LhsC, LhsT>, Diag<RhsC, RhsT>);
+impl_1d_partial_eq!(Diag<LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(Diag<LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_partial_eq!(Diag<LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>);
 
 impl<I: Index> PartialEq<PermRef<'_, I>> for PermRef<'_, I> {
     #[inline]
@@ -511,13 +1090,15 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Add<MatRef<'_, RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > Add<MatRef<'_, RhsC, RhsT, Rows, Cols>> for MatRef<'_, LhsC, LhsT, Rows, Cols>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[math]
     #[track_caller]
-    fn add(self, rhs: MatRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn add(self, rhs: MatRef<'_, RhsC, RhsT, Rows, Cols>) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
@@ -532,13 +1113,15 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Sub<MatRef<'_, RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > Sub<MatRef<'_, RhsC, RhsT, Rows, Cols>> for MatRef<'_, LhsC, LhsT, Rows, Cols>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[math]
     #[track_caller]
-    fn sub(self, rhs: MatRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn sub(self, rhs: MatRef<'_, RhsC, RhsT, Rows, Cols>) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         let rhs = rhs;
@@ -552,11 +1135,13 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > AddAssign<MatRef<'_, RhsC, RhsT>> for MatMut<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > AddAssign<MatRef<'_, RhsC, RhsT, Rows, Cols>> for MatMut<'_, LhsC, LhsT, Rows, Cols>
 {
     #[math]
     #[track_caller]
-    fn add_assign(&mut self, rhs: MatRef<'_, RhsC, RhsT>) {
+    fn add_assign(&mut self, rhs: MatRef<'_, RhsC, RhsT, Rows, Cols>) {
         let ctx = &Ctx::<LhsC, LhsT>::default();
         help!(LhsC);
         zipped!(self.rb_mut(), rhs).for_each(add_assign_fn::<LhsC, RhsC, _, _>(ctx))
@@ -568,11 +1153,13 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > SubAssign<MatRef<'_, RhsC, RhsT>> for MatMut<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > SubAssign<MatRef<'_, RhsC, RhsT, Rows, Cols>> for MatMut<'_, LhsC, LhsT, Rows, Cols>
 {
     #[math]
     #[track_caller]
-    fn sub_assign(&mut self, rhs: MatRef<'_, RhsC, RhsT>) {
+    fn sub_assign(&mut self, rhs: MatRef<'_, RhsC, RhsT, Rows, Cols>) {
         let ctx = &Ctx::<LhsC, LhsT>::default();
         help!(LhsC);
         zipped!(self.rb_mut(), rhs).for_each(sub_assign_fn::<LhsC, RhsC, _, _>(ctx))
@@ -584,9 +1171,11 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Neg for MatRef<'_, CC, TT>
+        Rows: Shape,
+        Cols: Shape,
+    > Neg for MatRef<'_, CC, TT, Rows, Cols>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[math]
     fn neg(self) -> Self::Output {
@@ -730,13 +1319,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Add<ColRef<'_, RhsC, RhsT>> for ColRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Add<ColRef<'_, RhsC, RhsT, Len>> for ColRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Col<C, T>;
+    type Output = Col<C, T, Len>;
 
     #[math]
     #[track_caller]
-    fn add(self, rhs: ColRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn add(self, rhs: ColRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
@@ -751,13 +1341,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Sub<ColRef<'_, RhsC, RhsT>> for ColRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Sub<ColRef<'_, RhsC, RhsT, Len>> for ColRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Col<C, T>;
+    type Output = Col<C, T, Len>;
 
     #[math]
     #[track_caller]
-    fn sub(self, rhs: ColRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn sub(self, rhs: ColRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
@@ -770,11 +1361,12 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > AddAssign<ColRef<'_, RhsC, RhsT>> for ColMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > AddAssign<ColRef<'_, RhsC, RhsT, Len>> for ColMut<'_, LhsC, LhsT, Len>
 {
     #[math]
     #[track_caller]
-    fn add_assign(&mut self, rhs: ColRef<'_, RhsC, RhsT>) {
+    fn add_assign(&mut self, rhs: ColRef<'_, RhsC, RhsT, Len>) {
         let ctx = &Ctx::<LhsC, LhsT>::default();
         help!(LhsC);
         zipped!(self.rb_mut(), rhs).for_each(add_assign_fn::<LhsC, RhsC, _, _>(ctx))
@@ -786,11 +1378,12 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > SubAssign<ColRef<'_, RhsC, RhsT>> for ColMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > SubAssign<ColRef<'_, RhsC, RhsT, Len>> for ColMut<'_, LhsC, LhsT, Len>
 {
     #[math]
     #[track_caller]
-    fn sub_assign(&mut self, rhs: ColRef<'_, RhsC, RhsT>) {
+    fn sub_assign(&mut self, rhs: ColRef<'_, RhsC, RhsT, Len>) {
         let ctx = &Ctx::<LhsC, LhsT>::default();
         help!(LhsC);
         zipped!(self.rb_mut(), rhs).for_each(sub_assign_fn::<LhsC, RhsC, _, _>(ctx))
@@ -802,9 +1395,10 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Neg for ColRef<'_, CC, TT>
+        Len: Shape,
+    > Neg for ColRef<'_, CC, TT, Len>
 {
-    type Output = Col<C, T>;
+    type Output = Col<C, T, Len>;
 
     #[math]
     fn neg(self) -> Self::Output {
@@ -821,13 +1415,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Add<RowRef<'_, RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Add<RowRef<'_, RhsC, RhsT, Len>> for RowRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Row<C, T>;
+    type Output = Row<C, T, Len>;
 
     #[math]
     #[track_caller]
-    fn add(self, rhs: RowRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn add(self, rhs: RowRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
@@ -842,13 +1437,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Sub<RowRef<'_, RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Sub<RowRef<'_, RhsC, RhsT, Len>> for RowRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Row<C, T>;
+    type Output = Row<C, T, Len>;
 
     #[math]
     #[track_caller]
-    fn sub(self, rhs: RowRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn sub(self, rhs: RowRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         let rhs = rhs;
@@ -862,11 +1458,12 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > AddAssign<RowRef<'_, RhsC, RhsT>> for RowMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > AddAssign<RowRef<'_, RhsC, RhsT, Len>> for RowMut<'_, LhsC, LhsT, Len>
 {
     #[math]
     #[track_caller]
-    fn add_assign(&mut self, rhs: RowRef<'_, RhsC, RhsT>) {
+    fn add_assign(&mut self, rhs: RowRef<'_, RhsC, RhsT, Len>) {
         let ctx = &Ctx::<LhsC, LhsT>::default();
         help!(LhsC);
         zipped!(self.rb_mut(), rhs).for_each(add_assign_fn::<LhsC, RhsC, _, _>(ctx))
@@ -878,11 +1475,12 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > SubAssign<RowRef<'_, RhsC, RhsT>> for RowMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > SubAssign<RowRef<'_, RhsC, RhsT, Len>> for RowMut<'_, LhsC, LhsT, Len>
 {
     #[math]
     #[track_caller]
-    fn sub_assign(&mut self, rhs: RowRef<'_, RhsC, RhsT>) {
+    fn sub_assign(&mut self, rhs: RowRef<'_, RhsC, RhsT, Len>) {
         let ctx = &Ctx::<LhsC, LhsT>::default();
         help!(LhsC);
         zipped!(self.rb_mut(), rhs).for_each(sub_assign_fn::<LhsC, RhsC, _, _>(ctx))
@@ -894,9 +1492,10 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Neg for RowRef<'_, CC, TT>
+        Len: Shape,
+    > Neg for RowRef<'_, CC, TT, Len>
 {
-    type Output = Row<C, T>;
+    type Output = Row<C, T, Len>;
 
     #[math]
     fn neg(self) -> Self::Output {
@@ -912,13 +1511,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Add<DiagRef<'_, RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Add<DiagRef<'_, RhsC, RhsT, Len>> for DiagRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Diag<C, T>;
+    type Output = Diag<C, T, Len>;
 
     #[track_caller]
     #[math]
-    fn add(self, rhs: DiagRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn add(self, rhs: DiagRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         (self.column_vector() + rhs.column_vector()).into_diagonal()
     }
 }
@@ -930,13 +1530,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Sub<DiagRef<'_, RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Sub<DiagRef<'_, RhsC, RhsT, Len>> for DiagRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Diag<C, T>;
+    type Output = Diag<C, T, Len>;
 
     #[track_caller]
     #[math]
-    fn sub(self, rhs: DiagRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn sub(self, rhs: DiagRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         (self.column_vector() - rhs.column_vector()).into_diagonal()
     }
 }
@@ -946,10 +1547,11 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > AddAssign<DiagRef<'_, RhsC, RhsT>> for DiagMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > AddAssign<DiagRef<'_, RhsC, RhsT, Len>> for DiagMut<'_, LhsC, LhsT, Len>
 {
     #[track_caller]
-    fn add_assign(&mut self, rhs: DiagRef<'_, RhsC, RhsT>) {
+    fn add_assign(&mut self, rhs: DiagRef<'_, RhsC, RhsT, Len>) {
         *&mut (self.rb_mut().column_vector_mut()) += rhs.column_vector()
     }
 }
@@ -959,10 +1561,11 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > SubAssign<DiagRef<'_, RhsC, RhsT>> for DiagMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > SubAssign<DiagRef<'_, RhsC, RhsT, Len>> for DiagMut<'_, LhsC, LhsT, Len>
 {
     #[track_caller]
-    fn sub_assign(&mut self, rhs: DiagRef<'_, RhsC, RhsT>) {
+    fn sub_assign(&mut self, rhs: DiagRef<'_, RhsC, RhsT, Len>) {
         *&mut (self.rb_mut().column_vector_mut()) -= rhs.column_vector()
     }
 }
@@ -972,9 +1575,10 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Neg for DiagRef<'_, CC, TT>
+        Len: Shape,
+    > Neg for DiagRef<'_, CC, TT, Len>
 {
-    type Output = Diag<C, T>;
+    type Output = Diag<C, T, Len>;
 
     fn neg(self) -> Self::Output {
         (-self.column_vector()).into_diagonal()
@@ -982,244 +1586,253 @@ impl<
 }
 
 // impl_add_sub!(MatRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+impl_add_sub!(MatRef<'_, LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatRef<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatRef<'_, LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatRef<'_, LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatRef<'_, LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
-impl_add_sub!(MatMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(MatMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&MatMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+impl_add_sub!(MatMut<'_, LhsC, LhsT, Rows, Cols>, MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatMut<'_, LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatMut<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatMut<'_, LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatMut<'_, LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(MatMut<'_, LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
-impl_add_sub!(Mat<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(Mat<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(Mat<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(Mat<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(Mat<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(Mat<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&Mat<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&Mat<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&Mat<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&Mat<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&Mat<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_add_sub!(&Mat<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+impl_add_sub!(Mat<LhsC, LhsT, Rows, Cols>, MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(Mat<LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(Mat<LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(Mat<LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(Mat<LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(Mat<LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&Mat<LhsC, LhsT, Rows, Cols>, MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&Mat<LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&Mat<LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&Mat<LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&Mat<LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_add_sub!(&Mat<LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
 // impl_add_sub_assign!(MatMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(MatMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(MatMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>);
-impl_add_sub_assign!(MatMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(MatMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(MatMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>);
+impl_add_sub_assign!(
+    MatMut<'_, LhsC, LhsT, Rows, Cols>,
+    MatMut<'_, RhsC, RhsT, Rows, Cols>
+);
+impl_add_sub_assign!(MatMut<'_, LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>);
+impl_add_sub_assign!(
+    MatMut<'_, LhsC, LhsT, Rows, Cols>,
+    &MatRef<'_, RhsC, RhsT, Rows, Cols>
+);
+impl_add_sub_assign!(
+    MatMut<'_, LhsC, LhsT, Rows, Cols>,
+    &MatMut<'_, RhsC, RhsT, Rows, Cols>
+);
+impl_add_sub_assign!(MatMut<'_, LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>);
 
-impl_add_sub_assign!(Mat<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Mat<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Mat<LhsC, LhsT>, Mat<RhsC, RhsT>);
-impl_add_sub_assign!(Mat<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Mat<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Mat<LhsC, LhsT>, &Mat<RhsC, RhsT>);
+impl_add_sub_assign!(Mat<LhsC, LhsT, Rows, Cols>, MatRef<'_, RhsC, RhsT, Rows, Cols>);
+impl_add_sub_assign!(Mat<LhsC, LhsT, Rows, Cols>, MatMut<'_, RhsC, RhsT, Rows, Cols>);
+impl_add_sub_assign!(Mat<LhsC, LhsT, Rows, Cols>, Mat<RhsC, RhsT, Rows, Cols>);
+impl_add_sub_assign!(Mat<LhsC, LhsT, Rows, Cols>, &MatRef<'_, RhsC, RhsT, Rows, Cols>);
+impl_add_sub_assign!(Mat<LhsC, LhsT, Rows, Cols>, &MatMut<'_, RhsC, RhsT, Rows, Cols>);
+impl_add_sub_assign!(Mat<LhsC, LhsT, Rows, Cols>, &Mat<RhsC, RhsT, Rows, Cols>);
 
 // impl_neg!(MatRef<'_, CC, TT>, Mat<C, T>);
-impl_neg!(MatMut<'_, CC, TT>, Mat<C, T>);
-impl_neg!(Mat<CC, TT>, Mat<C, T>);
-impl_neg!(&MatRef<'_, CC, TT>, Mat<C, T>);
-impl_neg!(&MatMut<'_, CC, TT>, Mat<C, T>);
-impl_neg!(&Mat<CC, TT>, Mat<C, T>);
+impl_neg!(MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_neg!(Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_neg!(&MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_neg!(&MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_neg!(&Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
 // impl_add_sub!(ColRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+impl_1d_add_sub!(ColRef<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColRef<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColRef<'_, LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColRef<'_, LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColRef<'_, LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColRef<'_, LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColRef<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColRef<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColRef<'_, LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColRef<'_, LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColRef<'_, LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
 
-impl_add_sub!(ColMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(ColMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&ColMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+impl_1d_add_sub!(ColMut<'_, LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColMut<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColMut<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColMut<'_, LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColMut<'_, LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(ColMut<'_, LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColMut<'_, LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColMut<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColMut<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColMut<'_, LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColMut<'_, LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&ColMut<'_, LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
 
-impl_add_sub!(Col<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(Col<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(Col<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(Col<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(Col<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(Col<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&Col<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&Col<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&Col<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&Col<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&Col<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_add_sub!(&Col<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+impl_1d_add_sub!(Col<LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(Col<LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(Col<LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(Col<LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(Col<LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(Col<LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&Col<LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&Col<LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&Col<LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&Col<LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&Col<LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_add_sub!(&Col<LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
 
 // impl_add_sub_assign!(ColMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(ColMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(ColMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>);
-impl_add_sub_assign!(ColMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(ColMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(ColMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>);
+impl_1d_add_sub_assign!(ColMut<'_, LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(ColMut<'_, LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(ColMut<'_, LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(ColMut<'_, LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(ColMut<'_, LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>);
 
-impl_add_sub_assign!(Col<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Col<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Col<LhsC, LhsT>, Col<RhsC, RhsT>);
-impl_add_sub_assign!(Col<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Col<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Col<LhsC, LhsT>, &Col<RhsC, RhsT>);
+impl_1d_add_sub_assign!(Col<LhsC, LhsT, Len>, ColRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Col<LhsC, LhsT, Len>, ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Col<LhsC, LhsT, Len>, Col<RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Col<LhsC, LhsT, Len>, &ColRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Col<LhsC, LhsT, Len>, &ColMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Col<LhsC, LhsT, Len>, &Col<RhsC, RhsT, Len>);
 
 // impl_neg!(ColRef<'_, CC, TT>, Col<C, T>);
-impl_neg!(ColMut<'_, CC, TT>, Col<C, T>);
-impl_neg!(Col<CC, TT>, Col<C, T>);
-impl_neg!(&ColRef<'_, CC, TT>, Col<C, T>);
-impl_neg!(&ColMut<'_, CC, TT>, Col<C, T>);
-impl_neg!(&Col<CC, TT>, Col<C, T>);
+impl_1d_neg!(ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_neg!(Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_neg!(&ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_neg!(&ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_neg!(&Col<CC, TT, Len>, Col<C, T, Len>);
 
 // impl_add_sub!(RowRef<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowRef<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowRef<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowRef<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowRef<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowRef<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowRef<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowRef<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowRef<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowRef<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowRef<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowRef<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
+impl_1d_add_sub!(RowRef<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowRef<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowRef<'_, LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowRef<'_, LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowRef<'_, LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowRef<'_, LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowRef<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowRef<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowRef<'_, LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowRef<'_, LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowRef<'_, LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
 
-impl_add_sub!(RowMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowMut<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowMut<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowMut<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowMut<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(RowMut<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowMut<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowMut<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowMut<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowMut<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&RowMut<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
+impl_1d_add_sub!(RowMut<'_, LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowMut<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowMut<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowMut<'_, LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowMut<'_, LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(RowMut<'_, LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowMut<'_, LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowMut<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowMut<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowMut<'_, LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowMut<'_, LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&RowMut<'_, LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
 
-impl_add_sub!(Row<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(Row<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(Row<LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(Row<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(Row<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(Row<LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&Row<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&Row<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&Row<LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&Row<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&Row<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_add_sub!(&Row<LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
+impl_1d_add_sub!(Row<LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(Row<LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(Row<LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(Row<LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(Row<LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(Row<LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&Row<LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&Row<LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&Row<LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&Row<LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&Row<LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_add_sub!(&Row<LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
 
-// impl_add_sub_assign!(RowMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(RowMut<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(RowMut<'_, LhsC, LhsT>, Row<RhsC, RhsT>);
-impl_add_sub_assign!(RowMut<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(RowMut<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(RowMut<'_, LhsC, LhsT>, &Row<RhsC, RhsT>);
+// impl_1d_add_sub_assign!(RowMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>);
+impl_1d_add_sub_assign!(RowMut<'_, LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(RowMut<'_, LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(RowMut<'_, LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(RowMut<'_, LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(RowMut<'_, LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>);
 
-impl_add_sub_assign!(Row<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Row<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Row<LhsC, LhsT>, Row<RhsC, RhsT>);
-impl_add_sub_assign!(Row<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Row<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Row<LhsC, LhsT>, &Row<RhsC, RhsT>);
+impl_1d_add_sub_assign!(Row<LhsC, LhsT, Len>, RowRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Row<LhsC, LhsT, Len>, RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Row<LhsC, LhsT, Len>, Row<RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Row<LhsC, LhsT, Len>, &RowRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Row<LhsC, LhsT, Len>, &RowMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Row<LhsC, LhsT, Len>, &Row<RhsC, RhsT, Len>);
 
-// impl_neg!(RowRef<'_, CC, TT>, Row<C, T>);
-impl_neg!(RowMut<'_, CC, TT>, Row<C, T>);
-impl_neg!(Row<CC, TT>, Row<C, T>);
-impl_neg!(&RowRef<'_, CC, TT>, Row<C, T>);
-impl_neg!(&RowMut<'_, CC, TT>, Row<C, T>);
-impl_neg!(&Row<CC, TT>, Row<C, T>);
+// impl_1d_neg!(RowRef<'_, CC, TT>, Row<C, T>);
+impl_1d_neg!(RowMut<'_, CC, TT, Len>, Row<C, T, Len>);
+impl_1d_neg!(Row<CC, TT, Len>, Row<C, T, Len>);
+impl_1d_neg!(&RowRef<'_, CC, TT, Len>, Row<C, T, Len>);
+impl_1d_neg!(&RowMut<'_, CC, TT, Len>, Row<C, T, Len>);
+impl_1d_neg!(&Row<CC, TT, Len>, Row<C, T, Len>);
 
-// impl_add_sub!(DiagRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+// impl_1d_add_sub!(DiagRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
+impl_1d_add_sub!(DiagRef<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagRef<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagRef<'_, LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagRef<'_, LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagRef<'_, LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagRef<'_, LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagRef<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagRef<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagRef<'_, LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagRef<'_, LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagRef<'_, LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
 
-impl_add_sub!(DiagMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(DiagMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&DiagMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+impl_1d_add_sub!(DiagMut<'_, LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagMut<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagMut<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagMut<'_, LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagMut<'_, LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(DiagMut<'_, LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagMut<'_, LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagMut<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagMut<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagMut<'_, LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagMut<'_, LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&DiagMut<'_, LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
 
-impl_add_sub!(Diag<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(Diag<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(Diag<LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(Diag<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(Diag<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(Diag<LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&Diag<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&Diag<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&Diag<LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&Diag<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&Diag<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_add_sub!(&Diag<LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+impl_1d_add_sub!(Diag<LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(Diag<LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(Diag<LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(Diag<LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(Diag<LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(Diag<LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&Diag<LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&Diag<LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&Diag<LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&Diag<LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&Diag<LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_add_sub!(&Diag<LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
 
 // impl_add_sub_assign!(DiagMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(DiagMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(DiagMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>);
-impl_add_sub_assign!(DiagMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(DiagMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(DiagMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>);
+impl_1d_add_sub_assign!(DiagMut<'_, LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(DiagMut<'_, LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(DiagMut<'_, LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(DiagMut<'_, LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(DiagMut<'_, LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>);
 
-impl_add_sub_assign!(Diag<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Diag<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Diag<LhsC, LhsT>, Diag<RhsC, RhsT>);
-impl_add_sub_assign!(Diag<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Diag<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>);
-impl_add_sub_assign!(Diag<LhsC, LhsT>, &Diag<RhsC, RhsT>);
+impl_1d_add_sub_assign!(Diag<LhsC, LhsT, Len>, DiagRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Diag<LhsC, LhsT, Len>, DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Diag<LhsC, LhsT, Len>, Diag<RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Diag<LhsC, LhsT, Len>, &DiagRef<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Diag<LhsC, LhsT, Len>, &DiagMut<'_, RhsC, RhsT, Len>);
+impl_1d_add_sub_assign!(Diag<LhsC, LhsT, Len>, &Diag<RhsC, RhsT, Len>);
 
 // impl_neg!(DiagRef<'_, CC, TT>, Diag<C, T>);
-impl_neg!(DiagMut<'_, CC, TT>, Diag<C, T>);
-impl_neg!(Diag<CC, TT>, Diag<C, T>);
-impl_neg!(&DiagRef<'_, CC, TT>, Diag<C, T>);
-impl_neg!(&DiagMut<'_, CC, TT>, Diag<C, T>);
-impl_neg!(&Diag<CC, TT>, Diag<C, T>);
+impl_1d_neg!(DiagMut<'_, CC, TT, Len>, Diag<C, T, Len>);
+impl_1d_neg!(Diag<CC, TT, Len>, Diag<C, T, Len>);
+impl_1d_neg!(&DiagRef<'_, CC, TT, Len>, Diag<C, T, Len>);
+impl_1d_neg!(&DiagMut<'_, CC, TT, Len>, Diag<C, T, Len>);
+impl_1d_neg!(&Diag<CC, TT, Len>, Diag<C, T, Len>);
 
 impl<
         C: ComplexContainer,
@@ -1345,13 +1958,16 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<MatRef<'_, RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+            M: Shape,
+            N: Shape,
+            K: Shape,
+        > Mul<MatRef<'_, RhsC, RhsT, K, N>> for MatRef<'_, LhsC, LhsT, M, K>
     {
-        type Output = Mat<C, T>;
+        type Output = Mat<C, T, M, N>;
 
         #[inline]
         #[track_caller]
-        fn mul(self, rhs: MatRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: MatRef<'_, RhsC, RhsT, K, N>) -> Self::Output {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
@@ -1377,13 +1993,15 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<ColRef<'_, RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+            M: Shape,
+            K: Shape,
+        > Mul<ColRef<'_, RhsC, RhsT, K>> for MatRef<'_, LhsC, LhsT, M, K>
     {
-        type Output = Col<C, T>;
+        type Output = Col<C, T, M>;
 
         #[inline]
         #[track_caller]
-        fn mul(self, rhs: ColRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: ColRef<'_, RhsC, RhsT, K>) -> Self::Output {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
@@ -1409,13 +2027,15 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<MatRef<'_, RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+            N: Shape,
+            K: Shape,
+        > Mul<MatRef<'_, RhsC, RhsT, K, N>> for RowRef<'_, LhsC, LhsT, K>
     {
-        type Output = Row<C, T>;
+        type Output = Row<C, T, N>;
 
         #[inline]
         #[track_caller]
-        fn mul(self, rhs: MatRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: MatRef<'_, RhsC, RhsT, K, N>) -> Self::Output {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
@@ -1441,19 +2061,20 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<ColRef<'_, RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+            K: Shape,
+        > Mul<ColRef<'_, RhsC, RhsT, K>> for RowRef<'_, LhsC, LhsT, K>
     {
         type Output = C::Of<T>;
 
         #[inline]
         #[track_caller]
-        fn mul(self, rhs: ColRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: ColRef<'_, RhsC, RhsT, K>) -> Self::Output {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let lhs = lhs.canonical();
             let rhs = rhs.canonical();
             let ctx = &Ctx::<C, T>::default();
-            with_dim!(K, lhs.ncols());
+            with_dim!(K, lhs.ncols().unbound());
             crate::linalg::matmul::dot::inner_prod(
                 ctx,
                 lhs.as_col_shape(K),
@@ -1471,13 +2092,15 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<RowRef<'_, RhsC, RhsT>> for ColRef<'_, LhsC, LhsT>
+            M: Shape,
+            N: Shape,
+        > Mul<RowRef<'_, RhsC, RhsT, N>> for ColRef<'_, LhsC, LhsT, M>
     {
-        type Output = Mat<C, T>;
+        type Output = Mat<C, T, M, N>;
 
         #[inline]
         #[track_caller]
-        fn mul(self, rhs: RowRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: RowRef<'_, RhsC, RhsT, N>) -> Self::Output {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
@@ -1497,199 +2120,259 @@ mod matmul {
     }
 
     // impl_mul!(MatRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+    impl_mul!(MatRef<'_, LhsC, LhsT, M, K>, MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatRef<'_, LhsC, LhsT, M, K>, Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatRef<'_, LhsC, LhsT, M, K>, &MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatRef<'_, LhsC, LhsT, M, K>, &MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatRef<'_, LhsC, LhsT, M, K>, &Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatRef<'_, LhsC, LhsT, M, K>, MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatRef<'_, LhsC, LhsT, M, K>, MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatRef<'_, LhsC, LhsT, M, K>, Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatRef<'_, LhsC, LhsT, M, K>, &MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatRef<'_, LhsC, LhsT, M, K>, &MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatRef<'_, LhsC, LhsT, M, K>, &Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
 
-    impl_mul!(MatMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+    impl_mul!(MatMut<'_, LhsC, LhsT, M, K>, MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatMut<'_, LhsC, LhsT, M, K>, MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatMut<'_, LhsC, LhsT, M, K>, Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatMut<'_, LhsC, LhsT, M, K>, &MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatMut<'_, LhsC, LhsT, M, K>, &MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(MatMut<'_, LhsC, LhsT, M, K>, &Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatMut<'_, LhsC, LhsT, M, K>, MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatMut<'_, LhsC, LhsT, M, K>, MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatMut<'_, LhsC, LhsT, M, K>, Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatMut<'_, LhsC, LhsT, M, K>, &MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatMut<'_, LhsC, LhsT, M, K>, &MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&MatMut<'_, LhsC, LhsT, M, K>, &Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
 
-    impl_mul!(Mat<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+    impl_mul!(Mat<LhsC, LhsT, M, K>, MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(Mat<LhsC, LhsT, M, K>, MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(Mat<LhsC, LhsT, M, K>, Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(Mat<LhsC, LhsT, M, K>, &MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(Mat<LhsC, LhsT, M, K>, &MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(Mat<LhsC, LhsT, M, K>, &Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&Mat<LhsC, LhsT, M, K>, MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&Mat<LhsC, LhsT, M, K>, MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&Mat<LhsC, LhsT, M, K>, Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&Mat<LhsC, LhsT, M, K>, &MatRef<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&Mat<LhsC, LhsT, M, K>, &MatMut<'_, RhsC, RhsT, K, N>, Mat<C, T, M, N>);
+    impl_mul!(&Mat<LhsC, LhsT, M, K>, &Mat<RhsC, RhsT, K, N>, Mat<C, T, M, N>);
 
     // impl_mul!(MatRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+    impl_mul_mat_col!(MatRef<'_, LhsC, LhsT, M, K>, ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatRef<'_, LhsC, LhsT, M, K>, Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatRef<'_, LhsC, LhsT, M, K>, &ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatRef<'_, LhsC, LhsT, M, K>, &ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatRef<'_, LhsC, LhsT, M, K>, &Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatRef<'_, LhsC, LhsT, M, K>, ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatRef<'_, LhsC, LhsT, M, K>, ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatRef<'_, LhsC, LhsT, M, K>, Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatRef<'_, LhsC, LhsT, M, K>, &ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatRef<'_, LhsC, LhsT, M, K>, &ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatRef<'_, LhsC, LhsT, M, K>, &Col<RhsC, RhsT, K>, Col<C, T, M>);
 
-    impl_mul!(MatMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+    impl_mul_mat_col!(MatMut<'_, LhsC, LhsT, M, K>, ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatMut<'_, LhsC, LhsT, M, K>, ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatMut<'_, LhsC, LhsT, M, K>, Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatMut<'_, LhsC, LhsT, M, K>, &ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatMut<'_, LhsC, LhsT, M, K>, &ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(MatMut<'_, LhsC, LhsT, M, K>, &Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatMut<'_, LhsC, LhsT, M, K>, ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatMut<'_, LhsC, LhsT, M, K>, ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatMut<'_, LhsC, LhsT, M, K>, Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatMut<'_, LhsC, LhsT, M, K>, &ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatMut<'_, LhsC, LhsT, M, K>, &ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&MatMut<'_, LhsC, LhsT, M, K>, &Col<RhsC, RhsT, K>, Col<C, T, M>);
 
-    impl_mul!(Mat<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+    impl_mul_mat_col!(Mat<LhsC, LhsT, M, K>, ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(Mat<LhsC, LhsT, M, K>, ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(Mat<LhsC, LhsT, M, K>, Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(Mat<LhsC, LhsT, M, K>, &ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(Mat<LhsC, LhsT, M, K>, &ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(Mat<LhsC, LhsT, M, K>, &Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&Mat<LhsC, LhsT, M, K>, ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&Mat<LhsC, LhsT, M, K>, ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&Mat<LhsC, LhsT, M, K>, Col<RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&Mat<LhsC, LhsT, M, K>, &ColRef<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&Mat<LhsC, LhsT, M, K>, &ColMut<'_, RhsC, RhsT, K>, Col<C, T, M>);
+    impl_mul_mat_col!(&Mat<LhsC, LhsT, M, K>, &Col<RhsC, RhsT, K>, Col<C, T, M>);
 
     // impl_mul!(RowRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Row<C, T>);
+    impl_mul_row_mat!(RowRef<'_, LhsC, LhsT, K>, MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowRef<'_, LhsC, LhsT, K>, Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowRef<'_, LhsC, LhsT, K>, &MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowRef<'_, LhsC, LhsT, K>, &MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowRef<'_, LhsC, LhsT, K>, &Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowRef<'_, LhsC, LhsT, K>, MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowRef<'_, LhsC, LhsT, K>, MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowRef<'_, LhsC, LhsT, K>, Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowRef<'_, LhsC, LhsT, K>, &MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowRef<'_, LhsC, LhsT, K>, &MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowRef<'_, LhsC, LhsT, K>, &Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
 
-    impl_mul!(RowMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Row<C, T>);
+    impl_mul_row_mat!(RowMut<'_, LhsC, LhsT, K>, MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowMut<'_, LhsC, LhsT, K>, MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowMut<'_, LhsC, LhsT, K>, Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowMut<'_, LhsC, LhsT, K>, &MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowMut<'_, LhsC, LhsT, K>, &MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(RowMut<'_, LhsC, LhsT, K>, &Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowMut<'_, LhsC, LhsT, K>, MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowMut<'_, LhsC, LhsT, K>, MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowMut<'_, LhsC, LhsT, K>, Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowMut<'_, LhsC, LhsT, K>, &MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowMut<'_, LhsC, LhsT, K>, &MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&RowMut<'_, LhsC, LhsT, K>, &Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
 
-    impl_mul!(Row<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, &Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, Mat<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, &Mat<RhsC, RhsT>, Row<C, T>);
+    impl_mul_row_mat!(Row<LhsC, LhsT, K>, MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(Row<LhsC, LhsT, K>, MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(Row<LhsC, LhsT, K>, Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(Row<LhsC, LhsT, K>, &MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(Row<LhsC, LhsT, K>, &MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(Row<LhsC, LhsT, K>, &Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&Row<LhsC, LhsT, K>, MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&Row<LhsC, LhsT, K>, MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&Row<LhsC, LhsT, K>, Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&Row<LhsC, LhsT, K>, &MatRef<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&Row<LhsC, LhsT, K>, &MatMut<'_, RhsC, RhsT, K, N>, Row<C, T, N>);
+    impl_mul_row_mat!(&Row<LhsC, LhsT, K>, &Mat<RhsC, RhsT, K, N>, Row<C, T, N>);
 
     // impl_mul!(RowRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, C::Of<T>);
+    impl_mul_row_col!(
+        RowRef<'_, LhsC, LhsT, K>,
+        ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(RowRef<'_, LhsC, LhsT, K>, Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(
+        RowRef<'_, LhsC, LhsT, K>,
+        &ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        RowRef<'_, LhsC, LhsT, K>,
+        &ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(RowRef<'_, LhsC, LhsT, K>, &Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(
+        &RowRef<'_, LhsC, LhsT, K>,
+        ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        &RowRef<'_, LhsC, LhsT, K>,
+        ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(&RowRef<'_, LhsC, LhsT, K>, Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(
+        &RowRef<'_, LhsC, LhsT, K>,
+        &ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        &RowRef<'_, LhsC, LhsT, K>,
+        &ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(&RowRef<'_, LhsC, LhsT, K>, &Col<RhsC, RhsT, K>, C::Of<T>);
 
-    impl_mul!(RowMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, C::Of<T>);
+    impl_mul_row_col!(
+        RowMut<'_, LhsC, LhsT, K>,
+        ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        RowMut<'_, LhsC, LhsT, K>,
+        ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(RowMut<'_, LhsC, LhsT, K>, Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(
+        RowMut<'_, LhsC, LhsT, K>,
+        &ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        RowMut<'_, LhsC, LhsT, K>,
+        &ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(RowMut<'_, LhsC, LhsT, K>, &Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(
+        &RowMut<'_, LhsC, LhsT, K>,
+        ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        &RowMut<'_, LhsC, LhsT, K>,
+        ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(&RowMut<'_, LhsC, LhsT, K>, Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(
+        &RowMut<'_, LhsC, LhsT, K>,
+        &ColRef<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(
+        &RowMut<'_, LhsC, LhsT, K>,
+        &ColMut<'_, RhsC, RhsT, K>,
+        C::Of<T>
+    );
+    impl_mul_row_col!(&RowMut<'_, LhsC, LhsT, K>, &Col<RhsC, RhsT, K>, C::Of<T>);
 
-    impl_mul!(Row<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(Row<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(Row<LhsC, LhsT>, Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(Row<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(Row<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(Row<LhsC, LhsT>, &Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&Row<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&Row<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&Row<LhsC, LhsT>, Col<RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&Row<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&Row<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, C::Of<T>);
-    impl_mul!(&Row<LhsC, LhsT>, &Col<RhsC, RhsT>, C::Of<T>);
+    impl_mul_row_col!(Row<LhsC, LhsT, K>, ColRef<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(Row<LhsC, LhsT, K>, ColMut<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(Row<LhsC, LhsT, K>, Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(Row<LhsC, LhsT, K>, &ColRef<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(Row<LhsC, LhsT, K>, &ColMut<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(Row<LhsC, LhsT, K>, &Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(&Row<LhsC, LhsT, K>, ColRef<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(&Row<LhsC, LhsT, K>, ColMut<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(&Row<LhsC, LhsT, K>, Col<RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(&Row<LhsC, LhsT, K>, &ColRef<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(&Row<LhsC, LhsT, K>, &ColMut<'_, RhsC, RhsT, K>, C::Of<T>);
+    impl_mul_row_col!(&Row<LhsC, LhsT, K>, &Col<RhsC, RhsT, K>, C::Of<T>);
 
     // impl_mul!(ColRef<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColRef<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColRef<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColRef<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColRef<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColRef<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColRef<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColRef<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColRef<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColRef<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColRef<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColRef<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_col_row!(ColRef<'_, LhsC, LhsT, M>, RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColRef<'_, LhsC, LhsT, M>, Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColRef<'_, LhsC, LhsT, M>, &RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColRef<'_, LhsC, LhsT, M>, &RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColRef<'_, LhsC, LhsT, M>, &Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColRef<'_, LhsC, LhsT, M>, RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColRef<'_, LhsC, LhsT, M>, RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColRef<'_, LhsC, LhsT, M>, Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColRef<'_, LhsC, LhsT, M>, &RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColRef<'_, LhsC, LhsT, M>, &RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColRef<'_, LhsC, LhsT, M>, &Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
 
-    impl_mul!(ColMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColMut<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColMut<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColMut<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColMut<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(ColMut<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColMut<'_, LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColMut<'_, LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColMut<'_, LhsC, LhsT>, Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColMut<'_, LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColMut<'_, LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&ColMut<'_, LhsC, LhsT>, &Row<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_col_row!(ColMut<'_, LhsC, LhsT, M>, RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColMut<'_, LhsC, LhsT, M>, RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColMut<'_, LhsC, LhsT, M>, Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColMut<'_, LhsC, LhsT, M>, &RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColMut<'_, LhsC, LhsT, M>, &RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(ColMut<'_, LhsC, LhsT, M>, &Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColMut<'_, LhsC, LhsT, M>, RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColMut<'_, LhsC, LhsT, M>, RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColMut<'_, LhsC, LhsT, M>, Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColMut<'_, LhsC, LhsT, M>, &RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColMut<'_, LhsC, LhsT, M>, &RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&ColMut<'_, LhsC, LhsT, M>, &Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
 
-    impl_mul!(Col<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Col<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Col<LhsC, LhsT>, Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Col<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Col<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Col<LhsC, LhsT>, &Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Col<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Col<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Col<LhsC, LhsT>, Row<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Col<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Col<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Col<LhsC, LhsT>, &Row<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_col_row!(Col<LhsC, LhsT, M>, RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(Col<LhsC, LhsT, M>, RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(Col<LhsC, LhsT, M>, Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(Col<LhsC, LhsT, M>, &RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(Col<LhsC, LhsT, M>, &RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(Col<LhsC, LhsT, M>, &Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&Col<LhsC, LhsT, M>, RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&Col<LhsC, LhsT, M>, RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&Col<LhsC, LhsT, M>, Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&Col<LhsC, LhsT, M>, &RowRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&Col<LhsC, LhsT, M>, &RowMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_col_row!(&Col<LhsC, LhsT, M>, &Row<RhsC, RhsT, N>, Mat<C, T, M, N>);
 
     impl<
             C: ComplexContainer,
@@ -1698,13 +2381,15 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<MatRef<'_, RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+            M: Shape,
+            N: Shape,
+        > Mul<MatRef<'_, RhsC, RhsT, M, N>> for DiagRef<'_, LhsC, LhsT, M>
     {
-        type Output = Mat<C, T>;
+        type Output = Mat<C, T, M, N>;
 
         #[track_caller]
         #[math]
-        fn mul(self, rhs: MatRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: MatRef<'_, RhsC, RhsT, M, N>) -> Self::Output {
             let lhs = self.column_vector();
             let lhs_dim = lhs.nrows();
             let rhs_nrows = rhs.nrows();
@@ -1721,43 +2406,43 @@ mod matmul {
     }
 
     // impl_mul!(DiagRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_diag_mat!(DiagRef<'_, LhsC, LhsT, M>, MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagRef<'_, LhsC, LhsT, M>, Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagRef<'_, LhsC, LhsT, M>, &MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagRef<'_, LhsC, LhsT, M>, &MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagRef<'_, LhsC, LhsT, M>, &Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagRef<'_, LhsC, LhsT, M>, MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagRef<'_, LhsC, LhsT, M>, MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagRef<'_, LhsC, LhsT, M>, Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagRef<'_, LhsC, LhsT, M>, &MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagRef<'_, LhsC, LhsT, M>, &MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagRef<'_, LhsC, LhsT, M>, &Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
 
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_diag_mat!(DiagMut<'_, LhsC, LhsT, M>, MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagMut<'_, LhsC, LhsT, M>, MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagMut<'_, LhsC, LhsT, M>, Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagMut<'_, LhsC, LhsT, M>, &MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagMut<'_, LhsC, LhsT, M>, &MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(DiagMut<'_, LhsC, LhsT, M>, &Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagMut<'_, LhsC, LhsT, M>, MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagMut<'_, LhsC, LhsT, M>, MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagMut<'_, LhsC, LhsT, M>, Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagMut<'_, LhsC, LhsT, M>, &MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagMut<'_, LhsC, LhsT, M>, &MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&DiagMut<'_, LhsC, LhsT, M>, &Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
 
-    impl_mul!(Diag<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_diag_mat!(Diag<LhsC, LhsT, M>, MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(Diag<LhsC, LhsT, M>, MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(Diag<LhsC, LhsT, M>, Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(Diag<LhsC, LhsT, M>, &MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(Diag<LhsC, LhsT, M>, &MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(Diag<LhsC, LhsT, M>, &Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&Diag<LhsC, LhsT, M>, MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&Diag<LhsC, LhsT, M>, MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&Diag<LhsC, LhsT, M>, Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&Diag<LhsC, LhsT, M>, &MatRef<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&Diag<LhsC, LhsT, M>, &MatMut<'_, RhsC, RhsT, M, N>, Mat<C, T, M, N>);
+    impl_mul_diag_mat!(&Diag<LhsC, LhsT, M>, &Mat<RhsC, RhsT, M, N>, Mat<C, T, M, N>);
 
     impl<
             C: ComplexContainer,
@@ -1766,13 +2451,14 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<ColRef<'_, RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+            M: Shape,
+        > Mul<ColRef<'_, RhsC, RhsT, M>> for DiagRef<'_, LhsC, LhsT, M>
     {
-        type Output = Col<C, T>;
+        type Output = Col<C, T, M>;
 
         #[track_caller]
         #[math]
-        fn mul(self, rhs: ColRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: ColRef<'_, RhsC, RhsT, M>) -> Self::Output {
             let lhs = self.column_vector();
             let lhs_dim = lhs.nrows();
             let rhs_nrows = rhs.nrows();
@@ -1784,43 +2470,43 @@ mod matmul {
     }
 
     // impl_mul!(DiagRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+    impl_mul_diag_col!(DiagRef<'_, LhsC, LhsT, M>, ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagRef<'_, LhsC, LhsT, M>, Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagRef<'_, LhsC, LhsT, M>, &ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagRef<'_, LhsC, LhsT, M>, &ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagRef<'_, LhsC, LhsT, M>, &Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagRef<'_, LhsC, LhsT, M>, ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagRef<'_, LhsC, LhsT, M>, ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagRef<'_, LhsC, LhsT, M>, Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagRef<'_, LhsC, LhsT, M>, &ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagRef<'_, LhsC, LhsT, M>, &ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagRef<'_, LhsC, LhsT, M>, &Col<RhsC, RhsT, M>, Col<C, T, M>);
 
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+    impl_mul_diag_col!(DiagMut<'_, LhsC, LhsT, M>, ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagMut<'_, LhsC, LhsT, M>, ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagMut<'_, LhsC, LhsT, M>, Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagMut<'_, LhsC, LhsT, M>, &ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagMut<'_, LhsC, LhsT, M>, &ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(DiagMut<'_, LhsC, LhsT, M>, &Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagMut<'_, LhsC, LhsT, M>, ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagMut<'_, LhsC, LhsT, M>, ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagMut<'_, LhsC, LhsT, M>, Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagMut<'_, LhsC, LhsT, M>, &ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagMut<'_, LhsC, LhsT, M>, &ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&DiagMut<'_, LhsC, LhsT, M>, &Col<RhsC, RhsT, M>, Col<C, T, M>);
 
-    impl_mul!(Diag<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+    impl_mul_diag_col!(Diag<LhsC, LhsT, M>, ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(Diag<LhsC, LhsT, M>, ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(Diag<LhsC, LhsT, M>, Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(Diag<LhsC, LhsT, M>, &ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(Diag<LhsC, LhsT, M>, &ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(Diag<LhsC, LhsT, M>, &Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&Diag<LhsC, LhsT, M>, ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&Diag<LhsC, LhsT, M>, ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&Diag<LhsC, LhsT, M>, Col<RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&Diag<LhsC, LhsT, M>, &ColRef<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&Diag<LhsC, LhsT, M>, &ColMut<'_, RhsC, RhsT, M>, Col<C, T, M>);
+    impl_mul_diag_col!(&Diag<LhsC, LhsT, M>, &Col<RhsC, RhsT, M>, Col<C, T, M>);
 
     impl<
             C: ComplexContainer,
@@ -1829,13 +2515,15 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<DiagRef<'_, RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+            M: Shape,
+            N: Shape,
+        > Mul<DiagRef<'_, RhsC, RhsT, N>> for MatRef<'_, LhsC, LhsT, M, N>
     {
-        type Output = Mat<C, T>;
+        type Output = Mat<C, T, M, N>;
 
         #[math]
         #[track_caller]
-        fn mul(self, rhs: DiagRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: DiagRef<'_, RhsC, RhsT, N>) -> Self::Output {
             let lhs = self;
             let rhs = rhs.column_vector();
             let lhs_ncols = lhs.ncols();
@@ -1854,43 +2542,43 @@ mod matmul {
     }
 
     // impl_mul!(MatRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_mat_diag!(MatRef<'_, LhsC, LhsT, M, N>, DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatRef<'_, LhsC, LhsT, M, N>, Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatRef<'_, LhsC, LhsT, M, N>, &DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatRef<'_, LhsC, LhsT, M, N>, &DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatRef<'_, LhsC, LhsT, M, N>, &Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatRef<'_, LhsC, LhsT, M, N>, DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatRef<'_, LhsC, LhsT, M, N>, DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatRef<'_, LhsC, LhsT, M, N>, Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatRef<'_, LhsC, LhsT, M, N>, &DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatRef<'_, LhsC, LhsT, M, N>, &DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatRef<'_, LhsC, LhsT, M, N>, &Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
 
-    impl_mul!(MatMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(MatMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&MatMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_mat_diag!(MatMut<'_, LhsC, LhsT, M, N>, DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatMut<'_, LhsC, LhsT, M, N>, DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatMut<'_, LhsC, LhsT, M, N>, Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatMut<'_, LhsC, LhsT, M, N>, &DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatMut<'_, LhsC, LhsT, M, N>, &DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(MatMut<'_, LhsC, LhsT, M, N>, &Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatMut<'_, LhsC, LhsT, M, N>, DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatMut<'_, LhsC, LhsT, M, N>, DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatMut<'_, LhsC, LhsT, M, N>, Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatMut<'_, LhsC, LhsT, M, N>, &DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatMut<'_, LhsC, LhsT, M, N>, &DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&MatMut<'_, LhsC, LhsT, M, N>, &Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
 
-    impl_mul!(Mat<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(Mat<LhsC, LhsT>, &Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, Diag<RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Mat<C, T>);
-    impl_mul!(&Mat<LhsC, LhsT>, &Diag<RhsC, RhsT>, Mat<C, T>);
+    impl_mul_mat_diag!(Mat<LhsC, LhsT, M, N>, DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(Mat<LhsC, LhsT, M, N>, DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(Mat<LhsC, LhsT, M, N>, Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(Mat<LhsC, LhsT, M, N>, &DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(Mat<LhsC, LhsT, M, N>, &DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(Mat<LhsC, LhsT, M, N>, &Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&Mat<LhsC, LhsT, M, N>, DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&Mat<LhsC, LhsT, M, N>, DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&Mat<LhsC, LhsT, M, N>, Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&Mat<LhsC, LhsT, M, N>, &DiagRef<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&Mat<LhsC, LhsT, M, N>, &DiagMut<'_, RhsC, RhsT, N>, Mat<C, T, M, N>);
+    impl_mul_mat_diag!(&Mat<LhsC, LhsT, M, N>, &Diag<RhsC, RhsT, N>, Mat<C, T, M, N>);
 
     impl<
             C: ComplexContainer,
@@ -1899,17 +2587,18 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<DiagRef<'_, RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+            N: Shape,
+        > Mul<DiagRef<'_, RhsC, RhsT, N>> for RowRef<'_, LhsC, LhsT, N>
     {
-        type Output = Row<C, T>;
+        type Output = Row<C, T, N>;
 
         #[math]
         #[track_caller]
-        fn mul(self, rhs: DiagRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: DiagRef<'_, RhsC, RhsT, N>) -> Self::Output {
             let lhs = self;
             let rhs = rhs.column_vector().transpose();
             let lhs_ncols = lhs.ncols();
-            let rhs_dim = rhs.nrows();
+            let rhs_dim = rhs.ncols();
             Assert!(lhs_ncols == rhs_dim);
 
             let ctx = &Ctx::<C, T>(T::MathCtx::default());
@@ -1918,43 +2607,43 @@ mod matmul {
     }
 
     // impl_mul!(RowRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Row<C, T>);
+    impl_mul_row_diag!(RowRef<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowRef<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowRef<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowRef<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowRef<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowRef<'_, LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowRef<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowRef<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowRef<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowRef<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowRef<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Row<C, T, N>);
 
-    impl_mul!(RowMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(RowMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&RowMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Row<C, T>);
+    impl_mul_row_diag!(RowMut<'_, LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowMut<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowMut<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowMut<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowMut<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(RowMut<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowMut<'_, LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowMut<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowMut<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowMut<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowMut<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&RowMut<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Row<C, T, N>);
 
-    impl_mul!(Row<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(Row<LhsC, LhsT>, &Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, Diag<RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Row<C, T>);
-    impl_mul!(&Row<LhsC, LhsT>, &Diag<RhsC, RhsT>, Row<C, T>);
+    impl_mul_row_diag!(Row<LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(Row<LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(Row<LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(Row<LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(Row<LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(Row<LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&Row<LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&Row<LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&Row<LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&Row<LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&Row<LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Row<C, T, N>);
+    impl_mul_row_diag!(&Row<LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Row<C, T, N>);
 
     impl<
             C: ComplexContainer,
@@ -1963,13 +2652,14 @@ mod matmul {
             T: ComplexField<C, MathCtx: Default>,
             LhsT: ConjUnit<Canonical = T>,
             RhsT: ConjUnit<Canonical = T>,
-        > Mul<DiagRef<'_, RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+            N: Shape,
+        > Mul<DiagRef<'_, RhsC, RhsT, N>> for DiagRef<'_, LhsC, LhsT, N>
     {
-        type Output = Diag<C, T>;
+        type Output = Diag<C, T, N>;
 
         #[track_caller]
         #[math]
-        fn mul(self, rhs: DiagRef<'_, RhsC, RhsT>) -> Self::Output {
+        fn mul(self, rhs: DiagRef<'_, RhsC, RhsT, N>) -> Self::Output {
             let lhs = self.column_vector();
             let rhs = rhs.column_vector();
             Assert!(lhs.nrows() == rhs.nrows());
@@ -1982,43 +2672,43 @@ mod matmul {
     }
 
     // impl_mul!(DiagRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagRef<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+    impl_mul_row_diag!(DiagRef<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagRef<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagRef<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagRef<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagRef<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagRef<'_, LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagRef<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagRef<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagRef<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagRef<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagRef<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Diag<C, T, N>);
 
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(DiagMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&DiagMut<'_, LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+    impl_mul_row_diag!(DiagMut<'_, LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagMut<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagMut<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagMut<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagMut<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(DiagMut<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagMut<'_, LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagMut<'_, LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagMut<'_, LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagMut<'_, LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagMut<'_, LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&DiagMut<'_, LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Diag<C, T, N>);
 
-    impl_mul!(Diag<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(Diag<LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-    impl_mul!(&Diag<LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+    impl_mul_row_diag!(Diag<LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(Diag<LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(Diag<LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(Diag<LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(Diag<LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(Diag<LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&Diag<LhsC, LhsT, N>, DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&Diag<LhsC, LhsT, N>, DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&Diag<LhsC, LhsT, N>, Diag<RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&Diag<LhsC, LhsT, N>, &DiagRef<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&Diag<LhsC, LhsT, N>, &DiagMut<'_, RhsC, RhsT, N>, Diag<C, T, N>);
+    impl_mul_row_diag!(&Diag<LhsC, LhsT, N>, &Diag<RhsC, RhsT, N>, Diag<C, T, N>);
 }
 
 impl<I: Index> Mul<PermRef<'_, I>> for PermRef<'_, I> {
@@ -2067,59 +2757,87 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Mul<MatRef<'_, CC, TT>> for PermRef<'_, I>
+        Rows: Shape,
+        Cols: Shape,
+    > Mul<MatRef<'_, CC, TT, Rows, Cols>> for PermRef<'_, I, Rows>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[track_caller]
     #[math]
-    fn mul(self, rhs: MatRef<'_, CC, TT>) -> Self::Output {
+    fn mul(self, rhs: MatRef<'_, CC, TT, Rows, Cols>) -> Self::Output {
         let lhs = self;
 
         Assert!(lhs.len() == rhs.nrows());
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let mut out = Mat::zeros_with_ctx(ctx, rhs.nrows(), rhs.ncols());
-        let fwd = lhs.arrays().0;
 
-        for j in 0..rhs.ncols() {
-            for (i, fwd) in fwd.iter().enumerate() {
-                let rhs = rhs.at(fwd.to_signed().zx(), j);
-                help!(C);
-                math(write1!(
-                    out.as_mut().write(i, j),
-                    Conj::apply::<CC, TT>(ctx, rhs)
-                ));
+        fn imp<
+            'ROWS,
+            'COLS,
+            I: Index,
+            C: ComplexContainer,
+            CC: Container<Canonical = C>,
+            T: ComplexField<C, MathCtx: Default>,
+            TT: ConjUnit<Canonical = T>,
+        >(
+            mut out: MatMut<'_, C, T, Dim<'ROWS>, Dim<'COLS>>,
+            lhs: PermRef<'_, I, Dim<'ROWS>>,
+            rhs: MatRef<'_, CC, TT, Dim<'ROWS>, Dim<'COLS>>,
+        ) {
+            let ctx = &Ctx::<C, T>(T::MathCtx::default());
+            let fwd = lhs.bound_arrays().0;
+
+            for j in rhs.ncols().indices() {
+                for i in rhs.nrows().indices() {
+                    let fwd = fwd[i];
+                    let rhs = rhs.at(fwd.zx(), j);
+                    help!(C);
+                    math(write1!(
+                        out.as_mut().write(i, j),
+                        Conj::apply::<CC, TT>(ctx, rhs)
+                    ));
+                }
             }
         }
+
+        with_dim!(M, out.nrows().unbound());
+        with_dim!(N, out.ncols().unbound());
+        imp(
+            out.as_mut().as_shape_mut(M, N),
+            lhs.as_shape(M),
+            rhs.as_shape(M, N),
+        );
+
         out
     }
 }
 
 // impl_perm!(PermRef<'_, I>, MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(PermRef<'_, I>, MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(PermRef<'_, I>, Mat<CC, TT>, Mat<C, T>);
-impl_perm!(PermRef<'_, I>, &MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(PermRef<'_, I>, &MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(PermRef<'_, I>, &Mat<CC, TT>, Mat<C, T>);
-impl_perm!(&PermRef<'_, I>, MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&PermRef<'_, I>, MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&PermRef<'_, I>, Mat<CC, TT>, Mat<C, T>);
-impl_perm!(&PermRef<'_, I>, &MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&PermRef<'_, I>, &MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&PermRef<'_, I>, &Mat<CC, TT>, Mat<C, T>);
+impl_perm!(PermRef<'_, I, Rows>, MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(PermRef<'_, I, Rows>, Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(PermRef<'_, I, Rows>, &MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(PermRef<'_, I, Rows>, &MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(PermRef<'_, I, Rows>, &Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&PermRef<'_, I, Rows>, MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&PermRef<'_, I, Rows>, MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&PermRef<'_, I, Rows>, Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&PermRef<'_, I, Rows>, &MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&PermRef<'_, I, Rows>, &MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&PermRef<'_, I, Rows>, &Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
-impl_perm!(Perm<I>, MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(Perm<I>, MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(Perm<I>, Mat<CC, TT>, Mat<C, T>);
-impl_perm!(Perm<I>, &MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(Perm<I>, &MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(Perm<I>, &Mat<CC, TT>, Mat<C, T>);
-impl_perm!(&Perm<I>, MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&Perm<I>, MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&Perm<I>, Mat<CC, TT>, Mat<C, T>);
-impl_perm!(&Perm<I>, &MatRef<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&Perm<I>, &MatMut<'_, CC, TT>, Mat<C, T>);
-impl_perm!(&Perm<I>, &Mat<CC, TT>, Mat<C, T>);
+impl_perm!(Perm<I, Rows>, MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Perm<I, Rows>, MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Perm<I, Rows>, Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Perm<I, Rows>, &MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Perm<I, Rows>, &MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Perm<I, Rows>, &Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Perm<I, Rows>, MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Perm<I, Rows>, MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Perm<I, Rows>, Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Perm<I, Rows>, &MatRef<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Perm<I, Rows>, &MatMut<'_, CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Perm<I, Rows>, &Mat<CC, TT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
 impl<
         I: Index,
@@ -2127,57 +2845,82 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Mul<ColRef<'_, CC, TT>> for PermRef<'_, I>
+        Len: Shape,
+    > Mul<ColRef<'_, CC, TT, Len>> for PermRef<'_, I, Len>
 {
-    type Output = Col<C, T>;
+    type Output = Col<C, T, Len>;
 
     #[track_caller]
     #[math]
-    fn mul(self, rhs: ColRef<'_, CC, TT>) -> Self::Output {
+    fn mul(self, rhs: ColRef<'_, CC, TT, Len>) -> Self::Output {
         let lhs = self;
 
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         Assert!(lhs.len() == rhs.nrows());
         let mut out = Col::zeros_with_ctx(ctx, rhs.nrows());
-        let fwd = lhs.arrays().0;
 
-        for (i, fwd) in fwd.iter().enumerate() {
-            let rhs = rhs.at(fwd.to_signed().zx());
-            help!(C);
-            math(write1!(
-                out.as_mut().at_mut(i),
-                Conj::apply::<CC, TT>(ctx, rhs)
-            ));
+        fn imp<
+            'ROWS,
+            I: Index,
+            C: ComplexContainer,
+            CC: Container<Canonical = C>,
+            T: ComplexField<C, MathCtx: Default>,
+            TT: ConjUnit<Canonical = T>,
+        >(
+            mut out: ColMut<'_, C, T, Dim<'ROWS>>,
+            lhs: PermRef<'_, I, Dim<'ROWS>>,
+            rhs: ColRef<'_, CC, TT, Dim<'ROWS>>,
+        ) {
+            let ctx = &Ctx::<C, T>(T::MathCtx::default());
+            let fwd = lhs.bound_arrays().0;
+
+            for i in rhs.nrows().indices() {
+                let fwd = fwd[i];
+                let rhs = rhs.at(fwd.zx());
+                help!(C);
+                math(write1!(
+                    out.as_mut().at_mut(i),
+                    Conj::apply::<CC, TT>(ctx, rhs)
+                ));
+            }
         }
+
+        with_dim!(M, out.nrows().unbound());
+        imp(
+            out.as_mut().as_row_shape_mut(M),
+            lhs.as_shape(M),
+            rhs.as_row_shape(M),
+        );
+
         out
     }
 }
 
 // impl_perm!(PermRef<'_, I>, ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(PermRef<'_, I>, ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(PermRef<'_, I>, Col<CC, TT>, Col<C, T>);
-impl_perm!(PermRef<'_, I>, &ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(PermRef<'_, I>, &ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(PermRef<'_, I>, &Col<CC, TT>, Col<C, T>);
-impl_perm!(&PermRef<'_, I>, ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(&PermRef<'_, I>, ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(&PermRef<'_, I>, Col<CC, TT>, Col<C, T>);
-impl_perm!(&PermRef<'_, I>, &ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(&PermRef<'_, I>, &ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(&PermRef<'_, I>, &Col<CC, TT>, Col<C, T>);
+impl_1d_perm!(PermRef<'_, I, Len>, ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(PermRef<'_, I, Len>, Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(PermRef<'_, I, Len>, &ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(PermRef<'_, I, Len>, &ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(PermRef<'_, I, Len>, &Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&PermRef<'_, I, Len>, ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&PermRef<'_, I, Len>, ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&PermRef<'_, I, Len>, Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&PermRef<'_, I, Len>, &ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&PermRef<'_, I, Len>, &ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&PermRef<'_, I, Len>, &Col<CC, TT, Len>, Col<C, T, Len>);
 
-impl_perm!(Perm<I>, ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(Perm<I>, ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(Perm<I>, Col<CC, TT>, Col<C, T>);
-impl_perm!(Perm<I>, &ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(Perm<I>, &ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(Perm<I>, &Col<CC, TT>, Col<C, T>);
-impl_perm!(&Perm<I>, ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(&Perm<I>, ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(&Perm<I>, Col<CC, TT>, Col<C, T>);
-impl_perm!(&Perm<I>, &ColRef<'_, CC, TT>, Col<C, T>);
-impl_perm!(&Perm<I>, &ColMut<'_, CC, TT>, Col<C, T>);
-impl_perm!(&Perm<I>, &Col<CC, TT>, Col<C, T>);
+impl_1d_perm!(Perm<I, Len>, ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(Perm<I, Len>, ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(Perm<I, Len>, Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(Perm<I, Len>, &ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(Perm<I, Len>, &ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(Perm<I, Len>, &Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&Perm<I, Len>, ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&Perm<I, Len>, ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&Perm<I, Len>, Col<CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&Perm<I, Len>, &ColRef<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&Perm<I, Len>, &ColMut<'_, CC, TT, Len>, Col<C, T, Len>);
+impl_1d_perm!(&Perm<I, Len>, &Col<CC, TT, Len>, Col<C, T, Len>);
 
 impl<
         I: Index,
@@ -2185,61 +2928,85 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Mul<PermRef<'_, I>> for MatRef<'_, CC, TT>
+        Rows: Shape,
+        Cols: Shape,
+    > Mul<PermRef<'_, I, Cols>> for MatRef<'_, CC, TT, Rows, Cols>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[track_caller]
     #[math]
-    fn mul(self, rhs: PermRef<'_, I>) -> Self::Output {
+    fn mul(self, rhs: PermRef<'_, I, Cols>) -> Self::Output {
         let lhs = self;
 
         Assert!(lhs.ncols() == rhs.len());
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let mut out = Mat::zeros_with_ctx(ctx, lhs.nrows(), lhs.ncols());
-        let inv = rhs.arrays().1;
 
-        for (j, inv) in inv.iter().enumerate() {
-            for i in 0..lhs.nrows() {
-                let lhs = lhs.at(i, inv.to_signed().zx());
+        fn imp<
+            'ROWS,
+            'COLS,
+            I: Index,
+            C: ComplexContainer,
+            CC: Container<Canonical = C>,
+            T: ComplexField<C, MathCtx: Default>,
+            TT: ConjUnit<Canonical = T>,
+        >(
+            mut out: MatMut<'_, C, T, Dim<'ROWS>, Dim<'COLS>>,
+            lhs: MatRef<'_, CC, TT, Dim<'ROWS>, Dim<'COLS>>,
+            rhs: PermRef<'_, I, Dim<'COLS>>,
+        ) {
+            let ctx = &Ctx::<C, T>(T::MathCtx::default());
+            let inv = rhs.bound_arrays().1;
 
-                help!(C);
-                math(write1!(
-                    out.as_mut().at_mut(i, j),
-                    Conj::apply::<CC, TT>(ctx, lhs)
-                ));
+            for j in lhs.ncols().indices() {
+                let inv = inv[j];
+                for i in lhs.nrows().indices() {
+                    let lhs = lhs.at(i, inv.zx());
+
+                    help!(C);
+                    math(write1!(
+                        out.as_mut().at_mut(i, j),
+                        Conj::apply::<CC, TT>(ctx, lhs)
+                    ));
+                }
             }
         }
+
+        with_dim!(M, out.nrows().unbound());
+        with_dim!(N, out.ncols().unbound());
+        imp(out.as_shape_mut(M, N), lhs.as_shape(M, N), rhs.as_shape(N));
+
         out
     }
 }
 
 // impl_perm!(MatRef<'_, CC, TT>, PermRef<'_, I>, Mat<C, T>);
-impl_perm!(MatRef<'_, CC, TT>, Perm<I>, Mat<C, T>);
-impl_perm!(MatRef<'_, CC, TT>, &PermRef<'_, I>, Mat<C, T>);
-impl_perm!(MatRef<'_, CC, TT>, &Perm<I>, Mat<C, T>);
-impl_perm!(&MatRef<'_, CC, TT>, PermRef<'_, I>, Mat<C, T>);
-impl_perm!(&MatRef<'_, CC, TT>, Perm<I>, Mat<C, T>);
-impl_perm!(&MatRef<'_, CC, TT>, &PermRef<'_, I>, Mat<C, T>);
-impl_perm!(&MatRef<'_, CC, TT>, &Perm<I>, Mat<C, T>);
+impl_perm!(MatRef<'_, CC, TT, Rows, Cols>, Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(MatRef<'_, CC, TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(MatRef<'_, CC, TT, Rows, Cols>, &Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatRef<'_, CC, TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatRef<'_, CC, TT, Rows, Cols>, Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatRef<'_, CC, TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatRef<'_, CC, TT, Rows, Cols>, &Perm<I, Cols>, Mat<C, T, Rows, Cols>);
 
-impl_perm!(MatMut<'_, CC, TT>, PermRef<'_, I>, Mat<C, T>);
-impl_perm!(MatMut<'_, CC, TT>, Perm<I>, Mat<C, T>);
-impl_perm!(MatMut<'_, CC, TT>, &PermRef<'_, I>, Mat<C, T>);
-impl_perm!(MatMut<'_, CC, TT>, &Perm<I>, Mat<C, T>);
-impl_perm!(&MatMut<'_, CC, TT>, PermRef<'_, I>, Mat<C, T>);
-impl_perm!(&MatMut<'_, CC, TT>, Perm<I>, Mat<C, T>);
-impl_perm!(&MatMut<'_, CC, TT>, &PermRef<'_, I>, Mat<C, T>);
-impl_perm!(&MatMut<'_, CC, TT>, &Perm<I>, Mat<C, T>);
+impl_perm!(MatMut<'_, CC, TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(MatMut<'_, CC, TT, Rows, Cols>, Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(MatMut<'_, CC, TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(MatMut<'_, CC, TT, Rows, Cols>, &Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatMut<'_, CC, TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatMut<'_, CC, TT, Rows, Cols>, Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatMut<'_, CC, TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&MatMut<'_, CC, TT, Rows, Cols>, &Perm<I, Cols>, Mat<C, T, Rows, Cols>);
 
-impl_perm!(Mat<CC, TT>, PermRef<'_, I>, Mat<C, T>);
-impl_perm!(Mat<CC, TT>, Perm<I>, Mat<C, T>);
-impl_perm!(Mat<CC, TT>, &PermRef<'_, I>, Mat<C, T>);
-impl_perm!(Mat<CC, TT>, &Perm<I>, Mat<C, T>);
-impl_perm!(&Mat<CC, TT>, PermRef<'_, I>, Mat<C, T>);
-impl_perm!(&Mat<CC, TT>, Perm<I>, Mat<C, T>);
-impl_perm!(&Mat<CC, TT>, &PermRef<'_, I>, Mat<C, T>);
-impl_perm!(&Mat<CC, TT>, &Perm<I>, Mat<C, T>);
+impl_perm!(Mat<CC, TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Mat<CC, TT, Rows, Cols>, Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Mat<CC, TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(Mat<CC, TT, Rows, Cols>, &Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Mat<CC, TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Mat<CC, TT, Rows, Cols>, Perm<I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Mat<CC, TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat<C, T, Rows, Cols>);
+impl_perm!(&Mat<CC, TT, Rows, Cols>, &Perm<I, Cols>, Mat<C, T, Rows, Cols>);
 
 impl<
         I: Index,
@@ -2247,59 +3014,83 @@ impl<
         CC: Container<Canonical = C>,
         T: ComplexField<C, MathCtx: Default>,
         TT: ConjUnit<Canonical = T>,
-    > Mul<PermRef<'_, I>> for RowRef<'_, CC, TT>
+        Len: Shape,
+    > Mul<PermRef<'_, I, Len>> for RowRef<'_, CC, TT, Len>
 {
-    type Output = Row<C, T>;
+    type Output = Row<C, T, Len>;
 
     #[track_caller]
     #[math]
-    fn mul(self, rhs: PermRef<'_, I>) -> Self::Output {
+    fn mul(self, rhs: PermRef<'_, I, Len>) -> Self::Output {
         let lhs = self;
 
         Assert!(lhs.ncols() == rhs.len());
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let mut out = Row::zeros_with_ctx(ctx, lhs.ncols());
-        let inv = rhs.arrays().1;
 
-        for (j, inv) in inv.iter().enumerate() {
-            let lhs = lhs.at(inv.to_signed().zx());
+        fn imp<
+            'COLS,
+            I: Index,
+            C: ComplexContainer,
+            CC: Container<Canonical = C>,
+            T: ComplexField<C, MathCtx: Default>,
+            TT: ConjUnit<Canonical = T>,
+        >(
+            mut out: RowMut<'_, C, T, Dim<'COLS>>,
+            lhs: RowRef<'_, CC, TT, Dim<'COLS>>,
+            rhs: PermRef<'_, I, Dim<'COLS>>,
+        ) {
+            let ctx = &Ctx::<C, T>(T::MathCtx::default());
+            let inv = rhs.bound_arrays().1;
 
-            help!(C);
-            math(write1!(
-                out.as_mut().at_mut(j),
-                Conj::apply::<CC, TT>(ctx, lhs)
-            ));
+            for j in lhs.ncols().indices() {
+                let inv = inv[j];
+                let lhs = lhs.at(inv.zx());
+
+                help!(C);
+                math(write1!(
+                    out.as_mut().at_mut(j),
+                    Conj::apply::<CC, TT>(ctx, lhs)
+                ));
+            }
         }
+
+        with_dim!(N, out.ncols().unbound());
+        imp(
+            out.as_col_shape_mut(N),
+            lhs.as_col_shape(N),
+            rhs.as_shape(N),
+        );
         out
     }
 }
 
 // impl_perm!(RowRef<'_, CC, TT>, PermRef<'_, I>, Row<C, T>);
-impl_perm!(RowRef<'_, CC, TT>, Perm<I>, Row<C, T>);
-impl_perm!(RowRef<'_, CC, TT>, &PermRef<'_, I>, Row<C, T>);
-impl_perm!(RowRef<'_, CC, TT>, &Perm<I>, Row<C, T>);
-impl_perm!(&RowRef<'_, CC, TT>, PermRef<'_, I>, Row<C, T>);
-impl_perm!(&RowRef<'_, CC, TT>, Perm<I>, Row<C, T>);
-impl_perm!(&RowRef<'_, CC, TT>, &PermRef<'_, I>, Row<C, T>);
-impl_perm!(&RowRef<'_, CC, TT>, &Perm<I>, Row<C, T>);
+impl_1d_perm!(RowRef<'_, CC, TT, Len>, Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(RowRef<'_, CC, TT, Len>, &PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(RowRef<'_, CC, TT, Len>, &Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowRef<'_, CC, TT, Len>, PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowRef<'_, CC, TT, Len>, Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowRef<'_, CC, TT, Len>, &PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowRef<'_, CC, TT, Len>, &Perm<I, Len>, Row<C, T, Len>);
 
-impl_perm!(RowMut<'_, CC, TT>, PermRef<'_, I>, Row<C, T>);
-impl_perm!(RowMut<'_, CC, TT>, Perm<I>, Row<C, T>);
-impl_perm!(RowMut<'_, CC, TT>, &PermRef<'_, I>, Row<C, T>);
-impl_perm!(RowMut<'_, CC, TT>, &Perm<I>, Row<C, T>);
-impl_perm!(&RowMut<'_, CC, TT>, PermRef<'_, I>, Row<C, T>);
-impl_perm!(&RowMut<'_, CC, TT>, Perm<I>, Row<C, T>);
-impl_perm!(&RowMut<'_, CC, TT>, &PermRef<'_, I>, Row<C, T>);
-impl_perm!(&RowMut<'_, CC, TT>, &Perm<I>, Row<C, T>);
+impl_1d_perm!(RowMut<'_, CC, TT, Len>, PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(RowMut<'_, CC, TT, Len>, Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(RowMut<'_, CC, TT, Len>, &PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(RowMut<'_, CC, TT, Len>, &Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowMut<'_, CC, TT, Len>, PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowMut<'_, CC, TT, Len>, Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowMut<'_, CC, TT, Len>, &PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&RowMut<'_, CC, TT, Len>, &Perm<I, Len>, Row<C, T, Len>);
 
-impl_perm!(Row<CC, TT>, PermRef<'_, I>, Row<C, T>);
-impl_perm!(Row<CC, TT>, Perm<I>, Row<C, T>);
-impl_perm!(Row<CC, TT>, &PermRef<'_, I>, Row<C, T>);
-impl_perm!(Row<CC, TT>, &Perm<I>, Row<C, T>);
-impl_perm!(&Row<CC, TT>, PermRef<'_, I>, Row<C, T>);
-impl_perm!(&Row<CC, TT>, Perm<I>, Row<C, T>);
-impl_perm!(&Row<CC, TT>, &PermRef<'_, I>, Row<C, T>);
-impl_perm!(&Row<CC, TT>, &Perm<I>, Row<C, T>);
+impl_1d_perm!(Row<CC, TT, Len>, PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(Row<CC, TT, Len>, Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(Row<CC, TT, Len>, &PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(Row<CC, TT, Len>, &Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&Row<CC, TT, Len>, PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&Row<CC, TT, Len>, Perm<I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&Row<CC, TT, Len>, &PermRef<'_, I, Len>, Row<C, T, Len>);
+impl_1d_perm!(&Row<CC, TT, Len>, &Perm<I, Len>, Row<C, T, Len>);
 
 impl<
         C: ComplexContainer,
@@ -2308,9 +3099,11 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<ScaleGeneric<RhsC, RhsT>> for MatRef<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > Mul<ScaleGeneric<RhsC, RhsT>> for MatRef<'_, LhsC, LhsT, Rows, Cols>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[math]
     fn mul(self, rhs: ScaleGeneric<RhsC, RhsT>) -> Self::Output {
@@ -2328,12 +3121,14 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<MatRef<'_, RhsC, RhsT>> for ScaleGeneric<LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > Mul<MatRef<'_, RhsC, RhsT, Rows, Cols>> for ScaleGeneric<LhsC, LhsT>
 {
-    type Output = Mat<C, T>;
+    type Output = Mat<C, T, Rows, Cols>;
 
     #[math]
-    fn mul(self, rhs: MatRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn mul(self, rhs: MatRef<'_, RhsC, RhsT, Rows, Cols>) -> Self::Output {
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let lhs = Conj::apply_val::<LhsC, LhsT>(ctx, &self.0);
         zipped!(rhs).mapC::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
@@ -2347,9 +3142,10 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<ScaleGeneric<RhsC, RhsT>> for ColRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Mul<ScaleGeneric<RhsC, RhsT>> for ColRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Col<C, T>;
+    type Output = Col<C, T, Len>;
 
     #[math]
     fn mul(self, rhs: ScaleGeneric<RhsC, RhsT>) -> Self::Output {
@@ -2366,12 +3162,13 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<ColRef<'_, RhsC, RhsT>> for ScaleGeneric<LhsC, LhsT>
+        Len: Shape,
+    > Mul<ColRef<'_, RhsC, RhsT, Len>> for ScaleGeneric<LhsC, LhsT>
 {
-    type Output = Col<C, T>;
+    type Output = Col<C, T, Len>;
 
     #[math]
-    fn mul(self, rhs: ColRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn mul(self, rhs: ColRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let lhs = Conj::apply_val::<LhsC, LhsT>(ctx, &self.0);
         zipped!(rhs).mapC::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
@@ -2385,9 +3182,10 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<ScaleGeneric<RhsC, RhsT>> for RowRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Mul<ScaleGeneric<RhsC, RhsT>> for RowRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Row<C, T>;
+    type Output = Row<C, T, Len>;
 
     #[math]
     fn mul(self, rhs: ScaleGeneric<RhsC, RhsT>) -> Self::Output {
@@ -2404,12 +3202,13 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<RowRef<'_, RhsC, RhsT>> for ScaleGeneric<LhsC, LhsT>
+        Len: Shape,
+    > Mul<RowRef<'_, RhsC, RhsT, Len>> for ScaleGeneric<LhsC, LhsT>
 {
-    type Output = Row<C, T>;
+    type Output = Row<C, T, Len>;
 
     #[math]
-    fn mul(self, rhs: RowRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn mul(self, rhs: RowRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let lhs = Conj::apply_val::<LhsC, LhsT>(ctx, &self.0);
         zipped!(rhs).mapC::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
@@ -2423,9 +3222,10 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<ScaleGeneric<RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT>
+        Len: Shape,
+    > Mul<ScaleGeneric<RhsC, RhsT>> for DiagRef<'_, LhsC, LhsT, Len>
 {
-    type Output = Diag<C, T>;
+    type Output = Diag<C, T, Len>;
 
     fn mul(self, rhs: ScaleGeneric<RhsC, RhsT>) -> Self::Output {
         (self.column_vector() * rhs).into_diagonal()
@@ -2438,133 +3238,129 @@ impl<
         T: ComplexField<C, MathCtx: Default>,
         LhsT: ConjUnit<Canonical = T>,
         RhsT: ConjUnit<Canonical = T>,
-    > Mul<DiagRef<'_, RhsC, RhsT>> for ScaleGeneric<LhsC, LhsT>
+        Len: Shape,
+    > Mul<DiagRef<'_, RhsC, RhsT, Len>> for ScaleGeneric<LhsC, LhsT>
 {
-    type Output = Diag<C, T>;
+    type Output = Diag<C, T, Len>;
 
-    fn mul(self, rhs: DiagRef<'_, RhsC, RhsT>) -> Self::Output {
+    fn mul(self, rhs: DiagRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         (self * rhs.column_vector()).into_diagonal()
     }
 }
 
-// impl_mul_scalar!(MatRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_mul_scalar!(MatMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_mul_scalar!(Mat<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_mul_scalar!(&MatRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_mul_scalar!(&MatMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_mul_scalar!(&Mat<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
+impl_mul_scalar!(MatMut<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_mul_scalar!(Mat<LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_mul_scalar!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_mul_scalar!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_mul_scalar!(&Mat<LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
 
-impl_div_scalar!(MatRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_div_scalar!(MatMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_div_scalar!(Mat<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_div_scalar!(&MatRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_div_scalar!(&MatMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
-impl_div_scalar!(&Mat<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Mat<C, T>);
+impl_div_scalar!(MatRef<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_div_scalar!(MatMut<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_div_scalar!(Mat<LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_div_scalar!(&MatRef<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_div_scalar!(&MatMut<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
+impl_div_scalar!(&Mat<LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>, Mat<C, T, Rows, Cols>);
 
-// impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Mat<RhsC, RhsT>, Mat<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Mat<RhsC, RhsT>, Mat<C, T>);
+impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
-impl_mul_primitive!(MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_mul_primitive!(MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_mul_primitive!(Mat<RhsC, RhsT>, Mat<C, T>);
-impl_mul_primitive!(&MatRef<'_, RhsC, RhsT>, Mat<C, T>);
-impl_mul_primitive!(&MatMut<'_, RhsC, RhsT>, Mat<C, T>);
-impl_mul_primitive!(&Mat<RhsC, RhsT>, Mat<C, T>);
+impl_mul_primitive!(MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_mul_primitive!(MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_mul_primitive!(Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_mul_primitive!(&MatRef<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_mul_primitive!(&MatMut<'_, RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
+impl_mul_primitive!(&Mat<RhsC, RhsT, Rows, Cols>, Mat<C, T, Rows, Cols>);
 
 // impl_mul_scalar!(ColRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_mul_scalar!(ColMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_mul_scalar!(Col<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_mul_scalar!(&ColRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_mul_scalar!(&ColMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_mul_scalar!(&Col<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
+impl_1d_mul_scalar!(ColMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_mul_scalar!(Col<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_mul_scalar!(&ColRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_mul_scalar!(&ColMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_mul_scalar!(&Col<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
 
-impl_div_scalar!(ColRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_div_scalar!(ColMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_div_scalar!(Col<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_div_scalar!(&ColRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_div_scalar!(&ColMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
-impl_div_scalar!(&Col<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Col<C, T>);
+impl_1d_div_scalar!(ColRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_div_scalar!(ColMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_div_scalar!(Col<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_div_scalar!(&ColRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_div_scalar!(&ColMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
+impl_1d_div_scalar!(&Col<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Col<C, T, Len>);
 
-// impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Col<RhsC, RhsT>, Col<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Col<RhsC, RhsT>, Col<C, T>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Col<RhsC, RhsT, Len>, Col<C, T, Len>);
 
-impl_mul_primitive!(ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_mul_primitive!(ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_mul_primitive!(Col<RhsC, RhsT>, Col<C, T>);
-impl_mul_primitive!(&ColRef<'_, RhsC, RhsT>, Col<C, T>);
-impl_mul_primitive!(&ColMut<'_, RhsC, RhsT>, Col<C, T>);
-impl_mul_primitive!(&Col<RhsC, RhsT>, Col<C, T>);
+impl_1d_mul_primitive!(ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_mul_primitive!(ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_mul_primitive!(Col<RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_mul_primitive!(&ColRef<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_mul_primitive!(&ColMut<'_, RhsC, RhsT, Len>, Col<C, T, Len>);
+impl_1d_mul_primitive!(&Col<RhsC, RhsT, Len>, Col<C, T, Len>);
 
-// impl_mul_scalar!(RowRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_mul_scalar!(RowMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_mul_scalar!(Row<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_mul_scalar!(&RowRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_mul_scalar!(&RowMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_mul_scalar!(&Row<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
+impl_1d_mul_scalar!(RowMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_mul_scalar!(Row<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_mul_scalar!(&RowRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_mul_scalar!(&RowMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_mul_scalar!(&Row<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
 
-impl_div_scalar!(RowRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_div_scalar!(RowMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_div_scalar!(Row<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_div_scalar!(&RowRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_div_scalar!(&RowMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
-impl_div_scalar!(&Row<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Row<C, T>);
+impl_1d_div_scalar!(RowRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_div_scalar!(RowMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_div_scalar!(Row<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_div_scalar!(&RowRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_div_scalar!(&RowMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
+impl_1d_div_scalar!(&Row<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Row<C, T, Len>);
 
-// impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Row<RhsC, RhsT>, Row<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Row<RhsC, RhsT>, Row<C, T>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Row<RhsC, RhsT, Len>, Row<C, T, Len>);
 
-impl_mul_primitive!(RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_mul_primitive!(RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_mul_primitive!(Row<RhsC, RhsT>, Row<C, T>);
-impl_mul_primitive!(&RowRef<'_, RhsC, RhsT>, Row<C, T>);
-impl_mul_primitive!(&RowMut<'_, RhsC, RhsT>, Row<C, T>);
-impl_mul_primitive!(&Row<RhsC, RhsT>, Row<C, T>);
+impl_1d_mul_primitive!(RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_mul_primitive!(RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_mul_primitive!(Row<RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_mul_primitive!(&RowRef<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_mul_primitive!(&RowMut<'_, RhsC, RhsT, Len>, Row<C, T, Len>);
+impl_1d_mul_primitive!(&Row<RhsC, RhsT, Len>, Row<C, T, Len>);
 
-// impl_mul_scalar!(DiagRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_mul_scalar!(DiagMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_mul_scalar!(Diag<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_mul_scalar!(&DiagRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_mul_scalar!(&DiagMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_mul_scalar!(&Diag<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
+impl_1d_mul_scalar!(DiagMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_mul_scalar!(Diag<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_mul_scalar!(&DiagRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_mul_scalar!(&DiagMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_mul_scalar!(&Diag<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
 
-impl_div_scalar!(DiagRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_div_scalar!(DiagMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_div_scalar!(Diag<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_div_scalar!(&DiagRef<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_div_scalar!(&DiagMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
-impl_div_scalar!(&Diag<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>, Diag<C, T>);
+impl_1d_div_scalar!(DiagRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_div_scalar!(DiagMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_div_scalar!(Diag<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_div_scalar!(&DiagRef<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_div_scalar!(&DiagMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
+impl_1d_div_scalar!(&Diag<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>, Diag<C, T, Len>);
 
-// impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Diag<RhsC, RhsT>, Diag<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Diag<RhsC, RhsT>, Diag<C, T>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_scalar_mul!(ScaleGeneric<LhsC, LhsT>, &Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
 
-impl_mul_primitive!(DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_mul_primitive!(DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_mul_primitive!(Diag<RhsC, RhsT>, Diag<C, T>);
-impl_mul_primitive!(&DiagRef<'_, RhsC, RhsT>, Diag<C, T>);
-impl_mul_primitive!(&DiagMut<'_, RhsC, RhsT>, Diag<C, T>);
-impl_mul_primitive!(&Diag<RhsC, RhsT>, Diag<C, T>);
+impl_1d_mul_primitive!(DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_mul_primitive!(DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_mul_primitive!(Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_mul_primitive!(&DiagRef<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_mul_primitive!(&DiagMut<'_, RhsC, RhsT, Len>, Diag<C, T, Len>);
+impl_1d_mul_primitive!(&Diag<RhsC, RhsT, Len>, Diag<C, T, Len>);
 
 impl<
         LhsC: ComplexContainer,
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > MulAssign<ScaleGeneric<RhsC, RhsT>> for MatMut<'_, LhsC, LhsT>
+        Rows: Shape,
+        Cols: Shape,
+    > MulAssign<ScaleGeneric<RhsC, RhsT>> for MatMut<'_, LhsC, LhsT, Rows, Cols>
 {
     #[math]
     fn mul_assign(&mut self, rhs: ScaleGeneric<RhsC, RhsT>) {
@@ -2580,7 +3376,8 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > MulAssign<ScaleGeneric<RhsC, RhsT>> for ColMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > MulAssign<ScaleGeneric<RhsC, RhsT>> for ColMut<'_, LhsC, LhsT, Len>
 {
     #[math]
     fn mul_assign(&mut self, rhs: ScaleGeneric<RhsC, RhsT>) {
@@ -2596,7 +3393,8 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > MulAssign<ScaleGeneric<RhsC, RhsT>> for RowMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > MulAssign<ScaleGeneric<RhsC, RhsT>> for RowMut<'_, LhsC, LhsT, Len>
 {
     #[math]
     fn mul_assign(&mut self, rhs: ScaleGeneric<RhsC, RhsT>) {
@@ -2612,7 +3410,8 @@ impl<
         RhsC: Container<Canonical = LhsC>,
         LhsT: ComplexField<LhsC, MathCtx: Default>,
         RhsT: ConjUnit<Canonical = LhsT>,
-    > MulAssign<ScaleGeneric<RhsC, RhsT>> for DiagMut<'_, LhsC, LhsT>
+        Len: Shape,
+    > MulAssign<ScaleGeneric<RhsC, RhsT>> for DiagMut<'_, LhsC, LhsT, Len>
 {
     fn mul_assign(&mut self, rhs: ScaleGeneric<RhsC, RhsT>) {
         let mut this = self.rb_mut().column_vector_mut();
@@ -2620,32 +3419,28 @@ impl<
     }
 }
 
-// impl_mul_assign_scalar!(MatMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_mul_assign_scalar!(Mat<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-// impl_mul_assign_scalar!(ColMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_mul_assign_scalar!(Col<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-// impl_mul_assign_scalar!(RowMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_mul_assign_scalar!(Row<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-// impl_mul_assign_scalar!(DiagMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_mul_assign_scalar!(Diag<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
+impl_mul_assign_scalar!(Mat<LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_mul_assign_scalar!(Col<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_mul_assign_scalar!(Row<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_mul_assign_scalar!(Diag<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
 
-impl_div_assign_scalar!(MatMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(Mat<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(ColMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(Col<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(RowMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(Row<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(DiagMut<'_, LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
-impl_div_assign_scalar!(Diag<LhsC, LhsT>, ScaleGeneric<RhsC, RhsT>);
+impl_div_assign_scalar!(MatMut<'_, LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>);
+impl_div_assign_scalar!(Mat<LhsC, LhsT, Rows, Cols>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_div_assign_scalar!(ColMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_div_assign_scalar!(Col<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_div_assign_scalar!(RowMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_div_assign_scalar!(Row<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_div_assign_scalar!(DiagMut<'_, LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
+impl_1d_div_assign_scalar!(Diag<LhsC, LhsT, Len>, ScaleGeneric<RhsC, RhsT>);
 
-impl_mul_assign_primitive!(MatMut<'_, LhsC, LhsT>);
-impl_mul_assign_primitive!(Mat<LhsC, LhsT>);
-impl_mul_assign_primitive!(ColMut<'_, LhsC, LhsT>);
-impl_mul_assign_primitive!(Col<LhsC, LhsT>);
-impl_mul_assign_primitive!(RowMut<'_, LhsC, LhsT>);
-impl_mul_assign_primitive!(Row<LhsC, LhsT>);
-impl_mul_assign_primitive!(DiagMut<'_, LhsC, LhsT>);
-impl_mul_assign_primitive!(Diag<LhsC, LhsT>);
+impl_mul_assign_primitive!(MatMut<'_, LhsC, LhsT, Rows, Cols>);
+impl_mul_assign_primitive!(Mat<LhsC, LhsT, Rows, Cols>);
+impl_1d_mul_assign_primitive!(ColMut<'_, LhsC, LhsT, Len>);
+impl_1d_mul_assign_primitive!(Col<LhsC, LhsT, Len>);
+impl_1d_mul_assign_primitive!(RowMut<'_, LhsC, LhsT, Len>);
+impl_1d_mul_assign_primitive!(Row<LhsC, LhsT, Len>);
+impl_1d_mul_assign_primitive!(DiagMut<'_, LhsC, LhsT, Len>);
+impl_1d_mul_assign_primitive!(Diag<LhsC, LhsT, Len>);
 
 #[cfg(any())]
 mod sparse {
