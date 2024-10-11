@@ -473,7 +473,7 @@ pub use row::{Row, RowGeneric, RowMut, RowMutGeneric, RowRef, RowRefGeneric};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
-    pub use crate::prelude::default;
+    pub use crate::prelude::{ctx, default};
 
     pub use crate::{
         col::{
@@ -519,6 +519,8 @@ mod internal_prelude {
 pub mod prelude {
     use super::*;
 
+    pub use faer_traits::Unit;
+
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};
@@ -527,6 +529,8 @@ pub mod prelude {
     pub fn default<Ctx: Default>() -> Ctx {
         Default::default()
     }
+
+    pub use default as ctx;
 }
 
 pub struct ScaleGeneric<C: Container, T>(pub C::Of<T>);

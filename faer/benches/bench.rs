@@ -27,7 +27,7 @@ fn bench_new(bencher: Bencher, n: usize) {
         with_dim!(N, n);
         let mut full_l = l.rb_mut().as_shape_mut(N, N);
         let mut d = d.rb_mut().as_col_shape_mut(N);
-        _ = faer::linalg::cholesky::ldlt::factor::cholesky_in_place(
+        _ = faer::linalg::cholesky::ldlt::factor::simd_cholesky(
             &default(),
             full_l.as_mut(),
             d.as_mut(),

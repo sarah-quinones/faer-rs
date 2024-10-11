@@ -49,7 +49,10 @@ pub unsafe fn temp_mat_uninit<
     nrows: Rows,
     ncols: Cols,
     stack: &'a mut DynStack,
-) -> (impl 'a + AsMatMut<C, T, Rows, Cols>, &'a mut DynStack) {
+) -> (
+    impl 'a + AsMatMut<C = C, T = T, Rows = Rows, Cols = Cols>,
+    &'a mut DynStack,
+) {
     help!(C);
 
     struct DynMat<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> {
@@ -78,8 +81,29 @@ pub unsafe fn temp_mat_uninit<
         }
     }
 
-    impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape>
-        AsMatMut<C, T, Rows, Cols> for DynMat<'a, C, T, Rows, Cols>
+    impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> AsMatRef
+        for DynMat<'a, C, T, Rows, Cols>
+    {
+        type C = C;
+        type T = T;
+        type Rows = Rows;
+        type Cols = Cols;
+
+        fn as_mat_ref(&self) -> crate::mat::MatRefGeneric<C, T, Rows, Cols> {
+            unsafe {
+                MatRef::from_raw_parts(
+                    map!(copy!(self.ptr), ptr, ptr as *const T),
+                    self.nrows,
+                    self.ncols,
+                    1,
+                    self.col_stride as isize,
+                )
+            }
+        }
+    }
+
+    impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> AsMatMut
+        for DynMat<'a, C, T, Rows, Cols>
     {
         fn as_mat_mut(&mut self) -> crate::mat::MatMutGeneric<C, T, Rows, Cols> {
             unsafe {

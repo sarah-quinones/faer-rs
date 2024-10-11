@@ -5,7 +5,7 @@ use core::{
     ops::{Index, IndexMut},
 };
 use dyn_stack::StackReq;
-use faer_traits::ComplexField;
+use faer_traits::{ComplexField, RealValue};
 use matmut::MatMut;
 use matref::MatRef;
 
@@ -954,6 +954,24 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     pub fn try_as_row_major(&self) -> Option<MatRef<'_, C, T, Rows, Cols, isize, ContiguousFwd>> {
         self.as_ref().try_as_row_major()
     }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.as_ref().norm_max_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.as_ref().norm_max()
+    }
 }
 
 impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
@@ -1307,7 +1325,7 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     >(
         &mut self,
         ctx: &Ctx<C, T>,
-        other: impl AsMatRef<RhsC, RhsT, Rows, Cols>,
+        other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         C: ComplexContainer,
         T: ComplexField<C>,
@@ -1320,7 +1338,7 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &Ctx<C, T>,
-        other: impl AsMatRef<RhsC, RhsT, Rows, Cols>,
+        other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         C: ComplexContainer,
         T: ComplexField<C>,
@@ -1335,7 +1353,7 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     >(
         &mut self,
         ctx: &Ctx<C, T>,
-        other: impl AsMatRef<RhsC, RhsT, Rows, Cols>,
+        other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         C: ComplexContainer,
         T: ComplexField<C>,

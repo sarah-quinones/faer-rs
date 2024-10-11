@@ -30,15 +30,15 @@ pub struct Partition<'head, 'tail, 'n> {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SegmentIdx<'dim, 'range> {
+pub struct SegmentIdx<'a, 'dim, 'range> {
     unbound: usize,
-    __marker: PhantomData<(Invariant<'dim>, Contravariant<'range>)>,
+    __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Contravariant<'range>)>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SegmentIdxInc<'dim, 'range> {
+pub struct SegmentIdxInc<'a, 'dim, 'range> {
     unbound: usize,
-    __marker: PhantomData<(Invariant<'dim>, Contravariant<'range>)>,
+    __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Contravariant<'range>)>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -311,14 +311,14 @@ impl<'n> Dim<'n> {
 }
 
 #[derive(Clone, Debug)]
-pub struct SegmentIter<'dim, 'range> {
+pub struct SegmentIter<'a, 'dim, 'range> {
     start: usize,
     end: usize,
-    __marker: PhantomData<(Invariant<'dim>, Invariant<'range>)>,
+    __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Invariant<'range>)>,
 }
 
-impl<'dim, 'range> Iterator for SegmentIter<'dim, 'range> {
-    type Item = SegmentIdx<'dim, 'range>;
+impl<'a, 'dim, 'range> Iterator for SegmentIter<'a, 'dim, 'range> {
+    type Item = SegmentIdx<'a, 'dim, 'range>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -341,7 +341,7 @@ impl<'dim, 'range> Iterator for SegmentIter<'dim, 'range> {
     }
 }
 
-impl<'dim, 'range> DoubleEndedIterator for SegmentIter<'dim, 'range> {
+impl<'a, 'dim, 'range> DoubleEndedIterator for SegmentIter<'a, 'dim, 'range> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.end {
@@ -357,16 +357,16 @@ impl<'dim, 'range> DoubleEndedIterator for SegmentIter<'dim, 'range> {
     }
 }
 
-impl<'dim, 'range> ExactSizeIterator for SegmentIter<'dim, 'range> {
+impl<'a, 'dim, 'range> ExactSizeIterator for SegmentIter<'a, 'dim, 'range> {
     #[inline]
     fn len(&self) -> usize {
         self.end - self.start
     }
 }
 
-impl<'dim, 'range> IntoIterator for Segment<'_, 'dim, 'range> {
-    type Item = SegmentIdx<'dim, 'range>;
-    type IntoIter = SegmentIter<'dim, 'range>;
+impl<'a, 'dim, 'range> IntoIterator for Segment<'a, 'dim, 'range> {
+    type Item = SegmentIdx<'a, 'dim, 'range>;
+    type IntoIter = SegmentIter<'a, 'dim, 'range>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -382,7 +382,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     #[inline(always)]
     pub const unsafe fn split_unbound<'head, 'tail>(
         self,
-        midpoint: SegmentIdxInc<'dim, 'range>,
+        midpoint: SegmentIdxInc<'a, 'dim, 'range>,
     ) -> (
         SplitProof<'range, 'head, 'tail>,
         Segment<'a, 'dim, 'head>,
@@ -410,7 +410,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     #[inline(always)]
     pub fn split_inc<'head, 'tail, 'b, H, T>(
         self,
-        midpoint: SegmentIdxInc<'dim, 'range>,
+        midpoint: SegmentIdxInc<'a, 'dim, 'range>,
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
@@ -443,12 +443,12 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     #[inline(always)]
     pub fn split<'head, 'tail, 'b, H, T>(
         self,
-        midpoint: SegmentIdx<'dim, 'range>,
+        midpoint: SegmentIdx<'a, 'dim, 'range>,
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
         Disjoint<'head, 'tail>,
-        SegmentIdx<'dim, 'tail>,
+        SegmentIdx<'a, 'dim, 'tail>,
         Segment<'b, 'dim, 'head>,
         Segment<'b, 'dim, 'tail>,
         H,
@@ -481,7 +481,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     #[inline(always)]
     pub fn with_split<R>(
         self,
-        midpoint: SegmentIdxInc<'dim, 'range>,
+        midpoint: SegmentIdxInc<'a, 'dim, 'range>,
         f: impl for<'b, 'head, 'tail> FnOnce(
             (
                 SplitProof<'range, 'head, 'tail>,
@@ -509,7 +509,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn idx(self, value: usize) -> SegmentIdx<'dim, 'range> {
+    pub fn idx(self, value: usize) -> SegmentIdx<'a, 'dim, 'range> {
         assert!(all(value >= *self.start, value < *self.end));
         SegmentIdx {
             unbound: value,
@@ -518,7 +518,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn idx_inc(self, value: usize) -> SegmentIdxInc<'dim, 'range> {
+    pub fn idx_inc(self, value: usize) -> SegmentIdxInc<'a, 'dim, 'range> {
         assert!(all(value >= *self.start, value <= *self.end));
         SegmentIdxInc {
             unbound: value,
@@ -527,7 +527,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn try_idx(self, value: usize) -> Option<SegmentIdx<'dim, 'range>> {
+    pub fn try_idx(self, value: usize) -> Option<SegmentIdx<'a, 'dim, 'range>> {
         if value >= *self.start && value < *self.end {
             Some(SegmentIdx {
                 unbound: value,
@@ -539,7 +539,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn try_idx_inc(self, value: usize) -> Option<SegmentIdxInc<'dim, 'range>> {
+    pub fn try_idx_inc(self, value: usize) -> Option<SegmentIdxInc<'a, 'dim, 'range>> {
         if value >= *self.start && value <= *self.end {
             Some(SegmentIdxInc {
                 unbound: value,
@@ -551,7 +551,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_local(self, idx: Idx<'range>) -> SegmentIdx<'dim, 'range> {
+    pub const fn from_local(self, idx: Idx<'range>) -> SegmentIdx<'a, 'dim, 'range> {
         SegmentIdx {
             unbound: self.start.unbound + idx.unbound,
             __marker: PhantomData,
@@ -559,7 +559,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_global(self, idx: SegmentIdx<'dim, 'range>) -> Idx<'range> {
+    pub const fn from_global(self, idx: SegmentIdx<'a, 'dim, 'range>) -> Idx<'range> {
         Idx {
             unbound: idx.unbound - self.start.unbound,
             __marker: PhantomData,
@@ -567,7 +567,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_local_inc(self, inc: IdxInc<'range>) -> SegmentIdxInc<'dim, 'range> {
+    pub const fn from_local_inc(self, inc: IdxInc<'range>) -> SegmentIdxInc<'a, 'dim, 'range> {
         SegmentIdxInc {
             unbound: self.start.unbound + inc.unbound,
             __marker: PhantomData,
@@ -575,7 +575,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_global_inc(self, inc: SegmentIdxInc<'dim, 'range>) -> IdxInc<'range> {
+    pub const fn from_global_inc(self, inc: SegmentIdxInc<'a, 'dim, 'range>) -> IdxInc<'range> {
         IdxInc {
             unbound: inc.unbound - self.start.unbound,
             __marker: PhantomData,
@@ -799,9 +799,9 @@ impl<'n, I: Index> From<Idx<'n, I>> for IdxInc<'n, I> {
         }
     }
 }
-impl<'dim, 'n> From<SegmentIdx<'dim, 'n>> for SegmentIdxInc<'dim, 'n> {
+impl<'a, 'dim, 'n> From<SegmentIdx<'a, 'dim, 'n>> for SegmentIdxInc<'a, 'dim, 'n> {
     #[inline(always)]
-    fn from(value: SegmentIdx<'dim, 'n>) -> Self {
+    fn from(value: SegmentIdx<'a, 'dim, 'n>) -> Self {
         Self {
             unbound: value.unbound,
             __marker: PhantomData,
@@ -809,9 +809,9 @@ impl<'dim, 'n> From<SegmentIdx<'dim, 'n>> for SegmentIdxInc<'dim, 'n> {
     }
 }
 
-impl<'dim, 'n> SegmentIdx<'dim, 'n> {
+impl<'a, 'dim, 'n> SegmentIdx<'a, 'dim, 'n> {
     #[inline]
-    pub fn next(self) -> SegmentIdxInc<'dim, 'n> {
+    pub fn next(self) -> SegmentIdxInc<'a, 'dim, 'n> {
         SegmentIdxInc {
             unbound: self.unbound + 1,
             __marker: PhantomData,
@@ -1069,7 +1069,7 @@ impl<I: Index> core::ops::Deref for IdxInc<'_, I> {
     }
 }
 
-impl core::ops::Deref for SegmentIdx<'_, '_> {
+impl core::ops::Deref for SegmentIdx<'_, '_, '_> {
     type Target = usize;
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -1077,7 +1077,7 @@ impl core::ops::Deref for SegmentIdx<'_, '_> {
     }
 }
 
-impl core::ops::Deref for SegmentIdxInc<'_, '_> {
+impl core::ops::Deref for SegmentIdxInc<'_, '_, '_> {
     type Target = usize;
     #[inline]
     fn deref(&self) -> &Self::Target {

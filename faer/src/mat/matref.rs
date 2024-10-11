@@ -8,7 +8,7 @@ use crate::{
 };
 use core::ops::Index;
 use equator::{assert, debug_assert};
-use faer_traits::ComplexField;
+use faer_traits::{ComplexField, RealValue};
 use generativity::Guard;
 use matmut::MatMut;
 use matown::Mat;
@@ -1054,6 +1054,24 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
                 self.col_stride(),
             )
         }
+    }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_max::norm_max(ctx, self.canonical().as_dyn_stride().as_dyn())
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_max_with(&default())
     }
 
     #[inline]

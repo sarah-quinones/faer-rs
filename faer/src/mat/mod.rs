@@ -45,37 +45,71 @@ pub type MatMut<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = is
     MatMutGeneric<'a, Unit, T, Rows, Cols, RStride, CStride>;
 pub type Mat<T, Rows = usize, Cols = usize> = MatGeneric<Unit, T, Rows, Cols>;
 
-pub trait AsMatMut<C: Container, T, Rows: Shape, Cols: Shape> {
-    fn as_mat_mut(&mut self) -> MatMutGeneric<C, T, Rows, Cols>;
+pub trait AsMatMut: AsMatRef {
+    fn as_mat_mut(&mut self) -> MatMutGeneric<Self::C, Self::T, Self::Rows, Self::Cols>;
 }
-pub trait AsMatRef<C: Container, T, Rows: Shape, Cols: Shape> {
-    fn as_mat_ref(&self) -> MatRefGeneric<C, T, Rows, Cols>;
+pub trait AsMatRef {
+    type C: Container;
+    type T;
+    type Rows: Shape;
+    type Cols: Shape;
+
+    fn as_mat_ref(&self) -> MatRefGeneric<Self::C, Self::T, Self::Rows, Self::Cols>;
 }
 
-impl<C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
-    AsMatRef<C, T, Rows, Cols> for MatRefGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> AsMatRef
+    for MatRefGeneric<'_, C, T, Rows, Cols, RStride, CStride>
 {
+    type C = C;
+    type T = T;
+    type Rows = Rows;
+    type Cols = Cols;
+
     #[inline]
     fn as_mat_ref(&self) -> MatRefGeneric<C, T, Rows, Cols> {
         self.as_dyn_stride()
     }
 }
 
-impl<C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
-    AsMatRef<C, T, Rows, Cols> for MatMutGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> AsMatRef
+    for MatMutGeneric<'_, C, T, Rows, Cols, RStride, CStride>
 {
+    type C = C;
+    type T = T;
+    type Rows = Rows;
+    type Cols = Cols;
+
     #[inline]
     fn as_mat_ref(&self) -> MatRefGeneric<C, T, Rows, Cols> {
         self.rb().as_dyn_stride()
     }
 }
 
-impl<C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
-    AsMatMut<C, T, Rows, Cols> for MatMutGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> AsMatMut
+    for MatMutGeneric<'_, C, T, Rows, Cols, RStride, CStride>
 {
     #[inline]
     fn as_mat_mut(&mut self) -> MatMutGeneric<C, T, Rows, Cols> {
         self.rb_mut().as_dyn_stride_mut()
+    }
+}
+
+impl<C: Container, T, Rows: Shape, Cols: Shape> AsMatRef for MatGeneric<C, T, Rows, Cols> {
+    type C = C;
+    type T = T;
+    type Rows = Rows;
+    type Cols = Cols;
+
+    #[inline]
+    fn as_mat_ref(&self) -> MatRefGeneric<C, T, Rows, Cols> {
+        self.as_dyn_stride()
+    }
+}
+
+impl<C: Container, T, Rows: Shape, Cols: Shape> AsMatMut for MatGeneric<C, T, Rows, Cols> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMutGeneric<C, T, Rows, Cols> {
+        self.as_dyn_stride_mut()
     }
 }
 

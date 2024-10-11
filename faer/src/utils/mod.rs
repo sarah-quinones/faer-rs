@@ -90,3 +90,5 @@ pub mod thread {
 }
 
 pub mod simd;
+
+pub mod approx;

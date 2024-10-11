@@ -379,7 +379,7 @@ impl Tree {
     fn init(&self) -> TokenStream {
         let name = &self.name;
         let glue_name = Ident::new(&(name.to_string() + "__"), name.span());
-        let mut stmt = quote! { let mut #glue_name = __faer_traits::hacks::NonCopy; let #name = __faer_traits::hacks::__with_lifetime_of(&mut #glue_name); };
+        let mut stmt = quote! { let mut #glue_name = faer_traits::hacks::NonCopy; let #name = faer_traits::hacks::__with_lifetime_of(&mut #glue_name); };
 
         for child in &self.children {
             let child = child.init();
@@ -413,7 +413,7 @@ impl Tree {
         let mut stmt = quote! {
             #[allow(non_camel_case_types)]
             struct #name<'scope, #(#lt2,)* #(#ty,)*> {
-                #(#children: __faer_traits::hacks::GhostNode<'scope, #lt, #children>,)*
+                #(#children: faer_traits::hacks::GhostNode<'scope, #lt, #children>,)*
                 __marker: ::core::marker::PhantomData<fn(&'scope()) -> &'scope ()>,
             }
         };
@@ -431,7 +431,7 @@ impl Tree {
         let children = self.children.iter().map(|x| &x.name);
         let children_init = self.children.iter().map(|x| x.struct_init());
         quote! {
-            __faer_traits::hacks::GhostNode::new(
+            faer_traits::hacks::GhostNode::new(
                 #name {
                     #(#children: #children_init,)*
                     __marker: ::core::marker::PhantomData,
@@ -463,9 +463,8 @@ pub fn ghost_tree(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let name = &tree.name;
 
     let block = quote! {{
-        extern crate faer_traits as __faer_traits;
 
-        __faer_traits::hacks::make_guard!(__scope);
+        faer_traits::hacks::make_guard!(__scope);
         #struct_def
         { #init if const { true } {  let mut #name = #struct_init; _ = &mut #name;  {#block} } else { #deinit panic!() } }
     }};

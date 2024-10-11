@@ -16,17 +16,17 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
     delta: <C::Real as Container>::Of<&T::RealUnit>,
     signs: Option<&Array<'N, i8>>,
 ) -> Result<usize, usize> {
-    ghost_tree!(MAT(HEAD, TAIL), {
+    ghost_tree!(ROW(HEAD, TAIL), {
         help!(C);
         help2!(C::Real);
 
         let mut A = A;
         let mut D = D;
 
-        let (mat, MAT) = A.ncols().full(MAT);
-        let start = mat.from_local_inc(start);
+        let (mat_rows, ROW) = A.ncols().full(ROW);
+        let start = mat_rows.from_local_inc(start);
 
-        let (disjoint, head, tail, _, _) = mat.split_inc(start, MAT.HEAD, MAT.TAIL);
+        let (disjoint, head, tail, _, _) = mat_rows.split_inc(start, ROW.HEAD, ROW.TAIL);
 
         let simd = SimdCtx::<C, T, S>::new_force_mask(simd, tail.len());
         let indices = simd.indices();
@@ -34,11 +34,12 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
         let mut count = 0usize;
 
-        for j in mat {
+        for j in mat_rows {
             ghost_tree!(COL(LEFT, RIGHT), {
-                let (mat, COL) = mat.len().full(COL);
+                let (mat_cols, COL) = mat_rows.len().full(COL);
+                let j = mat_cols.from_local(mat_rows.from_global(j));
 
-                let (disjoint_col, j, left, right, _, _) = mat.split(j, COL.LEFT, COL.RIGHT);
+                let (disjoint_col, j, left, right, _, _) = mat_cols.split(j, COL.LEFT, COL.RIGHT);
 
                 let (A_0, mut A_1) = A.rb_mut().col_segments_mut(left, right, disjoint_col);
                 let A_0 = A_0.rb();
@@ -61,10 +62,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             for k in left {
                                 let Ak = A10.col(left.from_global(k)).as_array();
 
-                                let Ajk = simd.splat(as_ref!(math(
-                                    -D[mat.from_global(k)]
-                                        * conj(A_0[(mat.from_global(j), left.from_global(k))])
-                                )));
+                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = if is_llt { math.re.one() } else { D };
+
+                                let Ajk = simd.splat(as_ref!(math(mul_real(
+                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    re.neg(D)
+                                ))));
 
                                 let Aik = simd.read_tail(rb!(Ak));
                                 Aij = simd.mul_add(Ajk, Aik, Aij);
@@ -78,10 +82,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             for k in left {
                                 let Ak = A10.col(left.from_global(k)).as_array();
 
-                                let Ajk = simd.splat(as_ref!(math(
-                                    -D[mat.from_global(k)]
-                                        * conj(A_0[(mat.from_global(j), left.from_global(k))])
-                                )));
+                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = if is_llt { math.re.one() } else { D };
+
+                                let Ajk = simd.splat(as_ref!(math(mul_real(
+                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    re.neg(D)
+                                ))));
 
                                 let A0k = simd.read(rb!(Ak), i0);
                                 let Aik = simd.read_tail(rb!(Ak));
@@ -99,10 +106,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             for k in left {
                                 let Ak = A10.col(left.from_global(k)).as_array();
 
-                                let Ajk = simd.splat(as_ref!(math(
-                                    -D[mat.from_global(k)]
-                                        * conj(A_0[(mat.from_global(j), left.from_global(k))])
-                                )));
+                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = if is_llt { math.re.one() } else { D };
+
+                                let Ajk = simd.splat(as_ref!(math(mul_real(
+                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    re.neg(D)
+                                ))));
 
                                 let A0k = simd.read(rb!(Ak), i0);
                                 let A1k = simd.read(rb!(Ak), i1);
@@ -124,10 +134,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             for k in left {
                                 let Ak = A10.col(left.from_global(k)).as_array();
 
-                                let Ajk = simd.splat(as_ref!(math(
-                                    -D[mat.from_global(k)]
-                                        * conj(A_0[(mat.from_global(j), left.from_global(k))])
-                                )));
+                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = if is_llt { math.re.one() } else { D };
+
+                                let Ajk = simd.splat(as_ref!(math(mul_real(
+                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    re.neg(D)
+                                ))));
 
                                 let A0k = simd.read(rb!(Ak), i0);
                                 let A1k = simd.read(rb!(Ak), i1);
@@ -144,32 +157,12 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             simd.write_tail(rb_mut!(Aj), Aij);
                         }
                         _ => {
-                            for k in left {
-                                let Ak = A10.col(left.from_global(k)).as_array();
-
-                                let Ajk = simd.splat(as_ref!(math(
-                                    -D[mat.from_global(k)]
-                                        * conj(A_0[(mat.from_global(j), left.from_global(k))])
-                                )));
-
-                                for i in indices.clone() {
-                                    let Aik = simd.read(rb!(Ak), i);
-                                    let mut Aij = simd.read(rb!(Aj), i);
-                                    Aij = simd.mul_add(Ajk, Aik, Aij);
-                                    simd.write(rb_mut!(Aj), i, Aij);
-                                }
-                                {
-                                    let Aik = simd.read_tail(rb!(Ak));
-                                    let mut Aij = simd.read_tail(rb!(Aj));
-                                    Aij = simd.mul_add(Ajk, Aik, Aij);
-                                    simd.write_tail(rb_mut!(Aj), Aij);
-                                }
-                            }
+                            unreachable!();
                         }
                     }
                 }
 
-                let mut D = D.rb_mut().at_mut(mat.from_global(j));
+                let mut D = D.rb_mut().at_mut(mat_cols.from_global(j));
 
                 if let Some(j_row) = tail.try_idx(*j) {
                     let mut diag = math(real(Aj[tail.from_global(j_row)]));
@@ -179,7 +172,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             1
                         } else {
                             if let Some(signs) = signs {
-                                signs[mat.from_global(j_row)]
+                                signs[mat_rows.from_global(j_row)]
                             } else {
                                 0
                             }
@@ -204,7 +197,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                         }
                     }
 
-                    let j = mat.from_global(j);
+                    let j = mat_cols.from_global(j);
                     let diag = if is_llt {
                         if !math.re.gt_zero(diag) {
                             write1!(D, math.from_real(diag));
@@ -217,7 +210,6 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
                     if is_llt {
                         write1!(D, math.from_real(diag));
-                        // write1!(D, math.one());
                     } else {
                         write1!(D, math.from_real(diag));
                     }
@@ -244,9 +236,6 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                         simd.write_tail(rb_mut!(Aj), Aij);
                     }
                 }
-                if is_llt {
-                    write1!(D, math.one());
-                }
             });
         }
 
@@ -256,7 +245,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
 #[inline(always)]
 #[math]
-fn simd_cholesky<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
+fn simd_cholesky_matrix<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     simd: T::SimdCtx<S>,
     A: MatMut<'_, C, T, Dim<'N>, Dim<'N>, ContiguousFwd>,
     D: RowMut<'_, C, T, Dim<'N>>,
@@ -316,7 +305,7 @@ fn simd_cholesky<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     Ok(count)
 }
 
-pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
+pub fn simd_cholesky<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'N>, Dim<'N>, ContiguousFwd>,
     D: RowMut<'_, C, T, Dim<'N>>,
@@ -354,7 +343,11 @@ pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
                 signs,
             } = self;
             let simd = T::simd_ctx(ctx, simd);
-            simd_cholesky(simd, A, D, is_llt, regularize, eps, delta, signs)
+            if *A.nrows() > 0 {
+                simd_cholesky_matrix(simd, A, D, is_llt, regularize, eps, delta, signs)
+            } else {
+                Ok(0)
+            }
         }
     }
 
@@ -374,36 +367,61 @@ pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{c64, Mat, Row};
-    use rand::prelude::*;
+    use crate::{assert, c64, prelude::*, stats::prelude::*, utils::approx::*, Mat, Row};
 
     #[test]
     fn test_simd_cholesky() {
-        if let Some(simd) = pulp::x86::V3::try_new() {
-            let rng = &mut StdRng::seed_from_u64(0);
+        let rng = &mut StdRng::seed_from_u64(0);
 
-            let n = 7;
-            let A = Mat::from_fn(n, n, |_, _| c64::new(rng.gen(), rng.gen()));
-            let A = &A * &A.adjoint();
+        for n in 0..=16 {
+            with_dim!(N, n);
+            for llt in [true, false] {
+                let approx_eq = CwiseMat(ApproxEq {
+                    ctx: ctx::<Ctx<Unit, c64>>(),
+                    abs_tol: 1e-12,
+                    rel_tol: 1e-12,
+                });
 
-            with_dim!(N, A.nrows());
-            let A = A.as_ref().as_shape(N, N);
-
-            let mut L = A.cloned();
-            let mut L = L.as_mut().try_as_col_major_mut().unwrap();
-            let mut D = Row::zeros_with_ctx(&default(), N);
-            let mut D = D.as_mut();
-
-            simd_cholesky(simd, L.rb_mut(), D.rb_mut(), false, false, &0.0, &0.0, None).unwrap();
-
-            for j in N.indices() {
-                for i in zero().to(j.into()) {
-                    L[(i, j)] = c64::ZERO;
+                let A = CwiseMatDistribution {
+                    nrows: N,
+                    ncols: N,
+                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-            }
-            let L = L.rb().as_dyn_stride();
+                .rand::<Mat<c64, Dim, Dim>>(rng);
 
-            __dbg!(L.rb() * D.rb().as_diagonal() * L.adjoint() - &A);
+                let A = &A * &A.adjoint();
+                let A = A.as_ref().as_shape(N, N);
+
+                let mut L = A.cloned();
+                let mut L = L.as_mut().try_as_col_major_mut().unwrap();
+                let mut D = Row::zeros_with_ctx(&default(), N);
+                let mut D = D.as_mut();
+
+                simd_cholesky(
+                    &default(),
+                    L.rb_mut(),
+                    D.rb_mut(),
+                    llt,
+                    false,
+                    &0.0,
+                    &0.0,
+                    None,
+                )
+                .unwrap();
+
+                for j in N.indices() {
+                    for i in zero().to(j.into()) {
+                        L[(i, j)] = c64::ZERO;
+                    }
+                }
+                let L = L.rb().as_dyn_stride();
+
+                if llt {
+                    assert!(L * L.adjoint() ~ A);
+                } else {
+                    assert!(L * D.as_diagonal() * L.adjoint() ~ A);
+                };
+            }
         }
     }
 }

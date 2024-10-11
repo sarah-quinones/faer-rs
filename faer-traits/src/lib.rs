@@ -1397,8 +1397,8 @@ pub unsafe trait Container: 'static {
     const N_COMPONENTS: usize = size_of::<Self::Of<u8>>();
 
     const IS_CANONICAL: bool;
-    type Conj: Container<Conj = Self, Canonical = Self::Canonical>;
-    type Canonical: Container<Canonical = Self::Canonical>;
+    type Conj: Container<Conj = Self, Canonical = Self::Canonical, Real = Self::Real>;
+    type Canonical: Container<Canonical = Self::Canonical, Real = Self::Real>;
     type Real: RealContainer;
 
     fn map_impl<T, U, Ctx>(
@@ -1415,6 +1415,10 @@ pub trait ComplexContainer: Container<Canonical = Self> {}
 pub trait RealContainer: ComplexContainer<Conj = Self, Canonical = Self, Real = Self> {}
 impl<C: Container<Canonical = C>> ComplexContainer for C {}
 impl<C: Container<Canonical = C, Conj = C, Real = Self>> RealContainer for C {}
+
+pub type RealValue<C, T> = <<C as Container>::Real as Container>::Of<
+    <<T as ConjUnit>::Canonical as ComplexField<<C as Container>::Canonical>>::RealUnit,
+>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct Unit;

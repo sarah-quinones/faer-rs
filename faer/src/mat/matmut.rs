@@ -7,7 +7,7 @@ use crate::{
 };
 use core::ops::{Index, IndexMut};
 use equator::assert;
-use faer_traits::{ComplexField, Ctx};
+use faer_traits::{ComplexField, Ctx, RealValue};
 use generativity::{make_guard, Guard};
 use matref::MatRef;
 
@@ -523,6 +523,24 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
             )
         }
     }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.rb().norm_max_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.rb().norm_max()
+    }
 }
 
 impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
@@ -1026,7 +1044,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     >(
         &mut self,
         ctx: &Ctx<C, T>,
-        other: impl AsMatRef<RhsC, RhsT, Rows, Cols>,
+        other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         C: ComplexContainer,
         T: ComplexField<C>,
@@ -1076,7 +1094,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &Ctx<C, T>,
-        other: impl AsMatRef<RhsC, RhsT, Rows, Cols>,
+        other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         C: ComplexContainer,
         T: ComplexField<C>,
@@ -1125,7 +1143,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     >(
         &mut self,
         ctx: &Ctx<C, T>,
-        other: impl AsMatRef<RhsC, RhsT, Rows, Cols>,
+        other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         C: ComplexContainer,
         T: ComplexField<C>,
