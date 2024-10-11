@@ -17,7 +17,7 @@ fn bench_new(bencher: Bencher, n: usize) {
     let a = &a * &a.transpose();
 
     let mut l = a.clone();
-    let mut l = l.try_as_col_major_mut().unwrap();
+    let mut l = l.as_mut();
     let mut d = Row::<f64>::zeros_with_ctx(&default(), n);
     let mut d = d.as_mut();
 

@@ -890,6 +890,16 @@ impl<'n, I: Index> Idx<'n, I> {
     pub fn next(self) -> IdxInc<'n, I> {
         unsafe { IdxInc::new_unbound(self.unbound() + I::truncate(1)) }
     }
+    /// Returns the index, bounded inclusively by the value tied to `'n`.
+    #[inline]
+    pub fn excl(self) -> IdxInc<'n, I> {
+        unsafe { IdxInc::new_unbound(self.unbound()) }
+    }
+    /// Returns the next index, bounded inclusively by the value tied to `'n`.
+    #[inline]
+    pub fn incl(self) -> IdxInc<'n, I> {
+        unsafe { IdxInc::new_unbound(self.unbound()) }
+    }
 
     /// Assert that the values of `slice` are all bounded by `size`.
     #[track_caller]
@@ -1130,7 +1140,6 @@ impl<'n, T> Array<'n, T> {
         unsafe { Dim::new_unbound(self.unbound.len()) }
     }
 
-    /// Returns the length of `self`.
     #[inline]
     pub fn segments<'HEAD, 'TAIL>(
         &self,
@@ -1148,7 +1157,15 @@ impl<'n, T> Array<'n, T> {
         }
     }
 
-    /// Returns the length of `self`.
+    #[inline]
+    pub fn segment<'HEAD>(&self, first: Segment<'_, 'n, 'HEAD>) -> &Array<'HEAD, T> {
+        let ptr = self.as_ref().as_ptr();
+        unsafe {
+            &*(core::slice::from_raw_parts(ptr.add(first.start.unbound), first.len().unbound)
+                as *const _ as *const Array<'HEAD, T>)
+        }
+    }
+
     #[inline]
     pub fn segments_mut<'HEAD, 'TAIL>(
         &mut self,
@@ -1169,6 +1186,17 @@ impl<'n, T> Array<'n, T> {
                     second.len().unbound,
                 ) as *mut _ as *mut Array<'TAIL, T>),
             )
+        }
+    }
+
+    #[inline]
+    pub fn segment_mut<'HEAD>(&mut self, first: Segment<'_, 'n, 'HEAD>) -> &mut Array<'HEAD, T> {
+        let ptr = self.as_mut().as_mut_ptr();
+        unsafe {
+            &mut *(core::slice::from_raw_parts_mut(
+                ptr.add(first.start.unbound),
+                first.len().unbound,
+            ) as *mut _ as *mut Array<'HEAD, T>)
         }
     }
 }
