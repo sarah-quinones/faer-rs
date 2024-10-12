@@ -40,15 +40,15 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         let mut imax = k_row;
         let mut max = math.re(zero());
 
-        // for i in imax.to_inclusive().to(M.end()) {
-        //     let abs = math(abs1(
-        //         matrix.rb().col_segment(range)[(i, range.from_global(k))],
-        //     ));
-        //     if math(abs > max) {
-        //         max = abs;
-        //         imax = i;
-        //     }
-        // }
+        for i in imax.to_inclusive().to(M.end()) {
+            let abs = math(abs1(
+                matrix.rb().col_segment(range)[(i, range.from_global(k))],
+            ));
+            if math(abs > max) {
+                max = abs;
+                imax = i;
+            }
+        }
 
         *t = I::truncate(*imax - *k_row);
 
@@ -216,7 +216,12 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
 
                     for (i, j) in core::iter::zip(top, left) {
                         let t = trans[cols.from_global(j)];
-                        swap_elems(ctx, col.rb_mut(), rows.from_global(i), M.check(t.zx() + *i));
+                        swap_elems(
+                            ctx,
+                            col.rb_mut(),
+                            rows.from_global(i),
+                            M.check(t.zx() + *rows.from_global(i)),
+                        );
                     }
 
                     for (i, j) in core::iter::zip(bot, right) {
@@ -240,7 +245,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
                     COLS.MID,
                 );
                 let (after, _) = mid.segment(
-                    mid.from_local_inc(mid.len().idx_inc(*j_next)),
+                    mid.idx_inc(*range.end()),
                     mid.from_local_inc(mid.len().end()),
                     MID.AFTER,
                 );
@@ -421,7 +426,7 @@ mod tests {
             rel_tol: 1e-9,
         });
 
-        for n in [8, 128, 255, 256, 257] {
+        for n in [3, 128, 255, 256, 257] {
             with_dim!(N, n);
 
             let A = CwiseMatDistribution {
@@ -447,7 +452,10 @@ mod tests {
                 DynStack::new(&mut GlobalMemBuffer::new(
                     lu_in_place_scratch::<usize, Unit, f64>(*N, *N).unwrap(),
                 )),
-                PartialPivLuParams::default(),
+                PartialPivLuParams {
+                    recursion_threshold: NonZero::new(2).unwrap(),
+                    blocksize: NonZero::new(2).unwrap(),
+                },
             )
             .1;
 
