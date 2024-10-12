@@ -642,7 +642,9 @@ impl Default for LdltParams {
 #[inline]
 pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
+    par: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
+    _ = par;
     temp_mat_scratch::<C, T>(dim, 1)
 }
 

@@ -479,6 +479,27 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline(always)]
+    pub fn segment<'smol, 'b, T>(
+        self,
+        start: SegmentIdxInc<'a, 'dim, 'range>,
+        end: SegmentIdxInc<'a, 'dim, 'range>,
+        node: GhostNode<'b, 'smol, T>,
+    ) -> (Segment<'b, 'dim, 'smol>, T)
+    where
+        'a: 'b,
+    {
+        assert!(start.unbound <= end.unbound);
+        (
+            Segment {
+                start: unsafe { IdxInc::new_unbound(start.unbound) },
+                end: unsafe { IdxInc::new_unbound(end.unbound) },
+                __marker: PhantomData,
+            },
+            node.child,
+        )
+    }
+
+    #[inline(always)]
     pub fn with_split<R>(
         self,
         midpoint: SegmentIdxInc<'a, 'dim, 'range>,

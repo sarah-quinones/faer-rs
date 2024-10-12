@@ -47,6 +47,24 @@ pub struct LltParams {
     pub blocksize: NonZero<usize>,
 }
 
+impl Default for LltParams {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            blocksize: NonZero::new(64).unwrap(),
+        }
+    }
+}
+
+#[inline]
+pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
+    dim: usize,
+    par: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    _ = par;
+    temp_mat_scratch::<C, T>(dim, 1)
+}
+
 #[math]
 pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,

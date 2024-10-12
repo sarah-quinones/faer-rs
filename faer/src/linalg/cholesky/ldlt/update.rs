@@ -365,10 +365,13 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                 let mut L_col = ld.rb_mut().col_mut(full.from_global(j));
 
                 let r = Ord::min((*r)(), K.end());
-                ghost_tree!(W_FULL(R, W_UNUSED), {
+                ghost_tree!(W_FULL(R), {
                     let (full_w, W_FULL) = K.full(W_FULL);
-                    let (_, R_segment, _, _, _) =
-                        full_w.split_inc(full_w.from_local_inc(r), W_FULL.R, W_FULL.W_UNUSED);
+                    let (R_segment, _) = full_w.segment(
+                        full_w.from_local_inc(zero()),
+                        full_w.from_local_inc(r),
+                        W_FULL.R,
+                    );
                     let R = R_segment.len();
                     let mut W = w.rb_mut().col_segment_mut(R_segment);
                     let mut alpha = alpha.rb_mut().row_segment_mut(R_segment);
@@ -379,19 +382,14 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                     while let Some(r) = R.try_check(*r_next) {
                         r_next = R.advance(r, BLOCKSIZE);
 
-                        ghost_tree!(W_FULL(W_HEAD_UNUSED, W_TAIL(R0, W_TAIL_UNUSED)), {
+                        ghost_tree!(W_FULL(R0), {
                             let (full_r, W_FULL) = R.full(W_FULL);
 
-                            let (_, _, _, w_tail, _, TAIL) = full_r.split(
-                                full_r.from_local(r),
-                                W_FULL.W_HEAD_UNUSED,
-                                W_FULL.W_TAIL,
+                            let (r0, _) = full_r.segment(
+                                full_r.from_local_inc(r.into()),
+                                full_r.from_local_inc(r_next),
+                                W_FULL.R0,
                             );
-
-                            let j_next = w_tail.idx_inc(*r_next);
-
-                            let (_, r0, _, _, _) =
-                                w_tail.split_inc(j_next, TAIL.R0, TAIL.W_TAIL_UNUSED);
 
                             stack_mat!(ctx, p, r0.len(), 1, BLOCKSIZE, 1, C, T);
                             stack_mat!(ctx, beta, r0.len(), 1, BLOCKSIZE, 1, C, T);
@@ -535,8 +533,11 @@ mod tests {
                     default(),
                     Parallelism::None,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<Unit, c64>(*N)
-                            .unwrap(),
+                        linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<Unit, c64>(
+                            *N,
+                            Parallelism::None,
+                        )
+                        .unwrap(),
                     )),
                     Default::default(),
                 )
