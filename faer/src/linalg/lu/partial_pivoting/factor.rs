@@ -422,8 +422,8 @@ mod tests {
 
         let approx_eq = CwiseMat(ApproxEq {
             ctx: ctx::<Ctx<Unit, f64>>(),
-            abs_tol: 1e-9,
-            rel_tol: 1e-9,
+            abs_tol: 1e-13,
+            rel_tol: 1e-13,
         });
 
         for n in [3, 128, 255, 256, 257] {
