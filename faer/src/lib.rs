@@ -561,11 +561,11 @@ pub fn scale<T>(value: T) -> Scale<T> {
 ///
 /// default: Rayon(0)
 static GLOBAL_PARALLELISM: AtomicUsize = {
-    #[cfg(feature = "rayon")]
+    #[cfg(all(not(miri), feature = "rayon"))]
     {
         AtomicUsize::new(2)
     }
-    #[cfg(not(feature = "rayon"))]
+    #[cfg(not(all(not(miri), feature = "rayon")))]
     {
         AtomicUsize::new(1)
     }

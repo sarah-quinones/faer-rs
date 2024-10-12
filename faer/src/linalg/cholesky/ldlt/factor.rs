@@ -471,6 +471,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
     D: RowMut<'_, C, T, Dim<'N>>,
 
     recursion_threshold: usize,
+    blocksize: usize,
     is_llt: bool,
     regularize: bool,
     eps: <C::Real as Container>::Of<&T::RealUnit>,
@@ -483,7 +484,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
         cholesky_fallback(ctx, A, D, is_llt, regularize, eps, delta, signs)
     } else {
         let mut count = 0;
-        let blocksize = Ord::min(N.next_power_of_two() / 2, 128);
+        let blocksize = Ord::min(N.next_power_of_two() / 2, blocksize);
         let mut A = A;
         let mut D = D;
         help!(C);
@@ -493,10 +494,10 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
         while let Some(j) = N.try_check(*j_next) {
             j_next = N.advance(j, blocksize);
 
-            ghost_tree!(FULL(UNUSED, MAT(HEAD, TAIL)), {
+            ghost_tree!(FULL(MAT(HEAD, TAIL)), {
                 let (full, FULL) = N.full(FULL);
                 let j = full.from_local(j);
-                let (_, _, _, mat, _, MAT) = full.split(j, FULL.UNUSED, FULL.MAT);
+                let (mat, MAT) = full.segment(j.into(), full.from_local_inc(j_next), FULL.MAT);
 
                 let j_next = mat.idx_inc(*j_next);
                 let (disjoint, head, tail, _, _) = mat.split_inc(j_next, MAT.HEAD, MAT.TAIL);
@@ -514,6 +515,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
                     A00.rb_mut(),
                     D0.rb_mut(),
                     recursion_threshold,
+                    blocksize,
                     is_llt,
                     regularize,
                     rb2!(eps),
@@ -627,6 +629,7 @@ impl<C: ComplexContainer, T: ComplexField<C, MathCtx: Default>> Default
 
 #[non_exhaustive]
 pub struct LdltParams {
+    pub recursion_threshold: NonZero<usize>,
     pub blocksize: NonZero<usize>,
 }
 
@@ -634,7 +637,8 @@ impl Default for LdltParams {
     #[inline]
     fn default() -> Self {
         Self {
-            blocksize: NonZero::new(64).unwrap(),
+            recursion_threshold: NonZero::new(64).unwrap(),
+            blocksize: NonZero::new(128).unwrap(),
         }
     }
 }
@@ -668,6 +672,7 @@ pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
         ctx,
         A.rb_mut(),
         D.rb_mut(),
+        params.recursion_threshold.get(),
         params.blocksize.get(),
         false,
         math.gt_zero(regularization.dynamic_regularization_delta)
@@ -800,6 +805,7 @@ mod tests {
                     &default(),
                     L.rb_mut(),
                     D.rb_mut(),
+                    32,
                     32,
                     llt,
                     false,

@@ -10,13 +10,15 @@ type Contravariant<'a> = fn(&'a ());
 pub struct Subset<'smol, 'big: 'smol>(PhantomData<&'smol &'big ()>);
 
 #[derive(Copy, Clone, Debug)]
-pub struct Disjoint<'head, 'tail>(PhantomData<(Covariant<'head>, Covariant<'tail>)>);
+pub struct Disjoint<'a, 'head, 'tail>(
+    PhantomData<(Invariant<'a>, Covariant<'head>, Covariant<'tail>)>,
+);
 
 #[derive(Copy, Clone, Debug)]
-pub struct SplitProof<'full, 'head, 'tail> {
+pub struct SplitProof<'a, 'full, 'head, 'tail> {
     pub head: Subset<'head, 'full>,
     pub tail: Subset<'tail, 'full>,
-    pub disjoint: Disjoint<'head, 'tail>,
+    pub disjoint: Disjoint<'a, 'head, 'tail>,
 }
 
 /// Splits a range into two segments.
@@ -29,16 +31,27 @@ pub struct Partition<'head, 'tail, 'n> {
     __marker: PhantomData<Invariant<'n>>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct SegmentIdx<'a, 'dim, 'range> {
     unbound: usize,
     __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Contravariant<'range>)>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct SegmentIdxInc<'a, 'dim, 'range> {
     unbound: usize,
     __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Contravariant<'range>)>,
+}
+
+impl core::fmt::Debug for SegmentIdx<'_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.unbound.fmt(f)
+    }
+}
+impl core::fmt::Debug for SegmentIdxInc<'_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.unbound.fmt(f)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -384,7 +397,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         self,
         midpoint: SegmentIdxInc<'a, 'dim, 'range>,
     ) -> (
-        SplitProof<'range, 'head, 'tail>,
+        SplitProof<'a, 'range, 'head, 'tail>,
         Segment<'a, 'dim, 'head>,
         Segment<'a, 'dim, 'tail>,
     ) {
@@ -414,7 +427,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
-        Disjoint<'head, 'tail>,
+        Disjoint<'b, 'head, 'tail>,
         Segment<'b, 'dim, 'head>,
         Segment<'b, 'dim, 'tail>,
         H,
@@ -447,7 +460,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
-        Disjoint<'head, 'tail>,
+        Disjoint<'b, 'head, 'tail>,
         SegmentIdx<'a, 'dim, 'tail>,
         Segment<'b, 'dim, 'head>,
         Segment<'b, 'dim, 'tail>,
@@ -505,7 +518,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         midpoint: SegmentIdxInc<'a, 'dim, 'range>,
         f: impl for<'b, 'head, 'tail> FnOnce(
             (
-                SplitProof<'range, 'head, 'tail>,
+                SplitProof<'b, 'range, 'head, 'tail>,
                 Segment<'b, 'dim, 'head>,
                 Segment<'b, 'dim, 'tail>,
             ),
@@ -1192,7 +1205,7 @@ impl<'n, T> Array<'n, T> {
         &mut self,
         first: Segment<'_, 'n, 'HEAD>,
         second: Segment<'_, 'n, 'TAIL>,
-        disjoint: Disjoint<'HEAD, 'TAIL>,
+        disjoint: Disjoint<'_, 'HEAD, 'TAIL>,
     ) -> (&mut Array<'HEAD, T>, &mut Array<'TAIL, T>) {
         let ptr = self.as_mut().as_mut_ptr();
         _ = disjoint;

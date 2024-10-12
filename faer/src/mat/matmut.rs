@@ -1507,11 +1507,11 @@ mod bound_range {
         MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn row_segments_mut<'TOP, 'BOT>(
+        pub fn row_segments_mut<'scope, 'TOP, 'BOT>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
-            second: Segment<'_, 'ROWS, 'BOT>,
-            disjoint: Disjoint<'TOP, 'BOT>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
+            second: Segment<'scope, 'ROWS, 'BOT>,
+            disjoint: Disjoint<'scope, 'TOP, 'BOT>,
         ) -> (
             MatMut<'a, C, T, Dim<'TOP>, Cols, RStride, CStride>,
             MatMut<'a, C, T, Dim<'BOT>, Cols, RStride, CStride>,
@@ -1541,11 +1541,11 @@ mod bound_range {
         MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn col_segments_mut<'LEFT, 'RIGHT>(
+        pub fn col_segments_mut<'scope, 'LEFT, 'RIGHT>(
             self,
-            first: Segment<'_, 'COLS, 'LEFT>,
-            second: Segment<'_, 'COLS, 'RIGHT>,
-            disjoint: Disjoint<'LEFT, 'RIGHT>,
+            first: Segment<'scope, 'COLS, 'LEFT>,
+            second: Segment<'scope, 'COLS, 'RIGHT>,
+            disjoint: Disjoint<'scope, 'LEFT, 'RIGHT>,
         ) -> (
             MatMut<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride>,
             MatMut<'a, C, T, Rows, Dim<'RIGHT>, RStride, CStride>,
@@ -1575,10 +1575,10 @@ mod bound_range {
         MatRef<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn row_segments<'TOP, 'BOT>(
+        pub fn row_segments<'scope, 'TOP, 'BOT>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
-            second: Segment<'_, 'ROWS, 'BOT>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
+            second: Segment<'scope, 'ROWS, 'BOT>,
         ) -> (
             MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride>,
             MatRef<'a, C, T, Dim<'BOT>, Cols, RStride, CStride>,
@@ -1607,10 +1607,10 @@ mod bound_range {
         MatRef<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn col_segments<'LEFT, 'RIGHT>(
+        pub fn col_segments<'scope, 'LEFT, 'RIGHT>(
             self,
-            first: Segment<'_, 'COLS, 'LEFT>,
-            second: Segment<'_, 'COLS, 'RIGHT>,
+            first: Segment<'scope, 'COLS, 'LEFT>,
+            second: Segment<'scope, 'COLS, 'RIGHT>,
         ) -> (
             MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride>,
             MatRef<'a, C, T, Rows, Dim<'RIGHT>, RStride, CStride>,
@@ -1639,10 +1639,10 @@ mod bound_range {
         MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn row_segments<'TOP, 'BOT>(
+        pub fn row_segments<'scope, 'TOP, 'BOT>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
-            second: Segment<'_, 'ROWS, 'BOT>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
+            second: Segment<'scope, 'ROWS, 'BOT>,
         ) -> (
             MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride>,
             MatRef<'a, C, T, Dim<'BOT>, Cols, RStride, CStride>,
@@ -1671,10 +1671,10 @@ mod bound_range {
         MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn col_segments<'LEFT, 'RIGHT>(
+        pub fn col_segments<'scope, 'LEFT, 'RIGHT>(
             self,
-            first: Segment<'_, 'COLS, 'LEFT>,
-            second: Segment<'_, 'COLS, 'RIGHT>,
+            first: Segment<'scope, 'COLS, 'LEFT>,
+            second: Segment<'scope, 'COLS, 'RIGHT>,
         ) -> (
             MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride>,
             MatRef<'a, C, T, Rows, Dim<'RIGHT>, RStride, CStride>,
@@ -1705,9 +1705,9 @@ mod bound_range {
         MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn row_segment_mut<'TOP>(
+        pub fn row_segment_mut<'scope, 'TOP>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> MatMut<'a, C, T, Dim<'TOP>, Cols, RStride, CStride> {
             unsafe {
                 MatMut::from_raw_parts_mut(
@@ -1725,9 +1725,9 @@ mod bound_range {
         MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn col_segment_mut<'LEFT>(
+        pub fn col_segment_mut<'scope, 'LEFT>(
             self,
-            first: Segment<'_, 'COLS, 'LEFT>,
+            first: Segment<'scope, 'COLS, 'LEFT>,
         ) -> MatMut<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride> {
             unsafe {
                 MatMut::from_raw_parts_mut(
@@ -1745,9 +1745,9 @@ mod bound_range {
         MatRef<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn row_segment<'TOP>(
+        pub fn row_segment<'scope, 'TOP>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
@@ -1765,9 +1765,9 @@ mod bound_range {
         MatRef<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn col_segment<'LEFT>(
+        pub fn col_segment<'scope, 'LEFT>(
             self,
-            first: Segment<'_, 'COLS, 'LEFT>,
+            first: Segment<'scope, 'COLS, 'LEFT>,
         ) -> MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
@@ -1785,9 +1785,9 @@ mod bound_range {
         MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn row_segment<'TOP>(
+        pub fn row_segment<'scope, 'TOP>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
@@ -1805,9 +1805,9 @@ mod bound_range {
         MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn col_segment<'LEFT>(
+        pub fn col_segment<'scope, 'LEFT>(
             self,
-            first: Segment<'_, 'COLS, 'LEFT>,
+            first: Segment<'scope, 'COLS, 'LEFT>,
         ) -> MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(

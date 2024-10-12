@@ -607,11 +607,11 @@ mod bound_range {
 
     impl<'ROWS, 'a, C: Container, T, CStride: Stride> ColMut<'a, C, T, Dim<'ROWS>, CStride> {
         #[inline]
-        pub fn row_segments_mut<'TOP, 'BOT>(
+        pub fn row_segments_mut<'scope, 'TOP, 'BOT>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
-            second: Segment<'_, 'ROWS, 'BOT>,
-            disjoint: Disjoint<'TOP, 'BOT>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
+            second: Segment<'scope, 'ROWS, 'BOT>,
+            disjoint: Disjoint<'scope, 'TOP, 'BOT>,
         ) -> (
             ColMut<'a, C, T, Dim<'TOP>, CStride>,
             ColMut<'a, C, T, Dim<'BOT>, CStride>,
@@ -635,10 +635,10 @@ mod bound_range {
 
     impl<'ROWS, 'a, C: Container, T, CStride: Stride> ColMut<'a, C, T, Dim<'ROWS>, CStride> {
         #[inline]
-        pub fn row_segments<'TOP, 'BOT>(
+        pub fn row_segments<'scope, 'TOP, 'BOT>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
-            second: Segment<'_, 'ROWS, 'BOT>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
+            second: Segment<'scope, 'ROWS, 'BOT>,
         ) -> (
             ColRef<'a, C, T, Dim<'TOP>, CStride>,
             ColRef<'a, C, T, Dim<'BOT>, CStride>,
@@ -661,10 +661,10 @@ mod bound_range {
 
     impl<'ROWS, 'a, C: Container, T, CStride: Stride> ColRef<'a, C, T, Dim<'ROWS>, CStride> {
         #[inline]
-        pub fn row_segments<'TOP, 'BOT>(
+        pub fn row_segments<'scope, 'TOP, 'BOT>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
-            second: Segment<'_, 'ROWS, 'BOT>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
+            second: Segment<'scope, 'ROWS, 'BOT>,
         ) -> (
             ColRef<'a, C, T, Dim<'TOP>, CStride>,
             ColRef<'a, C, T, Dim<'BOT>, CStride>,
@@ -689,9 +689,9 @@ mod bound_range {
 
     impl<'ROWS, 'a, C: Container, T, RStride: Stride> ColMut<'a, C, T, Dim<'ROWS>, RStride> {
         #[inline]
-        pub fn row_segment_mut<'TOP>(
+        pub fn row_segment_mut<'scope, 'TOP>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> ColMut<'a, C, T, Dim<'TOP>, RStride> {
             unsafe {
                 ColMut::from_raw_parts_mut(
@@ -704,9 +704,9 @@ mod bound_range {
     }
     impl<'ROWS, 'a, C: Container, T, RStride: Stride> ColRef<'a, C, T, Dim<'ROWS>, RStride> {
         #[inline]
-        pub fn row_segment<'TOP>(
+        pub fn row_segment<'scope, 'TOP>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> ColRef<'a, C, T, Dim<'TOP>, RStride> {
             unsafe {
                 ColRef::from_raw_parts(self.ptr_at(first.start()), first.len(), self.row_stride())
@@ -716,9 +716,9 @@ mod bound_range {
 
     impl<'ROWS, 'a, C: Container, T, RStride: Stride> ColMut<'a, C, T, Dim<'ROWS>, RStride> {
         #[inline]
-        pub fn row_segment<'TOP>(
+        pub fn row_segment<'scope, 'TOP>(
             self,
-            first: Segment<'_, 'ROWS, 'TOP>,
+            first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> ColRef<'a, C, T, Dim<'TOP>, RStride> {
             unsafe {
                 ColRef::from_raw_parts(self.ptr_at(first.start()), first.len(), self.row_stride())

@@ -44,6 +44,7 @@ impl<C: ComplexContainer, T: ComplexField<C, MathCtx: Default>> Default
 
 #[non_exhaustive]
 pub struct LltParams {
+    pub recursion_threshold: NonZero<usize>,
     pub blocksize: NonZero<usize>,
 }
 
@@ -51,7 +52,8 @@ impl Default for LltParams {
     #[inline]
     fn default() -> Self {
         Self {
-            blocksize: NonZero::new(64).unwrap(),
+            recursion_threshold: NonZero::new(64).unwrap(),
+            blocksize: NonZero::new(128).unwrap(),
         }
     }
 }
@@ -83,6 +85,7 @@ pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
         ctx,
         A,
         D.col_mut(0).transpose_mut(),
+        params.recursion_threshold.get(),
         params.blocksize.get(),
         true,
         math.gt_zero(regularization.dynamic_regularization_delta)

@@ -9,15 +9,6 @@ pub fn solve_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     Ok(StackReq::empty())
 }
 
-pub fn solve_scratch<C: ComplexContainer, T: ComplexField<C>>(
-    dim: usize,
-    rhs_ncols: usize,
-    par: Parallelism,
-) -> Result<StackReq, SizeOverflow> {
-    _ = (dim, rhs_ncols, par);
-    Ok(StackReq::empty())
-}
-
 #[math]
 pub fn solve_in_place_with_conj<'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
@@ -44,19 +35,4 @@ pub fn solve_in_place_with_conj<'N, 'K, C: ComplexContainer, T: ComplexField<C>>
         rhs.rb_mut(),
         par,
     );
-}
-
-#[math]
-pub fn solve_with_conj<'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    dst: MatMut<'_, C, T, Dim<'N>, Dim<'K>>,
-    L: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
-    conj_lhs: Conj,
-    rhs: MatRef<'_, C, T, Dim<'N>, Dim<'K>>,
-    par: Parallelism,
-    stack: &mut DynStack,
-) {
-    let mut dst = dst;
-    dst.copy_from_with_ctx(ctx, rhs);
-    solve_in_place_with_conj(ctx, L, conj_lhs, dst, par, stack);
 }

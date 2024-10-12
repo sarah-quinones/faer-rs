@@ -189,3 +189,4 @@ pub mod mat_ops;
 pub mod kron;
 
 pub mod cholesky;
+pub mod lu;
