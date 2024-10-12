@@ -1,4 +1,6 @@
-use crate::internal_prelude::*;
+use crate::{assert, internal_prelude::*};
+use core::num::NonZero;
+use faer_traits::RealValue;
 use linalg::matmul::triangular::BlockStructure;
 use pulp::Simd;
 
@@ -30,7 +32,10 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
         let (disjoint, head, tail, _, _) = mat_rows.split_inc(start, ROW.HEAD, ROW.TAIL);
 
         let simd = SimdCtx::<C, T, S>::new_force_mask(simd, tail.len());
-        let indices = simd.indices();
+        let (idx_head, indices, idx_tail) = simd.indices();
+        assert!(idx_head.is_none());
+        let Some(idx_tail) = idx_tail else { panic!() };
+
         let ctx = &Ctx::<C, T>(T::ctx_from_simd(&simd.ctx).0);
 
         let mut count = 0usize;
@@ -50,7 +55,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
                 let mut Aj = A11.rb_mut().col_mut(right.from_global(j));
                 {
-                    let mut Aj = Aj.rb_mut().as_array_mut();
+                    let mut Aj = Aj.rb_mut();
                     let mut iter = indices.clone();
                     let i0 = iter.next();
                     let i1 = iter.next();
@@ -58,10 +63,10 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
                     match (i0, i1, i2) {
                         (None, None, None) => {
-                            let mut Aij = simd.read_tail(rb!(Aj));
+                            let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k)).as_array();
+                                let Ak = A10.col(left.from_global(k));
 
                                 let D = math(real(D[mat_cols.from_global(k)]));
                                 let D = if is_llt { math.re.one() } else { D };
@@ -71,17 +76,17 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                                     re.neg(D)
                                 ))));
 
-                                let Aik = simd.read_tail(rb!(Ak));
+                                let Aik = simd.read(Ak, idx_tail);
                                 Aij = simd.mul_add(Ajk, Aik, Aij);
                             }
-                            simd.write_tail(rb_mut!(Aj), Aij);
+                            simd.write(Aj.rb_mut(), idx_tail, Aij);
                         }
                         (Some(i0), None, None) => {
-                            let mut A0j = simd.read(rb!(Aj), i0);
-                            let mut Aij = simd.read_tail(rb!(Aj));
+                            let mut A0j = simd.read(Aj.rb(), i0);
+                            let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k)).as_array();
+                                let Ak = A10.col(left.from_global(k));
 
                                 let D = math(real(D[mat_cols.from_global(k)]));
                                 let D = if is_llt { math.re.one() } else { D };
@@ -91,21 +96,21 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                                     re.neg(D)
                                 ))));
 
-                                let A0k = simd.read(rb!(Ak), i0);
-                                let Aik = simd.read_tail(rb!(Ak));
+                                let A0k = simd.read(Ak, i0);
+                                let Aik = simd.read(Ak, idx_tail);
                                 A0j = simd.mul_add(Ajk, A0k, A0j);
                                 Aij = simd.mul_add(Ajk, Aik, Aij);
                             }
-                            simd.write(rb_mut!(Aj), i0, A0j);
-                            simd.write_tail(rb_mut!(Aj), Aij);
+                            simd.write(Aj.rb_mut(), i0, A0j);
+                            simd.write(Aj.rb_mut(), idx_tail, Aij);
                         }
                         (Some(i0), Some(i1), None) => {
-                            let mut A0j = simd.read(rb!(Aj), i0);
-                            let mut A1j = simd.read(rb!(Aj), i1);
-                            let mut Aij = simd.read_tail(rb!(Aj));
+                            let mut A0j = simd.read(Aj.rb(), i0);
+                            let mut A1j = simd.read(Aj.rb(), i1);
+                            let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k)).as_array();
+                                let Ak = A10.col(left.from_global(k));
 
                                 let D = math(real(D[mat_cols.from_global(k)]));
                                 let D = if is_llt { math.re.one() } else { D };
@@ -115,25 +120,25 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                                     re.neg(D)
                                 ))));
 
-                                let A0k = simd.read(rb!(Ak), i0);
-                                let A1k = simd.read(rb!(Ak), i1);
-                                let Aik = simd.read_tail(rb!(Ak));
+                                let A0k = simd.read(Ak, i0);
+                                let A1k = simd.read(Ak, i1);
+                                let Aik = simd.read(Ak, idx_tail);
                                 A0j = simd.mul_add(Ajk, A0k, A0j);
                                 A1j = simd.mul_add(Ajk, A1k, A1j);
                                 Aij = simd.mul_add(Ajk, Aik, Aij);
                             }
-                            simd.write(rb_mut!(Aj), i0, A0j);
-                            simd.write(rb_mut!(Aj), i1, A1j);
-                            simd.write_tail(rb_mut!(Aj), Aij);
+                            simd.write(Aj.rb_mut(), i0, A0j);
+                            simd.write(Aj.rb_mut(), i1, A1j);
+                            simd.write(Aj.rb_mut(), idx_tail, Aij);
                         }
                         (Some(i0), Some(i1), Some(i2)) => {
-                            let mut A0j = simd.read(rb!(Aj), i0);
-                            let mut A1j = simd.read(rb!(Aj), i1);
-                            let mut A2j = simd.read(rb!(Aj), i2);
-                            let mut Aij = simd.read_tail(rb!(Aj));
+                            let mut A0j = simd.read(Aj.rb(), i0);
+                            let mut A1j = simd.read(Aj.rb(), i1);
+                            let mut A2j = simd.read(Aj.rb(), i2);
+                            let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k)).as_array();
+                                let Ak = A10.col(left.from_global(k));
 
                                 let D = math(real(D[mat_cols.from_global(k)]));
                                 let D = if is_llt { math.re.one() } else { D };
@@ -143,19 +148,19 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                                     re.neg(D)
                                 ))));
 
-                                let A0k = simd.read(rb!(Ak), i0);
-                                let A1k = simd.read(rb!(Ak), i1);
-                                let A2k = simd.read(rb!(Ak), i2);
-                                let Aik = simd.read_tail(rb!(Ak));
+                                let A0k = simd.read(Ak, i0);
+                                let A1k = simd.read(Ak, i1);
+                                let A2k = simd.read(Ak, i2);
+                                let Aik = simd.read(Ak, idx_tail);
                                 A0j = simd.mul_add(Ajk, A0k, A0j);
                                 A1j = simd.mul_add(Ajk, A1k, A1j);
                                 A2j = simd.mul_add(Ajk, A2k, A2j);
                                 Aij = simd.mul_add(Ajk, Aik, Aij);
                             }
-                            simd.write(rb_mut!(Aj), i0, A0j);
-                            simd.write(rb_mut!(Aj), i1, A1j);
-                            simd.write(rb_mut!(Aj), i2, A2j);
-                            simd.write_tail(rb_mut!(Aj), Aij);
+                            simd.write(Aj.rb_mut(), i0, A0j);
+                            simd.write(Aj.rb_mut(), i1, A1j);
+                            simd.write(Aj.rb_mut(), i2, A2j);
+                            simd.write(Aj.rb_mut(), idx_tail, Aij);
                         }
                         _ => {
                             unreachable!();
@@ -219,18 +224,18 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                 let diag = math(real(D));
 
                 {
-                    let mut Aj = Aj.rb_mut().as_array_mut();
+                    let mut Aj = Aj.rb_mut();
                     let inv = simd.splat_real(as_ref2!(math.re.recip(diag)));
 
                     for i in indices.clone() {
-                        let mut Aij = simd.read(rb!(Aj), i);
+                        let mut Aij = simd.read(Aj.rb(), i);
                         Aij = simd.mul_real(Aij, inv);
-                        simd.write(rb_mut!(Aj), i, Aij);
+                        simd.write(Aj.rb_mut(), i, Aij);
                     }
                     {
-                        let mut Aij = simd.read_tail(rb!(Aj));
+                        let mut Aij = simd.read(Aj.rb(), idx_tail);
                         Aij = simd.mul_real(Aij, inv);
-                        simd.write_tail(rb_mut!(Aj), Aij);
+                        simd.write(Aj.rb_mut(), idx_tail, Aij);
                     }
                 }
             });
@@ -460,11 +465,12 @@ fn cholesky_fallback<'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
+pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
     D: RowMut<'_, C, T, Dim<'N>>,
 
+    recursion_threshold: usize,
     is_llt: bool,
     regularize: bool,
     eps: <C::Real as Container>::Of<&T::RealUnit>,
@@ -473,7 +479,7 @@ fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
     par: Parallelism,
 ) -> Result<usize, usize> {
     let N = A.ncols();
-    if *N <= 1 {
+    if *N <= recursion_threshold {
         cholesky_fallback(ctx, A, D, is_llt, regularize, eps, delta, signs)
     } else {
         let mut count = 0;
@@ -507,6 +513,7 @@ fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
                     ctx,
                     A00.rb_mut(),
                     D0.rb_mut(),
+                    recursion_threshold,
                     is_llt,
                     regularize,
                     rb2!(eps),
@@ -572,6 +579,121 @@ fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
 
         Ok(count)
     }
+}
+
+/// Dynamic LDLT regularization.
+/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+/// their corrected sign.
+pub struct LdltRegularization<'a, C: ComplexContainer, T: ComplexField<C>> {
+    /// Expected signs for the diagonal at each step of the decomposition.
+    pub dynamic_regularization_signs: Option<&'a [i8]>,
+    /// Regularized value.
+    pub dynamic_regularization_delta: RealValue<C, T>,
+    /// Regularization threshold.
+    pub dynamic_regularization_epsilon: RealValue<C, T>,
+}
+
+/// Info about the result of the LDLT factorization.
+#[derive(Copy, Clone, Debug)]
+pub struct LdltInfo {
+    /// Number of pivots whose value or sign had to be corrected.
+    pub dynamic_regularization_count: usize,
+}
+
+/// Error in the LDLT factorization.
+#[derive(Copy, Clone, Debug)]
+pub enum LdltError {
+    ZeroPivot { index: usize },
+}
+
+impl<C: ComplexContainer, T: ComplexField<C>> LdltRegularization<'_, C, T> {
+    #[math]
+    pub fn default_with(ctx: &Ctx<C, T>) -> Self {
+        Self {
+            dynamic_regularization_signs: None,
+            dynamic_regularization_delta: math.re(zero()),
+            dynamic_regularization_epsilon: math.re(zero()),
+        }
+    }
+}
+
+impl<C: ComplexContainer, T: ComplexField<C, MathCtx: Default>> Default
+    for LdltRegularization<'_, C, T>
+{
+    fn default() -> Self {
+        Self::default_with(&ctx())
+    }
+}
+
+#[non_exhaustive]
+pub struct LdltParams {
+    pub blocksize: NonZero<usize>,
+}
+
+impl Default for LdltParams {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            blocksize: NonZero::new(64).unwrap(),
+        }
+    }
+}
+
+#[inline]
+pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
+    dim: usize,
+) -> Result<StackReq, SizeOverflow> {
+    temp_mat_scratch::<C, T>(dim, 1)
+}
+
+#[math]
+pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
+    ctx: &Ctx<C, T>,
+    A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+    regularization: LdltRegularization<'_, C, T>,
+    par: Parallelism,
+    stack: &mut DynStack,
+    params: LdltParams,
+) -> Result<LdltInfo, LdltError> {
+    let N = A.nrows();
+    let mut D = unsafe { temp_mat_uninit(ctx, N, 1, stack).0 };
+    let D = D.as_mat_mut();
+    let mut D = D.col_mut(0).transpose_mut();
+    let mut A = A;
+
+    help!(C::Real);
+    let ret = match cholesky_recursion(
+        ctx,
+        A.rb_mut(),
+        D.rb_mut(),
+        params.blocksize.get(),
+        false,
+        math.gt_zero(regularization.dynamic_regularization_delta)
+            && math.gt_zero(regularization.dynamic_regularization_epsilon),
+        as_ref!(regularization.dynamic_regularization_epsilon),
+        as_ref!(regularization.dynamic_regularization_delta),
+        regularization
+            .dynamic_regularization_signs
+            .map(|signs| Array::from_ref(signs, N)),
+        par,
+    ) {
+        Ok(count) => Ok(LdltInfo {
+            dynamic_regularization_count: count,
+        }),
+        Err(index) => Err(LdltError::ZeroPivot { index }),
+    };
+    let init = if let Err(LdltError::ZeroPivot { index }) = ret {
+        N.idx(index).next()
+    } else {
+        N.end()
+    };
+
+    help2!(C);
+    for i in zero().to(init) {
+        write2!(A[(i, i)] = math(copy(D[i])));
+    }
+
+    ret
 }
 
 #[cfg(test)]
@@ -665,7 +787,7 @@ mod tests {
                 .rand::<Mat<c64, Dim, Dim>>(rng);
 
                 let A = &A * &A.adjoint();
-                let A = A.as_ref().as_shape(N, N);
+                let A = A.as_ref();
 
                 let mut L = A.cloned();
                 let mut L = L.as_mut();
@@ -676,6 +798,7 @@ mod tests {
                     &default(),
                     L.rb_mut(),
                     D.rb_mut(),
+                    32,
                     llt,
                     false,
                     &0.0,

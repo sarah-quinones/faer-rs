@@ -184,7 +184,7 @@ impl<
                         &rhs,
                         &alloc::format!("{rhs_source} at ({i:?}, {j:?})"),
                         crate::hacks::hijack_debug(unsafe {
-                            crate::hacks::coerce::<&C::Of<T>, &C::OfDebug<T>>(&lhs)
+                            crate::hacks::coerce::<&C::Of<T>, &C::OfDebug<T>>(&rhs)
                         }),
                         f,
                     )?;

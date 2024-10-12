@@ -12,8 +12,7 @@ fn norm_max_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
 ) -> <C::Real as Container>::Of<T::RealUnit> {
     struct Impl<'a, 'N, C: ComplexContainer, T: ComplexField<C>> {
         ctx: &'a Ctx<C, T>,
-        data: C::Of<&'a Array<'N, T>>,
-        len: Dim<'N>,
+        data: ColRef<'a, C, T, Dim<'N>, ContiguousFwd>,
     }
 
     impl<'N, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd for Impl<'_, 'N, C, T> {
@@ -21,8 +20,8 @@ fn norm_max_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
         #[inline(always)]
         #[math]
         fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-            let Self { ctx, data, len } = self;
-            let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), len);
+            let Self { ctx, data } = self;
+            let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), data.nrows());
 
             help!(C);
             let zero = simd.splat(as_ref!(math.zero()));
@@ -32,40 +31,40 @@ fn norm_max_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
             let mut acc2 = Real(zero);
             let mut acc3 = Real(zero);
 
-            let (head, tail) = simd.batch_indices::<4>();
-            for [i0, i1, i2, i3] in head {
-                let x0 = simd.abs_max(simd.read(rb!(data), i0));
-                let x1 = simd.abs_max(simd.read(rb!(data), i1));
-                let x2 = simd.abs_max(simd.read(rb!(data), i2));
-                let x3 = simd.abs_max(simd.read(rb!(data), i3));
+            let (head, body4, body1, tail) = simd.batch_indices::<4>();
+
+            if let Some(i0) = head {
+                let x0 = simd.abs_max(simd.read(data, i0));
+                acc0 = simd.max(acc0, x0);
+            }
+            for [i0, i1, i2, i3] in body4 {
+                let x0 = simd.abs_max(simd.read(data, i0));
+                let x1 = simd.abs_max(simd.read(data, i1));
+                let x2 = simd.abs_max(simd.read(data, i2));
+                let x3 = simd.abs_max(simd.read(data, i3));
 
                 acc0 = simd.max(acc0, x0);
                 acc1 = simd.max(acc1, x1);
                 acc2 = simd.max(acc2, x2);
                 acc3 = simd.max(acc3, x3);
             }
-
+            for i0 in body1 {
+                let x0 = simd.abs_max(simd.read(data, i0));
+                acc0 = simd.max(acc0, x0);
+            }
+            if let Some(i0) = tail {
+                let x0 = simd.abs_max(simd.read(data, i0));
+                acc0 = simd.max(acc0, x0);
+            }
             acc0 = simd.max(acc0, acc1);
             acc2 = simd.max(acc2, acc3);
             acc0 = simd.max(acc0, acc2);
 
-            for i0 in tail {
-                let x0 = simd.abs_max(simd.read(rb!(data), i0));
-                acc0 = simd.max(acc0, x0);
-            }
-            if simd.has_tail() {
-                let x0 = simd.abs_max(simd.read_tail(rb!(data)));
-                acc0 = simd.max(acc0, x0);
-            }
             math.real(simd.reduce_max(acc0))
         }
     }
 
-    T::Arch::default().dispatch(Impl {
-        ctx,
-        data: data.as_array(),
-        len: data.nrows(),
-    })
+    T::Arch::default().dispatch(Impl { ctx, data })
 }
 
 #[math]

@@ -221,32 +221,43 @@ impl<C: RealContainer, T: RealField<C>> JacobiRotation<C, T> {
             return;
         });
 
-        let mut x = x.as_array_mut();
-        let mut y = y.as_array_mut();
+        let mut x = x.transpose_mut();
+        let mut y = y.transpose_mut();
 
         let c = simd.splat(as_ref!(c));
         let s = simd.splat(as_ref!(s));
 
-        for i in simd.indices() {
-            let mut xx = simd.read(rb!(x), i);
-            let mut yy = simd.read(rb!(y), i);
+        let (head, body, tail) = simd.indices();
+
+        if let Some(i) = head {
+            let mut xx = simd.read(x.rb(), i);
+            let mut yy = simd.read(y.rb(), i);
 
             xx = simd.mul_add(c, xx, simd.mul(s, yy));
             yy = simd.mul_add(c, yy, simd.neg(simd.mul(s, xx)));
 
-            simd.write(rb_mut!(x), i, xx);
-            simd.write(rb_mut!(y), i, yy);
+            simd.write(x.rb_mut(), i, xx);
+            simd.write(y.rb_mut(), i, yy);
         }
-
-        if simd.has_tail() {
-            let mut xx = simd.read_tail(rb!(x));
-            let mut yy = simd.read_tail(rb!(y));
+        for i in body {
+            let mut xx = simd.read(x.rb(), i);
+            let mut yy = simd.read(y.rb(), i);
 
             xx = simd.mul_add(c, xx, simd.mul(s, yy));
             yy = simd.mul_add(c, yy, simd.neg(simd.mul(s, xx)));
 
-            simd.write_tail(rb_mut!(x), xx);
-            simd.write_tail(rb_mut!(y), yy);
+            simd.write(x.rb_mut(), i, xx);
+            simd.write(y.rb_mut(), i, yy);
+        }
+        if let Some(i) = tail {
+            let mut xx = simd.read(x.rb(), i);
+            let mut yy = simd.read(y.rb(), i);
+
+            xx = simd.mul_add(c, xx, simd.mul(s, yy));
+            yy = simd.mul_add(c, yy, simd.neg(simd.mul(s, xx)));
+
+            simd.write(x.rb_mut(), i, xx);
+            simd.write(y.rb_mut(), i, yy);
         }
     }
 

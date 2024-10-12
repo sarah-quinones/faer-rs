@@ -1,12 +1,10 @@
 use super::temp_mat_scratch;
 use crate::{
     col::ColRefGeneric,
+    internal_prelude::*,
     mat::{MatMutGeneric, MatRefGeneric},
     row::RowRefGeneric,
-    utils::{
-        bound::{Array, Dim},
-        simd::SimdCtx,
-    },
+    utils::{bound::Dim, simd::SimdCtx},
     Conj, ContiguousFwd, Parallelism, Shape, Stride,
 };
 use dyn_stack::{DynStack, GlobalMemBuffer};
@@ -32,14 +30,7 @@ pub mod dot {
         conj_rhs: Conj,
     ) -> C::Of<T> {
         if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
-            inner_prod_slice::<C, T>(
-                ctx,
-                lhs.ncols(),
-                lhs.as_array(),
-                conj_lhs,
-                rhs.as_array(),
-                conj_rhs,
-            )
+            inner_prod_slice::<C, T>(ctx, lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
         } else {
             let mut acc = math(zero());
             for j in lhs.ncols().indices() {
@@ -54,9 +45,9 @@ pub mod dot {
     fn inner_prod_slice<'K, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         len: Dim<'K>,
-        lhs: C::Of<&Array<'K, T>>,
+        lhs: ColRef<'_, C, T, Dim<'K>, ContiguousFwd>,
         conj_lhs: Conj,
-        rhs: C::Of<&Array<'K, T>>,
+        rhs: ColRef<'_, C, T, Dim<'K>, ContiguousFwd>,
         conj_rhs: Conj,
     ) -> C::Of<T> {
         help!(C);
@@ -64,9 +55,9 @@ pub mod dot {
         struct Impl<'a, 'K, C: ComplexContainer, T: ComplexField<C>> {
             ctx: &'a Ctx<C, T>,
             len: Dim<'K>,
-            lhs: C::Of<&'a Array<'K, T>>,
+            lhs: ColRef<'a, C, T, Dim<'K>, ContiguousFwd>,
             conj_lhs: Conj,
-            rhs: C::Of<&'a Array<'K, T>>,
+            rhs: ColRef<'a, C, T, Dim<'K>, ContiguousFwd>,
             conj_rhs: Conj,
         }
         impl<'a, 'K, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd for Impl<'_, '_, C, T> {
@@ -101,8 +92,8 @@ pub mod dot {
         T::Arch::default().dispatch(Impl::<C, _> {
             ctx,
             len,
-            lhs: rb!(lhs),
-            rhs: rb!(rhs),
+            lhs,
+            rhs,
             conj_lhs,
             conj_rhs,
         })
@@ -111,8 +102,8 @@ pub mod dot {
     #[inline(always)]
     pub fn inner_prod_no_conj_simd<'K, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
         simd: SimdCtx<'K, C, T, S>,
-        lhs: C::Of<&Array<'K, T>>,
-        rhs: C::Of<&Array<'K, T>>,
+        lhs: ColRef<'_, C, T, Dim<'K>, ContiguousFwd>,
+        rhs: ColRef<'_, C, T, Dim<'K>, ContiguousFwd>,
     ) -> C::Of<T> {
         help!(C);
 
@@ -121,34 +112,40 @@ pub mod dot {
         let mut acc2 = simd.zero();
         let mut acc3 = simd.zero();
 
-        let (idx4, idx) = simd.batch_indices::<4>();
-        for [i0, i1, i2, i3] in idx4 {
-            let l0 = simd.read(rb!(lhs), i0);
-            let l1 = simd.read(rb!(lhs), i1);
-            let l2 = simd.read(rb!(lhs), i2);
-            let l3 = simd.read(rb!(lhs), i3);
+        let (head, idx4, idx, tail) = simd.batch_indices::<4>();
 
-            let r0 = simd.read(rb!(rhs), i0);
-            let r1 = simd.read(rb!(rhs), i1);
-            let r2 = simd.read(rb!(rhs), i2);
-            let r3 = simd.read(rb!(rhs), i3);
+        if let Some(i0) = head {
+            let l0 = simd.read(lhs, i0);
+            let r0 = simd.read(rhs, i0);
+
+            acc0 = simd.mul_add(l0, r0, acc0);
+        }
+        for [i0, i1, i2, i3] in idx4 {
+            let l0 = simd.read(lhs, i0);
+            let l1 = simd.read(lhs, i1);
+            let l2 = simd.read(lhs, i2);
+            let l3 = simd.read(lhs, i3);
+
+            let r0 = simd.read(rhs, i0);
+            let r1 = simd.read(rhs, i1);
+            let r2 = simd.read(rhs, i2);
+            let r3 = simd.read(rhs, i3);
 
             acc0 = simd.mul_add(l0, r0, acc0);
             acc1 = simd.mul_add(l1, r1, acc1);
             acc2 = simd.mul_add(l2, r2, acc2);
             acc3 = simd.mul_add(l3, r3, acc3);
         }
-
         for i0 in idx {
-            let l0 = simd.read(rb!(lhs), i0);
-            let r0 = simd.read(rb!(rhs), i0);
+            let l0 = simd.read(lhs, i0);
+            let r0 = simd.read(rhs, i0);
 
             acc0 = simd.mul_add(l0, r0, acc0);
         }
+        if let Some(i0) = tail {
+            let l0 = simd.read(lhs, i0);
+            let r0 = simd.read(rhs, i0);
 
-        if simd.has_tail() {
-            let l0 = simd.read_tail(rb!(lhs));
-            let r0 = simd.read_tail(rb!(rhs));
             acc0 = simd.mul_add(l0, r0, acc0);
         }
         acc0 = simd.add(acc0, acc1);
@@ -161,8 +158,8 @@ pub mod dot {
     #[inline(always)]
     pub fn inner_prod_conj_lhs_simd<'K, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
         simd: SimdCtx<'K, C, T, S>,
-        lhs: C::Of<&Array<'K, T>>,
-        rhs: C::Of<&Array<'K, T>>,
+        lhs: ColRef<'_, C, T, Dim<'K>, ContiguousFwd>,
+        rhs: ColRef<'_, C, T, Dim<'K>, ContiguousFwd>,
     ) -> C::Of<T> {
         help!(C);
 
@@ -171,35 +168,41 @@ pub mod dot {
         let mut acc2 = simd.zero();
         let mut acc3 = simd.zero();
 
-        let (idx4, idx) = simd.batch_indices::<4>();
-        for [i0, i1, i2, i3] in idx4 {
-            let l0 = simd.read(rb!(lhs), i0);
-            let l1 = simd.read(rb!(lhs), i1);
-            let l2 = simd.read(rb!(lhs), i2);
-            let l3 = simd.read(rb!(lhs), i3);
+        let (head, idx4, idx, tail) = simd.batch_indices::<4>();
 
-            let r0 = simd.read(rb!(rhs), i0);
-            let r1 = simd.read(rb!(rhs), i1);
-            let r2 = simd.read(rb!(rhs), i2);
-            let r3 = simd.read(rb!(rhs), i3);
+        if let Some(i0) = head {
+            let l0 = simd.read(lhs, i0);
+            let r0 = simd.read(rhs, i0);
+
+            acc0 = simd.conj_mul_add(l0, r0, acc0);
+        }
+        for [i0, i1, i2, i3] in idx4 {
+            let l0 = simd.read(lhs, i0);
+            let l1 = simd.read(lhs, i1);
+            let l2 = simd.read(lhs, i2);
+            let l3 = simd.read(lhs, i3);
+
+            let r0 = simd.read(rhs, i0);
+            let r1 = simd.read(rhs, i1);
+            let r2 = simd.read(rhs, i2);
+            let r3 = simd.read(rhs, i3);
 
             acc0 = simd.conj_mul_add(l0, r0, acc0);
             acc1 = simd.conj_mul_add(l1, r1, acc1);
             acc2 = simd.conj_mul_add(l2, r2, acc2);
             acc3 = simd.conj_mul_add(l3, r3, acc3);
         }
-
         for i0 in idx {
-            let l0 = simd.read(rb!(lhs), i0);
-            let r0 = simd.read(rb!(rhs), i0);
+            let l0 = simd.read(lhs, i0);
+            let r0 = simd.read(rhs, i0);
 
             acc0 = simd.conj_mul_add(l0, r0, acc0);
         }
+        if let Some(i0) = tail {
+            let l0 = simd.read(lhs, i0);
+            let r0 = simd.read(rhs, i0);
 
-        if simd.has_tail() {
-            let l0 = simd.read_tail(rb!(lhs));
-            let r0 = simd.read_tail(rb!(rhs));
-            acc0 = simd.mul_add(l0, r0, acc0);
+            acc0 = simd.conj_mul_add(l0, r0, acc0);
         }
         acc0 = simd.add(acc0, acc1);
         acc2 = simd.add(acc2, acc3);
@@ -306,17 +309,9 @@ mod matvec_rowmajor {
                             let lhs = lhs.row(i);
                             let rhs = rhs;
                             let mut tmp = if conj_lhs == conj_rhs {
-                                dot::inner_prod_no_conj_simd::<C, T, S>(
-                                    simd,
-                                    lhs.as_array(),
-                                    rhs.as_array(),
-                                )
+                                dot::inner_prod_no_conj_simd::<C, T, S>(simd, lhs.transpose(), rhs)
                             } else {
-                                dot::inner_prod_conj_lhs_simd::<C, T, S>(
-                                    simd,
-                                    lhs.as_array(),
-                                    rhs.as_array(),
-                                )
+                                dot::inner_prod_conj_lhs_simd::<C, T, S>(simd, lhs.transpose(), rhs)
                             };
 
                             if conj_rhs == Conj::Yes {
@@ -433,39 +428,46 @@ mod matvec_colmajor {
 
                         let M = lhs.nrows();
                         let simd = SimdCtx::<C, T, S>::new(simd, M);
-                        let indices = simd.indices();
+                        let (head, body, tail) = simd.indices();
 
                         let mut dst = dst;
                         match beta {
                             Some(beta) => {
-                                let mut dst = dst.rb_mut().as_array_mut();
+                                let mut dst = dst.rb_mut();
                                 if !math(beta == one()) {
                                     let beta = simd.splat(beta);
 
-                                    for i in indices.clone() {
-                                        let y = simd.read(rb!(dst), i);
-                                        simd.write(rb_mut!(dst), i, simd.mul(beta, y));
+                                    if let Some(i) = head {
+                                        let y = simd.read(dst.rb(), i);
+                                        simd.write(dst.rb_mut(), i, simd.mul(beta, y));
                                     }
-                                    if simd.has_tail() {
-                                        let y = simd.read_tail(rb!(dst));
-                                        simd.write_tail(rb_mut!(dst), simd.mul(beta, y));
+                                    for i in body.clone() {
+                                        let y = simd.read(dst.rb(), i);
+                                        simd.write(dst.rb_mut(), i, simd.mul(beta, y));
+                                    }
+                                    if let Some(i) = tail {
+                                        let y = simd.read(dst.rb(), i);
+                                        simd.write(dst.rb_mut(), i, simd.mul(beta, y));
                                     }
                                 }
                             }
                             None => {
-                                let mut dst = dst.rb_mut().as_array_mut();
-                                for i in indices.clone() {
-                                    simd.write(rb_mut!(dst), i, simd.zero());
+                                let mut dst = dst.rb_mut();
+                                if let Some(i) = head {
+                                    simd.write(dst.rb_mut(), i, simd.zero());
                                 }
-                                if simd.has_tail() {
-                                    simd.write_tail(rb_mut!(dst), simd.zero());
+                                for i in body.clone() {
+                                    simd.write(dst.rb_mut(), i, simd.zero());
+                                }
+                                if let Some(i) = tail {
+                                    simd.write(dst.rb_mut(), i, simd.zero());
                                 }
                             }
                         }
 
                         for j in lhs.ncols().indices() {
-                            let mut dst = dst.rb_mut().as_array_mut();
-                            let lhs = lhs.col(j).as_array();
+                            let mut dst = dst.rb_mut();
+                            let lhs = lhs.col(j);
                             let rhs = rhs.at(j);
                             let rhs = if conj_rhs == Conj::Yes {
                                 math.conj(rhs)
@@ -476,26 +478,36 @@ mod matvec_colmajor {
 
                             let vrhs = simd.splat(as_ref!(rhs));
                             if conj_lhs == Conj::Yes {
-                                for i in indices.clone() {
-                                    let y = simd.read(rb!(dst), i);
-                                    let x = simd.read(rb!(lhs), i);
-                                    simd.write(rb_mut!(dst), i, simd.conj_mul_add(x, vrhs, y));
+                                if let Some(i) = head {
+                                    let y = simd.read(dst.rb(), i);
+                                    let x = simd.read(lhs, i);
+                                    simd.write(dst.rb_mut(), i, simd.conj_mul_add(x, vrhs, y));
                                 }
-                                if simd.has_tail() {
-                                    let y = simd.read_tail(rb!(dst));
-                                    let x = simd.read_tail(rb!(lhs));
-                                    simd.write_tail(rb_mut!(dst), simd.conj_mul_add(x, vrhs, y));
+                                for i in body.clone() {
+                                    let y = simd.read(dst.rb(), i);
+                                    let x = simd.read(lhs, i);
+                                    simd.write(dst.rb_mut(), i, simd.conj_mul_add(x, vrhs, y));
+                                }
+                                if let Some(i) = tail {
+                                    let y = simd.read(dst.rb(), i);
+                                    let x = simd.read(lhs, i);
+                                    simd.write(dst.rb_mut(), i, simd.conj_mul_add(x, vrhs, y));
                                 }
                             } else {
-                                for i in indices.clone() {
-                                    let y = simd.read(rb!(dst), i);
-                                    let x = simd.read(rb!(lhs), i);
-                                    simd.write(rb_mut!(dst), i, simd.mul_add(x, vrhs, y));
+                                if let Some(i) = head {
+                                    let y = simd.read(dst.rb(), i);
+                                    let x = simd.read(lhs, i);
+                                    simd.write(dst.rb_mut(), i, simd.mul_add(x, vrhs, y));
                                 }
-                                if simd.has_tail() {
-                                    let y = simd.read_tail(rb!(dst));
-                                    let x = simd.read_tail(rb!(lhs));
-                                    simd.write_tail(rb_mut!(dst), simd.mul_add(x, vrhs, y));
+                                for i in body.clone() {
+                                    let y = simd.read(dst.rb(), i);
+                                    let x = simd.read(lhs, i);
+                                    simd.write(dst.rb_mut(), i, simd.mul_add(x, vrhs, y));
+                                }
+                                if let Some(i) = tail {
+                                    let y = simd.read(dst.rb(), i);
+                                    let x = simd.read(lhs, i);
+                                    simd.write(dst.rb_mut(), i, simd.mul_add(x, vrhs, y));
                                 }
                             }
                         }

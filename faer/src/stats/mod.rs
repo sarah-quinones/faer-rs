@@ -32,13 +32,13 @@ pub struct CwiseMatDistribution<Rows: Shape, Cols: Shape, D> {
 #[derive(Copy, Clone, Debug)]
 pub struct CwiseColDistribution<Rows: Shape, D> {
     pub nrows: Rows,
-    pub distribution: D,
+    pub dist: D,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct CwiseRowDistribution<Cols: Shape, D> {
     pub ncols: Cols,
-    pub distribution: D,
+    pub dist: D,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -60,7 +60,7 @@ impl<C: Container, T, Rows: Shape, D: Distribution<C::Of<T>>> Distribution<Col<C
 {
     #[inline]
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Col<C, T, Rows> {
-        Col::from_fn(self.nrows, |_| self.distribution.sample(rng))
+        Col::from_fn(self.nrows, |_| self.dist.sample(rng))
     }
 }
 
@@ -69,6 +69,6 @@ impl<C: Container, T, Cols: Shape, D: Distribution<C::Of<T>>> Distribution<Row<C
 {
     #[inline]
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Row<C, T, Cols> {
-        Row::from_fn(self.ncols, |_| self.distribution.sample(rng))
+        Row::from_fn(self.ncols, |_| self.dist.sample(rng))
     }
 }

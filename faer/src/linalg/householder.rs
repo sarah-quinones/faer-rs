@@ -449,48 +449,48 @@ fn apply_block_householder_on_the_left_in_place_generic<
                 let N = rhs.nrows();
                 let K = rhs.ncols();
                 let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), N);
-                let indices = simd.indices();
+                let (head, indices, tail) = simd.indices();
 
                 help!(C);
                 for idx in K.indices() {
                     let mut col0 = rhs0.rb_mut().at_mut(idx);
-                    let mut col = rhs.rb_mut().col_mut(idx).as_array_mut();
-                    let essential = essential.as_array();
+                    let mut col = rhs.rb_mut().col_mut(idx);
+                    let essential = essential;
 
                     let dot = if const { CONJ } {
-                        math(col0 + dot::inner_prod_no_conj_simd(simd, rb!(essential), rb!(col)))
+                        math(col0 + dot::inner_prod_no_conj_simd(simd, essential.rb(), col.rb()))
                     } else {
-                        math(col0 + dot::inner_prod_conj_lhs_simd(simd, rb!(essential), rb!(col)))
+                        math(col0 + dot::inner_prod_conj_lhs_simd(simd, essential.rb(), col.rb()))
                     };
 
                     let k = math(-dot * tau_inv);
                     write1!(col0, math(col0 + k));
 
                     let k = simd.splat(as_ref!(k));
-                    for i in indices.clone() {
-                        let mut a = simd.read(rb!(col), i);
-                        let b = simd.read(rb!(essential), i);
+                    macro_rules! simd {
+                        ($i: expr) => {{
+                            let i = $i;
+                            let mut a = simd.read(col.rb(), i);
+                            let b = simd.read(essential.rb(), i);
 
-                        if const { CONJ } {
-                            a = simd.conj_mul_add(b, k, a);
-                        } else {
-                            a = simd.mul_add(b, k, a);
-                        }
+                            if const { CONJ } {
+                                a = simd.conj_mul_add(b, k, a);
+                            } else {
+                                a = simd.mul_add(b, k, a);
+                            }
 
-                        simd.write(rb_mut!(col), i, a);
+                            simd.write(col.rb_mut(), i, a);
+                        }};
                     }
 
-                    if simd.has_tail() {
-                        let mut a = simd.read_tail(rb!(col));
-                        let b = simd.read_tail(rb!(essential));
-
-                        if const { CONJ } {
-                            a = simd.conj_mul_add(b, k, a);
-                        } else {
-                            a = simd.mul_add(b, k, a);
-                        }
-
-                        simd.write_tail(rb_mut!(col), a);
+                    if let Some(i) = head {
+                        simd!(i);
+                    }
+                    for i in indices.clone() {
+                        simd!(i);
+                    }
+                    if let Some(i) = tail {
+                        simd!(i);
                     }
                 }
             }

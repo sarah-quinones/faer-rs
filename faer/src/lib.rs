@@ -1,8 +1,23 @@
 #![allow(non_snake_case)]
 
-use core::{num::NonZeroUsize, sync::atomic::AtomicUsize};
+use core::{num::NonZero, sync::atomic::AtomicUsize};
 use equator::{assert, debug_assert};
 use faer_traits::*;
+
+macro_rules! stack_mat {
+    ($ctx: expr, $name: ident, $m: expr, $n: expr, $M: expr, $N: expr, $C: ty, $T: ty $(,)?) => {
+        let mut __tmp = {
+            #[repr(align(64))]
+            struct __Col<T, const M: usize>([T; M]);
+            struct __Mat<T, const M: usize, const N: usize>([__Col<T, M>; N]);
+
+            core::mem::MaybeUninit::<C::Of<__Mat<T, $M, $N>>>::uninit()
+        };
+        let __stack = DynStack::new_any(core::slice::from_mut(&mut __tmp));
+        let mut $name = unsafe { temp_mat_uninit($ctx, $m, $n, __stack) }.0;
+        let mut $name = $name.as_mat_mut();
+    };
+}
 
 #[macro_export]
 #[doc(hidden)]
@@ -448,16 +463,16 @@ impl Conj {
 pub enum Parallelism {
     None,
     #[cfg(feature = "rayon")]
-    Rayon(NonZeroUsize),
+    Rayon(NonZero<usize>),
 }
 
 impl Parallelism {
     #[cfg(feature = "rayon")]
     pub fn rayon(nthreads: usize) -> Self {
         if nthreads == 0 {
-            Self::Rayon(NonZeroUsize::new(rayon::current_num_threads()).unwrap())
+            Self::Rayon(NonZero::new(rayon::current_num_threads()).unwrap())
         } else {
-            Self::Rayon(NonZeroUsize::new(nthreads).unwrap())
+            Self::Rayon(NonZero::new(nthreads).unwrap())
         }
     }
 }

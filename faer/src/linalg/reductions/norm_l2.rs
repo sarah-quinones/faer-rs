@@ -12,8 +12,7 @@ fn norm_l2_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
 ) -> [<C::Real as Container>::Of<T::RealUnit>; 3] {
     struct Impl<'a, 'N, C: ComplexContainer, T: ComplexField<C>> {
         ctx: &'a Ctx<C, T>,
-        data: C::Of<&'a Array<'N, T>>,
-        len: Dim<'N>,
+        data: ColRef<'a, C, T, Dim<'N>, ContiguousFwd>,
     }
 
     impl<'N, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd for Impl<'_, 'N, C, T> {
@@ -21,8 +20,8 @@ fn norm_l2_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
         #[inline(always)]
         #[math]
         fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-            let Self { ctx, data, len } = self;
-            let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), len);
+            let Self { ctx, data } = self;
+            let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), data.nrows());
 
             help!(C);
             help2!(C::Real);
@@ -38,10 +37,18 @@ fn norm_l2_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
             let mut acc0_big = Real(zero);
             let mut acc1_big = Real(zero);
 
-            let (head, tail) = simd.batch_indices::<2>();
-            for [i0, i1] in head {
-                let x0 = simd.abs1(simd.read(rb!(data), i0));
-                let x1 = simd.abs1(simd.read(rb!(data), i1));
+            let (head, body2, body1, tail) = simd.batch_indices::<2>();
+
+            if let Some(i0) = head {
+                let x0 = simd.abs1(simd.read(data, i0));
+
+                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
+                acc0_med = simd.abs2_add(x0.0, acc0_med);
+                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
+            }
+            for [i0, i1] in body2 {
+                let x0 = simd.abs1(simd.read(data, i0));
+                let x1 = simd.abs1(simd.read(data, i1));
 
                 acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
                 acc1_sml = simd.abs2_add(simd.mul_real(x1.0, sml), acc1_sml);
@@ -52,26 +59,24 @@ fn norm_l2_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
                 acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
                 acc1_big = simd.abs2_add(simd.mul_real(x1.0, big), acc1_big);
             }
+            for i0 in body1 {
+                let x0 = simd.abs1(simd.read(data, i0));
+
+                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
+                acc0_med = simd.abs2_add(x0.0, acc0_med);
+                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
+            }
+            if let Some(i0) = tail {
+                let x0 = simd.abs1(simd.read(data, i0));
+
+                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
+                acc0_med = simd.abs2_add(x0.0, acc0_med);
+                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
+            }
 
             acc0_sml = Real(simd.add(acc0_sml.0, acc1_sml.0));
             acc0_big = Real(simd.add(acc0_big.0, acc1_big.0));
             acc0_med = Real(simd.add(acc0_med.0, acc1_med.0));
-
-            for i0 in tail {
-                let x0 = simd.abs1(simd.read(rb!(data), i0));
-
-                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
-                acc0_med = simd.abs2_add(x0.0, acc0_med);
-                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
-            }
-            if simd.has_tail() {
-                let x0 = simd.abs1(simd.read_tail(rb!(data)));
-
-                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
-                acc0_med = simd.abs2_add(x0.0, acc0_med);
-                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
-            }
-
             [
                 math.real(simd.reduce_sum(acc0_sml.0)),
                 math.real(simd.reduce_sum(acc0_med.0)),
@@ -80,11 +85,7 @@ fn norm_l2_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
         }
     }
 
-    T::Arch::default().dispatch(Impl {
-        ctx,
-        data: data.as_array(),
-        len: data.nrows(),
-    })
+    T::Arch::default().dispatch(Impl { ctx, data })
 }
 
 #[math]
