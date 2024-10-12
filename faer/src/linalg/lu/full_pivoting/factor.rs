@@ -69,9 +69,9 @@ fn reduce_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     best_row: T::SimdIndex<S>,
     best_col: T::SimdIndex<S>,
 ) -> (usize, usize, RealValue<C, T>) {
-    let ctx = &Ctx::<C, T>(T::ctx_from_simd(&simd.0).0);
+    help!(C::Real);
     let best_val = simd.reduce_max(best_values);
-    let best_val_splat = simd.splat_real(math(real(best_val)));
+    let best_val_splat = simd.splat_real(as_ref!(best_val));
     let is_best = simd.ge(best_values, best_val_splat);
     let idx = simd.first_true_mask(is_best);
 
@@ -80,7 +80,7 @@ fn reduce_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     let best_col =
         bytemuck::cast_slice::<T::SimdIndex<S>, T::Index>(core::slice::from_ref(&best_col))[idx];
 
-    (best_row.zx(), best_col.zx(), math(real(best_val)))
+    (best_row.zx(), best_col.zx(), best_val)
 }
 
 #[inline(always)]
@@ -700,21 +700,20 @@ mod tests {
     use faer_traits::Unit;
 
     use super::*;
-    use crate::{assert, stats::prelude::*, utils::approx::*, Mat};
+    use crate::{assert, c64, stats::prelude::*, utils::approx::*, Mat};
 
     #[test]
     fn test_flu() {
         let rng = &mut StdRng::seed_from_u64(0);
 
-        let approx_eq = CwiseMat(ApproxEq {
-            ctx: ctx::<Ctx<Unit, f64>>(),
-            abs_tol: 1e-12,
-            rel_tol: 1e-12,
-        });
-
         for par in [Parallelism::None, Parallelism::rayon(8)] {
             for n in [4, 8, 128, 255, 256, 257, 512] {
                 with_dim!(N, n);
+                let approx_eq = CwiseMat(ApproxEq {
+                    ctx: ctx::<Ctx<Unit, f64>>(),
+                    abs_tol: 1e-10,
+                    rel_tol: 1e-10,
+                });
 
                 let A = CwiseMatDistribution {
                     nrows: N,
@@ -773,12 +772,18 @@ mod tests {
                 with_dim!(M, m);
                 with_dim!(N, 8);
 
+                let approx_eq = CwiseMat(ApproxEq {
+                    ctx: ctx::<Ctx<Unit, c64>>(),
+                    abs_tol: 1e-10,
+                    rel_tol: 1e-10,
+                });
+
                 let A = CwiseMatDistribution {
                     nrows: M,
                     ncols: N,
-                    dist: StandardNormal,
+                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<f64, Dim, Dim>>(rng);
+                .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
 
                 let mut LU = A.cloned();
@@ -801,7 +806,7 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        lu_in_place_scratch::<usize, Unit, f64>(*N, *N, par).unwrap(),
+                        lu_in_place_scratch::<usize, Unit, c64>(*N, *N, par).unwrap(),
                     )),
                     Default::default(),
                 );
@@ -815,14 +820,14 @@ mod tests {
                         if *i >= *j {
                             break;
                         }
-                        L[(i, j)] = 0.0;
+                        L[(i, j)] = c64::ZERO;
                     }
-                    L[(i, j)] = 1.0;
+                    L[(i, j)] = c64::ONE;
                 }
                 for j in N.indices() {
                     let i = M.check(*j);
                     for i in i.next().to(M.end()) {
-                        U[(i, j)] = 0.0;
+                        U[(i, j)] = c64::ZERO;
                     }
                 }
                 let L = L.as_ref();

@@ -1294,7 +1294,7 @@ impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtxCopy<C, T, S> {
         unsafe { core::mem::transmute_copy(&T::simd_reduce_sum(&self.0, value)) }
     }
     #[inline(always)]
-    pub fn reduce_max(&self, value: Real<C::OfSimd<T::SimdVec<S>>>) -> C::Of<T> {
+    pub fn reduce_max(&self, value: Real<C::OfSimd<T::SimdVec<S>>>) -> RealValue<C, T> {
         let value = unsafe { core::mem::transmute_copy(&value) };
         unsafe { core::mem::transmute_copy(&T::simd_reduce_max(&self.0, value)) }
     }
@@ -4367,7 +4367,7 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
         lhs: Self::SimdIndex<S>,
         rhs: Self::SimdIndex<S>,
     ) -> Self::SimdIndex<S> {
-        let ctx = SimdCtx::<Unit, Complex<T>, S>::new(ctx);
+        let ctx = SimdCtx::<Unit, T, S>::new(ctx);
         ctx.iselect(mask, lhs, rhs)
     }
 

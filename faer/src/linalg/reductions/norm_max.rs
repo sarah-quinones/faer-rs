@@ -60,7 +60,7 @@ fn norm_max_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
             acc2 = simd.max(acc2, acc3);
             acc0 = simd.max(acc0, acc2);
 
-            math.real(simd.reduce_max(acc0))
+            simd.reduce_max(acc0)
         }
     }
 
