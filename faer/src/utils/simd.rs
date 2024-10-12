@@ -269,6 +269,11 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
     }
 
     #[inline]
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    #[inline]
     pub fn new_force_mask(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
         core::assert!(
             const {
@@ -365,8 +370,6 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
         impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, C, T, S>>,
         Option<SimdTail<'N, C, T, S>>,
     ) {
-        const { core::assert!(BATCH.is_power_of_two()) };
-
         macro_rules! stride {
             () => {
                 const { size_of::<T::SimdVec<S>>() / size_of::<T>() }

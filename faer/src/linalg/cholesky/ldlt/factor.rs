@@ -497,7 +497,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
             ghost_tree!(FULL(MAT(HEAD, TAIL)), {
                 let (full, FULL) = N.full(FULL);
                 let j = full.from_local(j);
-                let (mat, MAT) = full.segment(j.into(), full.from_local_inc(j_next), FULL.MAT);
+                let (mat, MAT) = full.segment(j.into(), full.from_local_inc(N.end()), FULL.MAT);
 
                 let j_next = mat.idx_inc(*j_next);
                 let (disjoint, head, tail, _, _) = mat.split_inc(j_next, MAT.HEAD, MAT.TAIL);
@@ -637,8 +637,8 @@ impl Default for LdltParams {
     #[inline]
     fn default() -> Self {
         Self {
-            recursion_threshold: NonZero::new(64).unwrap(),
-            blocksize: NonZero::new(128).unwrap(),
+            recursion_threshold: NonZero::new(2).unwrap(),
+            blocksize: NonZero::new(2).unwrap(),
         }
     }
 }
@@ -776,7 +776,7 @@ mod tests {
         type C = faer_traits::Unit;
         type T = c64;
 
-        for n in [2, 127, 240] {
+        for n in [2, 4, 8, 31, 127, 240] {
             with_dim!(N, n);
 
             for llt in [false, true] {

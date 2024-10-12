@@ -341,6 +341,34 @@ macro_rules! help2 {
         }
 
         #[allow(unused_macros)]
+        macro_rules! send2 {
+            ($place: expr) => {
+                $crate::utils::send::<$C, _>($place)
+            };
+        }
+
+        #[allow(unused_macros)]
+        macro_rules! unsend2 {
+            ($place: expr) => {
+                $crate::utils::unsend::<$C, _>($place)
+            };
+        }
+
+        #[allow(unused_macros)]
+        macro_rules! sync2 {
+            ($place: expr) => {
+                $crate::utils::sync::<$C, _>($place)
+            };
+        }
+
+        #[allow(unused_macros)]
+        macro_rules! unsync2 {
+            ($place: expr) => {
+                $crate::utils::unsync::<$C, _>($place)
+            };
+        }
+
+        #[allow(unused_macros)]
         macro_rules! by_ref2 {
             ($place: expr) => {
                 $crate::utils::by_ref::<$C, _>(&$place)
@@ -1072,6 +1100,10 @@ impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<C, T, S> {
     pub fn and_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
         T::simd_and_mask(&self.0, lhs, rhs)
     }
+    #[inline(always)]
+    pub fn first_true_mask(&self, value: T::SimdMask<S>) -> usize {
+        T::simd_first_true_mask(&self.0, value)
+    }
 
     #[inline(always)]
     pub unsafe fn mask_load(
@@ -1363,6 +1395,10 @@ impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtxCopy<C, T, S> {
     #[inline(always)]
     pub fn and_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
         T::simd_and_mask(&self.0, lhs, rhs)
+    }
+    #[inline(always)]
+    pub fn first_true_mask(&self, value: T::SimdMask<S>) -> usize {
+        T::simd_first_true_mask(&self.0, value)
     }
     #[inline(always)]
     pub unsafe fn mask_load(
@@ -2290,6 +2326,8 @@ pub trait ComplexField<C: ComplexContainer = Unit>:
         lhs: Self::SimdMask<S>,
         rhs: Self::SimdMask<S>,
     ) -> Self::SimdMask<S>;
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize;
+
     fn simd_head_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S>;
     unsafe fn simd_mask_load<S: Simd>(
         ctx: &Self::SimdCtx<S>,
@@ -3037,6 +3075,11 @@ impl<C: RealContainer, T: RealField<C>> ComplexField<Complex<C>> for T {
     ) -> Self::SimdMask<S> {
         T::simd_and_mask(ctx, lhs, rhs)
     }
+
+    #[inline(always)]
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+        T::simd_first_true_mask(ctx, value)
+    }
 }
 
 impl AsRef<Unit> for Unit {
@@ -3452,6 +3495,11 @@ impl ComplexField for f32 {
         rhs: Self::SimdMask<S>,
     ) -> Self::SimdMask<S> {
         simd.and_m32s(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+        ctx.first_true_m32s(value)
     }
 }
 
@@ -3890,6 +3938,11 @@ impl ComplexField for f64 {
         rhs: Self::SimdMask<S>,
     ) -> Self::SimdMask<S> {
         simd.and_m64s(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+        ctx.first_true_m64s(value)
     }
 }
 
@@ -4404,6 +4457,11 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
         rhs: Self::SimdMask<S>,
     ) -> Self::SimdMask<S> {
         T::simd_and_mask(simd, lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+        T::simd_first_true_mask(ctx, value)
     }
 }
 
