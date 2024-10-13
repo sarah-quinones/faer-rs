@@ -320,7 +320,7 @@ mod tests {
             for n in [2, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
                 with_dim!(N, n);
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, f64>>(),
+                    ctx: ctx::<Ctx<Unit, c64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -328,9 +328,9 @@ mod tests {
                 let A = CwiseMatDistribution {
                     nrows: N,
                     ncols: N,
-                    dist: StandardNormal,
+                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<f64, Dim, Dim>>(rng);
+                .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
 
                 let mut QR = A.cloned();
@@ -338,11 +338,11 @@ mod tests {
 
                 qr_in_place_unblocked(&ctx(), QR.as_mut(), H.as_mut());
 
-                let mut Q = Mat::<f64, _, _>::zeros_with_ctx(&ctx(), N, N);
+                let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), N, N);
                 let mut R = QR.as_ref().cloned();
 
                 for j in N.indices() {
-                    Q[(j, j)] = 1.0;
+                    Q[(j, j)] = c64::ONE;
                 }
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -354,7 +354,7 @@ mod tests {
                     Parallelism::None,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<Unit, f64>(
+                            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<Unit, c64>(
                                 *N,
                                 1,
                                 *N,
@@ -365,7 +365,7 @@ mod tests {
 
                 for j in N.indices() {
                     for i in j.next().to(N.end()) {
-                        R[(i, j)] = 0.0;
+                        R[(i, j)] = c64::ZERO;
                     }
                 }
 
@@ -374,10 +374,10 @@ mod tests {
 
             for n in [2, 3, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
                 with_dim!(N, n);
-                with_dim!(B, 2);
+                with_dim!(B, 15);
 
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, f64>>(),
+                    ctx: ctx::<Ctx<Unit, c64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -385,9 +385,9 @@ mod tests {
                 let A = CwiseMatDistribution {
                     nrows: N,
                     ncols: N,
-                    dist: StandardNormal,
+                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<f64, Dim, Dim>>(rng);
+                .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
                 let mut H = Mat::zeros_with_ctx(&ctx(), B, N);
@@ -398,7 +398,7 @@ mod tests {
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<Unit, f64>(*N, *N, *B, par, Default::default())
+                        qr_in_place_scratch::<Unit, c64>(*N, *N, *B, par, Default::default())
                             .unwrap(),
                     )),
                     QrParams {
@@ -407,11 +407,11 @@ mod tests {
                     },
                 );
 
-                let mut Q = Mat::<f64, _, _>::zeros_with_ctx(&ctx(), N, N);
+                let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), N, N);
                 let mut R = QR.as_ref().cloned();
 
                 for j in N.indices() {
-                    Q[(j, j)] = 1.0;
+                    Q[(j, j)] = c64::ONE;
                 }
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -423,7 +423,7 @@ mod tests {
                     Parallelism::None,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, f64>(
+                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, c64>(
                                 *N,
                                 *B,
                                 *N,
@@ -434,7 +434,78 @@ mod tests {
 
                 for j in N.indices() {
                     for i in j.next().to(N.end()) {
-                        R[(i, j)] = 0.0;
+                        R[(i, j)] = c64::ZERO;
+                    }
+                }
+
+                assert!(Q * R ~ A);
+            }
+
+            with_dim!(N, 20);
+            for m in [2, 3, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
+                with_dim!(M, m);
+                with_dim!(B, 15);
+                with_dim!(H, Ord::min(*M, *N));
+
+                let approx_eq = CwiseMat(ApproxEq {
+                    ctx: ctx::<Ctx<Unit, c64>>(),
+                    abs_tol: 1e-10,
+                    rel_tol: 1e-10,
+                });
+
+                let A = CwiseMatDistribution {
+                    nrows: M,
+                    ncols: N,
+                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+                }
+                .rand::<Mat<c64, Dim, Dim>>(rng);
+                let A = A.as_ref();
+                let mut QR = A.cloned();
+                let mut H = Mat::zeros_with_ctx(&ctx(), B, H);
+
+                qr_in_place_blocked(
+                    &ctx(),
+                    QR.as_mut(),
+                    H.as_mut(),
+                    par,
+                    DynStack::new(&mut GlobalMemBuffer::new(
+                        qr_in_place_scratch::<Unit, c64>(*M, *N, *B, par, Default::default())
+                            .unwrap(),
+                    )),
+                    QrParams {
+                        blocking_threshold: 2,
+                        ..Default::default()
+                    },
+                );
+
+                let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), M, M);
+                let mut R = QR.as_ref().cloned();
+
+                for j in M.indices() {
+                    Q[(j, j)] = c64::ONE;
+                }
+
+                householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+                    &ctx(),
+                    QR.as_ref(),
+                    H.as_ref(),
+                    Conj::No,
+                    Q.as_mut(),
+                    Parallelism::None,
+                    DynStack::new(
+                        &mut GlobalMemBuffer::new(
+                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, c64>(
+                                *M,
+                                *B,
+                                *M,
+                            ).unwrap()
+                        )
+                    )
+                );
+
+                for j in N.indices() {
+                    for i in M.indices().skip(*j + 1) {
+                        R[(i, j)] = c64::ZERO;
                     }
                 }
 

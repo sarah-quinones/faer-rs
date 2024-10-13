@@ -792,21 +792,22 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
     M: Shape,
     N: Shape,
     K: Shape,
+    B: Shape,
     H: Shape,
 >(
     ctx: &Ctx<C, T>,
     householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, H, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, C, T, B, H, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
     par: Parallelism,
     stack: &mut DynStack,
 ) {
     #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'H, C: ComplexContainer, T: ComplexField<C>>(
+    pub fn imp<'M, 'N, 'K, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, C, T, Dim<'H>, Dim<'N>>,
+        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'H>>,
         conj_lhs: Conj,
         matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
         par: Parallelism,
@@ -817,6 +818,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
 
         assert!(*householder_factor.nrows() > 0);
         let M = householder_basis.nrows();
+        let N = householder_basis.ncols();
 
         let size = householder_factor.ncols();
 
@@ -832,9 +834,11 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
             blocksize = *householder_factor.nrows();
 
             {
+                let jn = N.checked_idx_inc(*j);
+                let jn_prev = N.checked_idx_inc(*j_prev);
                 let jm = M.checked_idx_inc(*j_prev);
 
-                let essentials = householder_basis.submatrix_range((jm, M.end()), (j_prev, j));
+                let essentials = householder_basis.submatrix_range((jm, M.end()), (jn_prev, jn));
 
                 let householder = householder_factor
                     .subcols_range((j_prev, j))
@@ -863,15 +867,17 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
     make_guard!(M);
     make_guard!(N);
     make_guard!(K);
+    make_guard!(B);
     make_guard!(H);
     let M = householder_basis.nrows().bind(M);
     let N = householder_basis.ncols().bind(N);
-    let H = householder_factor.nrows().bind(H);
+    let B = householder_factor.nrows().bind(B);
+    let H = householder_factor.ncols().bind(H);
     let K = matrix.ncols().bind(K);
     imp(
         ctx,
         householder_basis.as_dyn_stride().as_shape(M, N),
-        householder_factor.as_dyn_stride().as_shape(H, N),
+        householder_factor.as_dyn_stride().as_shape(B, H),
         conj_lhs,
         matrix.as_dyn_stride_mut().as_shape_mut(M, K),
         par,
@@ -889,21 +895,22 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     M: Shape,
     N: Shape,
     K: Shape,
+    B: Shape,
     H: Shape,
 >(
     ctx: &Ctx<C, T>,
     householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, H, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, C, T, B, H, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
     par: Parallelism,
     stack: &mut DynStack,
 ) {
     #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'H, C: ComplexContainer, T: ComplexField<C>>(
+    pub fn imp<'M, 'N, 'K, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, C, T, Dim<'H>, Dim<'N>>,
+        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'H>>,
         conj_lhs: Conj,
         matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
         par: Parallelism,
@@ -916,6 +923,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 
         assert!(blocksize.unbound() > 0);
         let M = householder_basis.nrows();
+        let N = householder_basis.ncols();
 
         let size = householder_factor.ncols();
 
@@ -925,12 +933,13 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
             let j_next = size.advance(j, *blocksize);
 
             {
-                let jn = j.to_incl();
+                let jn = N.checked_idx_inc(*j);
+                let jn_next = N.checked_idx_inc(*j_next);
                 let jm = M.checked_idx_inc(*jn);
 
-                let essentials = householder_basis.submatrix_range((jm, M.end()), (jn, j_next));
+                let essentials = householder_basis.submatrix_range((jm, M.end()), (jn, jn_next));
                 let householder = householder_factor
-                    .subcols_range((jn, j_next))
+                    .subcols_range((j, j_next))
                     .subrows(zero(), *j_next - *jn);
 
                 let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
@@ -956,15 +965,17 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     make_guard!(M);
     make_guard!(N);
     make_guard!(K);
+    make_guard!(B);
     make_guard!(H);
     let M = householder_basis.nrows().bind(M);
     let N = householder_basis.ncols().bind(N);
-    let H = householder_factor.nrows().bind(H);
+    let B = householder_factor.nrows().bind(B);
+    let H = householder_factor.ncols().bind(H);
     let K = matrix.ncols().bind(K);
     imp(
         ctx,
         householder_basis.as_dyn_stride().as_shape(M, N),
-        householder_factor.as_dyn_stride().as_shape(H, N),
+        householder_factor.as_dyn_stride().as_shape(B, H),
         conj_lhs,
         matrix.as_dyn_stride_mut().as_shape_mut(M, K),
         par,
