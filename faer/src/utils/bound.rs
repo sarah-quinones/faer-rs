@@ -102,15 +102,15 @@ pub struct Partition<'head, 'tail, 'n> {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct SegmentIdx<'a, 'dim, 'range> {
+pub struct SegmentIdx<'scope, 'dim, 'range> {
     unbound: usize,
-    __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Contravariant<'range>)>,
+    __marker: PhantomData<(Invariant<'scope>, Invariant<'dim>, Contravariant<'range>)>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct SegmentIdxInc<'a, 'dim, 'range> {
+pub struct SegmentIdxInc<'scope, 'dim, 'range> {
     unbound: usize,
-    __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Contravariant<'range>)>,
+    __marker: PhantomData<(Invariant<'scope>, Invariant<'dim>, Contravariant<'range>)>,
 }
 
 impl core::fmt::Debug for SegmentIdx<'_, '_, '_> {
@@ -123,12 +123,21 @@ impl core::fmt::Debug for SegmentIdxInc<'_, '_, '_> {
         self.unbound.fmt(f)
     }
 }
+impl core::fmt::Debug for Segment<'_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Segment")
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .field("len", &self.len())
+            .finish()
+    }
+}
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Segment<'a, 'dim, 'range> {
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct Segment<'scope, 'dim, 'range> {
     start: IdxInc<'dim>,
     end: IdxInc<'dim>,
-    __marker: PhantomData<(Invariant<'dim>, Invariant<'a>, Invariant<'range>)>,
+    __marker: PhantomData<(Invariant<'dim>, Invariant<'scope>, Invariant<'range>)>,
 }
 
 impl<'head, 'tail, 'n> Partition<'head, 'tail, 'n> {
@@ -274,7 +283,7 @@ impl<'n, I: Index> PartialOrd<Dim<'n>> for IdxInc<'n, I> {
 }
 
 impl<'n> Dim<'n> {
-    pub fn with<R>(dim: usize, f: impl for<'a> FnOnce(Dim<'a>) -> R) -> R {
+    pub fn with<R>(dim: usize, f: impl for<'dim> FnOnce(Dim<'dim>) -> R) -> R {
         f(unsafe { Self::new_unbound(dim) })
     }
 
@@ -375,7 +384,10 @@ impl<'n> Dim<'n> {
     }
 
     #[inline(always)]
-    pub fn full<'full, 'a, T>(self, node: GhostNode<'a, 'full, T>) -> (Segment<'a, 'n, 'n>, T)
+    pub fn full<'full, 'scope, T>(
+        self,
+        node: GhostNode<'scope, 'full, T>,
+    ) -> (Segment<'scope, 'n, 'n>, T)
     where
         'n: 'full,
     {
@@ -394,14 +406,14 @@ impl<'n> Dim<'n> {
 }
 
 #[derive(Clone, Debug)]
-pub struct SegmentIter<'a, 'dim, 'range> {
+pub struct SegmentIter<'scope, 'dim, 'range> {
     start: usize,
     end: usize,
-    __marker: PhantomData<(Invariant<'a>, Invariant<'dim>, Invariant<'range>)>,
+    __marker: PhantomData<(Invariant<'scope>, Invariant<'dim>, Invariant<'range>)>,
 }
 
-impl<'a, 'dim, 'range> Iterator for SegmentIter<'a, 'dim, 'range> {
-    type Item = SegmentIdx<'a, 'dim, 'range>;
+impl<'scope, 'dim, 'range> Iterator for SegmentIter<'scope, 'dim, 'range> {
+    type Item = SegmentIdx<'scope, 'dim, 'range>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -424,7 +436,7 @@ impl<'a, 'dim, 'range> Iterator for SegmentIter<'a, 'dim, 'range> {
     }
 }
 
-impl<'a, 'dim, 'range> DoubleEndedIterator for SegmentIter<'a, 'dim, 'range> {
+impl<'scope, 'dim, 'range> DoubleEndedIterator for SegmentIter<'scope, 'dim, 'range> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.end {
@@ -440,16 +452,16 @@ impl<'a, 'dim, 'range> DoubleEndedIterator for SegmentIter<'a, 'dim, 'range> {
     }
 }
 
-impl<'a, 'dim, 'range> ExactSizeIterator for SegmentIter<'a, 'dim, 'range> {
+impl<'scope, 'dim, 'range> ExactSizeIterator for SegmentIter<'scope, 'dim, 'range> {
     #[inline]
     fn len(&self) -> usize {
         self.end - self.start
     }
 }
 
-impl<'a, 'dim, 'range> IntoIterator for Segment<'a, 'dim, 'range> {
-    type Item = SegmentIdx<'a, 'dim, 'range>;
-    type IntoIter = SegmentIter<'a, 'dim, 'range>;
+impl<'scope, 'dim, 'range> IntoIterator for Segment<'scope, 'dim, 'range> {
+    type Item = SegmentIdx<'scope, 'dim, 'range>;
+    type IntoIter = SegmentIter<'scope, 'dim, 'range>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -461,15 +473,15 @@ impl<'a, 'dim, 'range> IntoIterator for Segment<'a, 'dim, 'range> {
     }
 }
 
-impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
+impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     #[inline(always)]
     pub const unsafe fn split_unbound<'head, 'tail>(
         self,
-        midpoint: SegmentIdxInc<'a, 'dim, 'range>,
+        midpoint: SegmentIdxInc<'scope, 'dim, 'range>,
     ) -> (
-        SplitProof<'a, 'range, 'head, 'tail>,
-        Segment<'a, 'dim, 'head>,
-        Segment<'a, 'dim, 'tail>,
+        SplitProof<'scope, 'range, 'head, 'tail>,
+        Segment<'scope, 'dim, 'head>,
+        Segment<'scope, 'dim, 'tail>,
     ) {
         (
             SplitProof {
@@ -497,7 +509,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         'b,
         H,
         T,
-        I: ToGlobal<'a, 'dim, 'range, Global = SegmentIdxInc<'a, 'dim, 'range>>,
+        I: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
     >(
         self,
         midpoint: I,
@@ -511,7 +523,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         T,
     )
     where
-        'a: 'b,
+        'scope: 'b,
     {
         let midpoint = I::to_global(self, midpoint);
         (
@@ -538,7 +550,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         'b,
         H,
         T,
-        I: ToGlobal<'a, 'dim, 'range, Global = SegmentIdx<'a, 'dim, 'range>>,
+        I: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdx<'scope, 'dim, 'range>>,
     >(
         self,
         midpoint: I,
@@ -546,14 +558,14 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
         Disjoint<'b, 'head, 'tail>,
-        SegmentIdx<'a, 'dim, 'tail>,
+        SegmentIdx<'scope, 'dim, 'tail>,
         Segment<'b, 'dim, 'head>,
         Segment<'b, 'dim, 'tail>,
         H,
         T,
     )
     where
-        'a: 'b,
+        'scope: 'b,
     {
         let midpoint = I::to_global(self, midpoint);
         (
@@ -582,8 +594,8 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         'smol,
         'b,
         T,
-        I: ToGlobal<'a, 'dim, 'range, Global = SegmentIdxInc<'a, 'dim, 'range>>,
-        J: ToGlobal<'a, 'dim, 'range, Global = SegmentIdxInc<'a, 'dim, 'range>>,
+        I: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
+        J: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
     >(
         self,
         start: I,
@@ -591,7 +603,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         node: GhostNode<'b, 'smol, T>,
     ) -> (Segment<'b, 'dim, 'smol>, T)
     where
-        'a: 'b,
+        'scope: 'b,
     {
         let start = I::to_global(self, start);
         let end = J::to_global(self, end);
@@ -609,7 +621,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     #[inline(always)]
     pub fn with_split<R>(
         self,
-        midpoint: SegmentIdxInc<'a, 'dim, 'range>,
+        midpoint: SegmentIdxInc<'scope, 'dim, 'range>,
         f: impl for<'b, 'head, 'tail> FnOnce(
             (
                 SplitProof<'b, 'range, 'head, 'tail>,
@@ -637,7 +649,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn idx(self, value: usize) -> SegmentIdx<'a, 'dim, 'range> {
+    pub fn idx(self, value: usize) -> SegmentIdx<'scope, 'dim, 'range> {
         assert!(all(value >= *self.start, value < *self.end));
         SegmentIdx {
             unbound: value,
@@ -646,7 +658,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn idx_inc(self, value: usize) -> SegmentIdxInc<'a, 'dim, 'range> {
+    pub fn idx_inc(self, value: usize) -> SegmentIdxInc<'scope, 'dim, 'range> {
         assert!(all(value >= *self.start, value <= *self.end));
         SegmentIdxInc {
             unbound: value,
@@ -655,7 +667,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn try_idx(self, value: usize) -> Option<SegmentIdx<'a, 'dim, 'range>> {
+    pub fn try_idx(self, value: usize) -> Option<SegmentIdx<'scope, 'dim, 'range>> {
         if value >= *self.start && value < *self.end {
             Some(SegmentIdx {
                 unbound: value,
@@ -667,7 +679,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn try_idx_inc(self, value: usize) -> Option<SegmentIdxInc<'a, 'dim, 'range>> {
+    pub fn try_idx_inc(self, value: usize) -> Option<SegmentIdxInc<'scope, 'dim, 'range>> {
         if value >= *self.start && value <= *self.end {
             Some(SegmentIdxInc {
                 unbound: value,
@@ -679,16 +691,16 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub fn local<I: ToLocal<'a, 'dim, 'range>>(self, idx: I) -> I::Local {
+    pub fn local<I: ToLocal<'scope, 'dim, 'range>>(self, idx: I) -> I::Local {
         I::to_local(self, idx)
     }
     #[inline]
-    pub fn global<I: ToGlobal<'a, 'dim, 'range>>(self, idx: I) -> I::Global {
+    pub fn global<I: ToGlobal<'scope, 'dim, 'range>>(self, idx: I) -> I::Global {
         I::to_global(self, idx)
     }
 
     #[inline]
-    pub const fn from_local(self, idx: Idx<'range>) -> SegmentIdx<'a, 'dim, 'range> {
+    pub const fn from_local(self, idx: Idx<'range>) -> SegmentIdx<'scope, 'dim, 'range> {
         SegmentIdx {
             unbound: self.start.unbound + idx.unbound,
             __marker: PhantomData,
@@ -696,7 +708,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_global(self, idx: SegmentIdx<'a, 'dim, 'range>) -> Idx<'range> {
+    pub const fn from_global(self, idx: SegmentIdx<'scope, 'dim, 'range>) -> Idx<'range> {
         Idx {
             unbound: idx.unbound - self.start.unbound,
             __marker: PhantomData,
@@ -704,7 +716,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_local_inc(self, inc: IdxInc<'range>) -> SegmentIdxInc<'a, 'dim, 'range> {
+    pub const fn from_local_inc(self, inc: IdxInc<'range>) -> SegmentIdxInc<'scope, 'dim, 'range> {
         SegmentIdxInc {
             unbound: self.start.unbound + inc.unbound,
             __marker: PhantomData,
@@ -712,7 +724,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline]
-    pub const fn from_global_inc(self, inc: SegmentIdxInc<'a, 'dim, 'range>) -> IdxInc<'range> {
+    pub const fn from_global_inc(self, inc: SegmentIdxInc<'scope, 'dim, 'range>) -> IdxInc<'range> {
         IdxInc {
             unbound: inc.unbound - self.start.unbound,
             __marker: PhantomData,
@@ -937,9 +949,9 @@ impl<'n, I: Index> From<Idx<'n, I>> for IdxInc<'n, I> {
         }
     }
 }
-impl<'a, 'dim, 'n> From<SegmentIdx<'a, 'dim, 'n>> for SegmentIdxInc<'a, 'dim, 'n> {
+impl<'scope, 'dim, 'n> From<SegmentIdx<'scope, 'dim, 'n>> for SegmentIdxInc<'scope, 'dim, 'n> {
     #[inline(always)]
-    fn from(value: SegmentIdx<'a, 'dim, 'n>) -> Self {
+    fn from(value: SegmentIdx<'scope, 'dim, 'n>) -> Self {
         Self {
             unbound: value.unbound,
             __marker: PhantomData,
@@ -947,9 +959,9 @@ impl<'a, 'dim, 'n> From<SegmentIdx<'a, 'dim, 'n>> for SegmentIdxInc<'a, 'dim, 'n
     }
 }
 
-impl<'a, 'dim, 'n> SegmentIdx<'a, 'dim, 'n> {
+impl<'scope, 'dim, 'n> SegmentIdx<'scope, 'dim, 'n> {
     #[inline]
-    pub fn next(self) -> SegmentIdxInc<'a, 'dim, 'n> {
+    pub fn next(self) -> SegmentIdxInc<'scope, 'dim, 'n> {
         SegmentIdxInc {
             unbound: self.unbound + 1,
             __marker: PhantomData,
@@ -957,7 +969,7 @@ impl<'a, 'dim, 'n> SegmentIdx<'a, 'dim, 'n> {
     }
 
     #[inline]
-    pub fn to_incl(self) -> SegmentIdxInc<'a, 'dim, 'n> {
+    pub fn to_incl(self) -> SegmentIdxInc<'scope, 'dim, 'n> {
         SegmentIdxInc {
             unbound: self.unbound,
             __marker: PhantomData,
