@@ -2100,7 +2100,7 @@ pub trait ComplexField<C: ComplexContainer = Unit>:
     type SimdCtx<S: Simd>: Copy;
     type Index: Index;
 
-    type MathCtx: Send + Sync;
+    type MathCtx: Send + Sync + Default;
 
     type RealUnit: RealField<C::Real, MathCtx = Self::MathCtx>;
 

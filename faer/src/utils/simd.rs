@@ -389,15 +389,17 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
                     mask: PhantomData,
                 })
             },
-            (self.head_end..self.head_end + len / BATCH).map(move |i| {
-                core::array::from_fn(
-                    #[inline(always)]
-                    |k| SimdBody {
-                        start: offset + ((i * BATCH + k) * stride!()) as isize,
-                        mask: PhantomData,
-                    },
-                )
-            }),
+            (self.head_end..self.head_end + len / BATCH * BATCH)
+                .map(move |i| {
+                    core::array::from_fn(
+                        #[inline(always)]
+                        |k| SimdBody {
+                            start: offset + ((i + k) * stride!()) as isize,
+                            mask: PhantomData,
+                        },
+                    )
+                })
+                .step_by(BATCH),
             (self.head_end + len / BATCH * BATCH..self.body_end).map(
                 #[inline(always)]
                 move |i| SimdBody {

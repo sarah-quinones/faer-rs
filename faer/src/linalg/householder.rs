@@ -51,9 +51,9 @@ use crate::internal_prelude::*;
 /// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
 #[inline]
 #[math]
-pub fn make_householder_in_place<C: ComplexContainer, T: ComplexField<C>>(
+pub fn make_householder_in_place<'M, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
-    essential: Option<ColMut<'_, C, T>>,
+    essential: Option<ColMut<'_, C, T, Dim<'M>>>,
     head: C::Of<&T>,
     tail_norm: <C::Real as Container>::Of<&T::RealUnit>,
 ) -> (C::Of<T>, C::Of<T>) {
@@ -83,7 +83,7 @@ pub fn make_householder_in_place<C: ComplexContainer, T: ComplexField<C>>(
                 write1!(e, math(e * head_with_beta_inv));
             });
         }
-        let tau = math.re(one_half * one() + abs2(tail_norm * cx.abs(head_with_beta_inv)));
+        let tau = math.re(one_half * (one() + abs2(tail_norm * cx.abs(head_with_beta_inv))));
         math((from_real(tau), -signed_norm))
     } else {
         math((infinity(), zero()))
@@ -412,10 +412,11 @@ fn apply_block_householder_on_the_left_in_place_generic<
     make_guard!(TAIL);
     let midpoint = M.head_partition(N, TAIL);
 
-    if let (Some(householder_basis), Some(matrix), 1) = (
+    if let (Some(householder_basis), Some(matrix), 1, true) = (
         householder_basis.try_as_col_major(),
         matrix.rb_mut().try_as_col_major_mut(),
         N.unbound(),
+        T::SIMD_CAPABILITIES.is_simd(),
     ) {
         let arch = T::Arch::default();
 
@@ -506,7 +507,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
 
         if const { T::IS_REAL } || matches!(conj_lhs, Conj::No) {
             arch.dispatch(ApplyOnLeft::<_, _, false> {
-                ctx: ctx,
+                ctx,
                 tau_inv: math.id(tau_inv),
                 essential,
                 rhs,
@@ -514,7 +515,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
             });
         } else {
             arch.dispatch(ApplyOnLeft::<_, _, true> {
-                ctx: ctx,
+                ctx,
                 tau_inv: math.id(tau_inv),
                 essential,
                 rhs,
@@ -814,28 +815,30 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
         let mut matrix = matrix;
         let mut stack = stack;
 
-        let blocksize = householder_factor.nrows();
-
-        assert!(blocksize.unbound() > 0);
+        assert!(*householder_factor.nrows() > 0);
         let M = householder_basis.nrows();
-        let H = householder_factor.nrows();
 
         let size = householder_factor.ncols();
 
-        let mut J = Dim::start();
+        let mut j = size.end();
 
-        while let Some(j) = size.try_check(*J) {
-            let j_next = size.advance(j, *blocksize);
+        let mut blocksize = *size % *householder_factor.nrows();
+        if blocksize == 0 {
+            blocksize = *householder_factor.nrows();
+        }
+
+        while *j > 0 {
+            let j_prev = size.idx(*j - blocksize);
+            blocksize = *householder_factor.nrows();
 
             {
-                let j_next = size.flip(j_next);
-                let jn = size.flip(j.to_inclusive());
-                let jm = M.checked_idx_inc(*jn);
+                let jm = M.checked_idx_inc(*j_prev);
 
-                let essentials = householder_basis.submatrix_range((jm, M.end()), (jn, j_next));
+                let essentials = householder_basis.submatrix_range((jm, M.end()), (j_prev, j));
+
                 let householder = householder_factor
-                    .subcols_range((jn, j_next))
-                    .subrows(H.check(0).into(), *j_next - *j);
+                    .subcols_range((j_prev, j))
+                    .subrows(zero(), *j - *j_prev);
 
                 let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
                 make_guard!(M);
@@ -854,7 +857,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
                 );
             }
 
-            J = j_next;
+            j = j_prev.to_incl();
         }
     }
     make_guard!(M);
@@ -913,7 +916,6 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 
         assert!(blocksize.unbound() > 0);
         let M = householder_basis.nrows();
-        let H = householder_factor.nrows();
 
         let size = householder_factor.ncols();
 
@@ -923,13 +925,13 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
             let j_next = size.advance(j, *blocksize);
 
             {
-                let jn = j.to_inclusive();
+                let jn = j.to_incl();
                 let jm = M.checked_idx_inc(*jn);
 
                 let essentials = householder_basis.submatrix_range((jm, M.end()), (jn, j_next));
                 let householder = householder_factor
                     .subcols_range((jn, j_next))
-                    .subrows(H.check(0).into(), *j_next - *j);
+                    .subrows(zero(), *j_next - *jn);
 
                 let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
                 make_guard!(M);

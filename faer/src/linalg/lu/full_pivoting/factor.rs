@@ -302,12 +302,14 @@ pub fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<
     data: MatMut<'_, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
     lhs: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
     rhs: RowRef<'_, C, T, Dim<'N>>,
+    align: usize,
 ) -> (usize, usize, RealValue<C, T>) {
     struct Impl<'a, 'M, 'N, C: ComplexContainer, T: ComplexField<C>> {
         ctx: &'a Ctx<C, T>,
         data: MatMut<'a, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
         lhs: ColRef<'a, C, T, Dim<'M>, ContiguousFwd>,
         rhs: RowRef<'a, C, T, Dim<'N>>,
+        align: usize,
     }
 
     impl<'a, 'M, 'N, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd
@@ -322,11 +324,12 @@ pub fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<
                 data,
                 lhs,
                 rhs,
+                align,
             } = self;
 
             let M = data.nrows();
             let N = data.ncols();
-            let simd = SimdCtx::<'_, C, T, S>::new(T::simd_ctx(ctx, simd), M);
+            let simd = SimdCtx::<'_, C, T, S>::new_align(T::simd_ctx(ctx, simd), M, align);
 
             let mut best_row = simd.isplat(T::Index::truncate(0));
             let mut best_col = simd.isplat(T::Index::truncate(0));
@@ -357,6 +360,7 @@ pub fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<
         data,
         lhs,
         rhs,
+        align,
     })
 }
 
@@ -396,9 +400,10 @@ fn rank_one_update_and_best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexFie
     mut dst: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
     lhs: ColRef<'_, C, T, Dim<'M>>,
     rhs: RowRef<'_, C, T, Dim<'N>>,
+    align: usize,
 ) -> (usize, usize, RealValue<C, T>) {
     if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
-        update_and_best_in_mat_simd(ctx, dst, lhs, rhs)
+        update_and_best_in_mat_simd(ctx, dst, lhs, rhs, align)
     } else {
         help!(C);
 
@@ -433,6 +438,8 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     if *M == 0 || *N == 0 {
         return 0;
     }
+
+    let mut par = par;
 
     let mut A = A;
     let (mut max_row, mut max_col, mut max_score) = best_in_matrix(ctx, A.rb());
@@ -477,10 +484,9 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
             break;
         }
 
-        let par = match par {
-            Parallelism::None => par,
-            _ => (params.reduce_par)(*M - *ki.next(), *N - *kj.next(), par),
-        };
+        if (*M - *ki.next()) * (*N - *kj.next()) < params.par_threshold {
+            par = Parallelism::None;
+        }
 
         ghost_tree!(ROWS(TOP, BOT), {
             ghost_tree!(COLS(LEFT, RIGHT), {
@@ -504,8 +510,13 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 
                 match par {
                     Parallelism::None => {
-                        (max_row, max_col, max_score) =
-                            rank_one_update_and_best_in_matrix(ctx, A11.rb_mut(), lhs, rhs);
+                        (max_row, max_col, max_score) = rank_one_update_and_best_in_matrix(
+                            ctx,
+                            A11.rb_mut(),
+                            lhs,
+                            rhs,
+                            M.next_power_of_two() - *ki - 1,
+                        );
                     }
                     #[cfg(feature = "rayon")]
                     Parallelism::Rayon(nthreads) => {
@@ -530,6 +541,7 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
                                         A11.as_col_shape_mut(N),
                                         lhs,
                                         rhs.transpose().as_col_shape(N),
+                                        M.next_power_of_two() - *ki - 1,
                                     );
                                     b += par_split_indices(full_cols, idx, nthreads).0;
                                     (a, b, send2!(c))
@@ -560,28 +572,20 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     n_trans
 }
 
-fn default_disable_parallelism(m: usize, n: usize, par: Parallelism) -> Parallelism {
-    let prod = m * n;
-    if prod < 512 * 256 {
-        return Parallelism::None;
-    }
-    par
-}
-
 /// LU factorization tuning parameters.
 #[derive(Copy, Clone)]
 #[non_exhaustive]
 pub struct FullPivLuParams {
     /// At which size the parallelism should be disabled. `None` to automatically determine this
     /// threshold.
-    pub reduce_par: fn(nrows: usize, ncols: usize, par: Parallelism) -> Parallelism,
+    pub par_threshold: usize,
 }
 
 impl Default for FullPivLuParams {
     #[inline]
     fn default() -> Self {
         Self {
-            reduce_par: default_disable_parallelism,
+            par_threshold: 256 * 512,
         }
     }
 }
@@ -696,18 +700,17 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
 
 #[cfg(test)]
 mod tests {
-    use dyn_stack::GlobalMemBuffer;
-    use faer_traits::Unit;
-
     use super::*;
     use crate::{assert, c64, stats::prelude::*, utils::approx::*, Mat};
+    use dyn_stack::GlobalMemBuffer;
+    use faer_traits::Unit;
 
     #[test]
     fn test_flu() {
         let rng = &mut StdRng::seed_from_u64(0);
 
         for par in [Parallelism::None, Parallelism::rayon(8)] {
-            for n in [4, 8, 128, 255, 256, 257, 512] {
+            for n in [16, 24, 32, 128, 255, 256, 257] {
                 with_dim!(N, n);
                 let approx_eq = CwiseMat(ApproxEq {
                     ctx: ctx::<Ctx<Unit, f64>>(),
@@ -768,7 +771,7 @@ mod tests {
                 assert!(p.inverse() * L * U * q ~ A);
             }
 
-            for m in [8, 128, 255, 256, 257] {
+            for m in [8, 16, 24, 32, 128, 255, 256, 257] {
                 with_dim!(M, m);
                 with_dim!(N, 8);
 

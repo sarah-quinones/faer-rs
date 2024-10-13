@@ -972,6 +972,24 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     {
         self.as_ref().norm_max()
     }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.as_ref().norm_l2_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.as_ref().norm_l2()
+    }
 }
 
 impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {

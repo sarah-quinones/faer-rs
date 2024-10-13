@@ -541,6 +541,24 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     {
         self.rb().norm_max()
     }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.rb().norm_l2_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.rb().norm_l2()
+    }
 }
 
 impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>

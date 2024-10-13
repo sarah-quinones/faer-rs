@@ -498,6 +498,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn submatrix<V: Shape, H: Shape>(
         self,
         row_start: IdxInc<Rows>,
@@ -525,6 +526,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn subrows<V: Shape>(
         self,
         row_start: IdxInc<Rows>,
@@ -552,6 +554,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn subcols<H: Shape>(
         self,
         col_start: IdxInc<Cols>,
@@ -579,6 +582,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn submatrix_range(
         self,
         rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
@@ -677,6 +681,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_row_shape<V: Shape>(self, nrows: V) -> MatRef<'a, C, T, V, Cols, RStride, CStride> {
         assert!(all(self.nrows().unbound() == nrows.unbound()));
         unsafe {
@@ -691,6 +696,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_col_shape<H: Shape>(self, ncols: H) -> MatRef<'a, C, T, Rows, H, RStride, CStride> {
         assert!(all(self.ncols().unbound() == ncols.unbound()));
         unsafe {
@@ -1072,6 +1078,24 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
     {
         self.norm_max_with(&default())
+    }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_l2::norm_l2(ctx, self.canonical().as_dyn_stride().as_dyn())
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l2_with(&default())
     }
 
     #[inline]

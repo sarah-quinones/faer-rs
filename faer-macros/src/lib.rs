@@ -451,22 +451,31 @@ pub fn ghost_tree(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         return item;
     };
 
-    let tree = &args[0];
-    let block = &args[1];
+    if args.is_empty() {
+        return quote! { {} }.into();
+    }
 
-    let block = block.clone();
-    let tree = Tree::parse_expr(&tree);
-    let init = tree.init();
-    let deinit = tree.deinit();
-    let struct_def = tree.struct_def();
-    let struct_init = tree.struct_init();
-    let name = &tree.name;
+    let n = args.len() - 1;
+
+    let block = &args[n];
+
+    let tree = &*args
+        .iter()
+        .take(n)
+        .map(Tree::parse_expr)
+        .collect::<Vec<_>>();
+
+    let init = tree.iter().map(Tree::init);
+    let deinit = tree.iter().map(Tree::deinit);
+    let struct_def = tree.iter().map(Tree::struct_def);
+    let struct_init = tree.iter().map(Tree::struct_init);
+    let name = tree.iter().map(|tree| &tree.name);
 
     let block = quote! {{
 
         faer_traits::hacks::make_guard!(__scope);
-        #struct_def
-        { #init if const { true } {  let mut #name = #struct_init; _ = &mut #name;  {#block} } else { #deinit panic!() } }
+        #(#struct_def)*
+        { #(#init)* if const { true } {  #(let #name = #struct_init;)* {#block} } else { #(#deinit)* panic!() } }
     }};
 
     block.into()

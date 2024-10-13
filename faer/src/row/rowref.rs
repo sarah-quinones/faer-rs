@@ -4,6 +4,7 @@ use crate::{
     ContiguousFwd, Idx, IdxInc,
 };
 use equator::{assert, debug_assert};
+use faer_traits::RealValue;
 
 pub struct RowRef<'a, C: Container, T, Cols = usize, CStride = isize> {
     pub(crate) trans: ColRef<'a, C, T, Cols, CStride>,
@@ -283,6 +284,42 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     #[inline]
     pub(crate) fn __at(self, i: Idx<Cols>) -> C::Of<&'a T> {
         self.at(i)
+    }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.as_ref().transpose().norm_max_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_max_with(&default())
+    }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.as_ref().transpose().norm_l2_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l2_with(&default())
     }
 }
 

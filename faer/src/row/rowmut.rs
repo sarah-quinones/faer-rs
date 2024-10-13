@@ -5,7 +5,7 @@ use crate::{
 };
 use core::ops::{Index, IndexMut};
 use equator::{assert, debug_assert};
-use faer_traits::Unit;
+use faer_traits::{RealValue, Unit};
 
 pub struct RowMut<'a, C: Container, T, Cols = usize, CStride = isize> {
     pub(crate) trans: ColMut<'a, C, T, Cols, CStride>,
@@ -231,6 +231,42 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowMut<'a, C, T, Cols, C
     #[inline]
     pub fn as_mat_mut(self) -> MatMut<'a, C, T, usize, Cols, isize, CStride> {
         unsafe { self.into_const().as_mat().const_cast() }
+    }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.as_ref().transpose().norm_max_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_max_with(&default())
+    }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        self.as_ref().transpose().norm_l2_with(ctx)
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l2_with(&default())
     }
 }
 

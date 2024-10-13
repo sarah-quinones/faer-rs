@@ -6,6 +6,7 @@ use crate::{
 };
 use core::{marker::PhantomData, ptr::NonNull};
 use equator::{assert, debug_assert};
+use faer_traits::RealValue;
 use generativity::Guard;
 
 pub struct ColRef<'a, C: Container, T, Rows = usize, RStride = isize> {
@@ -377,6 +378,48 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     #[inline]
     pub fn as_diagonal(self) -> DiagRef<'a, C, T, Rows, RStride> {
         DiagRef { inner: self }
+    }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_max::norm_max(
+            ctx,
+            self.canonical().as_dyn_stride().as_dyn_rows().as_mat(),
+        )
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_max_with(&default())
+    }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_l2::norm_l2(
+            ctx,
+            self.canonical().as_dyn_stride().as_dyn_rows().as_mat(),
+        )
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l2_with(&default())
     }
 }
 

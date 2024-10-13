@@ -394,7 +394,7 @@ fn cholesky_fallback<'N, C: ComplexContainer, T: ComplexField<C>>(
     help!(C);
 
     for j in N.indices() {
-        for i in j.to_inclusive().to(N.end()) {
+        for i in j.to_incl().to(N.end()) {
             let mut sum = math.zero();
             for k in zero().to(j.excl()) {
                 let D = math(real(D[k]));
@@ -456,7 +456,7 @@ fn cholesky_fallback<'N, C: ComplexContainer, T: ComplexField<C>>(
 
         let inv = math.re.recip(diag);
 
-        for i in j.to_inclusive().to(N.end()) {
+        for i in j.to_incl().to(N.end()) {
             write1!(A[(i, j)] = math(mul_real(A[(i, j)], inv)));
         }
     }
@@ -497,7 +497,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
             ghost_tree!(FULL(MAT(HEAD, TAIL)), {
                 let (full, FULL) = N.full(FULL);
                 let j = full.from_local(j);
-                let (mat, MAT) = full.segment(j.into(), full.from_local_inc(N.end()), FULL.MAT);
+                let (mat, MAT) = full.segment(j.to_incl(), N.end(), FULL.MAT);
 
                 let j_next = mat.idx_inc(*j_next);
                 let (disjoint, head, tail, _, _) = mat.split_inc(j_next, MAT.HEAD, MAT.TAIL);

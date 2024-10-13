@@ -2024,7 +2024,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC<C: Container, T>(
+    pub fn map_in<C: Container, T>(
         self,
         f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
     ) -> MatGeneric<C, T, Rows, Cols> {
@@ -2059,7 +2059,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC_with_index<C: Container, T>(
+    pub fn map_with_index_in<C: Container, T>(
         self,
         f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
     ) -> MatGeneric<C, T, Rows, Cols> {
@@ -2190,7 +2190,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC<C: Container, T>(
+    pub fn map_in<C: Container, T>(
         self,
         f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
     ) -> MatGeneric<C, T, Rows, Cols> {
@@ -2207,7 +2207,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC_with_index<C: Container, T>(
+    pub fn map_with_index_in<C: Container, T>(
         self,
         f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
     ) -> MatGeneric<C, T, Rows, Cols> {
@@ -2280,7 +2280,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC<C: Container, T>(
+    pub fn map_in<C: Container, T>(
         self,
         f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
     ) -> ColGeneric<C, T, Rows> {
@@ -2296,7 +2296,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC_with_index<C: Container, T>(
+    pub fn map_with_index_in<C: Container, T>(
         self,
         f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> C::Of<T>,
     ) -> ColGeneric<C, T, Rows> {
@@ -2375,7 +2375,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC<C: Container, T>(
+    pub fn map_in<C: Container, T>(
         self,
         f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
     ) -> ColGeneric<C, T, Rows> {
@@ -2391,7 +2391,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC_with_index<C: Container, T>(
+    pub fn map_with_index_in<C: Container, T>(
         self,
         f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> C::Of<T>,
     ) -> ColGeneric<C, T, Rows> {
@@ -2463,7 +2463,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC<C: Container, T>(
+    pub fn map_in<C: Container, T>(
         self,
         f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
     ) -> RowGeneric<C, T, Cols> {
@@ -2479,7 +2479,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC_with_index<C: Container, T>(
+    pub fn map_with_index_in<C: Container, T>(
         self,
         f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
     ) -> RowGeneric<C, T, Cols> {
@@ -2558,7 +2558,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC<C: Container, T>(
+    pub fn map_in<C: Container, T>(
         self,
         f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
     ) -> RowGeneric<C, T, Cols> {
@@ -2574,7 +2574,7 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn mapC_with_index<C: Container, T>(
+    pub fn map_with_index_in<C: Container, T>(
         self,
         f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
     ) -> RowGeneric<C, T, Cols> {

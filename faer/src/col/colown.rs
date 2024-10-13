@@ -1,6 +1,6 @@
 use crate::{internal_prelude::*, Idx, IdxInc, TryReserveError};
 use core::ops::{Index, IndexMut};
-use faer_traits::Unit;
+use faer_traits::{RealValue, Unit};
 
 pub struct Col<C: Container, T, Rows: Shape = usize> {
     column: Mat<C, T, Rows, usize>,
@@ -78,6 +78,56 @@ impl<C: Container, T, Rows: Shape> Col<C, T, Rows> {
     #[inline]
     pub fn as_mut(&mut self) -> ColMut<'_, C, T, Rows> {
         self.column.as_mut().col_mut(0)
+    }
+
+    #[inline]
+    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_max::norm_max(
+            ctx,
+            self.as_ref()
+                .canonical()
+                .as_dyn_stride()
+                .as_dyn_rows()
+                .as_mat(),
+        )
+    }
+
+    #[inline]
+    pub fn norm_max(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_max_with(&default())
+    }
+
+    #[inline]
+    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_l2::norm_l2(
+            ctx,
+            self.as_ref()
+                .canonical()
+                .as_dyn_stride()
+                .as_dyn_rows()
+                .as_mat(),
+        )
+    }
+
+    #[inline]
+    pub fn norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l2_with(&default())
     }
 }
 

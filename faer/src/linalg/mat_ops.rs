@@ -1102,7 +1102,7 @@ impl<
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-        zipped!(lhs, rhs).mapC::<C, _>(add_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
+        zipped!(lhs, rhs).map_in::<C, _>(add_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
     }
 }
 
@@ -1126,7 +1126,7 @@ impl<
         let lhs = self;
         let rhs = rhs;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-        zipped!(lhs, rhs).mapC::<C, _>(sub_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
+        zipped!(lhs, rhs).map_in::<C, _>(sub_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
     }
 }
 
@@ -1181,7 +1181,7 @@ impl<
     fn neg(self) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let this = self;
-        zipped!(this).mapC::<C, T>(neg_fn::<CC, _>(ctx))
+        zipped!(this).map_in::<C, T>(neg_fn::<CC, _>(ctx))
     }
 }
 
@@ -1330,7 +1330,7 @@ impl<
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-        zipped!(lhs, rhs).mapC::<C, _>(add_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
+        zipped!(lhs, rhs).map_in::<C, _>(add_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
     }
 }
 
@@ -1352,7 +1352,7 @@ impl<
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-        zipped!(lhs, rhs).mapC::<C, _>(sub_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
+        zipped!(lhs, rhs).map_in::<C, _>(sub_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
     }
 }
 
@@ -1404,7 +1404,7 @@ impl<
     fn neg(self) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let this = self;
-        zipped!(this).mapC::<C, T>(neg_fn::<CC, _>(ctx))
+        zipped!(this).map_in::<C, T>(neg_fn::<CC, _>(ctx))
     }
 }
 
@@ -1426,7 +1426,7 @@ impl<
         let ctx = &Ctx::<C, T>::default();
         let lhs = self;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-        zipped!(lhs, rhs).mapC::<C, _>(add_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
+        zipped!(lhs, rhs).map_in::<C, _>(add_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
     }
 }
 
@@ -1449,7 +1449,7 @@ impl<
         let lhs = self;
         let rhs = rhs;
         Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-        zipped!(lhs, rhs).mapC::<C, _>(sub_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
+        zipped!(lhs, rhs).map_in::<C, _>(sub_fn::<LhsC, RhsC, LhsT, RhsT>(ctx))
     }
 }
 
@@ -1501,7 +1501,7 @@ impl<
     fn neg(self) -> Self::Output {
         let ctx = &Ctx::<C, T>::default();
         let this = self;
-        zipped!(this).mapC::<C, T>(neg_fn::<CC, _>(ctx))
+        zipped!(this).map_in::<C, T>(neg_fn::<CC, _>(ctx))
     }
 }
 impl<
@@ -2465,7 +2465,7 @@ mod matmul {
             Assert!(lhs_dim == rhs_nrows);
 
             let ctx = &Ctx::<C, T>(T::MathCtx::default());
-            zipped!(lhs, rhs).mapC::<C, T>(mul_fn::<LhsC, RhsC, _, _>(ctx))
+            zipped!(lhs, rhs).map_in::<C, T>(mul_fn::<LhsC, RhsC, _, _>(ctx))
         }
     }
 
@@ -2602,7 +2602,7 @@ mod matmul {
             Assert!(lhs_ncols == rhs_dim);
 
             let ctx = &Ctx::<C, T>(T::MathCtx::default());
-            zipped!(lhs, rhs).mapC::<C, T>(mul_fn::<LhsC, RhsC, _, _>(ctx))
+            zipped!(lhs, rhs).map_in::<C, T>(mul_fn::<LhsC, RhsC, _, _>(ctx))
         }
     }
 
@@ -2666,7 +2666,7 @@ mod matmul {
 
             let ctx = &Ctx::<C, T>(T::MathCtx::default());
             zipped!(lhs, rhs)
-                .mapC::<C, T>(mul_fn::<LhsC, RhsC, _, _>(ctx))
+                .map_in::<C, T>(mul_fn::<LhsC, RhsC, _, _>(ctx))
                 .into_diagonal()
         }
     }
@@ -3110,7 +3110,7 @@ impl<
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let rhs = Conj::apply_val::<RhsC, RhsT>(ctx, &rhs.0);
         let lhs = self;
-        zipped!(lhs).mapC::<C, T>(|unzipped!(x)| math(Conj::apply::<LhsC, LhsT>(ctx, x) * rhs))
+        zipped!(lhs).map_in::<C, T>(|unzipped!(x)| math(Conj::apply::<LhsC, LhsT>(ctx, x) * rhs))
     }
 }
 
@@ -3131,7 +3131,7 @@ impl<
     fn mul(self, rhs: MatRef<'_, RhsC, RhsT, Rows, Cols>) -> Self::Output {
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let lhs = Conj::apply_val::<LhsC, LhsT>(ctx, &self.0);
-        zipped!(rhs).mapC::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
+        zipped!(rhs).map_in::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
     }
 }
 
@@ -3152,7 +3152,7 @@ impl<
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let rhs = Conj::apply_val::<RhsC, RhsT>(ctx, &rhs.0);
         let lhs = self;
-        zipped!(lhs).mapC::<C, T>(|unzipped!(x)| math(Conj::apply::<LhsC, LhsT>(ctx, x) * rhs))
+        zipped!(lhs).map_in::<C, T>(|unzipped!(x)| math(Conj::apply::<LhsC, LhsT>(ctx, x) * rhs))
     }
 }
 impl<
@@ -3171,7 +3171,7 @@ impl<
     fn mul(self, rhs: ColRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let lhs = Conj::apply_val::<LhsC, LhsT>(ctx, &self.0);
-        zipped!(rhs).mapC::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
+        zipped!(rhs).map_in::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
     }
 }
 
@@ -3192,7 +3192,7 @@ impl<
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let rhs = Conj::apply_val::<RhsC, RhsT>(ctx, &rhs.0);
         let lhs = self;
-        zipped!(lhs).mapC::<C, T>(|unzipped!(x)| math(Conj::apply::<LhsC, LhsT>(ctx, x) * rhs))
+        zipped!(lhs).map_in::<C, T>(|unzipped!(x)| math(Conj::apply::<LhsC, LhsT>(ctx, x) * rhs))
     }
 }
 impl<
@@ -3211,7 +3211,7 @@ impl<
     fn mul(self, rhs: RowRef<'_, RhsC, RhsT, Len>) -> Self::Output {
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         let lhs = Conj::apply_val::<LhsC, LhsT>(ctx, &self.0);
-        zipped!(rhs).mapC::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
+        zipped!(rhs).map_in::<C, T>(|unzipped!(x)| math(lhs * Conj::apply::<RhsC, RhsT>(ctx, x)))
     }
 }
 

@@ -80,7 +80,7 @@ fn best_score_idx_skip<'N, C: ComplexContainer, T: ComplexField<C>>(
     let mut best_row = M.check(*skip);
     let mut best_score = math.re.zero();
 
-    for i in best_row.to_inclusive().to(M.end()) {
+    for i in best_row.to_incl().to(M.end()) {
         let score = math(abs(a[i]));
         if math(score > best_score) {
             best_row = i;
@@ -685,7 +685,7 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
 
                     for j in k0.next().to(N.end()) {
                         let d11xj = math(mul_real(conj(a[(j, k0)]), d11));
-                        for i in j.to_inclusive().to(N.end()) {
+                        for i in j.to_incl().to(N.end()) {
                             let xi = math(copy(a[(i, k0)]));
                             write1!(a[(i, j)] = math(a[(i, j)] - d11xj * xi));
                         }
@@ -764,7 +764,7 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                             d,
                         ));
 
-                        for i in j.to_inclusive().to(N.end()) {
+                        for i in j.to_incl().to(N.end()) {
                             write1!(
                                 a[(i, j)] = math(
                                     a[(i, j)] - a[(i, k0)] * conj(wk) - a[(i, k1)] * conj(wkp1)

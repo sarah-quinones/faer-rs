@@ -21,6 +21,76 @@ pub struct SplitProof<'a, 'full, 'head, 'tail> {
     pub disjoint: Disjoint<'a, 'head, 'tail>,
 }
 
+pub trait ToLocal<'scope, 'dim, 'range>: Copy {
+    type Local;
+    fn to_local(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Local;
+}
+
+pub trait ToGlobal<'scope, 'dim, 'range> {
+    type Global;
+    fn to_global(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Global;
+}
+
+impl<'scope, 'dim, 'range> ToLocal<'scope, 'dim, 'range> for SegmentIdx<'scope, 'dim, 'range> {
+    type Local = Idx<'range>;
+
+    #[inline]
+    fn to_local(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Local {
+        range.from_global(this)
+    }
+}
+
+impl<'scope, 'dim, 'range> ToLocal<'scope, 'dim, 'range> for SegmentIdxInc<'scope, 'dim, 'range> {
+    type Local = IdxInc<'range>;
+
+    #[inline]
+    fn to_local(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Local {
+        range.from_global_inc(this)
+    }
+}
+
+impl<'scope, 'dim, 'range> ToGlobal<'scope, 'dim, 'range> for Idx<'range> {
+    type Global = SegmentIdx<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn to_global(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Global {
+        range.from_local(this)
+    }
+}
+
+impl<'scope, 'dim, 'range> ToGlobal<'scope, 'dim, 'range> for IdxInc<'range> {
+    type Global = SegmentIdxInc<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn to_global(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Global {
+        range.from_local_inc(this)
+    }
+}
+
+impl<'scope, 'dim, 'range: 'subrange, 'subrange> ToGlobal<'scope, 'dim, 'range>
+    for SegmentIdx<'scope, 'dim, 'subrange>
+{
+    type Global = SegmentIdx<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn to_global(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Global {
+        _ = range;
+        this
+    }
+}
+
+impl<'scope, 'dim, 'range: 'subrange, 'subrange> ToGlobal<'scope, 'dim, 'range>
+    for SegmentIdxInc<'scope, 'dim, 'subrange>
+{
+    type Global = SegmentIdxInc<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn to_global(range: Segment<'scope, 'dim, 'range>, this: Self) -> Self::Global {
+        _ = range;
+        this
+    }
+}
+
 /// Splits a range into two segments.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Partition<'head, 'tail, 'n> {
@@ -421,9 +491,16 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline(always)]
-    pub fn split_inc<'head, 'tail, 'b, H, T>(
+    pub fn split_inc<
+        'head,
+        'tail,
+        'b,
+        H,
+        T,
+        I: ToGlobal<'a, 'dim, 'range, Global = SegmentIdxInc<'a, 'dim, 'range>>,
+    >(
         self,
-        midpoint: SegmentIdxInc<'a, 'dim, 'range>,
+        midpoint: I,
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
@@ -436,6 +513,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     where
         'a: 'b,
     {
+        let midpoint = I::to_global(self, midpoint);
         (
             Disjoint(PhantomData),
             Segment {
@@ -454,9 +532,16 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline(always)]
-    pub fn split<'head, 'tail, 'b, H, T>(
+    pub fn split<
+        'head,
+        'tail,
+        'b,
+        H,
+        T,
+        I: ToGlobal<'a, 'dim, 'range, Global = SegmentIdx<'a, 'dim, 'range>>,
+    >(
         self,
-        midpoint: SegmentIdx<'a, 'dim, 'range>,
+        midpoint: I,
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
@@ -470,6 +555,7 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     where
         'a: 'b,
     {
+        let midpoint = I::to_global(self, midpoint);
         (
             Disjoint(PhantomData),
             SegmentIdx {
@@ -492,15 +578,23 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
     }
 
     #[inline(always)]
-    pub fn segment<'smol, 'b, T>(
+    pub fn segment<
+        'smol,
+        'b,
+        T,
+        I: ToGlobal<'a, 'dim, 'range, Global = SegmentIdxInc<'a, 'dim, 'range>>,
+        J: ToGlobal<'a, 'dim, 'range, Global = SegmentIdxInc<'a, 'dim, 'range>>,
+    >(
         self,
-        start: SegmentIdxInc<'a, 'dim, 'range>,
-        end: SegmentIdxInc<'a, 'dim, 'range>,
+        start: I,
+        end: J,
         node: GhostNode<'b, 'smol, T>,
     ) -> (Segment<'b, 'dim, 'smol>, T)
     where
         'a: 'b,
     {
+        let start = I::to_global(self, start);
+        let end = J::to_global(self, end);
         assert!(start.unbound <= end.unbound);
         (
             Segment {
@@ -582,6 +676,15 @@ impl<'a, 'dim, 'range> Segment<'a, 'dim, 'range> {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn local<I: ToLocal<'a, 'dim, 'range>>(self, idx: I) -> I::Local {
+        I::to_local(self, idx)
+    }
+    #[inline]
+    pub fn global<I: ToGlobal<'a, 'dim, 'range>>(self, idx: I) -> I::Global {
+        I::to_global(self, idx)
     }
 
     #[inline]
@@ -722,6 +825,7 @@ impl<'n, I: Index> IdxInc<'n, I> {
     /// # Panics
     /// Panics unless `idx <= dim`.
     #[inline(always)]
+    #[track_caller]
     pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
         equator::assert!(all(
             idx.zx() <= dim.unbound,
@@ -851,6 +955,14 @@ impl<'a, 'dim, 'n> SegmentIdx<'a, 'dim, 'n> {
             __marker: PhantomData,
         }
     }
+
+    #[inline]
+    pub fn to_incl(self) -> SegmentIdxInc<'a, 'dim, 'n> {
+        SegmentIdxInc {
+            unbound: self.unbound,
+            __marker: PhantomData,
+        }
+    }
 }
 
 impl<'n> From<Dim<'n>> for IdxInc<'n> {
@@ -916,7 +1028,7 @@ impl<'n> Idx<'n> {
 impl<'n, I: Index> Idx<'n, I> {
     /// Returns the index, bounded inclusively by the value tied to `'n`.
     #[inline]
-    pub const fn to_inclusive(self) -> IdxInc<'n, I> {
+    pub const fn to_incl(self) -> IdxInc<'n, I> {
         unsafe { IdxInc::new_unbound(self.unbound()) }
     }
     /// Returns the next index, bounded inclusively by the value tied to `'n`.
@@ -927,11 +1039,6 @@ impl<'n, I: Index> Idx<'n, I> {
     /// Returns the index, bounded inclusively by the value tied to `'n`.
     #[inline]
     pub fn excl(self) -> IdxInc<'n, I> {
-        unsafe { IdxInc::new_unbound(self.unbound()) }
-    }
-    /// Returns the next index, bounded inclusively by the value tied to `'n`.
-    #[inline]
-    pub fn incl(self) -> IdxInc<'n, I> {
         unsafe { IdxInc::new_unbound(self.unbound()) }
     }
 
@@ -989,6 +1096,7 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 
     /// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
     #[inline]
+    #[track_caller]
     pub fn new_checked(idx: I::Signed, size: Dim<'n>) -> Self {
         assert!((idx.sx() as isize) < size.unbound() as isize);
         Self {

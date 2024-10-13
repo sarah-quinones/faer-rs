@@ -40,7 +40,7 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         let mut imax = k_row;
         let mut max = math.re(zero());
 
-        for i in imax.to_inclusive().to(M.end()) {
+        for i in imax.to_incl().to(M.end()) {
             let abs = math(abs1(
                 matrix.rb().col_segment(range)[(i, range.from_global(k))],
             ));
