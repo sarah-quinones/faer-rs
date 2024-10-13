@@ -401,10 +401,7 @@ mod tests {
                         qr_in_place_scratch::<Unit, c64>(*N, *N, *B, par, Default::default())
                             .unwrap(),
                     )),
-                    QrParams {
-                        blocking_threshold: 2,
-                        ..Default::default()
-                    },
+                    Default::default(),
                 );
 
                 let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), N, N);
@@ -472,10 +469,7 @@ mod tests {
                         qr_in_place_scratch::<Unit, c64>(*M, *N, *B, par, Default::default())
                             .unwrap(),
                     )),
-                    QrParams {
-                        blocking_threshold: 2,
-                        ..Default::default()
-                    },
+                    Default::default(),
                 );
 
                 let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), M, M);

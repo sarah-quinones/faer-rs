@@ -365,33 +365,45 @@ pub fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<
 }
 
 #[math]
+fn best_in_matrix_fallback<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
+    ctx: &Ctx<C, T>,
+    data: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
+) -> (usize, usize, RealValue<C, T>) {
+    help!(C);
+
+    let mut max = math.re(zero());
+    let mut row = 0;
+    let mut col = 0;
+
+    let (M, N) = data.shape();
+
+    for j in N.indices() {
+        for i in M.indices() {
+            let abs = math.re(cx.abs1(data[(i, j)]));
+            if math(abs > max) {
+                row = *i;
+                col = *j;
+                max = abs;
+            }
+        }
+    }
+
+    (row, col, max)
+}
+
+#[math]
 fn best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     data: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
 ) -> (usize, usize, RealValue<C, T>) {
-    if let Some(dst) = data.try_as_col_major() {
-        best_in_mat_simd(ctx, dst)
-    } else {
-        help!(C);
-
-        let mut max = math.re(zero());
-        let mut row = 0;
-        let mut col = 0;
-
-        let (M, N) = data.shape();
-
-        for j in N.indices() {
-            for i in M.indices() {
-                let abs = math.re(cx.abs1(data[(i, j)]));
-                if math(abs > max) {
-                    row = *i;
-                    col = *j;
-                    max = abs;
-                }
-            }
+    if const { T::SIMD_CAPABILITIES.is_unshuffled_simd() } {
+        if let Some(dst) = data.try_as_col_major() {
+            best_in_mat_simd(ctx, dst)
+        } else {
+            best_in_matrix_fallback(ctx, data)
         }
-
-        (row, col, max)
+    } else {
+        best_in_matrix_fallback(ctx, data)
     }
 }
 #[math]
@@ -402,8 +414,25 @@ fn rank_one_update_and_best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexFie
     rhs: RowRef<'_, C, T, Dim<'N>>,
     align: usize,
 ) -> (usize, usize, RealValue<C, T>) {
-    if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
-        update_and_best_in_mat_simd(ctx, dst, lhs, rhs, align)
+    if const { T::SIMD_CAPABILITIES.is_unshuffled_simd() } {
+        if let (Some(dst), Some(lhs)) =
+            (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
+        {
+            update_and_best_in_mat_simd(ctx, dst, lhs, rhs, align)
+        } else {
+            help!(C);
+
+            matmul(
+                ctx,
+                dst.rb_mut(),
+                Some(as_ref!(math(one()))),
+                lhs.as_mat(),
+                rhs.as_mat(),
+                as_ref!(math(-one())),
+                Parallelism::None,
+            );
+            best_in_matrix(ctx, dst.rb())
+        }
     } else {
         help!(C);
 
