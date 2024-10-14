@@ -1519,203 +1519,7 @@ fn from_strided_row_major_slice_mut_assert(
 
 mod bound_range {
     use super::*;
-    use crate::utils::bound::{Disjoint, Segment};
-
-    impl<'ROWS, 'a, C: Container, T, Cols: Shape, RStride: Stride, CStride: Stride>
-        MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
-    {
-        #[inline]
-        pub fn row_segments_mut<'scope, 'TOP, 'BOT>(
-            self,
-            first: Segment<'scope, 'ROWS, 'TOP>,
-            second: Segment<'scope, 'ROWS, 'BOT>,
-            disjoint: Disjoint<'scope, 'TOP, 'BOT>,
-        ) -> (
-            MatMut<'a, C, T, Dim<'TOP>, Cols, RStride, CStride>,
-            MatMut<'a, C, T, Dim<'BOT>, Cols, RStride, CStride>,
-        ) {
-            unsafe {
-                _ = disjoint;
-                let first = MatMut::from_raw_parts_mut(
-                    self.ptr_at_mut(first.start(), Cols::start()),
-                    first.len(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                let second = MatMut::from_raw_parts_mut(
-                    self.ptr_at_mut(second.start(), Cols::start()),
-                    second.len(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'COLS, 'a, C: Container, T, Rows: Shape, RStride: Stride, CStride: Stride>
-        MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
-    {
-        #[inline]
-        pub fn col_segments_mut<'scope, 'LEFT, 'RIGHT>(
-            self,
-            first: Segment<'scope, 'COLS, 'LEFT>,
-            second: Segment<'scope, 'COLS, 'RIGHT>,
-            disjoint: Disjoint<'scope, 'LEFT, 'RIGHT>,
-        ) -> (
-            MatMut<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride>,
-            MatMut<'a, C, T, Rows, Dim<'RIGHT>, RStride, CStride>,
-        ) {
-            unsafe {
-                _ = disjoint;
-                let first = MatMut::from_raw_parts_mut(
-                    self.ptr_at_mut(Rows::start(), first.start()),
-                    self.nrows(),
-                    first.len(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                let second = MatMut::from_raw_parts_mut(
-                    self.ptr_at_mut(Rows::start(), second.start()),
-                    self.nrows(),
-                    second.len(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'ROWS, 'a, C: Container, T, Cols: Shape, RStride: Stride, CStride: Stride>
-        MatRef<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
-    {
-        #[inline]
-        pub fn row_segments<'scope, 'TOP, 'BOT>(
-            self,
-            first: Segment<'scope, 'ROWS, 'TOP>,
-            second: Segment<'scope, 'ROWS, 'BOT>,
-        ) -> (
-            MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride>,
-            MatRef<'a, C, T, Dim<'BOT>, Cols, RStride, CStride>,
-        ) {
-            unsafe {
-                let first = MatRef::from_raw_parts(
-                    self.ptr_at(first.start(), Cols::start()),
-                    first.len(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                let second = MatRef::from_raw_parts(
-                    self.ptr_at(second.start(), Cols::start()),
-                    second.len(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'COLS, 'a, C: Container, T, Rows: Shape, RStride: Stride, CStride: Stride>
-        MatRef<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
-    {
-        #[inline]
-        pub fn col_segments<'scope, 'LEFT, 'RIGHT>(
-            self,
-            first: Segment<'scope, 'COLS, 'LEFT>,
-            second: Segment<'scope, 'COLS, 'RIGHT>,
-        ) -> (
-            MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride>,
-            MatRef<'a, C, T, Rows, Dim<'RIGHT>, RStride, CStride>,
-        ) {
-            unsafe {
-                let first = MatRef::from_raw_parts(
-                    self.ptr_at(Rows::start(), first.start()),
-                    self.nrows(),
-                    first.len(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                let second = MatRef::from_raw_parts(
-                    self.ptr_at(Rows::start(), second.start()),
-                    self.nrows(),
-                    second.len(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'ROWS, 'a, C: Container, T, Cols: Shape, RStride: Stride, CStride: Stride>
-        MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
-    {
-        #[inline]
-        pub fn row_segments<'scope, 'TOP, 'BOT>(
-            self,
-            first: Segment<'scope, 'ROWS, 'TOP>,
-            second: Segment<'scope, 'ROWS, 'BOT>,
-        ) -> (
-            MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride>,
-            MatRef<'a, C, T, Dim<'BOT>, Cols, RStride, CStride>,
-        ) {
-            unsafe {
-                let first = MatRef::from_raw_parts(
-                    self.ptr_at(first.start(), Cols::start()),
-                    first.len(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                let second = MatRef::from_raw_parts(
-                    self.ptr_at(second.start(), Cols::start()),
-                    second.len(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'COLS, 'a, C: Container, T, Rows: Shape, RStride: Stride, CStride: Stride>
-        MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
-    {
-        #[inline]
-        pub fn col_segments<'scope, 'LEFT, 'RIGHT>(
-            self,
-            first: Segment<'scope, 'COLS, 'LEFT>,
-            second: Segment<'scope, 'COLS, 'RIGHT>,
-        ) -> (
-            MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride>,
-            MatRef<'a, C, T, Rows, Dim<'RIGHT>, RStride, CStride>,
-        ) {
-            unsafe {
-                let first = MatRef::from_raw_parts(
-                    self.ptr_at(Rows::start(), first.start()),
-                    self.nrows(),
-                    first.len(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                let second = MatRef::from_raw_parts(
-                    self.ptr_at(Rows::start(), second.start()),
-                    self.nrows(),
-                    second.len(),
-                    self.row_stride(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
+    use crate::utils::bound::Segment;
 
     // single segment
 
@@ -1848,7 +1652,7 @@ mod bound_any_range {
         MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn any_row_segments_mut<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+        pub fn row_segments_mut<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
             self,
             segments: S,
             disjoint: S::Disjoint,
@@ -1861,7 +1665,7 @@ mod bound_any_range {
         MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn any_col_segments_mut<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+        pub fn col_segments_mut<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
             self,
             segments: S,
             disjoint: S::Disjoint,
@@ -1874,7 +1678,7 @@ mod bound_any_range {
         MatRef<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn any_row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+        pub fn row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
             self,
             segments: S,
         ) -> S::MatRefSegments<C, T, Cols, RStride, CStride> {
@@ -1886,7 +1690,7 @@ mod bound_any_range {
         MatRef<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn any_col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+        pub fn col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
             self,
             segments: S,
         ) -> S::MatRefSegments<C, T, Rows, RStride, CStride> {
@@ -1898,7 +1702,7 @@ mod bound_any_range {
         MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
     {
         #[inline]
-        pub fn any_row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+        pub fn row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
             self,
             segments: S,
         ) -> S::MatRefSegments<C, T, Cols, RStride, CStride> {
@@ -1910,7 +1714,7 @@ mod bound_any_range {
         MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
     {
         #[inline]
-        pub fn any_col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+        pub fn col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
             self,
             segments: S,
         ) -> S::MatRefSegments<C, T, Rows, RStride, CStride> {

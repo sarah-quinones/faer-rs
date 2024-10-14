@@ -322,7 +322,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                 swap_cols_idx(ctx, A.rb_mut(), best_col, kj);
             }
 
-            ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+            ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
                 let (rows @ list![top, _], disjoint_rows) = m.split(list![..ki.next(), ..], ROWS);
                 let (cols @ list![left, right], disjoint_cols) =
                     n.split(list![..kj.next(), ..], COLS);
@@ -330,9 +330,9 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                 let ki = top.idx(*ki);
                 let kj = left.idx(*kj);
 
-                let list![A0, A1] = A.rb_mut().any_row_segments_mut(rows, disjoint_rows);
-                let list![A00, A01] = A0.any_col_segments_mut(cols, disjoint_cols);
-                let list![A10, mut A11] = A1.any_col_segments_mut(cols, disjoint_cols);
+                let list![A0, A1] = A.rb_mut().row_segments_mut(rows, disjoint_rows);
+                let list![A00, A01] = A0.col_segments_mut(cols, disjoint_cols);
+                let list![A10, mut A11] = A1.col_segments_mut(cols, disjoint_cols);
 
                 let mut A00 = A00.at_mut(top.local(ki), left.local(kj));
                 let mut A01 = A01.row_mut(top.local(ki));

@@ -517,15 +517,15 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
             par = Parallelism::None;
         }
 
-        ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+        ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
             let (list![top, bot], disjoint_rows) = M.split(list![ki, ..], ROWS);
             let (list![left, right], disjoint_cols) = N.split(list![kj, ..], COLS);
 
             let list![A0, A1] = A
                 .rb_mut()
-                .any_row_segments_mut(list![top, bot], disjoint_rows);
-            let list![_, A01] = A0.any_col_segments_mut(list![left, right], disjoint_cols);
-            let list![A10, mut A11] = A1.any_col_segments_mut(list![left, right], disjoint_cols);
+                .row_segments_mut(list![top, bot], disjoint_rows);
+            let list![_, A01] = A0.col_segments_mut(list![left, right], disjoint_cols);
+            let list![A10, mut A11] = A1.col_segments_mut(list![left, right], disjoint_cols);
 
             let lhs = A10.rb();
             let rhs = A01.rb();

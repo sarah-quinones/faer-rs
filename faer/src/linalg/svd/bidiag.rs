@@ -44,7 +44,7 @@ pub fn bidiag_in_place<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
         let kj = n.idx(k);
 
         let A = A.rb_mut();
-        ghost_tree2!(ROWS(TOP, I, BOT), COLS(LEFT, J, RIGHT), {
+        ghost_tree!(ROWS(TOP, I, BOT), COLS(LEFT, J, RIGHT), {
             let (list![top, row_i, bot], disjoint) = m.split(list![..ki.to_incl(), ki, ..], ROWS);
             let (list![left, col_j, right], disjoint) = n.split(list![top, kj, ..], COLS);
         });

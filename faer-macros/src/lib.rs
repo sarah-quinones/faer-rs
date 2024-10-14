@@ -475,44 +475,6 @@ pub fn ghost_tree(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let init = tree.iter().map(Tree::init);
     let deinit = tree.iter().map(Tree::deinit);
     let struct_def = tree.iter().map(Tree::struct_def);
-    let struct_init = tree.iter().map(Tree::struct_init);
-    let name = tree.iter().map(|tree| &tree.name);
-
-    let block = quote! {{
-
-        crate::hacks::make_guard!(__scope);
-        #(#struct_def)*
-        { #(#init)* if const { true } {  #(let #name = #struct_init;)* {#block} } else { #(#deinit)* panic!() } }
-    }};
-
-    block.into()
-}
-
-#[proc_macro]
-pub fn ghost_tree2(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let Ok(args) =
-        syn::punctuated::Punctuated::<Expr, Comma>::parse_separated_nonempty.parse(item.clone())
-    else {
-        return item;
-    };
-
-    if args.is_empty() {
-        return quote! { {} }.into();
-    }
-
-    let n = args.len() - 1;
-
-    let block = &args[n];
-
-    let tree = &*args
-        .iter()
-        .take(n)
-        .map(Tree::parse_expr)
-        .collect::<Vec<_>>();
-
-    let init = tree.iter().map(Tree::init);
-    let deinit = tree.iter().map(Tree::deinit);
-    let struct_def = tree.iter().map(Tree::struct_def);
     let struct_init = tree.iter().map(Tree::list_init);
     let name = tree.iter().map(|tree| &tree.name);
 

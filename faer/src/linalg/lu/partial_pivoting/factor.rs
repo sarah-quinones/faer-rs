@@ -70,7 +70,7 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             write1!(matrix[(i, j)] = math(matrix[(i, j)] * inv));
         }
 
-        ghost_tree2!(FULL_ROWS(TOP, BOT), FULL_COLS(LEFT, RIGHT), {
+        ghost_tree!(FULL_ROWS(TOP, BOT), FULL_COLS(LEFT, RIGHT), {
             let (rows @ list![top, bot], disjoint_rows) =
                 M.split(list![..k_row.next(), ..], FULL_ROWS);
 
@@ -80,9 +80,9 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             let j = left.idx(*j);
             let k_row = top.idx(*k_row);
 
-            let list![A0, mut A1] = matrix.rb_mut().any_row_segments_mut(rows, disjoint_rows);
-            let list![_, A01] = A0.rb().any_col_segments(cols);
-            let list![A10, mut A11] = A1.rb_mut().any_col_segments_mut(cols, disjoint_cols);
+            let list![A0, mut A1] = matrix.rb_mut().row_segments_mut(rows, disjoint_rows);
+            let list![_, A01] = A0.rb().col_segments(cols);
+            let list![A10, mut A11] = A1.rb_mut().col_segments_mut(cols, disjoint_cols);
             let A10 = A10.rb();
 
             let lhs = A10.col(left.from_global(j));
@@ -134,7 +134,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     let i = M.check(0);
     let i_next = M.advance(i, blocksize);
 
-    ghost_tree2!(FULL_COLS(BLOCK_COLS), {
+    ghost_tree!(FULL_COLS(BLOCK_COLS), {
         let (list![block], _) = range.len().split(list![..j_next], FULL_COLS);
 
         n_trans += lu_in_place_recursion(
@@ -147,7 +147,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         );
     });
 
-    ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+    ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
         let (list![top, bot], disjoint_rows) = M.split(list![..i_next, ..], ROWS);
         let (list![left, right], disjoint_cols) = N.split(list![..j_next, ..], COLS);
 
@@ -156,9 +156,9 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
 
             let list![A0, A1] = A
                 .rb_mut()
-                .any_row_segments_mut(list![top, bot], disjoint_rows);
-            let list![A00, mut A01] = A0.any_col_segments_mut(list![left, right], disjoint_cols);
-            let list![A10, mut A11] = A1.any_col_segments_mut(list![left, right], disjoint_cols);
+                .row_segments_mut(list![top, bot], disjoint_rows);
+            let list![A00, mut A01] = A0.col_segments_mut(list![left, right], disjoint_cols);
+            let list![A10, mut A11] = A1.col_segments_mut(list![left, right], disjoint_cols);
 
             let A00 = A00.rb().as_col_shape(A00.nrows());
             let A10 = A10.rb().as_col_shape(A00.nrows());
@@ -209,7 +209,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             }
         };
 
-        ghost_tree2!(COLS(BEFORE, AFTER), {
+        ghost_tree!(COLS(BEFORE, AFTER), {
             let (list![before, after], disjoint) = NCOLS.split(
                 list![..range.global(j.to_incl()).local(), range.end()..],
                 COLS,
@@ -217,7 +217,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
 
             let list![A_left, A_right] = A
                 .rb_mut()
-                .any_col_segments_mut(list![before, after], disjoint);
+                .col_segments_mut(list![before, after], disjoint);
 
             match par {
                 Parallelism::None => {
@@ -321,11 +321,11 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
 
     let size = Ord::min(*N, *M);
 
-    // ghost_tree2!(FULL_COLS(LEFT(A, B), RIGHT), {
+    // ghost_tree!(FULL_COLS(LEFT(A, B), RIGHT), {
     //     let (list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
     // });
 
-    ghost_tree2!(FULL_COLS(LEFT, RIGHT), {
+    ghost_tree!(FULL_COLS(LEFT, RIGHT), {
         let (list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
 
         for i in M.indices() {
@@ -348,7 +348,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
         }
 
         if *M < *N {
-            let list![left, right] = matrix.any_col_segments_mut(list![left, right], disjoint);
+            let list![left, right] = matrix.col_segments_mut(list![left, right], disjoint);
             linalg::triangular_solve::solve_unit_lower_triangular_in_place(
                 ctx,
                 left.rb().as_shape(M, M),

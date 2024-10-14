@@ -566,7 +566,7 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
 
     let mut k = 0;
     while let Some(k0) = N.try_check(k) {
-        ghost_tree2!(FULL(AFTER_K), {
+        ghost_tree!(FULL(AFTER_K), {
             let (list![after_k], _) = N.split(list![k0.to_incl()..], FULL);
             let k0_ = after_k.idx(*k0);
 
@@ -598,7 +598,7 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                 }
                 write1!(a[(k0, k0)] = math.from_real(d11));
             } else {
-                ghost_tree2!(AFTER_K0(K_IMAX), AFTER_K1(IMAX_P1_END), {
+                ghost_tree!(AFTER_K0(K_IMAX), AFTER_K1(IMAX_P1_END), {
                     {
                         if math.re(abs_akk >= colmax * alpha) {
                             kp = k0_;

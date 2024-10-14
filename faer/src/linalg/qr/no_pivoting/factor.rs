@@ -21,16 +21,16 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
         let ki = M.check(*k);
         let kj = N.check(*k);
 
-        ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+        ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
             let (rows @ list![top, _], disjoint_rows) = M.split(list![..ki.next(), ..], ROWS);
             let (cols @ list![left, right], disjoint_cols) = N.split(list![..kj.next(), ..], COLS);
 
             let ki = top.idx(*ki);
             let kj = left.idx(*kj);
 
-            let list![A0, A1] = A.rb_mut().any_row_segments_mut(rows, disjoint_rows);
-            let list![A00, A01] = A0.any_col_segments_mut(cols, disjoint_cols);
-            let list![A10, mut A11] = A1.any_col_segments_mut(cols, disjoint_cols);
+            let list![A0, A1] = A.rb_mut().row_segments_mut(rows, disjoint_rows);
+            let list![A00, A01] = A0.col_segments_mut(cols, disjoint_cols);
+            let list![A10, mut A11] = A1.col_segments_mut(cols, disjoint_cols);
 
             let mut A00 = A00.at_mut(top.local(ki), left.local(kj));
             let mut A01 = A01.row_mut(top.local(ki));
@@ -155,7 +155,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
         j_next = size.advance(j, *blocksize);
         let ji = m.idx(*j);
 
-        ghost_tree2!(H_COLS(H_BLOCK), COLS(COL_BLOCK, RIGHT), ROWS(BOT), {
+        ghost_tree!(H_COLS(H_BLOCK), COLS(COL_BLOCK, RIGHT), ROWS(BOT), {
             let (list![h_block], _) = size.split(list![j.to_incl()..j_next], H_COLS);
             let (list![bot], _) = m.split(list![ji.to_incl()..m.end()], ROWS);
             let (cols @ list![col_block, _], disjoint) = n.split(list![h_block, ..], COLS);
@@ -188,13 +188,13 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                     continue;
                 }
 
-                ghost_tree2!(ROWS(TOP, BOT), BLOCK(SUBCOLS), {
+                ghost_tree!(ROWS(TOP, BOT), BLOCK(SUBCOLS), {
                     let (rows, disjoint_rows) = blocksize.split(list![..k.to_incl(), ..], ROWS);
                     let (list![subcols], _) = blocksize.split(list![k.to_incl()..k_next], BLOCK);
 
                     let mut H = H.rb_mut().col_segment_mut(subcols);
 
-                    let list![H0, mut H1] = H.rb_mut().any_row_segments_mut(rows, disjoint_rows);
+                    let list![H0, mut H1] = H.rb_mut().row_segments_mut(rows, disjoint_rows);
                     let H0 = H0.rb().subrows(zero(), subcols.len());
                     let H1 = H1.rb_mut().subrows_mut(zero(), subcols.len());
 
@@ -203,7 +203,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                 });
             }
 
-            let list![A0, A1] = A.rb_mut().any_col_segments_mut(cols, disjoint);
+            let list![A0, A1] = A.rb_mut().col_segments_mut(cols, disjoint);
             let A0 = A0.rb();
 
             householder::upgrade_householder_factor(

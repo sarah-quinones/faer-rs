@@ -26,7 +26,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
     let n = A.ncols();
 
-    ghost_tree2!(ROW(HEAD, TAIL), {
+    ghost_tree!(ROW(HEAD, TAIL), {
         let (list![head, tail], disjoint) = n.split(list![..start, ..], ROW);
 
         let simd = SimdCtx::<C, T, S>::new_force_mask(simd, tail.len());
@@ -39,18 +39,16 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
         let mut count = 0usize;
 
         for j in n.indices() {
-            ghost_tree2!(COL(LEFT, RIGHT), {
+            ghost_tree!(COL(LEFT, RIGHT), {
                 let (list![left, right], disjoint_col) = n.split(list![..j.to_incl(), j], COL);
 
                 let list![A_0, mut Aj] = A
                     .rb_mut()
-                    .any_col_segments_mut(list![left, right], disjoint_col);
+                    .col_segments_mut(list![left, right], disjoint_col);
                 let A_0 = A_0.rb();
-                let A10 = A_0.row_segments(head, tail).1;
+                let A10 = A_0.row_segment(tail);
 
-                let list![_, mut Aj] = Aj
-                    .rb_mut()
-                    .any_row_segments_mut(list![head, tail], disjoint);
+                let list![_, mut Aj] = Aj.rb_mut().row_segments_mut(list![head, tail], disjoint);
 
                 {
                     let mut Aj = Aj.rb_mut();
@@ -270,7 +268,7 @@ fn simd_cholesky_matrix<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
         let J_next = N.advance(j, blocksize);
         help!(C::Real);
 
-        ghost_tree2!(FULL(HEAD), {
+        ghost_tree!(FULL(HEAD), {
             let (list![head], _) = N.split(list![..J_next], FULL);
 
             let A = A.rb_mut().row_segment_mut(head).col_segment_mut(head);
@@ -484,15 +482,13 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
         while let Some(j) = N.try_check(*j_next) {
             j_next = N.advance(j, blocksize);
 
-            ghost_tree2!(FULL(HEAD, TAIL), {
+            ghost_tree!(FULL(HEAD, TAIL), {
                 let (list![head, tail], disjoint) = N.split(list![j.to_incl()..j_next, ..], FULL);
 
-                let list![mut A_0, A_1] =
-                    A.rb_mut().any_col_segments_mut(list![head, tail], disjoint);
-                let list![mut A00, mut A10] = A_0
-                    .rb_mut()
-                    .any_row_segments_mut(list![head, tail], disjoint);
-                let list![A01, mut A11] = A_1.any_row_segments_mut(list![head, tail], disjoint);
+                let list![mut A_0, A_1] = A.rb_mut().col_segments_mut(list![head, tail], disjoint);
+                let list![mut A00, mut A10] =
+                    A_0.rb_mut().row_segments_mut(list![head, tail], disjoint);
+                let list![A01, mut A11] = A_1.row_segments_mut(list![head, tail], disjoint);
 
                 let mut D0 = D.rb_mut().col_segment_mut(head);
 

@@ -524,7 +524,7 @@ mod internal_prelude {
 
     pub use crate::linalg::{self, temp_mat_scratch, temp_mat_uninit};
 
-    pub use faer_macros::{ghost_tree, ghost_tree2, math};
+    pub use faer_macros::{ghost_tree, math};
 
     pub use faer_traits::{
         help, help2, ComplexContainer, ComplexField, ConjUnit, Container, Ctx, Index,

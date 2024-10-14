@@ -384,12 +384,12 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
         help!(C);
 
         for j in N.indices() {
-            ghost_tree2!(FULL(J, TAIL), {
+            ghost_tree!(FULL(J, TAIL), {
                 let (list![col, tail], _) = N.split(list![j, ..], FULL);
                 let mut L_col = ld.rb_mut().col_mut(col.local());
 
                 let r = Ord::min((*r)(), K.end());
-                ghost_tree2!(W_FULL(R), {
+                ghost_tree!(W_FULL(R), {
                     let (list![R_segment], _) = K.split(list![..r], W_FULL);
                     let R = R_segment.len();
                     let mut W = w.rb_mut().col_segment_mut(R_segment);
@@ -401,7 +401,7 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                     while let Some(r) = R.try_check(*r_next) {
                         r_next = R.advance(r, BLOCKSIZE);
 
-                        ghost_tree2!(W_FULL(R0), {
+                        ghost_tree!(W_FULL(R0), {
                             let (list![r0], _) = R.split(list![r.into()..r_next], W_FULL);
 
                             stack_mat!(ctx, p, r0.len(), 1, BLOCKSIZE, 1, C, T);

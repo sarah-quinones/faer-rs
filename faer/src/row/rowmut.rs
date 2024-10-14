@@ -562,87 +562,7 @@ impl<T, Cols: Shape, RStride: Stride> IndexMut<Idx<Cols>> for RowMut<'_, Unit, T
 
 mod bound_range {
     use super::*;
-    use crate::utils::bound::{Disjoint, Segment};
-
-    impl<'COLS, 'a, C: Container, T, CStride: Stride> RowMut<'a, C, T, Dim<'COLS>, CStride> {
-        #[inline]
-        pub fn col_segments_mut<'scope, 'LEFT, 'RIGHT>(
-            self,
-            first: Segment<'scope, 'COLS, 'LEFT>,
-            second: Segment<'scope, 'COLS, 'RIGHT>,
-            disjoint: Disjoint<'scope, 'LEFT, 'RIGHT>,
-        ) -> (
-            RowMut<'a, C, T, Dim<'LEFT>, CStride>,
-            RowMut<'a, C, T, Dim<'RIGHT>, CStride>,
-        ) {
-            unsafe {
-                _ = disjoint;
-                let first = RowMut::from_raw_parts_mut(
-                    self.ptr_at_mut(first.start()),
-                    first.len(),
-                    self.col_stride(),
-                );
-                let second = RowMut::from_raw_parts_mut(
-                    self.ptr_at_mut(second.start()),
-                    second.len(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'COLS, 'a, C: Container, T, CStride: Stride> RowMut<'a, C, T, Dim<'COLS>, CStride> {
-        #[inline]
-        pub fn col_segments<'scope, 'LEFT, 'RIGHT>(
-            self,
-            first: Segment<'scope, 'COLS, 'LEFT>,
-            second: Segment<'scope, 'COLS, 'RIGHT>,
-        ) -> (
-            RowRef<'a, C, T, Dim<'LEFT>, CStride>,
-            RowRef<'a, C, T, Dim<'RIGHT>, CStride>,
-        ) {
-            unsafe {
-                let first = RowRef::from_raw_parts(
-                    self.ptr_at(first.start()),
-                    first.len(),
-                    self.col_stride(),
-                );
-                let second = RowRef::from_raw_parts(
-                    self.ptr_at(second.start()),
-                    second.len(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
-
-    impl<'COLS, 'a, C: Container, T, CStride: Stride> RowRef<'a, C, T, Dim<'COLS>, CStride> {
-        #[inline]
-        pub fn col_segments<'scope, 'LEFT, 'RIGHT>(
-            self,
-            first: Segment<'scope, 'COLS, 'LEFT>,
-            second: Segment<'scope, 'COLS, 'RIGHT>,
-        ) -> (
-            RowRef<'a, C, T, Dim<'LEFT>, CStride>,
-            RowRef<'a, C, T, Dim<'RIGHT>, CStride>,
-        ) {
-            unsafe {
-                let first = RowRef::from_raw_parts(
-                    self.ptr_at(first.start()),
-                    first.len(),
-                    self.col_stride(),
-                );
-                let second = RowRef::from_raw_parts(
-                    self.ptr_at(second.start()),
-                    second.len(),
-                    self.col_stride(),
-                );
-                (first, second)
-            }
-        }
-    }
+    use crate::utils::bound::Segment;
 
     // single segment
 
@@ -692,7 +612,7 @@ mod bound_any_range {
 
     impl<'COLS, 'a, C: Container, T, CStride: Stride> RowMut<'a, C, T, Dim<'COLS>, CStride> {
         #[inline]
-        pub fn any_col_segments_mut<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+        pub fn col_segments_mut<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
             self,
             segments: S,
             disjoint: S::Disjoint,
@@ -703,7 +623,7 @@ mod bound_any_range {
 
     impl<'COLS, 'a, C: Container, T, CStride: Stride> RowRef<'a, C, T, Dim<'COLS>, CStride> {
         #[inline]
-        pub fn any_col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+        pub fn col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
             self,
             segments: S,
         ) -> S::RowRefSegments<C, T, CStride> {
@@ -713,7 +633,7 @@ mod bound_any_range {
 
     impl<'COLS, 'a, C: Container, T, CStride: Stride> RowMut<'a, C, T, Dim<'COLS>, CStride> {
         #[inline]
-        pub fn any_col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+        pub fn col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
             self,
             segments: S,
         ) -> S::RowRefSegments<C, T, CStride> {
