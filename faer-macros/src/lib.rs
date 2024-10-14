@@ -433,21 +433,6 @@ impl Tree {
             )
         }
     }
-
-    fn struct_init(&self) -> TokenStream {
-        let name = &self.name;
-        let children = self.children.iter().map(|x| &x.name);
-        let children_init = self.children.iter().map(|x| x.struct_init());
-        quote! {
-            crate::hacks::GhostNode::new(
-                #name {
-                    #(#children: #children_init,)*
-                },
-                &__scope,
-                &#name,
-            )
-        }
-    }
 }
 
 #[proc_macro]

@@ -5116,5 +5116,13 @@ pub mod hacks {
                 marker: PhantomData,
             }
         }
+
+        #[inline]
+        pub unsafe fn new_unbound(inner: T) -> Self {
+            Self {
+                child: inner,
+                marker: PhantomData,
+            }
+        }
     }
 }

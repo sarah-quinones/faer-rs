@@ -216,7 +216,7 @@ unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'sc
 }
 
 unsafe impl<'scope, 'dim: 'range, 'range, 'subrange>
-    SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>> for Segment<'_, '_, 'subrange>
+    SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>> for Segment<'scope, '_, 'subrange>
 {
     type Output = Segment<'scope, 'dim, 'subrange>;
 
