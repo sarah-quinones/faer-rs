@@ -567,7 +567,7 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
     let mut k = 0;
     while let Some(k0) = N.try_check(k) {
         ghost_tree!(FULL(AFTER_K), {
-            let (list![after_k], _) = N.split(list![k0.to_incl()..], FULL);
+            let (_, list![after_k], _) = N.split(list![k0.to_incl()..], FULL);
             let k0_ = after_k.idx(*k0);
 
             let mut k_step = 1;
@@ -606,9 +606,9 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                             let imax_global = imax.unwrap();
                             let imax = imax_global.local();
 
-                            let (list![k_imax], _) =
+                            let (_, list![k_imax], _) =
                                 N.split(list![k0.to_incl()..imax.to_incl()], AFTER_K0);
-                            let (list![imax_end], _) = N.split(list![imax.next()..], AFTER_K1);
+                            let (_, list![imax_end], _) = N.split(list![imax.next()..], AFTER_K1);
 
                             let rowmax = math.max(
                                 best_score(ctx, a.rb().row(imax).col_segment(k_imax).transpose()),

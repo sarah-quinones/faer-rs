@@ -496,7 +496,7 @@ pub use row::{Row, RowGeneric, RowMut, RowMutGeneric, RowRef, RowRefGeneric};
 mod internal_prelude {
     pub use crate::{
         prelude::{ctx, default},
-        variadics::{list, List},
+        variadics::{list, pat_list, List},
     };
 
     pub use crate::{

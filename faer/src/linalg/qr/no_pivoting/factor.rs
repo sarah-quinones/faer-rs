@@ -22,8 +22,9 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
         let kj = N.check(*k);
 
         ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-            let (rows @ list![top, _], disjoint_rows) = M.split(list![..ki.next(), ..], ROWS);
-            let (cols @ list![left, right], disjoint_cols) = N.split(list![..kj.next(), ..], COLS);
+            let (_, rows @ list![top, _], disjoint_rows) = M.split(list![..ki.next(), ..], ROWS);
+            let (_, cols @ list![left, right], disjoint_cols) =
+                N.split(list![..kj.next(), ..], COLS);
 
             let ki = top.idx(*ki);
             let kj = left.idx(*kj);
@@ -156,9 +157,9 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
         let ji = m.idx(*j);
 
         ghost_tree!(H_COLS(H_BLOCK), COLS(COL_BLOCK, RIGHT), ROWS(BOT), {
-            let (list![h_block], _) = size.split(list![j.to_incl()..j_next], H_COLS);
-            let (list![bot], _) = m.split(list![ji.to_incl()..m.end()], ROWS);
-            let (cols @ list![col_block, _], disjoint) = n.split(list![h_block, ..], COLS);
+            let (_, list![h_block], _) = size.split(list![j.to_incl()..j_next], H_COLS);
+            let (_, list![bot], _) = m.split(list![ji.to_incl()..m.end()], ROWS);
+            let (_, cols @ list![col_block, _], disjoint) = n.split(list![h_block, ..], COLS);
 
             let mut A = A.rb_mut().row_segment_mut(bot);
 
@@ -189,8 +190,8 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                 }
 
                 ghost_tree!(ROWS(TOP, BOT), BLOCK(SUBCOLS), {
-                    let (rows, disjoint_rows) = blocksize.split(list![..k.to_incl(), ..], ROWS);
-                    let (list![subcols], _) = blocksize.split(list![k.to_incl()..k_next], BLOCK);
+                    let (_, rows, disjoint_rows) = blocksize.split(list![..k.to_incl(), ..], ROWS);
+                    let (_, list![subcols], _) = blocksize.split(list![k.to_incl()..k_next], BLOCK);
 
                     let mut H = H.rb_mut().col_segment_mut(subcols);
 

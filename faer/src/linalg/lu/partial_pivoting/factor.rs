@@ -71,10 +71,10 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         }
 
         ghost_tree!(FULL_ROWS(TOP, BOT), FULL_COLS(LEFT, RIGHT), {
-            let (rows @ list![top, bot], disjoint_rows) =
+            let (_, rows @ list![top, bot], disjoint_rows) =
                 M.split(list![..k_row.next(), ..], FULL_ROWS);
 
-            let (cols @ list![left, right], disjoint_cols) =
+            let (_, cols @ list![left, right], disjoint_cols) =
                 N.split(list![..j.next(), ..], FULL_COLS);
 
             let j = left.idx(*j);
@@ -135,7 +135,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     let i_next = M.advance(i, blocksize);
 
     ghost_tree!(FULL_COLS(BLOCK_COLS), {
-        let (list![block], _) = range.len().split(list![..j_next], FULL_COLS);
+        let (_, list![block], _) = range.len().split(list![..j_next], FULL_COLS);
 
         n_trans += lu_in_place_recursion(
             ctx,
@@ -148,15 +148,13 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     });
 
     ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-        let (list![top, bot], disjoint_rows) = M.split(list![..i_next, ..], ROWS);
-        let (list![left, right], disjoint_cols) = N.split(list![..j_next, ..], COLS);
+        let (_, list![top, bot], disjoint_rows) = M.split(list![..i_next, ..], ROWS);
+        let (_, list![left, right], disjoint_cols) = N.split(list![..j_next, ..], COLS);
 
         {
             let mut A = A.rb_mut().col_segment_mut(range);
 
-            let list![A0, A1] = A
-                .rb_mut()
-                .row_segments_mut(list![top, bot], disjoint_rows);
+            let list![A0, A1] = A.rb_mut().row_segments_mut(list![top, bot], disjoint_rows);
             let list![A00, mut A01] = A0.col_segments_mut(list![left, right], disjoint_cols);
             let list![A10, mut A11] = A1.col_segments_mut(list![left, right], disjoint_cols);
 
@@ -210,14 +208,13 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         };
 
         ghost_tree!(COLS(BEFORE, AFTER), {
-            let (list![before, after], disjoint) = NCOLS.split(
+            let (_, list![before, after], disjoint) = NCOLS.split(
                 list![..range.global(j.to_incl()).local(), range.end()..],
                 COLS,
             );
 
-            let list![A_left, A_right] = A
-                .rb_mut()
-                .col_segments_mut(list![before, after], disjoint);
+            let list![A_left, A_right] =
+                A.rb_mut().col_segments_mut(list![before, after], disjoint);
 
             match par {
                 Parallelism::None => {
@@ -321,12 +318,8 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
 
     let size = Ord::min(*N, *M);
 
-    // ghost_tree!(FULL_COLS(LEFT(A, B), RIGHT), {
-    //     let (list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
-    // });
-
     ghost_tree!(FULL_COLS(LEFT, RIGHT), {
-        let (list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
+        let (_, list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
 
         for i in M.indices() {
             let p = &mut perm[i];

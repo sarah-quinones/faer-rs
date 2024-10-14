@@ -27,7 +27,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
     let n = A.ncols();
 
     ghost_tree!(ROW(HEAD, TAIL), {
-        let (list![head, tail], disjoint) = n.split(list![..start, ..], ROW);
+        let (_, list![head, tail], disjoint) = n.split(list![..start, ..], ROW);
 
         let simd = SimdCtx::<C, T, S>::new_force_mask(simd, tail.len());
         let (idx_head, indices, idx_tail) = simd.indices();
@@ -40,7 +40,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
         for j in n.indices() {
             ghost_tree!(COL(LEFT, RIGHT), {
-                let (list![left, right], disjoint_col) = n.split(list![..j.to_incl(), j], COL);
+                let (_, list![left, right], disjoint_col) = n.split(list![..j.to_incl(), j], COL);
 
                 let list![A_0, mut Aj] = A
                     .rb_mut()
@@ -269,7 +269,7 @@ fn simd_cholesky_matrix<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
         help!(C::Real);
 
         ghost_tree!(FULL(HEAD), {
-            let (list![head], _) = N.split(list![..J_next], FULL);
+            let (_, list![head], _) = N.split(list![..J_next], FULL);
 
             let A = A.rb_mut().row_segment_mut(head).col_segment_mut(head);
             let D = D.rb_mut().col_segment_mut(head);
@@ -483,7 +483,8 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
             j_next = N.advance(j, blocksize);
 
             ghost_tree!(FULL(HEAD, TAIL), {
-                let (list![head, tail], disjoint) = N.split(list![j.to_incl()..j_next, ..], FULL);
+                let (_, list![head, tail], disjoint) =
+                    N.split(list![j.to_incl()..j_next, ..], FULL);
 
                 let list![mut A_0, A_1] = A.rb_mut().col_segments_mut(list![head, tail], disjoint);
                 let list![mut A00, mut A10] =

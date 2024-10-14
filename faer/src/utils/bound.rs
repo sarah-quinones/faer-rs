@@ -1,7 +1,7 @@
 use crate::{
     assert,
     hacks::GhostNode,
-    variadics::{ArraySplit, IntoSegments, Split},
+    variadics::{ArraySplit, SplitsNode},
     Index, Shape, ShapeIdx, SignedIndex, Unbind,
 };
 use core::{fmt, marker::PhantomData, ops::Range};
@@ -397,17 +397,12 @@ impl<'n> Dim<'n> {
     }
 
     #[inline(always)]
-    pub fn split<
-        'scope,
-        'range,
-        Segment: Split<'scope, 'n>,
-        S: IntoSegments<'scope, 'n, Segment>,
-    >(
+    pub fn split<'scope, 'range, Node, Seg: SplitsNode<'scope, 'n, Node>>(
         self,
-        segments: S,
-        node: GhostNode<'scope, 'range, Segment::Node>,
-    ) -> (S::Segments, <S::Segments as Split<'scope, 'n>>::Disjoint) {
-        Segment::new(segments, self, node)
+        segments: Seg,
+        node: Node,
+    ) -> Seg::Output {
+        Seg::output(segments, &mut zero(), self, node)
     }
 }
 

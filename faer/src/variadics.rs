@@ -1,4 +1,5 @@
 use crate::{
+    assert,
     internal_prelude::*,
     utils::bound::{Segment, SegmentIdx},
 };
@@ -43,6 +44,20 @@ macro_rules! list {
     };
 }
 
+/// destructure a variadic tuple containing the given values.
+#[macro_export]
+macro_rules! pat_list {
+    () => {
+        $crate::variadics::Nil
+    };
+    ($head: pat $(, $tail: pat)* $(,)?) => {
+        $crate::variadics::Cons {
+            head: $head,
+            tail: $crate::variadics::pat_list![$($tail,)*],
+        }
+    };
+}
+
 /// type of a variadic tuple containing the given types.
 #[macro_export]
 macro_rules! List {
@@ -56,11 +71,13 @@ macro_rules! List {
 
 /// empty tuple.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
 pub struct Nil;
 
 /// non-empty tuple, containing the first element and the rest of the elements as a variadic
 /// tuple.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(C)]
 pub struct Cons<Head, Tail> {
     /// first element.
     pub head: Head,
@@ -99,222 +116,279 @@ trait DebugList {
 }
 use faer_traits::hacks::GhostNode;
 pub use list;
+pub use pat_list;
 pub use List;
 
-pub unsafe trait Split<'scope, 'dim>: Sized {
+pub unsafe trait Separable<'scope, 'dim> {
+    type Index;
     type Disjoint;
-    type Node;
-
-    unsafe fn disjoint() -> Self::Disjoint;
-
-    fn new<'range, S: IntoSegments<'scope, 'dim, Self>>(
-        segments: S,
-        dim: Dim<'dim>,
-        _: GhostNode<'scope, 'range, Self::Node>,
-    ) -> (S::Segments, <S::Segments as Split<'scope, 'dim>>::Disjoint) {
-        (S::between(segments, zero(), dim.end()), unsafe {
-            S::Segments::disjoint()
-        })
-    }
 }
 
-pub unsafe trait IntoSegments<'scope, 'dim, Segment: Split<'scope, 'dim>> {
-    type Segments: Split<'scope, 'dim>;
+pub unsafe trait SplitsNode<'scope, 'dim, Node> {
+    type Output: Separable<'scope, 'dim>;
 
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments;
+    fn output(split: Self, start: &mut IdxInc<'dim>, dim: Dim<'dim>, node: Node) -> Self::Output;
 }
 
-unsafe impl<'scope, 'dim> IntoSegments<'scope, 'dim, Nil> for Nil {
-    type Segments = Nil;
-
-    fn between(_: Self, _: IdxInc<'dim>, _: IdxInc<'dim>) -> Self::Segments {
-        Nil
-    }
-}
-
-unsafe impl<
-        'scope,
-        'dim,
-        'range,
-        Segments: Split<'scope, 'dim>,
-        Tail: IntoSegments<'scope, 'dim, Segments>,
-    > IntoSegments<'scope, 'dim, Cons<Segment<'scope, 'dim, 'range>, Segments>>
-    for Cons<Idx<'dim>, Tail>
-{
-    type Segments = Cons<SegmentIdx<'scope, 'dim, 'range>, Tail::Segments>;
-
-    #[inline]
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments {
-        equator::assert!(this.head.to_incl() >= start);
-        Cons {
-            head: unsafe { SegmentIdx::new_unbound(this.head) },
-            tail: Tail::between(this.tail, this.head.next(), end),
-        }
-    }
-}
-
-unsafe impl<
-        'scope,
-        'dim,
-        'range,
-        Segments: Split<'scope, 'dim>,
-        Tail: IntoSegments<'scope, 'dim, Segments>,
-    > IntoSegments<'scope, 'dim, Cons<Segment<'scope, 'dim, 'range>, Segments>>
-    for Cons<RangeTo<IdxInc<'dim>>, Tail>
-{
-    type Segments = Cons<Segment<'scope, 'dim, 'range>, Tail::Segments>;
-
-    #[inline]
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments {
-        equator::assert!(this.head.end >= start);
-        Cons {
-            head: unsafe { Segment::new_unbound(start, this.head.end) },
-            tail: Tail::between(this.tail, this.head.end, end),
-        }
-    }
-}
-
-unsafe impl<
-        'scope,
-        'dim,
-        'range,
-        Segments: Split<'scope, 'dim>,
-        Tail: IntoSegments<'scope, 'dim, Segments>,
-    > IntoSegments<'scope, 'dim, Cons<Segment<'scope, 'dim, 'range>, Segments>>
-    for Cons<RangeFull, Tail>
-{
-    type Segments = Cons<Segment<'scope, 'dim, 'range>, Tail::Segments>;
-
-    #[inline]
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments {
-        Cons {
-            head: unsafe { Segment::new_unbound(start, end) },
-            tail: Tail::between(this.tail, end, end),
-        }
-    }
-}
-
-unsafe impl<
-        'scope,
-        'dim,
-        'range,
-        Segments: Split<'scope, 'dim>,
-        Tail: IntoSegments<'scope, 'dim, Segments>,
-    > IntoSegments<'scope, 'dim, Cons<Segment<'scope, 'dim, 'range>, Segments>>
-    for Cons<Range<IdxInc<'dim>>, Tail>
-{
-    type Segments = Cons<Segment<'scope, 'dim, 'range>, Tail::Segments>;
-
-    #[inline]
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments {
-        equator::assert!(all(
-            *this.head.start >= *start,
-            *this.head.end >= *this.head.start,
-        ));
-        Cons {
-            head: unsafe { Segment::new_unbound(this.head.start, this.head.end) },
-            tail: Tail::between(this.tail, this.head.end, end),
-        }
-    }
-}
-
-unsafe impl<
-        'scope,
-        'dim,
-        'range,
-        Segments: Split<'scope, 'dim>,
-        Tail: IntoSegments<'scope, 'dim, Segments>,
-    > IntoSegments<'scope, 'dim, Cons<Segment<'scope, 'dim, 'range>, Segments>>
-    for Cons<RangeFrom<IdxInc<'dim>>, Tail>
-{
-    type Segments = Cons<Segment<'scope, 'dim, 'range>, Tail::Segments>;
-
-    #[inline]
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments {
-        equator::assert!(*this.head.start >= *start);
-        Cons {
-            head: unsafe { Segment::new_unbound(this.head.start, end) },
-            tail: Tail::between(this.tail, end, end),
-        }
-    }
-}
-
-unsafe impl<
-        'scope,
-        'dim,
-        'range,
-        'subrange,
-        Segments: Split<'scope, 'dim>,
-        Tail: IntoSegments<'scope, 'dim, Segments>,
-    > IntoSegments<'scope, 'dim, Cons<Segment<'scope, 'dim, 'range>, Segments>>
-    for Cons<Segment<'_, '_, 'subrange>, Tail>
-{
-    type Segments = Cons<Segment<'scope, 'dim, 'subrange>, Tail::Segments>;
-
-    #[inline]
-    fn between(this: Self, start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self::Segments {
-        equator::assert!(all(*this.head.start() >= *start, *this.head.end() <= *end));
-        Cons {
-            head: unsafe {
-                Segment::new_unbound(
-                    IdxInc::new_unbound(*this.head.start()),
-                    IdxInc::new_unbound(*this.head.end()),
-                )
-            },
-            tail: Tail::between(
-                this.tail,
-                unsafe { IdxInc::new_unbound(*this.head.end()) },
-                end,
-            ),
-        }
-    }
-}
-
-unsafe impl<'scope, 'dim> Split<'scope, 'dim> for Nil {
+unsafe impl<'scope, 'dim, 'range> Separable<'scope, 'dim> for Segment<'scope, 'dim, 'range> {
+    type Index = SegmentIdx<'scope, 'dim, 'range>;
     type Disjoint = Nil;
-    type Node = Nil;
+}
 
-    #[inline]
-    unsafe fn disjoint() -> Self::Disjoint {
+unsafe impl<'scope, 'dim, 'range> Separable<'scope, 'dim> for SegmentIdx<'scope, 'dim, 'range> {
+    type Index = SegmentIdx<'scope, 'dim, 'range>;
+    type Disjoint = Nil;
+}
+
+unsafe impl<'scope, 'dim> Separable<'scope, 'dim> for Nil {
+    type Index = Nil;
+    type Disjoint = Nil;
+}
+
+unsafe impl<'scope, 'dim, 'range> SplitsNode<'scope, 'dim, Nil> for Nil {
+    type Output = Nil;
+    fn output(_: Self, _: &mut IdxInc<'dim>, _: Dim<'dim>, _: Nil) -> Self::Output {
         Nil
     }
 }
 
-unsafe impl<'scope, 'dim, 'range, Tail: Split<'scope, 'dim>> Split<'scope, 'dim>
-    for Cons<Segment<'scope, 'dim, 'range>, Tail>
+unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
+    for Range<IdxInc<'dim>>
 {
-    type Disjoint = Private<Cons<Disjoint<'scope, 'range>, Tail::Disjoint>>;
-    type Node = Cons<GhostNode<'scope, 'range, Nil>, Tail::Node>;
+    type Output = Segment<'scope, 'dim, 'range>;
 
     #[inline]
-    unsafe fn disjoint() -> Self::Disjoint {
-        Private(Cons {
-            head: Disjoint {
-                __marker: PhantomData,
-            },
-            tail: Tail::disjoint(),
-        })
+    fn output(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Nil>,
+    ) -> Self::Output {
+        _ = dim;
+        _ = node;
+
+        assert!(all(*start <= segment.start, segment.start <= segment.end));
+        *start = segment.end;
+        unsafe { Segment::new_unbound(segment.start, segment.end) }
     }
 }
 
-unsafe impl<'scope, 'dim, 'range, Tail: Split<'scope, 'dim>> Split<'scope, 'dim>
-    for Cons<SegmentIdx<'scope, 'dim, 'range>, Tail>
+unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
+    for Idx<'dim>
 {
-    type Disjoint = Private<Cons<Disjoint<'scope, 'range>, Tail::Disjoint>>;
-    type Node = Cons<GhostNode<'scope, 'range, Nil>, Tail::Node>;
+    type Output = SegmentIdx<'scope, 'dim, 'range>;
 
     #[inline]
-    unsafe fn disjoint() -> Self::Disjoint {
-        Private(Cons {
-            head: Disjoint {
-                __marker: PhantomData,
-            },
-            tail: Tail::disjoint(),
-        })
+    fn output(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Nil>,
+    ) -> Self::Output {
+        _ = dim;
+        _ = node;
+
+        assert!(all(*start <= segment.to_incl()));
+        *start = segment.next();
+        unsafe { SegmentIdx::new_unbound(segment) }
     }
 }
 
-pub trait ArraySplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Split<'scope, 'dim> {
+unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
+    for RangeFrom<IdxInc<'dim>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn output(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Nil>,
+    ) -> Self::Output {
+        _ = dim;
+        _ = node;
+
+        assert!(*start <= segment.start);
+        *start = dim.end();
+        unsafe { Segment::new_unbound(segment.start, dim.end()) }
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, 'subrange>
+    SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>> for Segment<'_, '_, 'subrange>
+{
+    type Output = Segment<'scope, 'dim, 'subrange>;
+
+    #[inline]
+    fn output(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Nil>,
+    ) -> Self::Output {
+        _ = dim;
+        _ = node;
+
+        assert!(all(**start <= *segment.start(), *segment.end() <= *dim));
+        *start = unsafe { IdxInc::new_unbound(*segment.end()) };
+        unsafe {
+            Segment::new_unbound(
+                IdxInc::new_unbound(*segment.start()),
+                IdxInc::new_unbound(*segment.end()),
+            )
+        }
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
+    for RangeTo<IdxInc<'dim>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn output(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Nil>,
+    ) -> Self::Output {
+        _ = dim;
+        _ = node;
+
+        let begin = *start;
+        assert!(all(*start <= segment.end));
+        *start = segment.end;
+        unsafe { Segment::new_unbound(begin, segment.end) }
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
+    for RangeFull
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+
+    #[inline]
+    fn output(
+        _: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Nil>,
+    ) -> Self::Output {
+        _ = dim;
+        _ = node;
+
+        let old_start = *start;
+        *start = dim.end();
+        unsafe { Segment::new_unbound(old_start, dim.end()) }
+    }
+}
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Separator<'scope, Head, Tail> {
+    __marker: PhantomData<(Invariant<'scope>, fn(Head, Tail))>,
+}
+
+unsafe impl<
+        'scope,
+        'dim: 'range,
+        'range,
+        Head: Separable<'scope, 'dim>,
+        Tail: Separable<'scope, 'dim>,
+    > Separable<'scope, 'dim> for Cons<Head, Tail>
+{
+    type Index = (Head::Index, Tail::Index);
+
+    type Disjoint = (
+        Separator<'scope, Head::Index, Tail::Index>,
+        Cons<Head::Disjoint, Tail::Disjoint>,
+    );
+}
+
+unsafe impl<'scope, 'dim, Seg, Disjoint, Output: Separable<'scope, 'dim>> Separable<'scope, 'dim>
+    for (Seg, Output, Disjoint)
+{
+    type Index = Output::Index;
+    type Disjoint = Output::Disjoint;
+}
+
+unsafe impl<
+        'scope,
+        'dim,
+        NodeHead,
+        NodeTail,
+        Head: SplitsNode<'scope, 'dim, NodeHead>,
+        Tail: SplitsNode<'scope, 'dim, NodeTail>,
+    > SplitsNode<'scope, 'dim, Cons<NodeHead, NodeTail>> for Cons<Head, Tail>
+{
+    type Output = Cons<Head::Output, Tail::Output>;
+
+    #[inline]
+    fn output(
+        split: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: Cons<NodeHead, NodeTail>,
+    ) -> Self::Output {
+        Cons {
+            head: Head::output(split.head, start, dim, node.head),
+            tail: Tail::output(split.tail, start, dim, node.tail),
+        }
+    }
+}
+
+unsafe impl<
+        'scope,
+        'dim,
+        'range,
+        NodeHead,
+        NodeTail,
+        Head: SplitsNode<'scope, 'dim, NodeHead>,
+        Tail: SplitsNode<'scope, 'dim, NodeTail>,
+    > SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>>
+    for Cons<Head, Tail>
+{
+    type Output = (
+        Segment<'scope, 'dim, 'range>,
+        Cons<Head::Output, Tail::Output>,
+        <Cons<Head::Output, Tail::Output> as Separable<'scope, 'dim>>::Disjoint,
+    );
+
+    #[inline]
+    fn output(
+        split: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>,
+    ) -> Self::Output {
+        let begin = *start;
+
+        let list = Cons {
+            head: Head::output(split.head, start, dim, node.child.head),
+            tail: Tail::output(split.tail, start, dim, node.child.tail),
+        };
+
+        let end = *start;
+
+        const {
+            core::assert!(
+                size_of::<<Cons<Head::Output, Tail::Output> as Separable<'scope, 'dim>>::Disjoint>(
+                ) == 0
+            )
+        }
+
+        unsafe {
+            (
+                Segment::new_unbound(begin, end),
+                list,
+                core::mem::transmute_copy(&()),
+            )
+        }
+    }
+}
+
+pub trait ArraySplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Separable<'scope, 'dim> {
     type ArrayRefSegments<T: 'a>: 'a;
     type ArrayMutSegments<T: 'a>: 'a;
 
@@ -436,7 +510,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ArraySplit<'scope, 'dim, 'a>> ArraySpli
     }
 }
 
-pub trait RowSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Split<'scope, 'dim> {
+pub trait RowSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Separable<'scope, 'dim> {
     type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>;
     type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>;
 
@@ -468,7 +542,7 @@ pub trait RowSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Split<'scope, 'di
     ) -> Self::ColMutSegments<C, T, RStride>;
 }
 
-pub trait ColSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Split<'scope, 'dim> {
+pub trait ColSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Separable<'scope, 'dim> {
     type MatRefSegments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>;
     type MatMutSegments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>;
 
@@ -651,7 +725,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
         let head = unsafe { mat.row_segment(this.head).const_cast() };
         Cons {
             head,
-            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.0.tail),
+            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.1.tail),
         }
     }
 
@@ -676,7 +750,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
         let head = unsafe { mat.row_segment(this.head).const_cast() };
         Cons {
             head,
-            tail: Tail::col_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.0.tail),
+            tail: Tail::col_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.1.tail),
         }
     }
 
@@ -725,7 +799,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
         let head = unsafe { mat.row(this.head.local()).const_cast() };
         Cons {
             head,
-            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.0.tail),
+            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.1.tail),
         }
     }
 
@@ -804,7 +878,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
         let head = unsafe { mat.col_segment(this.head).const_cast() };
         Cons {
             head,
-            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.0.tail),
+            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.1.tail),
         }
     }
 
@@ -829,7 +903,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
         let head = unsafe { mat.col_segment(this.head).const_cast() };
         Cons {
             head,
-            tail: Tail::row_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.0.tail),
+            tail: Tail::row_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.1.tail),
         }
     }
 
@@ -878,7 +952,7 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
         let head = unsafe { mat.col(this.head.local()).const_cast() };
         Cons {
             head,
-            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.0.tail),
+            tail: Tail::mat_mut_segments(this.tail, unsafe { mat.const_cast() }, disjoint.1.tail),
         }
     }
 

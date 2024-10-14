@@ -323,8 +323,9 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
             }
 
             ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-                let (rows @ list![top, _], disjoint_rows) = m.split(list![..ki.next(), ..], ROWS);
-                let (cols @ list![left, right], disjoint_cols) =
+                let (_, rows @ list![top, _], disjoint_rows) =
+                    m.split(list![..ki.next(), ..], ROWS);
+                let (_, cols @ list![left, right], disjoint_cols) =
                     n.split(list![..kj.next(), ..], COLS);
 
                 let ki = top.idx(*ki);

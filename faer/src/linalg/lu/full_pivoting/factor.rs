@@ -518,12 +518,10 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
         }
 
         ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-            let (list![top, bot], disjoint_rows) = M.split(list![ki, ..], ROWS);
-            let (list![left, right], disjoint_cols) = N.split(list![kj, ..], COLS);
+            let (_, list![top, bot], disjoint_rows) = M.split(list![ki, ..], ROWS);
+            let (_, list![left, right], disjoint_cols) = N.split(list![kj, ..], COLS);
 
-            let list![A0, A1] = A
-                .rb_mut()
-                .row_segments_mut(list![top, bot], disjoint_rows);
+            let list![A0, A1] = A.rb_mut().row_segments_mut(list![top, bot], disjoint_rows);
             let list![_, A01] = A0.col_segments_mut(list![left, right], disjoint_cols);
             let list![A10, mut A11] = A1.col_segments_mut(list![left, right], disjoint_cols);
 
