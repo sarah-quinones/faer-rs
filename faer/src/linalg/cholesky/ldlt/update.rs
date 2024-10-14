@@ -356,22 +356,14 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
         help!(C);
 
         for j in N.indices() {
-            ghost_tree!(FULL(HEAD, TAIL), {
-                let (full, FULL) = N.full(FULL);
-                let (_, head, tail, _, _) =
-                    full.split_inc(full.from_local_inc(j.next()), FULL.HEAD, FULL.TAIL);
-                let j = head.idx(*j);
+            ghost_tree2!(FULL(J, TAIL), {
+                let (list![col, tail], _) = N.split(list![j, ..], FULL);
 
-                let mut L_col = ld.rb_mut().col_mut(full.from_global(j));
+                let mut L_col = ld.rb_mut().col_mut(col.local());
 
                 let r = Ord::min((*r)(), K.end());
-                ghost_tree!(W_FULL(R), {
-                    let (full_w, W_FULL) = K.full(W_FULL);
-                    let (R_segment, _) = full_w.segment(
-                        full_w.from_local_inc(zero()),
-                        full_w.from_local_inc(r),
-                        W_FULL.R,
-                    );
+                ghost_tree2!(W_FULL(R), {
+                    let (list![R_segment], _) = K.split(list![..r], W_FULL);
                     let R = R_segment.len();
                     let mut W = w.rb_mut().col_segment_mut(R_segment);
                     let mut alpha = alpha.rb_mut().row_segment_mut(R_segment);
@@ -382,14 +374,8 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                     while let Some(r) = R.try_check(*r_next) {
                         r_next = R.advance(r, BLOCKSIZE);
 
-                        ghost_tree!(W_FULL(R0), {
-                            let (full_r, W_FULL) = R.full(W_FULL);
-
-                            let (r0, _) = full_r.segment(
-                                full_r.from_local_inc(r.into()),
-                                full_r.from_local_inc(r_next),
-                                W_FULL.R0,
-                            );
+                        ghost_tree2!(W_FULL(R0), {
+                            let (list![r0], _) = R.split(list![r.into()..r_next], W_FULL);
 
                             stack_mat!(ctx, p, r0.len(), 1, BLOCKSIZE, 1, C, T);
                             stack_mat!(ctx, beta, r0.len(), 1, BLOCKSIZE, 1, C, T);
@@ -400,12 +386,12 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                             for k in r0 {
                                 let mut p = p.rb_mut().at_mut(r0.from_global(k));
                                 let mut beta = beta.rb_mut().at_mut(r0.from_global(k));
-                                let mut alpha = alpha.rb_mut().at_mut(full_r.from_global(k));
-                                let mut d = L_col.rb_mut().at_mut(full.from_global(j));
+                                let mut alpha = alpha.rb_mut().at_mut(k.local());
+                                let mut d = L_col.rb_mut().at_mut(j);
 
-                                let w = W.rb().col(full_r.from_global(k));
+                                let w = W.rb().col(k.local());
 
-                                write1!(p, math(copy(w[full.from_global(j)])));
+                                write1!(p, math(copy(w[j])));
 
                                 let alpha_conj_p = math(alpha * conj(p));
                                 let new_d = math.re(cx.real(d) + cx.real(cx.mul(alpha_conj_p, p)));

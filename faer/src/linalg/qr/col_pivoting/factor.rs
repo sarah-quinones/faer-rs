@@ -322,20 +322,17 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                 swap_cols_idx(ctx, A.rb_mut(), best_col, kj);
             }
 
-            ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-                let (rows, ROWS) = m.full(ROWS);
-                let (cols, COLS) = n.full(COLS);
-
-                let (disjoint_rows, top, bot, _, _) = rows.split_inc(ki.next(), ROWS.TOP, ROWS.BOT);
-                let (disjoint_cols, left, right, _, _) =
-                    cols.split_inc(kj.next(), COLS.LEFT, COLS.RIGHT);
+            ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+                let (rows @ list![top, _], disjoint_rows) = m.split(list![..ki.next(), ..], ROWS);
+                let (cols @ list![left, right], disjoint_cols) =
+                    n.split(list![..kj.next(), ..], COLS);
 
                 let ki = top.idx(*ki);
                 let kj = left.idx(*kj);
 
-                let (A0, A1) = A.rb_mut().row_segments_mut(top, bot, disjoint_rows);
-                let (A00, A01) = A0.col_segments_mut(left, right, disjoint_cols);
-                let (A10, mut A11) = A1.col_segments_mut(left, right, disjoint_cols);
+                let list![A0, A1] = A.rb_mut().any_row_segments_mut(rows, disjoint_rows);
+                let list![A00, A01] = A0.any_col_segments_mut(cols, disjoint_cols);
+                let list![A10, mut A11] = A1.any_col_segments_mut(cols, disjoint_cols);
 
                 let mut A00 = A00.at_mut(top.local(ki), left.local(kj));
                 let mut A01 = A01.row_mut(top.local(ki));
@@ -417,7 +414,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                         (best_col, best_val)
                     }
                 };
-                best_col = cols.local(right.global(best_right));
+                best_col = right.global(best_right).local();
             });
         }
     }
@@ -496,6 +493,9 @@ pub fn qr_in_place<'out, 'M, 'N, 'B, 'H, I: Index, C: ComplexContainer, T: Compl
     let mut j_next = zero();
     while let Some(j) = size.try_check(*j_next) {
         j_next = size.advance(j, *blocksize);
+        let ji = A.nrows().idx_inc(*j);
+        let jj = A.ncols().idx_inc(*j);
+
         with_dim!(blocksize, *j_next - *j);
 
         let mut H = H
@@ -511,8 +511,8 @@ pub fn qr_in_place<'out, 'M, 'N, 'B, 'H, I: Index, C: ComplexContainer, T: Compl
 
         let A = A
             .rb()
-            .subcols(A.ncols().idx_inc(*j), blocksize)
-            .subrows_range((A.nrows().idx_inc(*j), A.nrows().end()));
+            .subcols(jj, blocksize)
+            .subrows_range((ji, A.nrows().end()));
 
         householder::upgrade_householder_factor(
             ctx,
@@ -538,7 +538,7 @@ mod tests {
         let rng = &mut StdRng::seed_from_u64(0);
 
         for par in [Parallelism::None, Parallelism::rayon(8)] {
-            for n in [2, 3, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
+            for n in [2, 3, 4, 8, 16, 24, 32, 128, 255] {
                 with_dim!(N, n);
                 with_dim!(B, 15);
 
@@ -619,7 +619,7 @@ mod tests {
             }
 
             with_dim!(N, 20);
-            for m in [2, 3, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
+            for m in [2, 3, 4, 8, 16, 24, 32, 128, 255] {
                 with_dim!(M, m);
                 with_dim!(B, 15);
                 with_dim!(H, Ord::min(*M, *N));

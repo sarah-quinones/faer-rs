@@ -19,17 +19,15 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
     delta: <C::Real as Container>::Of<&T::RealUnit>,
     signs: Option<&Array<'N, i8>>,
 ) -> Result<usize, usize> {
-    ghost_tree!(ROW(HEAD, TAIL), {
-        help!(C);
-        help2!(C::Real);
+    help!(C);
+    help2!(C::Real);
+    let mut A = A;
+    let mut D = D;
 
-        let mut A = A;
-        let mut D = D;
+    let n = A.ncols();
 
-        let (mat_rows, ROW) = A.ncols().full(ROW);
-        let start = mat_rows.from_local_inc(start);
-
-        let (disjoint, head, tail, _, _) = mat_rows.split_inc(start, ROW.HEAD, ROW.TAIL);
+    ghost_tree2!(ROW(HEAD, TAIL), {
+        let (list![head, tail], disjoint) = n.split(list![..start, ..], ROW);
 
         let simd = SimdCtx::<C, T, S>::new_force_mask(simd, tail.len());
         let (idx_head, indices, idx_tail) = simd.indices();
@@ -40,20 +38,20 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
         let mut count = 0usize;
 
-        for j in mat_rows {
-            ghost_tree!(COL(LEFT, RIGHT), {
-                let (mat_cols, COL) = mat_rows.len().full(COL);
-                let j = mat_cols.from_local(mat_rows.from_global(j));
+        for j in n.indices() {
+            ghost_tree2!(COL(LEFT, RIGHT), {
+                let (list![left, right], disjoint_col) = n.split(list![..j.to_incl(), j], COL);
 
-                let (disjoint_col, j, left, right, _, _) = mat_cols.split(j, COL.LEFT, COL.RIGHT);
-
-                let (A_0, mut A_1) = A.rb_mut().col_segments_mut(left, right, disjoint_col);
+                let list![A_0, mut Aj] = A
+                    .rb_mut()
+                    .any_col_segments_mut(list![left, right], disjoint_col);
                 let A_0 = A_0.rb();
                 let A10 = A_0.row_segments(head, tail).1;
 
-                let mut A11 = A_1.rb_mut().row_segments_mut(head, tail, disjoint).1;
+                let list![_, mut Aj] = Aj
+                    .rb_mut()
+                    .any_row_segments_mut(list![head, tail], disjoint);
 
-                let mut Aj = A11.rb_mut().col_mut(right.from_global(j));
                 {
                     let mut Aj = Aj.rb_mut();
                     let mut iter = indices.clone();
@@ -66,13 +64,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k));
+                                let Ak = A10.col(left.local(k));
 
-                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = math(real(D[k.local()]));
                                 let D = if is_llt { math.re.one() } else { D };
 
                                 let Ajk = simd.splat(as_ref!(math(mul_real(
-                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    conj(A_0[(j, left.local(k))]),
                                     re.neg(D)
                                 ))));
 
@@ -86,13 +84,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k));
+                                let Ak = A10.col(left.local(k));
 
-                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = math(real(D[k.local()]));
                                 let D = if is_llt { math.re.one() } else { D };
 
                                 let Ajk = simd.splat(as_ref!(math(mul_real(
-                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    conj(A_0[(j, left.local(k))]),
                                     re.neg(D)
                                 ))));
 
@@ -110,13 +108,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k));
+                                let Ak = A10.col(left.local(k));
 
-                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = math(real(D[k.local()]));
                                 let D = if is_llt { math.re.one() } else { D };
 
                                 let Ajk = simd.splat(as_ref!(math(mul_real(
-                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    conj(A_0[(j, left.local(k))]),
                                     re.neg(D)
                                 ))));
 
@@ -138,13 +136,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             let mut Aij = simd.read(Aj.rb(), idx_tail);
 
                             for k in left {
-                                let Ak = A10.col(left.from_global(k));
+                                let Ak = A10.col(left.local(k));
 
-                                let D = math(real(D[mat_cols.from_global(k)]));
+                                let D = math(real(D[k.local()]));
                                 let D = if is_llt { math.re.one() } else { D };
 
                                 let Ajk = simd.splat(as_ref!(math(mul_real(
-                                    conj(A_0[(mat_cols.from_global(j), left.from_global(k))]),
+                                    conj(A_0[(j, left.local(k))]),
                                     re.neg(D)
                                 ))));
 
@@ -168,7 +166,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                     }
                 }
 
-                let mut D = D.rb_mut().at_mut(mat_cols.from_global(j));
+                let mut D = D.rb_mut().at_mut(j);
 
                 if let Some(j_row) = tail.try_idx(*j) {
                     let mut diag = math(real(Aj[tail.from_global(j_row)]));
@@ -178,7 +176,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                             1
                         } else {
                             if let Some(signs) = signs {
-                                signs[mat_rows.from_global(j_row)]
+                                signs[j_row.local()]
                             } else {
                                 0
                             }
@@ -203,7 +201,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
                         }
                     }
 
-                    let j = mat_cols.from_global(j);
+                    let j = j;
                     let diag = if is_llt {
                         if !math.re.gt_zero(diag) {
                             write1!(D, math.from_real(diag));
@@ -272,21 +270,13 @@ fn simd_cholesky_matrix<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
         let J_next = N.advance(j, blocksize);
         help!(C::Real);
 
-        ghost_tree!(FULL(HEAD, TAIL), {
-            let (full, FULL) = N.full(FULL);
+        ghost_tree2!(FULL(HEAD), {
+            let (list![head], _) = N.split(list![..J_next], FULL);
 
-            let (disjoint, head, tail, _, _) =
-                full.split_inc(full.from_local_inc(J_next), FULL.HEAD, FULL.TAIL);
+            let A = A.rb_mut().row_segment_mut(head).col_segment_mut(head);
+            let D = D.rb_mut().col_segment_mut(head);
 
-            let A = A
-                .rb_mut()
-                .row_segments_mut(head, tail, disjoint)
-                .0
-                .col_segments_mut(head, tail, disjoint)
-                .0;
-            let D = D.rb_mut().col_segments_mut(head, tail, disjoint).0;
-
-            let signs = signs.map(|signs| signs.segments(head, tail).0);
+            let signs = signs.map(|signs| signs.segment(head));
 
             count += simd_cholesky_row_batch(
                 simd,
@@ -494,18 +484,18 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
         while let Some(j) = N.try_check(*j_next) {
             j_next = N.advance(j, blocksize);
 
-            ghost_tree!(FULL(MAT(HEAD, TAIL)), {
-                let (full, FULL) = N.full(FULL);
-                let j = full.from_local(j);
-                let (mat, MAT) = full.segment(j.to_incl(), N.end(), FULL.MAT);
+            ghost_tree2!(FULL(HEAD, TAIL), {
+                let (list![head, tail], disjoint) = N.split(list![j.to_incl()..j_next, ..], FULL);
 
-                let j_next = mat.idx_inc(*j_next);
-                let (disjoint, head, tail, _, _) = mat.split_inc(j_next, MAT.HEAD, MAT.TAIL);
+                let list![mut A_0, A_1] =
+                    A.rb_mut().any_col_segments_mut(list![head, tail], disjoint);
+                let list![mut A00, mut A10] = A_0
+                    .rb_mut()
+                    .any_row_segments_mut(list![head, tail], disjoint);
+                let list![A01, mut A11] = A_1.any_row_segments_mut(list![head, tail], disjoint);
 
-                let (mut A_0, A_1) = A.rb_mut().col_segments_mut(head, tail, disjoint);
-                let (mut A00, mut A10) = A_0.rb_mut().row_segments_mut(head, tail, disjoint);
                 let mut D0 = D.rb_mut().col_segment_mut(head);
-                let (A01, mut A11) = A_1.row_segments_mut(head, tail, disjoint);
+
                 let mut L10xD0 = A01.transpose_mut();
 
                 let signs = signs.map(|signs| signs.segment(head));

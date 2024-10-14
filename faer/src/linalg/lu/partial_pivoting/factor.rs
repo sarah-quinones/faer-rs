@@ -70,43 +70,34 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             write1!(matrix[(i, j)] = math(matrix[(i, j)] * inv));
         }
 
-        ghost_tree!(FULL_ROWS(TOP, BOT), {
-            ghost_tree!(FULL_COLS(LEFT, RIGHT), {
-                let (full_rows, FULL_ROWS) = M.full(FULL_ROWS);
-                let (full_cols, FULL_COLS) = range.len().full(FULL_COLS);
+        ghost_tree2!(FULL_ROWS(TOP, BOT), FULL_COLS(LEFT, RIGHT), {
+            let (rows @ list![top, bot], disjoint_rows) =
+                M.split(list![..k_row.next(), ..], FULL_ROWS);
 
-                let (disjoint_rows, top, bot, _, _) = full_rows.split_inc(
-                    full_rows.from_local_inc(k_row.next()),
-                    FULL_ROWS.TOP,
-                    FULL_ROWS.BOT,
-                );
-                let (disjoint_cols, left, right, _, _) = full_cols.split_inc(
-                    full_cols.from_local_inc(j.next()),
-                    FULL_COLS.LEFT,
-                    FULL_COLS.RIGHT,
-                );
-                let j = left.idx(*j);
-                let k_row = top.idx(*k_row);
+            let (cols @ list![left, right], disjoint_cols) =
+                N.split(list![..j.next(), ..], FULL_COLS);
 
-                let (A0, mut A1) = matrix.rb_mut().row_segments_mut(top, bot, disjoint_rows);
-                let (_, A01) = A0.rb().col_segments(left, right);
-                let (A10, mut A11) = A1.rb_mut().col_segments_mut(left, right, disjoint_cols);
-                let A10 = A10.rb();
+            let j = left.idx(*j);
+            let k_row = top.idx(*k_row);
 
-                let lhs = A10.col(left.from_global(j));
-                let rhs = A01.row(top.from_global(k_row));
-                for j in right {
-                    let mut col = A11.rb_mut().col_mut(right.from_global(j));
-                    let rhs = math(rhs[right.from_global(j)]);
+            let list![A0, mut A1] = matrix.rb_mut().any_row_segments_mut(rows, disjoint_rows);
+            let list![_, A01] = A0.rb().any_col_segments(cols);
+            let list![A10, mut A11] = A1.rb_mut().any_col_segments_mut(cols, disjoint_cols);
+            let A10 = A10.rb();
 
-                    for i in bot {
-                        write1!(
-                            col[bot.from_global(i)] =
-                                math(col[bot.from_global(i)] - lhs[bot.from_global(i)] * rhs)
-                        );
-                    }
+            let lhs = A10.col(left.from_global(j));
+            let rhs = A01.row(top.from_global(k_row));
+            for j in right {
+                let mut col = A11.rb_mut().col_mut(right.from_global(j));
+                let rhs = math(rhs[right.from_global(j)]);
+
+                for i in bot {
+                    write1!(
+                        col[bot.from_global(i)] =
+                            math(col[bot.from_global(i)] - lhs[bot.from_global(i)] * rhs)
+                    );
                 }
-            });
+            }
         });
     }
 
@@ -143,14 +134,8 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     let i = M.check(0);
     let i_next = M.advance(i, blocksize);
 
-    ghost_tree!(FULL_COLS(BLOCK_COLS), {
-        let (full_cols, FULL_COLS) = range.len().full(FULL_COLS);
-
-        let (block, _) = full_cols.segment(
-            full_cols.from_local_inc(zero()),
-            full_cols.from_local_inc(j_next),
-            FULL_COLS.BLOCK_COLS,
-        );
+    ghost_tree2!(FULL_COLS(BLOCK_COLS), {
+        let (list![block], _) = range.len().split(list![..j_next], FULL_COLS);
 
         n_trans += lu_in_place_recursion(
             ctx,
@@ -162,126 +147,108 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         );
     });
 
-    ghost_tree!(ROWS(TOP, BOT), {
-        let (rows, ROWS) = M.full(ROWS);
-        let (disjoint_rows, top, bot, _, _) =
-            rows.split_inc(rows.from_local_inc(i_next), ROWS.TOP, ROWS.BOT);
+    ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+        let (list![top, bot], disjoint_rows) = M.split(list![..i_next, ..], ROWS);
+        let (list![left, right], disjoint_cols) = N.split(list![..j_next, ..], COLS);
 
-        ghost_tree!(COLS(LEFT, RIGHT), {
-            let (cols, COLS) = N.full(COLS);
-            let (disjoint_cols, left, right, _, _) =
-                cols.split_inc(cols.from_local_inc(j_next), COLS.LEFT, COLS.RIGHT);
+        {
+            let mut A = A.rb_mut().col_segment_mut(range);
+
+            let list![A0, A1] = A
+                .rb_mut()
+                .any_row_segments_mut(list![top, bot], disjoint_rows);
+            let list![A00, mut A01] = A0.any_col_segments_mut(list![left, right], disjoint_cols);
+            let list![A10, mut A11] = A1.any_col_segments_mut(list![left, right], disjoint_cols);
+
+            let A00 = A00.rb().as_col_shape(A00.nrows());
+            let A10 = A10.rb().as_col_shape(A00.nrows());
             {
-                let mut A = A.rb_mut().col_segment_mut(range);
-
-                let (A0, A1) = A.rb_mut().row_segments_mut(top, bot, disjoint_rows);
-                let (A00, mut A01) = A0.col_segments_mut(left, right, disjoint_cols);
-                let (A10, mut A11) = A1.col_segments_mut(left, right, disjoint_cols);
-
-                let A00 = A00.rb().as_col_shape(A00.nrows());
-                let A10 = A10.rb().as_col_shape(A00.nrows());
-                {
-                    linalg::triangular_solve::solve_unit_lower_triangular_in_place(
-                        ctx,
-                        A00.rb(),
-                        A01.rb_mut(),
-                        par,
-                    );
-                }
-
-                linalg::matmul::matmul(
+                linalg::triangular_solve::solve_unit_lower_triangular_in_place(
                     ctx,
-                    A11.rb_mut(),
-                    Some(as_ref!(math(one()))),
-                    A10.rb(),
-                    A01.rb(),
-                    as_ref!(math(-one())),
+                    A00.rb(),
+                    A01.rb_mut(),
                     par,
-                );
-
-                n_trans += lu_in_place_recursion(
-                    ctx,
-                    A.rb_mut().row_segment_mut(bot),
-                    right,
-                    trans.segment_mut(right),
-                    par,
-                    params,
                 );
             }
 
-            let swap = |mat: MatMut<'_, C, T, Dim<'M>, Dim<'_>>| {
-                let mut mat = mat;
-                for j in mat.ncols().indices() {
-                    let mut col = mat.rb_mut().col_mut(j);
+            linalg::matmul::matmul(
+                ctx,
+                A11.rb_mut(),
+                Some(as_ref!(math(one()))),
+                A10.rb(),
+                A01.rb(),
+                as_ref!(math(-one())),
+                par,
+            );
 
-                    for (i, j) in core::iter::zip(top, left) {
-                        let t = trans[cols.from_global(j)];
-                        swap_elems(
-                            ctx,
-                            col.rb_mut(),
-                            rows.from_global(i),
-                            M.check(t.zx() + *rows.from_global(i)),
-                        );
-                    }
+            n_trans += lu_in_place_recursion(
+                ctx,
+                A.rb_mut().row_segment_mut(bot),
+                right,
+                trans.segment_mut(right),
+                par,
+                params,
+            );
+        }
 
-                    for (i, j) in core::iter::zip(bot, right) {
-                        let t = trans[cols.from_global(j)];
+        let swap = |mat: MatMut<'_, C, T, Dim<'M>, Dim<'_>>| {
+            let mut mat = mat;
+            for j in mat.ncols().indices() {
+                let mut col = mat.rb_mut().col_mut(j);
 
-                        swap_elems(
-                            ctx,
-                            col.rb_mut(),
-                            rows.from_global(i),
-                            M.check(t.zx() + *(rows.from_global(i))),
-                        );
-                    }
+                for (i, j) in core::iter::zip(top, left) {
+                    let t = trans[j.local()];
+                    swap_elems(ctx, col.rb_mut(), i.local(), M.check(t.zx() + *i.local()));
                 }
-            };
 
-            ghost_tree!(COLS(BEFORE, MID(AFTER)), {
-                let (cols, COLS) = NCOLS.full(COLS);
-                let (disjoint, before, mid, _, MID) = cols.split_inc(
-                    cols.idx_inc(*range.from_local_inc(j.into())),
-                    COLS.BEFORE,
-                    COLS.MID,
-                );
-                let (after, _) = mid.segment(
-                    mid.idx_inc(*range.end()),
-                    mid.from_local_inc(mid.len().end()),
-                    MID.AFTER,
-                );
+                for (i, j) in core::iter::zip(bot, right) {
+                    let t = trans[j.local()];
 
-                let (A_left, A_right) = A.rb_mut().col_segments_mut(before, after, disjoint);
-                match par {
-                    Parallelism::None => {
-                        swap(A_left);
-                        swap(A_right);
-                    }
-                    #[cfg(feature = "rayon")]
-                    Parallelism::Rayon(nthreads) => {
-                        let nthreads = nthreads.get();
-                        let len = (*before.len() + *after.len()) as f64;
-                        let left_threads = Ord::min(
-                            (nthreads as f64 * (*A_left.ncols() as f64 / len)) as usize,
-                            nthreads,
-                        );
-                        let right_threads = nthreads - left_threads;
-
-                        use rayon::prelude::*;
-                        rayon::join(
-                            || {
-                                A_left.par_col_partition_mut(left_threads).for_each(|A| {
-                                    swap(A.bind_c(unique!()));
-                                })
-                            },
-                            || {
-                                A_right.par_col_partition_mut(right_threads).for_each(|A| {
-                                    swap(A.bind_c(unique!()));
-                                })
-                            },
-                        );
-                    }
+                    swap_elems(ctx, col.rb_mut(), i.local(), M.check(t.zx() + *i.local()));
                 }
-            });
+            }
+        };
+
+        ghost_tree2!(COLS(BEFORE, AFTER), {
+            let (list![before, after], disjoint) = NCOLS.split(
+                list![..range.global(j.to_incl()).local(), range.end()..],
+                COLS,
+            );
+
+            let list![A_left, A_right] = A
+                .rb_mut()
+                .any_col_segments_mut(list![before, after], disjoint);
+
+            match par {
+                Parallelism::None => {
+                    swap(A_left);
+                    swap(A_right);
+                }
+                #[cfg(feature = "rayon")]
+                Parallelism::Rayon(nthreads) => {
+                    let nthreads = nthreads.get();
+                    let len = (*before.len() + *after.len()) as f64;
+                    let left_threads = Ord::min(
+                        (nthreads as f64 * (*A_left.ncols() as f64 / len)) as usize,
+                        nthreads,
+                    );
+                    let right_threads = nthreads - left_threads;
+
+                    use rayon::prelude::*;
+                    rayon::join(
+                        || {
+                            A_left.par_col_partition_mut(left_threads).for_each(|A| {
+                                swap(A.bind_c(unique!()));
+                            })
+                        },
+                        || {
+                            A_right.par_col_partition_mut(right_threads).for_each(|A| {
+                                swap(A.bind_c(unique!()));
+                            })
+                        },
+                    );
+                }
+            }
         });
     });
 
@@ -354,11 +321,12 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
 
     let size = Ord::min(*N, *M);
 
-    ghost_tree!(FULL_COLS(LEFT, RIGHT), {
-        let (full_cols, FULL_COLS) = N.full(FULL_COLS);
+    // ghost_tree2!(FULL_COLS(LEFT(A, B), RIGHT), {
+    //     let (list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
+    // });
 
-        let (disjoint, left, right, _, _) =
-            full_cols.split_inc(full_cols.idx_inc(size), FULL_COLS.LEFT, FULL_COLS.RIGHT);
+    ghost_tree2!(FULL_COLS(LEFT, RIGHT), {
+        let (list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
 
         for i in M.indices() {
             let p = &mut perm[i];
@@ -380,7 +348,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
         }
 
         if *M < *N {
-            let (left, right) = matrix.col_segments_mut(left, right, disjoint);
+            let list![left, right] = matrix.any_col_segments_mut(list![left, right], disjoint);
             linalg::triangular_solve::solve_unit_lower_triangular_in_place(
                 ctx,
                 left.rb().as_shape(M, M),

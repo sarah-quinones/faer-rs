@@ -7,8 +7,7 @@ use syn::{
     spanned::Spanned,
     token::Comma,
     visit_mut::{self, VisitMut},
-    Expr, ExprCall, ExprMethodCall, ExprPath, ExprReference, Ident, Lifetime, Macro, Path,
-    PathSegment,
+    Expr, ExprCall, ExprMethodCall, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
 };
 
 struct RustCtx;
@@ -378,8 +377,8 @@ impl Tree {
 
     fn init(&self) -> TokenStream {
         let name = &self.name;
-        let glue_name = Ident::new(&(name.to_string() + "__"), name.span());
-        let mut stmt = quote! { let mut #glue_name = faer_traits::hacks::NonCopy; let #name = faer_traits::hacks::__with_lifetime_of(&mut #glue_name); };
+        let glue_name = Ident::new(&(format!("_{name}_")), name.span());
+        let mut stmt = quote! { let mut #glue_name = crate::hacks::NonCopy; let #name = crate::hacks::__with_lifetime_of(&mut #glue_name); };
 
         for child in &self.children {
             let child = child.init();
@@ -391,7 +390,7 @@ impl Tree {
 
     fn deinit(&self) -> TokenStream {
         let name = &self.name;
-        let glue_name = Ident::new(&(name.to_string() + "__"), name.span());
+        let glue_name = Ident::new(&(format!("_{name}_")), name.span());
 
         let mut stmt = quote! {};
         for child in &self.children {
@@ -404,17 +403,12 @@ impl Tree {
     fn struct_def(&self) -> TokenStream {
         let name = &self.name;
         let children = self.children.iter().map(|x| &x.name);
-        let lt = children
-            .clone()
-            .map(|child| Lifetime::new(&format!("'{}", child.to_string()), child.span()));
-        let lt2 = lt.clone();
         let ty = children.clone();
 
         let mut stmt = quote! {
             #[allow(non_camel_case_types)]
-            struct #name<'scope, #(#lt2,)* #(#ty,)*> {
-                #(#children: faer_traits::hacks::GhostNode<'scope, #lt, #children>,)*
-                __marker: ::core::marker::PhantomData<fn(&'scope()) -> &'scope ()>,
+            struct #name<#(#ty,)*> {
+                #(#children: #children,)*
             }
         };
 
@@ -426,15 +420,28 @@ impl Tree {
         stmt
     }
 
+    fn list_init(&self) -> TokenStream {
+        let name = &self.name;
+        let children_init = self.children.iter().map(|x| x.list_init());
+        quote! {
+            crate::hacks::GhostNode::new(
+                crate::hacks::variadics::list! [
+                    #(#children_init,)*
+                ],
+                &__scope,
+                &#name,
+            )
+        }
+    }
+
     fn struct_init(&self) -> TokenStream {
         let name = &self.name;
         let children = self.children.iter().map(|x| &x.name);
         let children_init = self.children.iter().map(|x| x.struct_init());
         quote! {
-            faer_traits::hacks::GhostNode::new(
+            crate::hacks::GhostNode::new(
                 #name {
                     #(#children: #children_init,)*
-                    __marker: ::core::marker::PhantomData,
                 },
                 &__scope,
                 &#name,
@@ -473,7 +480,45 @@ pub fn ghost_tree(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let block = quote! {{
 
-        faer_traits::hacks::make_guard!(__scope);
+        crate::hacks::make_guard!(__scope);
+        #(#struct_def)*
+        { #(#init)* if const { true } {  #(let #name = #struct_init;)* {#block} } else { #(#deinit)* panic!() } }
+    }};
+
+    block.into()
+}
+
+#[proc_macro]
+pub fn ghost_tree2(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let Ok(args) =
+        syn::punctuated::Punctuated::<Expr, Comma>::parse_separated_nonempty.parse(item.clone())
+    else {
+        return item;
+    };
+
+    if args.is_empty() {
+        return quote! { {} }.into();
+    }
+
+    let n = args.len() - 1;
+
+    let block = &args[n];
+
+    let tree = &*args
+        .iter()
+        .take(n)
+        .map(Tree::parse_expr)
+        .collect::<Vec<_>>();
+
+    let init = tree.iter().map(Tree::init);
+    let deinit = tree.iter().map(Tree::deinit);
+    let struct_def = tree.iter().map(Tree::struct_def);
+    let struct_init = tree.iter().map(Tree::list_init);
+    let name = tree.iter().map(|tree| &tree.name);
+
+    let block = quote! {{
+
+        crate::hacks::make_guard!(__scope);
         #(#struct_def)*
         { #(#init)* if const { true } {  #(let #name = #struct_init;)* {#block} } else { #(#deinit)* panic!() } }
     }};

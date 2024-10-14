@@ -517,81 +517,73 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
             par = Parallelism::None;
         }
 
-        ghost_tree!(ROWS(TOP, BOT), {
-            ghost_tree!(COLS(LEFT, RIGHT), {
-                let (rows, ROWS) = M.full(ROWS);
-                let (disjoint_rows, top, bot, _, _) =
-                    rows.split_inc(rows.from_local_inc(ki.next()), ROWS.TOP, ROWS.BOT);
+        ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+            let (list![top, bot], disjoint_rows) = M.split(list![ki, ..], ROWS);
+            let (list![left, right], disjoint_cols) = N.split(list![kj, ..], COLS);
 
-                let (cols, COLS) = N.full(COLS);
-                let (disjoint_cols, left, right, _, _) =
-                    cols.split_inc(cols.from_local_inc(kj.next()), COLS.LEFT, COLS.RIGHT);
+            let list![A0, A1] = A
+                .rb_mut()
+                .any_row_segments_mut(list![top, bot], disjoint_rows);
+            let list![_, A01] = A0.any_col_segments_mut(list![left, right], disjoint_cols);
+            let list![A10, mut A11] = A1.any_col_segments_mut(list![left, right], disjoint_cols);
 
-                let ki = top.idx(*ki);
-                let kj = left.idx(*kj);
+            let lhs = A10.rb();
+            let rhs = A01.rb();
 
-                let (A0, A1) = A.rb_mut().row_segments_mut(top, bot, disjoint_rows);
-                let (_, A01) = A0.col_segments_mut(left, right, disjoint_cols);
-                let (A10, mut A11) = A1.col_segments_mut(left, right, disjoint_cols);
+            match par {
+                Parallelism::None => {
+                    (max_row, max_col, max_score) = rank_one_update_and_best_in_matrix(
+                        ctx,
+                        A11.rb_mut(),
+                        lhs,
+                        rhs,
+                        M.next_power_of_two() - *ki - 1,
+                    );
+                }
+                #[cfg(feature = "rayon")]
+                Parallelism::Rayon(nthreads) => {
+                    use rayon::prelude::*;
+                    let nthreads = nthreads.get();
 
-                let lhs = A10.col(left.from_global(kj));
-                let rhs = A01.row(top.from_global(ki));
+                    let mut best = core::iter::repeat_with(|| (0, 0, send2!(math.re(zero()))))
+                        .take(nthreads)
+                        .collect::<Vec<_>>();
+                    let full_cols = *A11.ncols();
 
-                match par {
-                    Parallelism::None => {
-                        (max_row, max_col, max_score) = rank_one_update_and_best_in_matrix(
-                            ctx,
-                            A11.rb_mut(),
-                            lhs,
-                            rhs,
-                            M.next_power_of_two() - *ki - 1,
-                        );
-                    }
-                    #[cfg(feature = "rayon")]
-                    Parallelism::Rayon(nthreads) => {
-                        use rayon::prelude::*;
-                        let nthreads = nthreads.get();
+                    best.par_iter_mut()
+                        .zip_eq(A11.rb_mut().par_col_partition_mut(nthreads))
+                        .zip_eq(rhs.transpose().par_partition(nthreads))
+                        .enumerate()
+                        .for_each(|(idx, (((max_row, max_col, max_score), A11), rhs))| {
+                            with_dim!(N, A11.ncols());
 
-                        let mut best = core::iter::repeat_with(|| (0, 0, send2!(math.re(zero()))))
-                            .take(nthreads)
-                            .collect::<Vec<_>>();
-                        let full_cols = *A11.ncols();
+                            (*max_row, *max_col, *max_score) = {
+                                let (a, mut b, c) = rank_one_update_and_best_in_matrix(
+                                    ctx,
+                                    A11.as_col_shape_mut(N),
+                                    lhs,
+                                    rhs.transpose().as_col_shape(N),
+                                    M.next_power_of_two() - *ki - 1,
+                                );
+                                b += par_split_indices(full_cols, idx, nthreads).0;
+                                (a, b, send2!(c))
+                            };
+                        });
 
-                        best.par_iter_mut()
-                            .zip_eq(A11.rb_mut().par_col_partition_mut(nthreads))
-                            .zip_eq(rhs.transpose().par_partition(nthreads))
-                            .enumerate()
-                            .for_each(|(idx, (((max_row, max_col, max_score), A11), rhs))| {
-                                with_dim!(N, A11.ncols());
+                    max_row = 0;
+                    max_col = 0;
+                    max_score = math.re.zero();
 
-                                (*max_row, *max_col, *max_score) = {
-                                    let (a, mut b, c) = rank_one_update_and_best_in_matrix(
-                                        ctx,
-                                        A11.as_col_shape_mut(N),
-                                        lhs,
-                                        rhs.transpose().as_col_shape(N),
-                                        M.next_power_of_two() - *ki - 1,
-                                    );
-                                    b += par_split_indices(full_cols, idx, nthreads).0;
-                                    (a, b, send2!(c))
-                                };
-                            });
-
-                        max_row = 0;
-                        max_col = 0;
-                        max_score = math.re.zero();
-
-                        for (row, col, val) in best {
-                            let val = unsend2!(val);
-                            if math(val > max_score) {
-                                max_row = row;
-                                max_col = col;
-                                max_score = val;
-                            }
+                    for (row, col, val) in best {
+                        let val = unsend2!(val);
+                        if math(val > max_score) {
+                            max_row = row;
+                            max_col = col;
+                            max_score = val;
                         }
                     }
                 }
-            });
+            }
         });
 
         max_row += *ki.next();

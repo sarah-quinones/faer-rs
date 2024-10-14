@@ -191,3 +191,5 @@ pub mod kron;
 pub mod cholesky;
 pub mod lu;
 pub mod qr;
+
+pub mod svd;

@@ -21,20 +21,16 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
         let ki = M.check(*k);
         let kj = N.check(*k);
 
-        ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-            let (rows, ROWS) = M.full(ROWS);
-            let (cols, COLS) = N.full(COLS);
-
-            let (disjoint_rows, top, bot, _, _) = rows.split_inc(ki.next(), ROWS.TOP, ROWS.BOT);
-            let (disjoint_cols, left, right, _, _) =
-                cols.split_inc(kj.next(), COLS.LEFT, COLS.RIGHT);
+        ghost_tree2!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
+            let (rows @ list![top, _], disjoint_rows) = M.split(list![..ki.next(), ..], ROWS);
+            let (cols @ list![left, right], disjoint_cols) = N.split(list![..kj.next(), ..], COLS);
 
             let ki = top.idx(*ki);
             let kj = left.idx(*kj);
 
-            let (A0, A1) = A.rb_mut().row_segments_mut(top, bot, disjoint_rows);
-            let (A00, A01) = A0.col_segments_mut(left, right, disjoint_cols);
-            let (A10, mut A11) = A1.col_segments_mut(left, right, disjoint_cols);
+            let list![A0, A1] = A.rb_mut().any_row_segments_mut(rows, disjoint_rows);
+            let list![A00, A01] = A0.any_col_segments_mut(cols, disjoint_cols);
+            let list![A10, mut A11] = A1.any_col_segments_mut(cols, disjoint_cols);
 
             let mut A00 = A00.at_mut(top.local(ki), left.local(kj));
             let mut A01 = A01.row_mut(top.local(ki));
@@ -157,37 +153,28 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
     let mut j_next = zero();
     while let Some(j) = size.try_check(*j_next) {
         j_next = size.advance(j, *blocksize);
+        let ji = m.idx(*j);
 
-        guards!(REM_ROWS);
-        let mut A = A
-            .rb_mut()
-            .subrows_range_mut((m.idx(*j), m.end()))
-            .bind_r(REM_ROWS);
+        ghost_tree2!(H_COLS(H_BLOCK), COLS(COL_BLOCK, RIGHT), ROWS(BOT), {
+            let (list![h_block], _) = size.split(list![j.to_incl()..j_next], H_COLS);
+            let (list![bot], _) = m.split(list![ji.to_incl()..m.end()], ROWS);
+            let (cols @ list![col_block, _], disjoint) = n.split(list![h_block, ..], COLS);
 
-        ghost_tree!(COLS(HEAD(BLOCK), TAIL), {
-            let (cols, COLS) = size.full(COLS);
-            let (disjoint_cols, head, tail, COLS, _) = cols.split_inc(j_next, COLS.HEAD, COLS.TAIL);
+            let mut A = A.rb_mut().row_segment_mut(bot);
 
-            let (block, _) = head.segment(
-                head.idx_inc(*j.to_incl()),
-                head.idx_inc(*j_next),
-                COLS.BLOCK,
-            );
             qr_in_place_blocked(
                 ctx,
-                A.rb_mut()
-                    .subcols_range_mut((n.idx_inc(*block.start()), n.idx_inc(*block.end())))
-                    .bind_c(unique!()),
+                A.rb_mut().col_segment_mut(col_block),
                 H.rb_mut()
                     .subrows_mut(zero(), *sub_blocksize)
-                    .col_segment_mut(block)
+                    .col_segment_mut(h_block)
                     .bind_r(unique!()),
                 par,
                 stack,
                 params,
             );
 
-            let blocksize = block.len();
+            let blocksize = h_block.len();
 
             let mut H = H
                 .rb_mut()
@@ -201,17 +188,13 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                     continue;
                 }
 
-                ghost_tree!(ROWS(TOP, BOT), BLOCK(SUBCOLS), {
-                    let (rows, ROWS) = blocksize.full(ROWS);
-                    let (block, BLOCK) = blocksize.full(BLOCK);
-
-                    let (subcols, _) = block.segment(k.to_incl(), k_next, BLOCK.SUBCOLS);
-                    let (disjoint, top, bot, _, _) =
-                        rows.split_inc(k.to_incl(), ROWS.TOP, ROWS.BOT);
+                ghost_tree2!(ROWS(TOP, BOT), BLOCK(SUBCOLS), {
+                    let (rows, disjoint_rows) = blocksize.split(list![..k.to_incl(), ..], ROWS);
+                    let (list![subcols], _) = blocksize.split(list![k.to_incl()..k_next], BLOCK);
 
                     let mut H = H.rb_mut().col_segment_mut(subcols);
 
-                    let (H0, mut H1) = H.rb_mut().row_segments_mut(top, bot, disjoint);
+                    let list![H0, mut H1] = H.rb_mut().any_row_segments_mut(rows, disjoint_rows);
                     let H0 = H0.rb().subrows(zero(), subcols.len());
                     let H1 = H1.rb_mut().subrows_mut(zero(), subcols.len());
 
@@ -219,12 +202,8 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                         .copy_from_triangular_lower_with_ctx(ctx, H0.transpose());
                 });
             }
-            let (A0, A2) = A.rb_mut().split_at_col_mut(n.idx_inc(*size));
-            guards!(REM);
-            let A2 = A2.bind_c(REM);
 
-            let A0 = A0.subcols_mut(0, size);
-            let (A0, A1) = A0.col_segments_mut(block, tail, disjoint_cols);
+            let list![A0, A1] = A.rb_mut().any_col_segments_mut(cols, disjoint);
             let A0 = A0.rb();
 
             householder::upgrade_householder_factor(
@@ -246,17 +225,6 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                     stack,
                 )
             };
-            if *A2.ncols() > 0 {
-                householder::apply_block_householder_transpose_on_the_left_in_place_with_conj(
-                    ctx,
-                    A0,
-                    H.rb(),
-                    Conj::Yes,
-                    A2,
-                    par,
-                    stack,
-                );
-            }
         });
     }
 }
@@ -317,7 +285,7 @@ mod tests {
         let rng = &mut StdRng::seed_from_u64(0);
 
         for par in [Parallelism::None, Parallelism::rayon(8)] {
-            for n in [2, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
+            for n in [2, 4, 8, 16, 24, 32, 127, 128, 257] {
                 with_dim!(N, n);
                 let approx_eq = CwiseMat(ApproxEq {
                     ctx: ctx::<Ctx<Unit, c64>>(),

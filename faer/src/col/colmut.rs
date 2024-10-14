@@ -776,3 +776,39 @@ mod bound_range {
         }
     }
 }
+
+mod bound_any_range {
+    use super::*;
+    use crate::variadics::*;
+
+    impl<'ROWS, 'a, C: Container, T, RStride: Stride> ColMut<'a, C, T, Dim<'ROWS>, RStride> {
+        #[inline]
+        pub fn any_row_segments_mut<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+            self,
+            segments: S,
+            disjoint: S::Disjoint,
+        ) -> S::ColMutSegments<C, T, RStride> {
+            S::col_mut_segments(segments, self, disjoint)
+        }
+    }
+
+    impl<'ROWS, 'a, C: Container, T, RStride: Stride> ColRef<'a, C, T, Dim<'ROWS>, RStride> {
+        #[inline]
+        pub fn any_row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+            self,
+            segments: S,
+        ) -> S::ColRefSegments<C, T, RStride> {
+            S::col_ref_segments(segments, self)
+        }
+    }
+
+    impl<'ROWS, 'a, C: Container, T, RStride: Stride> ColMut<'a, C, T, Dim<'ROWS>, RStride> {
+        #[inline]
+        pub fn any_row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+            self,
+            segments: S,
+        ) -> S::ColRefSegments<C, T, RStride> {
+            S::col_ref_segments(segments, self.into_const())
+        }
+    }
+}

@@ -566,17 +566,16 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
 
     let mut k = 0;
     while let Some(k0) = N.try_check(k) {
-        ghost_tree!(FULL(BEFORE_K, AFTER_K), {
-            let (full, FULL) = N.full(FULL);
-            let (_, k0_, _, after_k, _, _) =
-                full.split(full.from_local(k0), FULL.BEFORE_K, FULL.AFTER_K);
+        ghost_tree2!(FULL(AFTER_K), {
+            let (list![after_k], _) = N.split(list![k0.to_incl()..], FULL);
+            let k0_ = after_k.idx(*k0);
 
             let mut k_step = 1;
             let abs_akk = math(abs(a[(k0, k0)]));
             let (imax, colmax) = best_score_idx_skip(
                 ctx,
                 a.rb().col(k0).row_segment(after_k),
-                after_k.from_global(k0_).next(),
+                after_k.local(k0_).next(),
             );
 
             let imax = imax.map(|imax| after_k.from_local(imax));
@@ -599,41 +598,36 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                 }
                 write1!(a[(k0, k0)] = math.from_real(d11));
             } else {
-                ghost_tree!(AFTER_K(K_IMAX, IMAX_END, K_IMAX_INC, IMAX_P1_END), {
+                ghost_tree2!(AFTER_K0(K_IMAX), AFTER_K1(IMAX_P1_END), {
                     {
                         if math.re(abs_akk >= colmax * alpha) {
                             kp = k0_;
                         } else {
-                            let imax = imax.unwrap();
-                            let imax_ = full.from_global(imax);
+                            let imax_global = imax.unwrap();
+                            let imax = imax_global.local();
 
-                            let AFTER_K = AFTER_K.child;
-                            let (_, _, k_imax, _, _, _) =
-                                after_k.split(imax, AFTER_K.K_IMAX, AFTER_K.IMAX_END);
-                            let (_, _, imax_end, _, _) = after_k.split_inc(
-                                imax.next(),
-                                AFTER_K.K_IMAX_INC,
-                                AFTER_K.IMAX_P1_END,
-                            );
+                            let (list![k_imax], _) =
+                                N.split(list![k0.to_incl()..imax.to_incl()], AFTER_K0);
+                            let (list![imax_end], _) = N.split(list![imax.next()..], AFTER_K1);
 
                             let rowmax = math.max(
-                                best_score(ctx, a.rb().row(imax_).col_segment(k_imax).transpose()),
-                                best_score(ctx, a.rb().col(imax_).row_segment(imax_end)),
+                                best_score(ctx, a.rb().row(imax).col_segment(k_imax).transpose()),
+                                best_score(ctx, a.rb().col(imax).row_segment(imax_end)),
                             );
 
                             if math.re(abs_akk >= (alpha * colmax) * (colmax / rowmax)) {
                                 kp = k0_;
-                            } else if math.re(abs(cx.real(a[(imax_, imax_)])) >= alpha * rowmax) {
-                                kp = imax;
+                            } else if math.re(abs(cx.real(a[(imax, imax)])) >= alpha * rowmax) {
+                                kp = imax_global;
                             } else {
-                                kp = imax;
+                                kp = imax_global;
                                 k_step = 2;
                             }
                         }
                     }
                 });
 
-                let kp = full.from_global(kp);
+                let kp = kp.local();
                 let kk = N.check(k + k_step - 1);
 
                 if kp != kk {

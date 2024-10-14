@@ -1261,7 +1261,6 @@ mod tests {
         let lhs = generate_structured_matrix(false, m, k, lhs_structure);
         let rhs = generate_structured_matrix(false, k, n, rhs_structure);
 
-        dbg!(dst_structure, lhs_structure, rhs_structure);
         for parallelism in [Parallelism::None, Parallelism::rayon(8)] {
             triangular::matmul_with_conj(
                 &Default::default(),
@@ -1383,9 +1382,6 @@ mod tests {
                         let m = rand::random::<usize>() % big;
                         let mut n = rand::random::<usize>() % big;
                         let mut k = rand::random::<usize>() % big;
-
-                        // for keeping track of miri progress
-                        dbg!(m, n, k);
 
                         match (!dst.is_dense(), !lhs.is_dense(), !rhs.is_dense()) {
                             (true, true, _) | (true, _, true) | (_, true, true) => {

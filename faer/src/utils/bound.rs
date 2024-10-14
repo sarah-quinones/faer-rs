@@ -1,4 +1,9 @@
-use crate::{assert, hacks::GhostNode, Index, Shape, ShapeIdx, SignedIndex, Unbind};
+use crate::{
+    assert,
+    hacks::GhostNode,
+    variadics::{IntoSegments, Split},
+    Index, Shape, ShapeIdx, SignedIndex, Unbind,
+};
 use core::{fmt, marker::PhantomData, ops::Range};
 use generativity::Guard;
 
@@ -10,15 +15,15 @@ type Contravariant<'a> = fn(&'a ());
 pub struct Subset<'smol, 'big: 'smol>(PhantomData<&'smol &'big ()>);
 
 #[derive(Copy, Clone, Debug)]
-pub struct Disjoint<'a, 'head, 'tail>(
-    PhantomData<(Invariant<'a>, Covariant<'head>, Covariant<'tail>)>,
+pub struct Disjoint<'scope, 'head, 'tail>(
+    PhantomData<(Invariant<'scope>, Covariant<'head>, Covariant<'tail>)>,
 );
 
 #[derive(Copy, Clone, Debug)]
-pub struct SplitProof<'a, 'full, 'head, 'tail> {
+pub struct SplitProof<'scope, 'full, 'head, 'tail> {
     pub head: Subset<'head, 'full>,
     pub tail: Subset<'tail, 'full>,
-    pub disjoint: Disjoint<'a, 'head, 'tail>,
+    pub disjoint: Disjoint<'scope, 'head, 'tail>,
 }
 
 pub trait ToLocal<'scope, 'dim, 'range>: Copy {
@@ -403,6 +408,20 @@ impl<'n> Dim<'n> {
             node.child,
         )
     }
+
+    #[inline(always)]
+    pub fn split<
+        'scope,
+        'range,
+        Segment: Split<'scope, 'n>,
+        S: IntoSegments<'scope, 'n, Segment>,
+    >(
+        self,
+        segments: S,
+        node: GhostNode<'scope, 'range, Segment::Node>,
+    ) -> (S::Segments, <S::Segments as Split<'scope, 'n>>::Disjoint) {
+        Segment::new(segments, self, node)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -473,7 +492,46 @@ impl<'scope, 'dim, 'range> IntoIterator for Segment<'scope, 'dim, 'range> {
     }
 }
 
+impl<'scope, 'dim, 'range> SegmentIdx<'scope, 'dim, 'range> {
+    #[inline(always)]
+    pub const unsafe fn new_unbound<'head, 'tail>(index: Idx<'dim>) -> Self {
+        Self {
+            unbound: index.unbound,
+            __marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub const fn local(self) -> Idx<'dim> {
+        unsafe { Idx::new_unbound(self.unbound) }
+    }
+}
+
+impl<'scope, 'dim, 'range> SegmentIdxInc<'scope, 'dim, 'range> {
+    #[inline(always)]
+    pub const unsafe fn new_unbound<'head, 'tail>(index: IdxInc<'dim>) -> Self {
+        Self {
+            unbound: index.unbound,
+            __marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub const fn local(self) -> IdxInc<'dim> {
+        unsafe { IdxInc::new_unbound(self.unbound) }
+    }
+}
+
 impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
+    #[inline(always)]
+    pub const unsafe fn new_unbound<'head, 'tail>(start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self {
+        Self {
+            start,
+            end,
+            __marker: PhantomData,
+        }
+    }
+
     #[inline(always)]
     pub const unsafe fn split_unbound<'head, 'tail>(
         self,
@@ -503,16 +561,9 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     }
 
     #[inline(always)]
-    pub fn split_inc<
-        'head,
-        'tail,
-        'b,
-        H,
-        T,
-        I: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
-    >(
+    pub fn split<'head, 'tail, 'b, H, T>(
         self,
-        midpoint: I,
+        midpoint: impl ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
@@ -525,7 +576,7 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     where
         'scope: 'b,
     {
-        let midpoint = I::to_global(self, midpoint);
+        let midpoint = self.global(midpoint);
         (
             Disjoint(PhantomData),
             Segment {
@@ -544,16 +595,47 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     }
 
     #[inline(always)]
-    pub fn split<
-        'head,
-        'tail,
-        'b,
+    #[track_caller]
+    pub fn split_like<'other, 'segment, 'head, 'tail, 'b, H, T>(
+        self,
+        segment: Segment<'b, 'other, 'segment>,
+        head: GhostNode<'b, 'head, H>,
+        tail: GhostNode<'b, 'tail, T>,
+    ) -> (
+        Disjoint<'b, 'segment, 'tail>,
+        Segment<'b, 'dim, 'segment>,
+        Segment<'b, 'dim, 'tail>,
         H,
         T,
-        I: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdx<'scope, 'dim, 'range>>,
-    >(
+    )
+    where
+        'scope: 'b,
+    {
+        let (segment, head) = self.segment_like(segment, head);
+        let start = segment.start;
+        let end = segment.end;
+
+        (
+            Disjoint(PhantomData),
+            Segment {
+                start,
+                end,
+                __marker: PhantomData,
+            },
+            Segment {
+                start: end,
+                end: self.end,
+                __marker: PhantomData,
+            },
+            head,
+            tail.child,
+        )
+    }
+
+    #[inline(always)]
+    pub fn split_ex<'head, 'tail, 'b, H, T>(
         self,
-        midpoint: I,
+        midpoint: impl ToGlobal<'scope, 'dim, 'range, Global = SegmentIdx<'scope, 'dim, 'range>>,
         head: GhostNode<'b, 'head, H>,
         tail: GhostNode<'b, 'tail, T>,
     ) -> (
@@ -567,7 +649,7 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     where
         'scope: 'b,
     {
-        let midpoint = I::to_global(self, midpoint);
+        let midpoint = self.global(midpoint);
         (
             Disjoint(PhantomData),
             SegmentIdx {
@@ -590,23 +672,33 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     }
 
     #[inline(always)]
-    pub fn segment<
-        'smol,
-        'b,
-        T,
-        I: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
-        J: ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
-    >(
+    #[track_caller]
+    pub fn segment_like<'other, 'segment, 'node, 'b, T>(
         self,
-        start: I,
-        end: J,
+        segment: Segment<'b, 'other, 'segment>,
+        node: GhostNode<'b, 'node, T>,
+    ) -> (Segment<'b, 'dim, 'segment>, T)
+    where
+        'scope: 'b,
+    {
+        let start = self.idx_inc(*segment.start);
+        let end = self.idx_inc(*segment.end);
+
+        unsafe { core::mem::transmute(self.segment(start, end, node)) }
+    }
+
+    #[inline(always)]
+    pub fn segment<'smol, 'b, T>(
+        self,
+        start: impl ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
+        end: impl ToGlobal<'scope, 'dim, 'range, Global = SegmentIdxInc<'scope, 'dim, 'range>>,
         node: GhostNode<'b, 'smol, T>,
     ) -> (Segment<'b, 'dim, 'smol>, T)
     where
         'scope: 'b,
     {
-        let start = I::to_global(self, start);
-        let end = J::to_global(self, end);
+        let start = self.global(start);
+        let end = self.global(end);
         assert!(start.unbound <= end.unbound);
         (
             Segment {
@@ -1295,10 +1387,10 @@ impl<'n, T> Array<'n, T> {
     }
 
     #[inline]
-    pub fn segments<'HEAD, 'TAIL>(
+    pub fn segments<'scope, 'HEAD, 'TAIL>(
         &self,
-        first: Segment<'_, 'n, 'HEAD>,
-        second: Segment<'_, 'n, 'TAIL>,
+        first: Segment<'scope, 'n, 'HEAD>,
+        second: Segment<'scope, 'n, 'TAIL>,
     ) -> (&Array<'HEAD, T>, &Array<'TAIL, T>) {
         let ptr = self.as_ref().as_ptr();
         unsafe {
@@ -1312,7 +1404,7 @@ impl<'n, T> Array<'n, T> {
     }
 
     #[inline]
-    pub fn segment<'HEAD>(&self, first: Segment<'_, 'n, 'HEAD>) -> &Array<'HEAD, T> {
+    pub fn segment<'scope, 'HEAD>(&self, first: Segment<'scope, 'n, 'HEAD>) -> &Array<'HEAD, T> {
         let ptr = self.as_ref().as_ptr();
         unsafe {
             &*(core::slice::from_raw_parts(ptr.add(first.start.unbound), first.len().unbound)
@@ -1321,11 +1413,11 @@ impl<'n, T> Array<'n, T> {
     }
 
     #[inline]
-    pub fn segments_mut<'HEAD, 'TAIL>(
+    pub fn segments_mut<'scope, 'HEAD, 'TAIL>(
         &mut self,
-        first: Segment<'_, 'n, 'HEAD>,
-        second: Segment<'_, 'n, 'TAIL>,
-        disjoint: Disjoint<'_, 'HEAD, 'TAIL>,
+        first: Segment<'scope, 'n, 'HEAD>,
+        second: Segment<'scope, 'n, 'TAIL>,
+        disjoint: Disjoint<'scope, 'HEAD, 'TAIL>,
     ) -> (&mut Array<'HEAD, T>, &mut Array<'TAIL, T>) {
         let ptr = self.as_mut().as_mut_ptr();
         _ = disjoint;
@@ -1344,7 +1436,10 @@ impl<'n, T> Array<'n, T> {
     }
 
     #[inline]
-    pub fn segment_mut<'HEAD>(&mut self, first: Segment<'_, 'n, 'HEAD>) -> &mut Array<'HEAD, T> {
+    pub fn segment_mut<'scope, 'HEAD>(
+        &mut self,
+        first: Segment<'scope, 'n, 'HEAD>,
+    ) -> &mut Array<'HEAD, T> {
         let ptr = self.as_mut().as_mut_ptr();
         unsafe {
             &mut *(core::slice::from_raw_parts_mut(

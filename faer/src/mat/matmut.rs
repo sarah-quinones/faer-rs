@@ -1839,3 +1839,82 @@ mod bound_range {
         }
     }
 }
+
+mod bound_any_range {
+    use super::*;
+    use crate::variadics::*;
+
+    impl<'ROWS, 'a, C: Container, T, Cols: Shape, RStride: Stride, CStride: Stride>
+        MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
+    {
+        #[inline]
+        pub fn any_row_segments_mut<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+            self,
+            segments: S,
+            disjoint: S::Disjoint,
+        ) -> S::MatMutSegments<C, T, Cols, RStride, CStride> {
+            S::mat_mut_segments(segments, self, disjoint)
+        }
+    }
+
+    impl<'COLS, 'a, C: Container, T, Rows: Shape, RStride: Stride, CStride: Stride>
+        MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
+    {
+        #[inline]
+        pub fn any_col_segments_mut<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+            self,
+            segments: S,
+            disjoint: S::Disjoint,
+        ) -> S::MatMutSegments<C, T, Rows, RStride, CStride> {
+            S::mat_mut_segments(segments, self, disjoint)
+        }
+    }
+
+    impl<'ROWS, 'a, C: Container, T, Cols: Shape, RStride: Stride, CStride: Stride>
+        MatRef<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
+    {
+        #[inline]
+        pub fn any_row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+            self,
+            segments: S,
+        ) -> S::MatRefSegments<C, T, Cols, RStride, CStride> {
+            S::mat_ref_segments(segments, self)
+        }
+    }
+
+    impl<'COLS, 'a, C: Container, T, Rows: Shape, RStride: Stride, CStride: Stride>
+        MatRef<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
+    {
+        #[inline]
+        pub fn any_col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+            self,
+            segments: S,
+        ) -> S::MatRefSegments<C, T, Rows, RStride, CStride> {
+            S::mat_ref_segments(segments, self)
+        }
+    }
+
+    impl<'ROWS, 'a, C: Container, T, Cols: Shape, RStride: Stride, CStride: Stride>
+        MatMut<'a, C, T, Dim<'ROWS>, Cols, RStride, CStride>
+    {
+        #[inline]
+        pub fn any_row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
+            self,
+            segments: S,
+        ) -> S::MatRefSegments<C, T, Cols, RStride, CStride> {
+            S::mat_ref_segments(segments, self.into_const())
+        }
+    }
+
+    impl<'COLS, 'a, C: Container, T, Rows: Shape, RStride: Stride, CStride: Stride>
+        MatMut<'a, C, T, Rows, Dim<'COLS>, RStride, CStride>
+    {
+        #[inline]
+        pub fn any_col_segments<'scope, S: ColSplit<'scope, 'COLS, 'a>>(
+            self,
+            segments: S,
+        ) -> S::MatRefSegments<C, T, Rows, RStride, CStride> {
+            S::mat_ref_segments(segments, self.into_const())
+        }
+    }
+}

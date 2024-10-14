@@ -467,6 +467,7 @@ pub enum Parallelism {
 }
 
 impl Parallelism {
+    #[inline]
     #[cfg(feature = "rayon")]
     pub fn rayon(nthreads: usize) -> Self {
         if nthreads == 0 {
@@ -474,6 +475,11 @@ impl Parallelism {
         } else {
             Self::Rayon(NonZero::new(nthreads).unwrap())
         }
+    }
+
+    #[inline]
+    pub fn degree(&self) -> usize {
+        utils::thread::parallelism_degree(*self)
     }
 }
 
@@ -488,7 +494,10 @@ pub use row::{Row, RowGeneric, RowMut, RowMutGeneric, RowRef, RowRefGeneric};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
-    pub use crate::prelude::{ctx, default};
+    pub use crate::{
+        prelude::{ctx, default},
+        variadics::{list, List},
+    };
 
     pub use crate::{
         col::{
@@ -515,7 +524,7 @@ mod internal_prelude {
 
     pub use crate::linalg::{self, temp_mat_scratch, temp_mat_uninit};
 
-    pub use faer_macros::{ghost_tree, math};
+    pub use faer_macros::{ghost_tree, ghost_tree2, math};
 
     pub use faer_traits::{
         help, help2, ComplexContainer, ComplexField, ConjUnit, Container, Ctx, Index,
@@ -607,3 +616,5 @@ pub fn get_global_parallelism() -> Parallelism {
 pub mod hacks;
 
 pub mod stats;
+
+pub mod variadics;
