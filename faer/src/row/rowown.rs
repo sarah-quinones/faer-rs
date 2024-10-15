@@ -15,13 +15,13 @@ impl<C: Container, T, Cols: Shape> Row<C, T, Cols> {
     }
 
     #[inline]
-    pub fn zeros_with_ctx(ctx: &Ctx<C, T>, ncols: Cols) -> Self
+    pub fn zeros_with(ctx: &Ctx<C, T>, ncols: Cols) -> Self
     where
         C: ComplexContainer,
         T: ComplexField<C>,
     {
         Self {
-            trans: Col::zeros_with_ctx(ctx, ncols),
+            trans: Col::zeros_with(ctx, ncols),
         }
     }
 

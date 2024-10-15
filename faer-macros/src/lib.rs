@@ -425,7 +425,7 @@ impl Tree {
         let children_init = self.children.iter().map(|x| x.list_init());
         quote! {
             crate::hacks::GhostNode::new(
-                crate::hacks::variadics::list! [
+                crate::hacks::variadics::l! [
                     #(#children_init,)*
                 ],
                 &__scope,

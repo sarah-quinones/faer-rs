@@ -12,7 +12,7 @@ use crate::{assert, internal_prelude::*, perm::permute_rows};
 pub fn solve_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
     rhs_ncols: usize,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     temp_mat_scratch::<C, T>(dim, rhs_ncols)
@@ -43,7 +43,7 @@ pub fn solve_in_place_with_conj<I: Index, C: ComplexContainer, T: ComplexField<C
     conj: Conj,
     perm: PermRef<'_, I>,
     rhs: MatMut<'_, C, T>,
-    parallelism: Parallelism,
+    parallelism: Par,
     stack: &mut DynStack,
 ) {
     let n = lb_factors.nrows();

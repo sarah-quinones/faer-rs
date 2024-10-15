@@ -665,7 +665,7 @@ mod bound_range {
         ) -> ColMut<'a, C, T, Dim<'TOP>, RStride> {
             unsafe {
                 ColMut::from_raw_parts_mut(
-                    self.ptr_at_mut(first.start()),
+                    self.ptr_at_mut(first.start().local()),
                     first.len(),
                     self.row_stride(),
                 )
@@ -679,7 +679,11 @@ mod bound_range {
             first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> ColRef<'a, C, T, Dim<'TOP>, RStride> {
             unsafe {
-                ColRef::from_raw_parts(self.ptr_at(first.start()), first.len(), self.row_stride())
+                ColRef::from_raw_parts(
+                    self.ptr_at(first.start().local()),
+                    first.len(),
+                    self.row_stride(),
+                )
             }
         }
     }
@@ -691,7 +695,11 @@ mod bound_range {
             first: Segment<'scope, 'ROWS, 'TOP>,
         ) -> ColRef<'a, C, T, Dim<'TOP>, RStride> {
             unsafe {
-                ColRef::from_raw_parts(self.ptr_at(first.start()), first.len(), self.row_stride())
+                ColRef::from_raw_parts(
+                    self.ptr_at(first.start().local()),
+                    first.len(),
+                    self.row_stride(),
+                )
             }
         }
     }

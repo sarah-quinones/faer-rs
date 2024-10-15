@@ -1533,7 +1533,7 @@ mod bound_range {
         ) -> MatMut<'a, C, T, Dim<'TOP>, Cols, RStride, CStride> {
             unsafe {
                 MatMut::from_raw_parts_mut(
-                    self.ptr_at_mut(first.start(), Cols::start()),
+                    self.ptr_at_mut(first.start().local(), Cols::start()),
                     first.len(),
                     self.ncols(),
                     self.row_stride(),
@@ -1553,7 +1553,7 @@ mod bound_range {
         ) -> MatMut<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride> {
             unsafe {
                 MatMut::from_raw_parts_mut(
-                    self.ptr_at_mut(Rows::start(), first.start()),
+                    self.ptr_at_mut(Rows::start(), first.start().local()),
                     self.nrows(),
                     first.len(),
                     self.row_stride(),
@@ -1573,7 +1573,7 @@ mod bound_range {
         ) -> MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
-                    self.ptr_at(first.start(), Cols::start()),
+                    self.ptr_at(first.start().local(), Cols::start()),
                     first.len(),
                     self.ncols(),
                     self.row_stride(),
@@ -1593,7 +1593,7 @@ mod bound_range {
         ) -> MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
-                    self.ptr_at(Rows::start(), first.start()),
+                    self.ptr_at(Rows::start(), first.start().local()),
                     self.nrows(),
                     first.len(),
                     self.row_stride(),
@@ -1613,7 +1613,7 @@ mod bound_range {
         ) -> MatRef<'a, C, T, Dim<'TOP>, Cols, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
-                    self.ptr_at(first.start(), Cols::start()),
+                    self.ptr_at(first.start().local(), Cols::start()),
                     first.len(),
                     self.ncols(),
                     self.row_stride(),
@@ -1633,7 +1633,7 @@ mod bound_range {
         ) -> MatRef<'a, C, T, Rows, Dim<'LEFT>, RStride, CStride> {
             unsafe {
                 MatRef::from_raw_parts(
-                    self.ptr_at(Rows::start(), first.start()),
+                    self.ptr_at(Rows::start(), first.start().local()),
                     self.nrows(),
                     first.len(),
                     self.row_stride(),

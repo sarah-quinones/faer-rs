@@ -425,11 +425,11 @@ fn rank_one_update_and_best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexFie
             matmul(
                 ctx,
                 dst.rb_mut(),
-                Some(as_ref!(math(one()))),
+                Accum::Add,
                 lhs.as_mat(),
                 rhs.as_mat(),
                 as_ref!(math(-one())),
-                Parallelism::None,
+                Par::Seq,
             );
             best_in_matrix(ctx, dst.rb())
         }
@@ -439,11 +439,11 @@ fn rank_one_update_and_best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexFie
         matmul(
             ctx,
             dst.rb_mut(),
-            Some(as_ref!(math(one()))),
+            Accum::Add,
             lhs.as_mat(),
             rhs.as_mat(),
             as_ref!(math(-one())),
-            Parallelism::None,
+            Par::Seq,
         );
         best_in_matrix(ctx, dst.rb())
     }
@@ -455,7 +455,7 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
     row_trans: &mut [usize],
     col_trans: &mut [usize],
-    par: Parallelism,
+    par: Par,
     transpose: bool,
     params: FullPivLuParams,
 ) -> usize {
@@ -514,22 +514,22 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
         }
 
         if (*M - *ki.next()) * (*N - *kj.next()) < params.par_threshold {
-            par = Parallelism::None;
+            par = Par::Seq;
         }
 
         ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-            let (_, list![top, bot], disjoint_rows) = M.split(list![ki, ..], ROWS);
-            let (_, list![left, right], disjoint_cols) = N.split(list![kj, ..], COLS);
+            let (l![top, bot], (disjoint_rows, ..)) = M.split(l![ki, ..], ROWS);
+            let (l![left, right], (disjoint_cols, ..)) = N.split(l![kj, ..], COLS);
 
-            let list![A0, A1] = A.rb_mut().row_segments_mut(list![top, bot], disjoint_rows);
-            let list![_, A01] = A0.col_segments_mut(list![left, right], disjoint_cols);
-            let list![A10, mut A11] = A1.col_segments_mut(list![left, right], disjoint_cols);
+            let l![A0, A1] = A.rb_mut().row_segments_mut(l![top, bot], disjoint_rows);
+            let l![_, A01] = A0.col_segments_mut(l![left, right], disjoint_cols);
+            let l![A10, mut A11] = A1.col_segments_mut(l![left, right], disjoint_cols);
 
             let lhs = A10.rb();
             let rhs = A01.rb();
 
             match par {
-                Parallelism::None => {
+                Par::Seq => {
                     (max_row, max_col, max_score) = rank_one_update_and_best_in_matrix(
                         ctx,
                         A11.rb_mut(),
@@ -539,7 +539,7 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
                     );
                 }
                 #[cfg(feature = "rayon")]
-                Parallelism::Rayon(nthreads) => {
+                Par::Rayon(nthreads) => {
                     use rayon::prelude::*;
                     let nthreads = nthreads.get();
 
@@ -613,7 +613,7 @@ impl Default for FullPivLuParams {
 pub fn lu_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     nrows: usize,
     ncols: usize,
-    par: Parallelism,
+    par: Par,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
     let size = Ord::min(nrows, ncols);
@@ -632,7 +632,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
     row_perm_inv: &'out mut Array<'M, I>,
     col_perm: &'out mut Array<'N, I>,
     col_perm_inv: &'out mut Array<'N, I>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: FullPivLuParams,
 ) -> (
@@ -728,7 +728,7 @@ mod tests {
     fn test_flu() {
         let rng = &mut StdRng::seed_from_u64(0);
 
-        for par in [Parallelism::None, Parallelism::rayon(8)] {
+        for par in [Par::Seq, Par::rayon(8)] {
             for n in [16, 24, 32, 128, 255, 256, 257] {
                 with_dim!(N, n);
                 let approx_eq = CwiseMat(ApproxEq {

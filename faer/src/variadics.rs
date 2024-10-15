@@ -1,7 +1,7 @@
 use crate::{
     assert,
     internal_prelude::*,
-    utils::bound::{Segment, SegmentIdx},
+    utils::bound::{Segment, SegmentIdx, SegmentIdxInc},
 };
 use core::{
     cell::UnsafeCell,
@@ -9,6 +9,7 @@ use core::{
     marker::PhantomData,
     ops::{Range, RangeFrom, RangeFull, RangeTo},
 };
+use faer_traits::hacks::GhostNode;
 
 #[macro_export]
 #[doc(hidden)]
@@ -38,29 +39,15 @@ macro_rules! __list_impl {
 
 /// create or destructure a variadic tuple containing the given values.
 #[macro_export]
-macro_rules! list {
+macro_rules! l {
     ($($t:tt)*) => {
         $crate::__list_impl![@ __impl @ () @ ($($t)*)]
     };
 }
 
-/// destructure a variadic tuple containing the given values.
-#[macro_export]
-macro_rules! pat_list {
-    () => {
-        $crate::variadics::Nil
-    };
-    ($head: pat $(, $tail: pat)* $(,)?) => {
-        $crate::variadics::Cons {
-            head: $head,
-            tail: $crate::variadics::pat_list![$($tail,)*],
-        }
-    };
-}
-
 /// type of a variadic tuple containing the given types.
 #[macro_export]
-macro_rules! List {
+macro_rules! L {
     () => {
         $crate::variadics::Nil
     };
@@ -114,20 +101,36 @@ impl<Head: fmt::Debug, Tail: DebugList> fmt::Debug for Cons<Head, Tail> {
 trait DebugList {
     fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>);
 }
-use faer_traits::hacks::GhostNode;
-pub use list;
-pub use pat_list;
-pub use List;
+pub use l;
+pub use L;
 
 pub unsafe trait Separable<'scope, 'dim> {
     type Index;
     type Disjoint;
 }
 
-pub unsafe trait SplitsNode<'scope, 'dim, Node> {
+pub unsafe trait DimSplit<'scope, 'dim, Node> {
     type Output: Separable<'scope, 'dim>;
+    type Metadata;
 
-    fn output(split: Self, start: &mut IdxInc<'dim>, dim: Dim<'dim>, node: Node) -> Self::Output;
+    fn in_dim(
+        split: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: Node,
+    ) -> (Self::Output, Self::Metadata);
+}
+
+pub unsafe trait SegmentSplit<'scope, 'dim, 'segment, Node> {
+    type Output: Separable<'scope, 'dim>;
+    type Metadata;
+
+    fn in_segment(
+        split: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        end: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: Node,
+    ) -> (Self::Output, Self::Metadata);
 }
 
 unsafe impl<'scope, 'dim, 'range> Separable<'scope, 'dim> for Segment<'scope, 'dim, 'range> {
@@ -145,158 +148,8 @@ unsafe impl<'scope, 'dim> Separable<'scope, 'dim> for Nil {
     type Disjoint = Nil;
 }
 
-unsafe impl<'scope, 'dim, 'range> SplitsNode<'scope, 'dim, Nil> for Nil {
-    type Output = Nil;
-    fn output(_: Self, _: &mut IdxInc<'dim>, _: Dim<'dim>, _: Nil) -> Self::Output {
-        Nil
-    }
-}
-
-unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
-    for Range<IdxInc<'dim>>
-{
-    type Output = Segment<'scope, 'dim, 'range>;
-
-    #[inline]
-    fn output(
-        segment: Self,
-        start: &mut IdxInc<'dim>,
-        dim: Dim<'dim>,
-        node: GhostNode<'scope, 'range, Nil>,
-    ) -> Self::Output {
-        _ = dim;
-        _ = node;
-
-        assert!(all(*start <= segment.start, segment.start <= segment.end));
-        *start = segment.end;
-        unsafe { Segment::new_unbound(segment.start, segment.end) }
-    }
-}
-
-unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
-    for Idx<'dim>
-{
-    type Output = SegmentIdx<'scope, 'dim, 'range>;
-
-    #[inline]
-    fn output(
-        segment: Self,
-        start: &mut IdxInc<'dim>,
-        dim: Dim<'dim>,
-        node: GhostNode<'scope, 'range, Nil>,
-    ) -> Self::Output {
-        _ = dim;
-        _ = node;
-
-        assert!(all(*start <= segment.to_incl()));
-        *start = segment.next();
-        unsafe { SegmentIdx::new_unbound(segment) }
-    }
-}
-
-unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
-    for RangeFrom<IdxInc<'dim>>
-{
-    type Output = Segment<'scope, 'dim, 'range>;
-
-    #[inline]
-    fn output(
-        segment: Self,
-        start: &mut IdxInc<'dim>,
-        dim: Dim<'dim>,
-        node: GhostNode<'scope, 'range, Nil>,
-    ) -> Self::Output {
-        _ = dim;
-        _ = node;
-
-        assert!(*start <= segment.start);
-        *start = dim.end();
-        unsafe { Segment::new_unbound(segment.start, dim.end()) }
-    }
-}
-
-unsafe impl<'scope, 'dim: 'range, 'range, 'subrange>
-    SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>> for Segment<'scope, '_, 'subrange>
-{
-    type Output = Segment<'scope, 'dim, 'subrange>;
-
-    #[inline]
-    fn output(
-        segment: Self,
-        start: &mut IdxInc<'dim>,
-        dim: Dim<'dim>,
-        node: GhostNode<'scope, 'range, Nil>,
-    ) -> Self::Output {
-        _ = dim;
-        _ = node;
-
-        assert!(all(**start <= *segment.start(), *segment.end() <= *dim));
-        *start = unsafe { IdxInc::new_unbound(*segment.end()) };
-        unsafe {
-            Segment::new_unbound(
-                IdxInc::new_unbound(*segment.start()),
-                IdxInc::new_unbound(*segment.end()),
-            )
-        }
-    }
-}
-
-unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
-    for RangeTo<IdxInc<'dim>>
-{
-    type Output = Segment<'scope, 'dim, 'range>;
-
-    #[inline]
-    fn output(
-        segment: Self,
-        start: &mut IdxInc<'dim>,
-        dim: Dim<'dim>,
-        node: GhostNode<'scope, 'range, Nil>,
-    ) -> Self::Output {
-        _ = dim;
-        _ = node;
-
-        let begin = *start;
-        assert!(all(*start <= segment.end));
-        *start = segment.end;
-        unsafe { Segment::new_unbound(begin, segment.end) }
-    }
-}
-
-unsafe impl<'scope, 'dim: 'range, 'range> SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Nil>>
-    for RangeFull
-{
-    type Output = Segment<'scope, 'dim, 'range>;
-
-    #[inline]
-    fn output(
-        _: Self,
-        start: &mut IdxInc<'dim>,
-        dim: Dim<'dim>,
-        node: GhostNode<'scope, 'range, Nil>,
-    ) -> Self::Output {
-        _ = dim;
-        _ = node;
-
-        let old_start = *start;
-        *start = dim.end();
-        unsafe { Segment::new_unbound(old_start, dim.end()) }
-    }
-}
-
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Separator<'scope, Head, Tail> {
-    __marker: PhantomData<(Invariant<'scope>, fn(Head, Tail))>,
-}
-
-unsafe impl<
-        'scope,
-        'dim: 'range,
-        'range,
-        Head: Separable<'scope, 'dim>,
-        Tail: Separable<'scope, 'dim>,
-    > Separable<'scope, 'dim> for Cons<Head, Tail>
+unsafe impl<'scope, 'dim, Head: Separable<'scope, 'dim>, Tail: Separable<'scope, 'dim>>
+    Separable<'scope, 'dim> for Cons<Head, Tail>
 {
     type Index = (Head::Index, Tail::Index);
 
@@ -313,28 +166,400 @@ unsafe impl<'scope, 'dim, Seg, Disjoint, Output: Separable<'scope, 'dim>> Separa
     type Disjoint = Output::Disjoint;
 }
 
+unsafe impl<'scope, 'dim, 'range> DimSplit<'scope, 'dim, Nil> for Nil {
+    type Output = Nil;
+    type Metadata = Nil;
+
+    fn in_dim(
+        _: Self,
+        _: &mut IdxInc<'dim>,
+        _: Dim<'dim>,
+        _: Nil,
+    ) -> (Self::Output, Self::Metadata) {
+        (Nil, Nil)
+    }
+}
+
+unsafe impl<'scope, 'dim, 'segment, 'range> SegmentSplit<'scope, 'dim, 'segment, Nil> for Nil {
+    type Output = Nil;
+    type Metadata = Nil;
+
+    #[inline]
+    fn in_segment(
+        _: Self,
+        _: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        _: SegmentIdxInc<'scope, 'dim, 'segment>,
+        _: Nil,
+    ) -> (Self::Output, Self::Metadata) {
+        (Nil, Nil)
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, T> DimSplit<'scope, 'dim, GhostNode<'scope, 'range, T>>
+    for Idx<'dim>
+{
+    type Output = SegmentIdx<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_dim(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        assert!(all(*start <= segment.to_incl()));
+        *start = segment.next();
+        (unsafe { SegmentIdx::new_unbound(segment) }, node)
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'segment, 'range, T>
+    SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, T>>
+    for SegmentIdx<'scope, 'dim, 'segment>
+{
+    type Output = SegmentIdx<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_segment(
+        split: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        _: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        assert!(all(*start <= split.to_incl()));
+        *start = split.next();
+
+        (unsafe { SegmentIdx::new_unbound(split.local()) }, node)
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, 'subrange, T>
+    DimSplit<'scope, 'dim, GhostNode<'scope, 'range, T>> for Segment<'scope, '_, 'subrange>
+{
+    type Output = Segment<'scope, 'dim, 'subrange>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_dim(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        assert!(all(**start <= *segment.start(), *segment.end() <= *dim));
+        *start = unsafe { IdxInc::new_unbound(*segment.end()) };
+        unsafe {
+            (
+                Segment::new_unbound(
+                    IdxInc::new_unbound(*segment.start()),
+                    IdxInc::new_unbound(*segment.end()),
+                ),
+                node,
+            )
+        }
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, 'segment: 'subrange, 'subrange, T>
+    SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, T>>
+    for Segment<'scope, '_, 'subrange>
+{
+    type Output = Segment<'scope, 'dim, 'subrange>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_segment(
+        segment: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        dim: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        assert!(all(**start <= *segment.start(), *segment.end() <= *dim));
+        *start = unsafe { SegmentIdxInc::new_unbound(IdxInc::new_unbound(*segment.end().local())) };
+        unsafe {
+            (
+                Segment::new_unbound(
+                    IdxInc::new_unbound(*segment.start()),
+                    IdxInc::new_unbound(*segment.end()),
+                ),
+                node,
+            )
+        }
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, T> DimSplit<'scope, 'dim, GhostNode<'scope, 'range, T>>
+    for Range<IdxInc<'dim>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_dim(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        assert!(all(*start <= segment.start, segment.start <= segment.end));
+        *start = segment.end;
+        (
+            unsafe { Segment::new_unbound(segment.start, segment.end) },
+            node,
+        )
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'segment, 'range, T>
+    SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, T>>
+    for Range<SegmentIdxInc<'scope, 'dim, 'segment>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_segment(
+        segment: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        _: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        assert!(all(*start <= segment.start, segment.start <= segment.end));
+        *start = segment.end;
+        (
+            unsafe { Segment::new_unbound(segment.start.local(), segment.end.local()) },
+            node,
+        )
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, T> DimSplit<'scope, 'dim, GhostNode<'scope, 'range, T>>
+    for RangeFrom<IdxInc<'dim>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_dim(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        assert!(*start <= segment.start);
+        *start = dim.end();
+        (
+            unsafe { Segment::new_unbound(segment.start, dim.end()) },
+            node,
+        )
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'segment, 'range, T>
+    SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, T>>
+    for RangeFrom<SegmentIdxInc<'scope, 'dim, 'segment>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_segment(
+        segment: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        end: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        assert!(all(*start <= segment.start));
+        *start = end;
+        (
+            unsafe { Segment::new_unbound(segment.start.local(), end.local()) },
+            node,
+        )
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, T> DimSplit<'scope, 'dim, GhostNode<'scope, 'range, T>>
+    for RangeTo<IdxInc<'dim>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_dim(
+        segment: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        let begin = *start;
+        assert!(all(*start <= segment.end));
+        *start = segment.end;
+        (unsafe { Segment::new_unbound(begin, segment.end) }, node)
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'segment, 'range, T>
+    SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, T>>
+    for RangeTo<SegmentIdxInc<'scope, 'dim, 'segment>>
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_segment(
+        segment: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        _: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        assert!(all(*start <= segment.end));
+        let begin = *start;
+        *start = segment.end;
+        (
+            unsafe { Segment::new_unbound(begin.local(), segment.end.local()) },
+            node,
+        )
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'range, T> DimSplit<'scope, 'dim, GhostNode<'scope, 'range, T>>
+    for RangeFull
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_dim(
+        _: Self,
+        start: &mut IdxInc<'dim>,
+        dim: Dim<'dim>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        _ = dim;
+        _ = node;
+
+        let old_start = *start;
+        *start = dim.end();
+        (unsafe { Segment::new_unbound(old_start, dim.end()) }, node)
+    }
+}
+
+unsafe impl<'scope, 'dim: 'range, 'segment, 'range, T>
+    SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, T>> for RangeFull
+{
+    type Output = Segment<'scope, 'dim, 'range>;
+    type Metadata = GhostNode<'scope, 'range, T>;
+
+    #[inline]
+    fn in_segment(
+        _: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        end: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, T>,
+    ) -> (Self::Output, Self::Metadata) {
+        let begin = *start;
+        *start = end;
+        (
+            unsafe { Segment::new_unbound(begin.local(), end.local()) },
+            node,
+        )
+    }
+}
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Separator<'scope, Head, Tail> {
+    __marker: PhantomData<(Invariant<'scope>, fn(Head, Tail))>,
+}
+
 unsafe impl<
         'scope,
         'dim,
         NodeHead,
         NodeTail,
-        Head: SplitsNode<'scope, 'dim, NodeHead>,
-        Tail: SplitsNode<'scope, 'dim, NodeTail>,
-    > SplitsNode<'scope, 'dim, Cons<NodeHead, NodeTail>> for Cons<Head, Tail>
+        Head: DimSplit<'scope, 'dim, NodeHead>,
+        Tail: DimSplit<'scope, 'dim, NodeTail>,
+    > DimSplit<'scope, 'dim, Cons<NodeHead, NodeTail>> for Cons<Head, Tail>
 {
     type Output = Cons<Head::Output, Tail::Output>;
+    type Metadata = Cons<Head::Metadata, Tail::Metadata>;
 
     #[inline]
-    fn output(
+    fn in_dim(
         split: Self,
         start: &mut IdxInc<'dim>,
         dim: Dim<'dim>,
         node: Cons<NodeHead, NodeTail>,
-    ) -> Self::Output {
-        Cons {
-            head: Head::output(split.head, start, dim, node.head),
-            tail: Tail::output(split.tail, start, dim, node.tail),
-        }
+    ) -> (Self::Output, Self::Metadata) {
+        let head = Head::in_dim(split.head, start, dim, node.head);
+        let tail = Tail::in_dim(split.tail, start, dim, node.tail);
+
+        (
+            Cons {
+                head: head.0,
+                tail: tail.0,
+            },
+            Cons {
+                head: head.1,
+                tail: tail.1,
+            },
+        )
+    }
+}
+
+unsafe impl<
+        'scope,
+        'dim,
+        'segment,
+        NodeHead,
+        NodeTail,
+        Head: SegmentSplit<'scope, 'dim, 'segment, NodeHead>,
+        Tail: SegmentSplit<'scope, 'dim, 'segment, NodeTail>,
+    > SegmentSplit<'scope, 'dim, 'segment, Cons<NodeHead, NodeTail>> for Cons<Head, Tail>
+{
+    type Output = Cons<Head::Output, Tail::Output>;
+    type Metadata = Cons<Head::Metadata, Tail::Metadata>;
+
+    #[inline]
+    fn in_segment(
+        split: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        end: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: Cons<NodeHead, NodeTail>,
+    ) -> (Self::Output, Self::Metadata) {
+        let head = Head::in_segment(split.head, start, end, node.head);
+        let tail = Tail::in_segment(split.tail, start, end, node.tail);
+
+        (
+            Cons {
+                head: head.0,
+                tail: tail.0,
+            },
+            Cons {
+                head: head.1,
+                tail: tail.1,
+            },
+        )
     }
 }
 
@@ -344,30 +569,29 @@ unsafe impl<
         'range,
         NodeHead,
         NodeTail,
-        Head: SplitsNode<'scope, 'dim, NodeHead>,
-        Tail: SplitsNode<'scope, 'dim, NodeTail>,
-    > SplitsNode<'scope, 'dim, GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>>
+        Head: DimSplit<'scope, 'dim, NodeHead>,
+        Tail: DimSplit<'scope, 'dim, NodeTail>,
+    > DimSplit<'scope, 'dim, GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>>
     for Cons<Head, Tail>
 {
-    type Output = (
-        Segment<'scope, 'dim, 'range>,
-        Cons<Head::Output, Tail::Output>,
+    type Output = Cons<Head::Output, Tail::Output>;
+    type Metadata = (
         <Cons<Head::Output, Tail::Output> as Separable<'scope, 'dim>>::Disjoint,
+        Segment<'scope, 'dim, 'range>,
+        Cons<Head::Metadata, Tail::Metadata>,
     );
 
     #[inline]
-    fn output(
+    fn in_dim(
         split: Self,
         start: &mut IdxInc<'dim>,
         dim: Dim<'dim>,
         node: GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>,
-    ) -> Self::Output {
+    ) -> (Self::Output, Self::Metadata) {
         let begin = *start;
 
-        let list = Cons {
-            head: Head::output(split.head, start, dim, node.child.head),
-            tail: Tail::output(split.tail, start, dim, node.child.tail),
-        };
+        let head = Head::in_dim(split.head, start, dim, node.child.head);
+        let tail = Tail::in_dim(split.tail, start, dim, node.child.tail);
 
         let end = *start;
 
@@ -380,9 +604,77 @@ unsafe impl<
 
         unsafe {
             (
-                Segment::new_unbound(begin, end),
-                list,
-                core::mem::transmute_copy(&()),
+                Cons {
+                    head: head.0,
+                    tail: tail.0,
+                },
+                (
+                    core::mem::transmute_copy(&()),
+                    Segment::new_unbound(begin, end),
+                    Cons {
+                        head: head.1,
+                        tail: tail.1,
+                    },
+                ),
+            )
+        }
+    }
+}
+
+unsafe impl<
+        'scope,
+        'dim,
+        'range,
+        'segment,
+        NodeHead,
+        NodeTail,
+        Head: SegmentSplit<'scope, 'dim, 'segment, NodeHead>,
+        Tail: SegmentSplit<'scope, 'dim, 'segment, NodeTail>,
+    > SegmentSplit<'scope, 'dim, 'segment, GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>>
+    for Cons<Head, Tail>
+{
+    type Output = Cons<Head::Output, Tail::Output>;
+    type Metadata = (
+        <Cons<Head::Output, Tail::Output> as Separable<'scope, 'dim>>::Disjoint,
+        Segment<'scope, 'dim, 'range>,
+        Cons<Head::Metadata, Tail::Metadata>,
+    );
+
+    #[inline]
+    fn in_segment(
+        split: Self,
+        start: &mut SegmentIdxInc<'scope, 'dim, 'segment>,
+        dim: SegmentIdxInc<'scope, 'dim, 'segment>,
+        node: GhostNode<'scope, 'range, Cons<NodeHead, NodeTail>>,
+    ) -> (Self::Output, Self::Metadata) {
+        let begin = *start;
+
+        let head = Head::in_segment(split.head, start, dim, node.child.head);
+        let tail = Tail::in_segment(split.tail, start, dim, node.child.tail);
+
+        let end = *start;
+
+        const {
+            core::assert!(
+                size_of::<<Cons<Head::Output, Tail::Output> as Separable<'scope, 'dim>>::Disjoint>(
+                ) == 0
+            )
+        }
+
+        unsafe {
+            (
+                Cons {
+                    head: head.0,
+                    tail: tail.0,
+                },
+                (
+                    core::mem::transmute_copy(&()),
+                    Segment::new_unbound(begin.local(), end.local()),
+                    Cons {
+                        head: head.1,
+                        tail: tail.1,
+                    },
+                ),
             )
         }
     }
@@ -672,14 +964,7 @@ impl<'scope, 'dim: 'a, 'a> ColSplit<'scope, 'dim, 'a> for Nil {
     }
 }
 
-type Covariant<'a> = fn() -> &'a ();
 type Invariant<'a> = fn(&'a ()) -> &'a ();
-
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Disjoint<'scope, 'range> {
-    __marker: PhantomData<(Invariant<'scope>, Covariant<'range>)>,
-}
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

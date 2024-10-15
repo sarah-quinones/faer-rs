@@ -385,12 +385,12 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
 
         for j in N.indices() {
             ghost_tree!(FULL(J, TAIL), {
-                let (_, list![col, tail], _) = N.split(list![j, ..], FULL);
+                let (l![col, tail], _) = N.split(l![j, ..], FULL);
                 let mut L_col = ld.rb_mut().col_mut(col.local());
 
                 let r = Ord::min((*r)(), K.end());
                 ghost_tree!(W_FULL(R), {
-                    let (_, list![R_segment], _) = K.split(list![..r], W_FULL);
+                    let (l![R_segment], _) = K.split(l![..r], W_FULL);
                     let R = R_segment.len();
                     let mut W = w.rb_mut().col_segment_mut(R_segment);
                     let mut alpha = alpha.rb_mut().row_segment_mut(R_segment);
@@ -402,7 +402,7 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                         r_next = R.advance(r, BLOCKSIZE);
 
                         ghost_tree!(W_FULL(R0), {
-                            let (_, list![r0], _) = R.split(list![r.into()..r_next], W_FULL);
+                            let (l![r0], _) = R.split(l![r.into()..r_next], W_FULL);
 
                             stack_mat!(ctx, p, r0.len(), 1, BLOCKSIZE, 1, C, T);
                             stack_mat!(ctx, beta, r0.len(), 1, BLOCKSIZE, 1, C, T);
@@ -578,11 +578,11 @@ mod tests {
                     &ctx(),
                     L.rb_mut(),
                     default(),
-                    Parallelism::None,
+                    Par::Seq,
                     DynStack::new(&mut GlobalMemBuffer::new(
                         linalg::cholesky::llt::factor::cholesky_in_place_scratch::<Unit, c64>(
                             *N,
-                            Parallelism::None,
+                            Par::Seq,
                         )
                         .unwrap(),
                     )),

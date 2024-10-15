@@ -31,14 +31,14 @@ mod tests {
             .rand::<Mat<f64>>(rng);
 
             let mut ldl = a.clone();
-            let mut subdiag = Col::<f64>::zeros_with_ctx(&default(), n);
+            let mut subdiag = Col::<f64>::zeros_with(&default(), n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
 
             let params = Default::default();
             let mut mem = GlobalMemBuffer::new(
-                factor::cholesky_in_place_scratch::<usize, Unit, f64>(n, Parallelism::None, params)
+                factor::cholesky_in_place_scratch::<usize, Unit, f64>(n, Par::Seq, params)
                     .unwrap(),
             );
             let (_, perm) = factor::cholesky_in_place(
@@ -48,7 +48,7 @@ mod tests {
                 Default::default(),
                 &mut perm,
                 &mut perm_inv,
-                Parallelism::None,
+                Par::Seq,
                 DynStack::new(&mut mem),
                 params,
             );
@@ -57,7 +57,7 @@ mod tests {
                 solve::solve_in_place_scratch::<usize, Unit, f64>(
                     n,
                     rhs.ncols(),
-                    Parallelism::None,
+                    Par::Seq,
                 )
                 .unwrap(),
             );
@@ -69,7 +69,7 @@ mod tests {
                 Conj::No,
                 perm.rb(),
                 x.as_mut(),
-                Parallelism::None,
+                Par::Seq,
                 DynStack::new(&mut mem),
             );
 
@@ -107,7 +107,7 @@ mod tests {
             .rand::<Mat<c64>>(rng);
 
             let mut ldl = a.clone();
-            let mut subdiag = Col::<c64>::zeros_with_ctx(&default(), n);
+            let mut subdiag = Col::<c64>::zeros_with(&default(), n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
@@ -117,7 +117,7 @@ mod tests {
                 blocksize: 32,
             };
             let mut mem = GlobalMemBuffer::new(
-                factor::cholesky_in_place_scratch::<usize, Unit, c64>(n, Parallelism::None, params)
+                factor::cholesky_in_place_scratch::<usize, Unit, c64>(n, Par::Seq, params)
                     .unwrap(),
             );
             let (_, perm) = factor::cholesky_in_place(
@@ -127,7 +127,7 @@ mod tests {
                 Default::default(),
                 &mut perm,
                 &mut perm_inv,
-                Parallelism::None,
+                Par::Seq,
                 DynStack::new(&mut mem),
                 params,
             );
@@ -137,7 +137,7 @@ mod tests {
                 solve::solve_in_place_scratch::<usize, Unit, c64>(
                     n,
                     rhs.ncols(),
-                    Parallelism::None,
+                    Par::Seq,
                 )
                 .unwrap(),
             );
@@ -148,7 +148,7 @@ mod tests {
                 Conj::Yes,
                 perm.rb(),
                 x.as_mut(),
-                Parallelism::None,
+                Par::Seq,
                 DynStack::new(&mut mem),
             );
 

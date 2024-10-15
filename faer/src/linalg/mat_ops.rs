@@ -1971,12 +1971,12 @@ mod matmul {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
-            let mut out = Mat::zeros_with_ctx(ctx, lhs.nrows(), rhs.ncols());
+            let mut out = Mat::zeros_with(ctx, lhs.nrows(), rhs.ncols());
             help!(C);
             crate::linalg::matmul::matmul(
                 ctx,
                 out.as_mut(),
-                None,
+                Accum::Replace,
                 lhs,
                 rhs,
                 as_ref!(T::one_impl(ctx)),
@@ -2005,12 +2005,12 @@ mod matmul {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
-            let mut out = Col::zeros_with_ctx(ctx, lhs.nrows());
+            let mut out = Col::zeros_with(ctx, lhs.nrows());
             help!(C);
             crate::linalg::matmul::matmul(
                 ctx,
                 out.as_mut().as_mat_mut(),
-                None,
+                Accum::Replace,
                 lhs,
                 rhs.as_mat(),
                 as_ref!(T::one_impl(ctx)),
@@ -2039,12 +2039,12 @@ mod matmul {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
-            let mut out = Row::zeros_with_ctx(ctx, rhs.ncols());
+            let mut out = Row::zeros_with(ctx, rhs.ncols());
             help!(C);
             crate::linalg::matmul::matmul(
                 ctx,
                 out.as_mut().as_mat_mut(),
-                None,
+                Accum::Replace,
                 lhs.as_mat(),
                 rhs,
                 as_ref!(T::one_impl(ctx)),
@@ -2104,12 +2104,12 @@ mod matmul {
             let lhs = self;
             Assert!(lhs.ncols() == rhs.nrows());
             let ctx = &Ctx::<C, T>::default();
-            let mut out = Mat::zeros_with_ctx(ctx, lhs.nrows(), rhs.ncols());
+            let mut out = Mat::zeros_with(ctx, lhs.nrows(), rhs.ncols());
             help!(C);
             crate::linalg::matmul::matmul(
                 ctx,
                 out.as_mut(),
-                None,
+                Accum::Replace,
                 lhs.as_mat(),
                 rhs.as_mat(),
                 as_ref!(T::one_impl(ctx)),
@@ -2770,7 +2770,7 @@ impl<
 
         Assert!(lhs.len() == rhs.nrows());
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
-        let mut out = Mat::zeros_with_ctx(ctx, rhs.nrows(), rhs.ncols());
+        let mut out = Mat::zeros_with(ctx, rhs.nrows(), rhs.ncols());
 
         fn imp<
             'ROWS,
@@ -2857,7 +2857,7 @@ impl<
 
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
         Assert!(lhs.len() == rhs.nrows());
-        let mut out = Col::zeros_with_ctx(ctx, rhs.nrows());
+        let mut out = Col::zeros_with(ctx, rhs.nrows());
 
         fn imp<
             'ROWS,
@@ -2941,7 +2941,7 @@ impl<
 
         Assert!(lhs.ncols() == rhs.len());
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
-        let mut out = Mat::zeros_with_ctx(ctx, lhs.nrows(), lhs.ncols());
+        let mut out = Mat::zeros_with(ctx, lhs.nrows(), lhs.ncols());
 
         fn imp<
             'ROWS,
@@ -3026,7 +3026,7 @@ impl<
 
         Assert!(lhs.ncols() == rhs.len());
         let ctx = &Ctx::<C, T>(T::MathCtx::default());
-        let mut out = Row::zeros_with_ctx(ctx, lhs.ncols());
+        let mut out = Row::zeros_with(ctx, lhs.ncols());
 
         fn imp<
             'COLS,

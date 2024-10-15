@@ -1,7 +1,7 @@
 use crate::{
     assert,
     hacks::GhostNode,
-    variadics::{ArraySplit, SplitsNode},
+    variadics::{ArraySplit, DimSplit, SegmentSplit},
     Index, Shape, ShapeIdx, SignedIndex, Unbind,
 };
 use core::{fmt, marker::PhantomData, ops::Range};
@@ -93,13 +93,13 @@ pub struct Partition<'head, 'tail, 'n> {
     __marker: PhantomData<Invariant<'n>>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SegmentIdx<'scope, 'dim, 'range> {
     unbound: usize,
     __marker: PhantomData<(Invariant<'scope>, Invariant<'dim>, Contravariant<'range>)>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SegmentIdxInc<'scope, 'dim, 'range> {
     unbound: usize,
     __marker: PhantomData<(Invariant<'scope>, Invariant<'dim>, Contravariant<'range>)>,
@@ -397,12 +397,12 @@ impl<'n> Dim<'n> {
     }
 
     #[inline(always)]
-    pub fn split<'scope, 'range, Node, Seg: SplitsNode<'scope, 'n, Node>>(
+    pub fn split<'scope, 'range, Node, Seg: DimSplit<'scope, 'n, Node>>(
         self,
         segments: Seg,
         node: Node,
-    ) -> Seg::Output {
-        Seg::output(segments, &mut zero(), self, node)
+    ) -> (Seg::Output, Seg::Metadata) {
+        Seg::in_dim(segments, &mut zero(), self, node)
     }
 }
 
@@ -506,6 +506,15 @@ impl<'scope, 'dim, 'range> SegmentIdxInc<'scope, 'dim, 'range> {
 
 impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     #[inline(always)]
+    pub fn split<Node, Seg: SegmentSplit<'scope, 'dim, 'range, Node>>(
+        self,
+        segments: Seg,
+        node: Node,
+    ) -> (Seg::Output, Seg::Metadata) {
+        Seg::in_segment(segments, &mut { self.start() }, self.end(), node)
+    }
+
+    #[inline(always)]
     pub const unsafe fn new_unbound<'head, 'tail>(start: IdxInc<'dim>, end: IdxInc<'dim>) -> Self {
         Self {
             start,
@@ -514,13 +523,13 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
         }
     }
     #[inline]
-    pub const fn start(self) -> IdxInc<'dim> {
-        self.start
+    pub const fn start(self) -> SegmentIdxInc<'scope, 'dim, 'range> {
+        unsafe { SegmentIdxInc::new_unbound(self.start) }
     }
 
     #[inline]
-    pub const fn end(self) -> IdxInc<'dim> {
-        self.end
+    pub const fn end(self) -> SegmentIdxInc<'scope, 'dim, 'range> {
+        unsafe { SegmentIdxInc::new_unbound(self.end) }
     }
 
     #[inline]
@@ -529,6 +538,7 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     }
 
     #[inline]
+    #[track_caller]
     pub fn idx(self, value: usize) -> SegmentIdx<'scope, 'dim, 'range> {
         assert!(all(value >= *self.start, value < *self.end));
         SegmentIdx {
@@ -538,6 +548,7 @@ impl<'scope, 'dim, 'range> Segment<'scope, 'dim, 'range> {
     }
 
     #[inline]
+    #[track_caller]
     pub fn idx_inc(self, value: usize) -> SegmentIdxInc<'scope, 'dim, 'range> {
         assert!(all(value >= *self.start, value <= *self.end));
         SegmentIdxInc {

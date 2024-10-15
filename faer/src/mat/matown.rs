@@ -431,7 +431,7 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     }
 
     #[inline]
-    pub fn zeros_with_ctx(ctx: &Ctx<C, T>, nrows: Rows, ncols: Cols) -> Self
+    pub fn zeros_with(ctx: &Ctx<C, T>, nrows: Rows, ncols: Cols) -> Self
     where
         C: ComplexContainer,
         T: ComplexField<C>,

@@ -61,7 +61,7 @@ impl Default for LltParams {
 #[inline]
 pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
-    par: Parallelism,
+    par: Par,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
     temp_mat_scratch::<C, T>(dim, 1)
@@ -72,7 +72,7 @@ pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
     regularization: LltRegularization<C, T>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: LltParams,
 ) -> Result<LltInfo, LltError> {

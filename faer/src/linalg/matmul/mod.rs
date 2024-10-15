@@ -5,12 +5,14 @@ use crate::{
     mat::{MatMutGeneric, MatRefGeneric},
     row::RowRefGeneric,
     utils::{bound::Dim, simd::SimdCtx},
-    Conj, ContiguousFwd, Parallelism, Shape, Stride,
+    Conj, ContiguousFwd, Par, Shape, Stride,
 };
 use dyn_stack::{DynStack, GlobalMemBuffer};
 use equator::assert;
 use faer_macros::math;
-use faer_traits::{help, help2, ComplexContainer, ComplexField, ConjUnit, Container, Ctx, Unit};
+use faer_traits::{
+    help, help2, ByRef, ComplexContainer, ComplexField, ConjUnit, Container, Ctx, Unit,
+};
 use generativity::make_guard;
 use pulp::Simd;
 use reborrow::*;
@@ -257,23 +259,23 @@ mod matvec_rowmajor {
     pub fn matvec<'M, 'K, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         dst: ColMutGeneric<'_, C, T, Dim<'M>>,
-        beta: Option<C::Of<&T>>,
+        beta: Accum,
         lhs: MatRefGeneric<'_, C, T, Dim<'M>, Dim<'K>, isize, ContiguousFwd>,
         conj_lhs: Conj,
         rhs: ColRefGeneric<'_, C, T, Dim<'K>, ContiguousFwd>,
         conj_rhs: Conj,
         alpha: C::Of<&T>,
-        par: Parallelism,
+        par: Par,
     ) {
         help!(C);
         core::assert!(const { T::SIMD_CAPABILITIES.is_simd() });
 
         match par {
-            Parallelism::None => {
+            Par::Seq => {
                 pub struct Impl<'a, 'M, 'K, C: ComplexContainer, T: ComplexField<C>> {
                     ctx: &'a Ctx<C, T>,
                     dst: ColMutGeneric<'a, C, T, Dim<'M>>,
-                    beta: Option<C::Of<&'a T>>,
+                    beta: Accum,
                     lhs: MatRefGeneric<'a, C, T, Dim<'M>, Dim<'K>, isize, ContiguousFwd>,
                     conj_lhs: Conj,
                     rhs: ColRefGeneric<'a, C, T, Dim<'K>, ContiguousFwd>,
@@ -317,9 +319,9 @@ mod matvec_rowmajor {
                             if conj_rhs == Conj::Yes {
                                 tmp = math.conj(tmp);
                             }
-                            tmp = math.mul(rb!(alpha), tmp);
-                            if let Some(beta) = &beta {
-                                tmp = math(rb!(beta) * rb!(dst) + tmp);
+                            tmp = math.mul(alpha, tmp);
+                            if let Accum::Add = beta {
+                                tmp = math(dst + tmp);
                             }
                             write1!(dst, tmp);
                         }
@@ -329,7 +331,7 @@ mod matvec_rowmajor {
                 T::Arch::default().dispatch(Impl {
                     ctx,
                     dst,
-                    beta: beta.as_ref().map(|beta| rb!(beta)),
+                    beta,
                     lhs,
                     conj_lhs,
                     rhs,
@@ -338,10 +340,9 @@ mod matvec_rowmajor {
                 });
             }
             #[cfg(feature = "rayon")]
-            Parallelism::Rayon(nthreads) => {
+            Par::Rayon(nthreads) => {
                 let nthreads = nthreads.get();
                 let alpha = sync!(alpha);
-                let beta = beta.map(|beta| sync!(beta));
 
                 use rayon::prelude::*;
                 dst.par_partition_mut(nthreads)
@@ -355,13 +356,13 @@ mod matvec_rowmajor {
                         matvec(
                             ctx,
                             dst,
-                            beta.map(|beta| unsync!(beta)),
+                            beta,
                             lhs,
                             conj_lhs,
                             rhs,
                             conj_rhs,
                             unsync!(alpha),
-                            Parallelism::None,
+                            Par::Seq,
                         );
                     })
             }
@@ -381,23 +382,23 @@ mod matvec_colmajor {
     pub fn matvec<'M, 'K, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         dst: ColMutGeneric<'_, C, T, Dim<'M>, ContiguousFwd>,
-        beta: Option<C::Of<&T>>,
+        beta: Accum,
         lhs: MatRefGeneric<'_, C, T, Dim<'M>, Dim<'K>, ContiguousFwd, isize>,
         conj_lhs: Conj,
         rhs: ColRefGeneric<'_, C, T, Dim<'K>>,
         conj_rhs: Conj,
         alpha: C::Of<&T>,
-        par: Parallelism,
+        par: Par,
     ) {
         help!(C);
         core::assert!(const { T::SIMD_CAPABILITIES.is_simd() });
 
         match par {
-            Parallelism::None => {
+            Par::Seq => {
                 pub struct Impl<'a, 'M, 'K, C: ComplexContainer, T: ComplexField<C>> {
                     ctx: &'a Ctx<C, T>,
                     dst: ColMutGeneric<'a, C, T, Dim<'M>, ContiguousFwd>,
-                    beta: Option<C::Of<&'a T>>,
+                    beta: Accum,
                     lhs: MatRefGeneric<'a, C, T, Dim<'M>, Dim<'K>, ContiguousFwd, isize>,
                     conj_lhs: Conj,
                     rhs: ColRefGeneric<'a, C, T, Dim<'K>>,
@@ -432,26 +433,8 @@ mod matvec_colmajor {
 
                         let mut dst = dst;
                         match beta {
-                            Some(beta) => {
-                                let mut dst = dst.rb_mut();
-                                if !math(beta == one()) {
-                                    let beta = simd.splat(beta);
-
-                                    if let Some(i) = head {
-                                        let y = simd.read(dst.rb(), i);
-                                        simd.write(dst.rb_mut(), i, simd.mul(beta, y));
-                                    }
-                                    for i in body.clone() {
-                                        let y = simd.read(dst.rb(), i);
-                                        simd.write(dst.rb_mut(), i, simd.mul(beta, y));
-                                    }
-                                    if let Some(i) = tail {
-                                        let y = simd.read(dst.rb(), i);
-                                        simd.write(dst.rb_mut(), i, simd.mul(beta, y));
-                                    }
-                                }
-                            }
-                            None => {
+                            Accum::Add => {}
+                            Accum::Replace => {
                                 let mut dst = dst.rb_mut();
                                 if let Some(i) = head {
                                     simd.write(dst.rb_mut(), i, simd.zero());
@@ -521,12 +504,12 @@ mod matvec_colmajor {
                     conj_lhs,
                     rhs,
                     conj_rhs,
-                    beta: beta.as_ref().map(|beta| rb!(beta)),
+                    beta,
                     alpha: rb!(alpha),
                 })
             }
             #[cfg(feature = "rayon")]
-            Parallelism::Rayon(nthreads) => {
+            Par::Rayon(nthreads) => {
                 use rayon::prelude::*;
                 let nthreads = nthreads.get();
                 let mut mem = GlobalMemBuffer::new(
@@ -558,13 +541,13 @@ mod matvec_colmajor {
                         matvec(
                             ctx,
                             dst,
-                            None,
+                            Accum::Replace,
                             lhs,
                             conj_lhs,
                             rhs,
                             conj_rhs,
                             alpha,
-                            Parallelism::None,
+                            Par::Seq,
                         );
                     });
 
@@ -577,7 +560,7 @@ mod matvec_colmajor {
                     rhs.subrows(z, Z),
                     conj_rhs,
                     math.id(math.zero()),
-                    Parallelism::None,
+                    Par::Seq,
                 );
                 for j in 0..nthreads {
                     zipped!(dst.rb_mut(), tmp.rb().col(j))
@@ -592,13 +575,13 @@ mod matvec_colmajor {
 fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'M>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, C, T, Dim<'M>, Dim<'K>>,
     conj_lhs: Conj,
     rhs: MatRefGeneric<'_, C, T, Dim<'K>, Dim<'N>>,
     conj_rhs: Conj,
     alpha: C::Of<&T>,
-    par: Parallelism,
+    par: Par,
 ) {
     help!(C);
     let mut dst = dst;
@@ -707,7 +690,6 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
                         MatRefGeneric<'_, Unit, $ty, Dim<'K>, Dim<'N>>,
                     >(&rhs);
                     let alpha = core::mem::transmute_copy::<C::Of<&T>, &$ty>(&alpha);
-                    let beta = core::mem::transmute_copy::<Option<C::Of<&T>>, Option<&$ty>>(&beta);
 
                     gemm::gemm(
                         M.unbound(),
@@ -716,24 +698,25 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
                         dst.as_ptr_mut(),
                         dst.col_stride(),
                         dst.row_stride(),
-                        beta.is_some(),
+                        beta != Accum::Replace,
                         lhs.as_ptr(),
                         lhs.col_stride(),
                         lhs.row_stride(),
                         rhs.as_ptr(),
                         rhs.col_stride(),
                         rhs.row_stride(),
-                        beta.copied().unwrap_or(core::mem::zeroed()),
+                        match beta {
+                            Accum::Replace => core::mem::zeroed(),
+                            Accum::Add => 1.0.into(),
+                        },
                         *alpha,
                         false,
                         conj_lhs == Conj::Yes,
                         conj_rhs == Conj::Yes,
                         match par {
-                            Parallelism::None => gemm::Parallelism::None,
+                            Par::Seq => gemm::Parallelism::None,
                             #[cfg(feature = "rayon")]
-                            Parallelism::Rayon(nthreads) => {
-                                gemm::Parallelism::Rayon(nthreads.get())
-                            }
+                            Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
                         },
                     )
                 };
@@ -756,25 +739,24 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     }
 
     match par {
-        Parallelism::None => {
+        Par::Seq => {
             for j in dst.ncols().indices() {
                 for i in dst.nrows().indices() {
                     let mut dst = dst.rb_mut().at_mut(i, j);
                     let alpha = rb!(alpha);
-                    let beta = beta.as_ref().map(|beta| rb!(beta));
 
                     let mut acc =
                         dot::inner_prod_schoolbook(ctx, lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
                     acc = math(alpha * acc);
-                    if let Some(beta) = &beta {
-                        acc = math(beta * rb!(dst) + acc);
+                    if let Accum::Add = beta {
+                        acc = math(dst + acc);
                     }
                     write1!(dst, acc);
                 }
             }
         }
         #[cfg(feature = "rayon")]
-        Parallelism::Rayon(nthreads) => {
+        Par::Rayon(nthreads) => {
             use rayon::prelude::*;
             let nthreads = nthreads.get();
 
@@ -784,14 +766,12 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
             let task_per_thread = task_count.div_ceil(nthreads);
 
             let alpha = sync!(alpha);
-            let beta = beta.map(|beta| sync!(beta));
 
             let dst = dst.rb();
             (0..nthreads).into_par_iter().for_each(|tid| {
                 let task_idx = tid * task_per_thread;
                 let ntasks = Ord::min(task_per_thread, task_count - task_idx);
                 let alpha = unsync!(alpha);
-                let beta = beta.map(|beta| unsync!(beta));
 
                 for ij in 0..ntasks {
                     let ij = task_idx + ij;
@@ -804,8 +784,8 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
                         dot::inner_prod_schoolbook(ctx, lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
                     acc = math(alpha * acc);
 
-                    if let Some(beta) = &beta {
-                        acc = math(beta * rb!(dst) + acc);
+                    if let Accum::Add = beta {
+                        acc = math(dst + acc);
                     }
                     write1!(dst, acc);
                 }
@@ -845,11 +825,11 @@ pub fn matmul<
 >(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, M, N, impl Stride, impl Stride>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, LhsC, LhsT, M, K, impl Stride, impl Stride>,
     rhs: MatRefGeneric<'_, RhsC, RhsT, K, N, impl Stride, impl Stride>,
-    alpha: C::Of<&T>,
-    par: Parallelism,
+    alpha: C::Of<impl ByRef<T>>,
+    par: Par,
 ) {
     precondition(
         dst.nrows(),
@@ -867,6 +847,7 @@ pub fn matmul<
     let N = dst.ncols().bind(N);
     let K = lhs.ncols().bind(K);
 
+    help!(C);
     matmul_imp(
         ctx,
         dst.as_dyn_stride_mut().as_shape_mut(M, N),
@@ -875,7 +856,7 @@ pub fn matmul<
         const { Conj::get::<LhsC, LhsT>() },
         rhs.as_dyn_stride().canonical().as_shape(K, N),
         const { Conj::get::<RhsC, RhsT>() },
-        alpha,
+        by_ref!(alpha),
         par,
     );
 }
@@ -885,13 +866,13 @@ pub fn matmul<
 pub fn matmul_with_conj<C: ComplexContainer, T: ComplexField<C>, M: Shape, N: Shape, K: Shape>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, M, N, impl Stride, impl Stride>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, C, T, M, K, impl Stride, impl Stride>,
     conj_lhs: Conj,
     rhs: MatRefGeneric<'_, C, T, K, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
-    alpha: C::Of<&T>,
-    par: Parallelism,
+    alpha: C::Of<impl ByRef<T>>,
+    par: Par,
 ) {
     precondition(
         dst.nrows(),
@@ -909,6 +890,7 @@ pub fn matmul_with_conj<C: ComplexContainer, T: ComplexField<C>, M: Shape, N: Sh
     let N = dst.ncols().bind(N);
     let K = lhs.ncols().bind(K);
 
+    help!(C);
     matmul_imp(
         ctx,
         dst.as_dyn_stride_mut().as_shape_mut(M, N),
@@ -917,7 +899,7 @@ pub fn matmul_with_conj<C: ComplexContainer, T: ComplexField<C>, M: Shape, N: Sh
         conj_lhs,
         rhs.as_dyn_stride().canonical().as_shape(K, N),
         conj_rhs,
-        alpha,
+        by_ref!(alpha),
         par,
     );
 }
@@ -947,31 +929,23 @@ mod tests {
             return;
         }
 
-        let alphas = [
-            None,
-            Some(c32::ONE),
-            Some(c32::ZERO),
-            Some(c32::new(214.0231, 0.4321)),
-        ];
+        let betas = [Accum::Replace, Accum::Add];
 
         #[cfg(not(miri))]
         let bools = [false, true];
         #[cfg(not(miri))]
-        let betas = [c32::ONE, c32::ZERO, c32::new(21.04, -12.13)];
+        let alphas = [c32::ONE, c32::ZERO, c32::new(21.04, -12.13)];
         #[cfg(not(miri))]
-        let par = [
-            Parallelism::None,
-            Parallelism::Rayon(NonZeroUsize::new(4).unwrap()),
-        ];
+        let par = [Par::Seq, Par::Rayon(NonZeroUsize::new(4).unwrap())];
         #[cfg(not(miri))]
         let conjs = [Conj::Yes, Conj::No];
 
         #[cfg(miri)]
         let bools = [true];
         #[cfg(miri)]
-        let betas = [c32::new(0.3218, -1.217489)];
+        let alphas = [c32::new(0.3218, -1.217489)];
         #[cfg(miri)]
-        let par = [Parallelism::None];
+        let par = [Par::Seq];
         #[cfg(miri)]
         let conjs = [Conj::Yes];
 
@@ -1057,8 +1031,8 @@ mod tests {
                                                 for conj_a in conjs {
                                                     for conj_b in conjs {
                                                         for parallelism in par {
-                                                            for alpha in alphas {
-                                                                for beta in betas {
+                                                            for beta in betas {
+                                                                for alpha in alphas {
                                                                     test_matmul_impl(
                                                                         reverse_acc_cols,
                                                                         reverse_acc_rows,
@@ -1068,8 +1042,8 @@ mod tests {
                                                                         conj_a,
                                                                         conj_b,
                                                                         parallelism,
-                                                                        alpha,
                                                                         beta,
+                                                                        alpha,
                                                                         acc_init.as_mut(),
                                                                         a,
                                                                         b,
@@ -1098,8 +1072,8 @@ mod tests {
         conj_a: Conj,
         b: MatRef<'_, T>,
         conj_b: Conj,
-        alpha: Option<T>,
-        beta: T,
+        beta: Accum,
+        alpha: T,
     ) {
         let m = acc.nrows();
         let n = acc.ncols();
@@ -1130,9 +1104,9 @@ mod tests {
                         )),
                 )
             }
-            match alpha {
-                Some(alpha) => *acc.write(0, 0) = math(acc[(0, 0)] * alpha + local_acc * beta),
-                None => *acc.write(0, 0) = math(local_acc * beta),
+            match beta {
+                Accum::Add => *acc.write(0, 0) = math(acc[(0, 0)] + local_acc * alpha),
+                Accum::Replace => *acc.write(0, 0) = math(local_acc * alpha),
             }
         };
 
@@ -1150,9 +1124,9 @@ mod tests {
         n: usize,
         conj_a: Conj,
         conj_b: Conj,
-        parallelism: Parallelism,
-        alpha: Option<c32>,
-        beta: c32,
+        parallelism: Par,
+        beta: Accum,
+        alpha: c32,
         acc_init: MatMut<c32>,
         a: MatRef<c32>,
         b: MatRef<c32>,
@@ -1179,15 +1153,15 @@ mod tests {
         matmul_with_conj(
             &Default::default(),
             acc.rb_mut(),
-            alpha.as_ref(),
+            beta,
             a,
             conj_a,
             b,
             conj_b,
-            &beta,
+            &alpha,
             parallelism,
         );
-        matmul_with_conj_fallback(target.as_mut(), a, conj_a, b, conj_b, alpha, beta);
+        matmul_with_conj_fallback(target.as_mut(), a, conj_a, b, conj_b, beta, alpha);
         let ctx = &Ctx::<Unit, c32>(Default::default());
 
         for j in 0..n {
@@ -1261,12 +1235,12 @@ mod tests {
         let lhs = generate_structured_matrix(false, m, k, lhs_structure);
         let rhs = generate_structured_matrix(false, k, n, rhs_structure);
 
-        for parallelism in [Parallelism::None, Parallelism::rayon(8)] {
+        for parallelism in [Par::Seq, Par::rayon(8)] {
             triangular::matmul_with_conj(
                 &Default::default(),
                 dst.as_mut(),
                 dst_structure,
-                None,
+                Accum::Replace,
                 lhs.as_ref(),
                 lhs_structure,
                 Conj::No,
@@ -1280,7 +1254,7 @@ mod tests {
             matmul_with_conj(
                 &Default::default(),
                 dst_target.as_mut(),
-                None,
+                Accum::Replace,
                 lhs.as_ref(),
                 Conj::No,
                 rhs.as_ref(),

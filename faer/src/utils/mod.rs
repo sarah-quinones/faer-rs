@@ -9,24 +9,24 @@ pub mod thread {
     /// between the two.
     #[inline]
     pub fn join_raw(
-        op_a: impl Send + FnOnce(Parallelism),
-        op_b: impl Send + FnOnce(Parallelism),
-        parallelism: Parallelism,
+        op_a: impl Send + FnOnce(Par),
+        op_b: impl Send + FnOnce(Par),
+        parallelism: Par,
     ) {
         fn implementation(
-            op_a: &mut (dyn Send + FnMut(Parallelism)),
-            op_b: &mut (dyn Send + FnMut(Parallelism)),
-            parallelism: Parallelism,
+            op_a: &mut (dyn Send + FnMut(Par)),
+            op_b: &mut (dyn Send + FnMut(Par)),
+            parallelism: Par,
         ) {
             match parallelism {
-                Parallelism::None => (op_a(parallelism), op_b(parallelism)),
+                Par::Seq => (op_a(parallelism), op_b(parallelism)),
                 #[cfg(feature = "rayon")]
-                Parallelism::Rayon(n_threads) => {
+                Par::Rayon(n_threads) => {
                     let n_threads = n_threads.get();
                     if n_threads == 1 {
-                        (op_a(Parallelism::None), op_b(Parallelism::None))
+                        (op_a(Par::Seq), op_b(Par::Seq))
                     } else {
-                        let parallelism = Parallelism::Rayon(
+                        let parallelism = Par::Rayon(
                             core::num::NonZero::new(n_threads - n_threads / 2).unwrap(),
                         );
                         rayon::join(|| op_a(parallelism), || op_b(parallelism))
@@ -57,11 +57,11 @@ pub mod thread {
 
     /// The amount of threads that should ideally execute an operation with the given parallelism.
     #[inline]
-    pub fn parallelism_degree(parallelism: Parallelism) -> usize {
+    pub fn parallelism_degree(parallelism: Par) -> usize {
         match parallelism {
-            Parallelism::None => 1,
+            Par::Seq => 1,
             #[cfg(feature = "rayon")]
-            Parallelism::Rayon(n_threads) => n_threads.get(),
+            Par::Rayon(n_threads) => n_threads.get(),
         }
     }
 

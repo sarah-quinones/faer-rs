@@ -55,7 +55,7 @@ fn invert_lower_triangular_impl<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
     src: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) {
     // m must be equal to n
     let N = dst.ncols();
@@ -82,7 +82,7 @@ fn invert_lower_triangular_impl<'N, C: ComplexContainer, T: ComplexField<C>>(
         ctx,
         dst_bl.rb_mut(),
         BlockStructure::Rectangular,
-        None,
+        Accum::Replace,
         src_bl,
         BlockStructure::Rectangular,
         dst_tl.rb(),
@@ -98,7 +98,7 @@ fn invert_unit_lower_triangular_impl<'N, C: ComplexContainer, T: ComplexField<C>
     ctx: &Ctx<C, T>,
     dst: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
     src: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) {
     // m must be equal to n
     let N = dst.ncols();
@@ -125,7 +125,7 @@ fn invert_unit_lower_triangular_impl<'N, C: ComplexContainer, T: ComplexField<C>
         ctx,
         dst_bl.rb_mut(),
         BlockStructure::Rectangular,
-        None,
+        Accum::Replace,
         src_bl,
         BlockStructure::Rectangular,
         dst_tl.rb(),
@@ -152,7 +152,7 @@ pub fn invert_unit_lower_triangular<C: ComplexContainer, T: ComplexField<C>, N: 
     ctx: &Ctx<C, T>,
     dst: MatMut<'_, C, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) {
     Assert!(all(
         dst.nrows() == src.nrows(),
@@ -181,7 +181,7 @@ pub fn invert_lower_triangular<C: ComplexContainer, T: ComplexField<C>, N: Shape
     ctx: &Ctx<C, T>,
     dst: MatMut<'_, C, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) {
     Assert!(all(
         dst.nrows() == src.nrows(),
@@ -210,7 +210,7 @@ pub fn invert_unit_upper_triangular<C: ComplexContainer, T: ComplexField<C>, N: 
     ctx: &Ctx<C, T>,
     dst: MatMut<'_, C, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) {
     invert_unit_lower_triangular(
         ctx,
@@ -231,7 +231,7 @@ pub fn invert_upper_triangular<C: ComplexContainer, T: ComplexField<C>, N: Shape
     ctx: &Ctx<C, T>,
     dst: MatMut<'_, C, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
-    parallelism: Parallelism,
+    parallelism: Par,
 ) {
     invert_lower_triangular(
         ctx,
@@ -262,22 +262,22 @@ mod tests {
             .sample(rng);
             a += MatRef::from_repeated_ref(&2.0, n, n);
             let ctx = &default();
-            let mut inv = Mat::zeros_with_ctx(ctx, n, n);
+            let mut inv = Mat::zeros_with(ctx, n, n);
 
-            invert_lower_triangular(ctx, inv.as_mut(), a.as_ref(), Parallelism::rayon(0));
+            invert_lower_triangular(ctx, inv.as_mut(), a.as_ref(), Par::rayon(0));
 
-            let mut prod = Mat::zeros_with_ctx(ctx, n, n);
+            let mut prod = Mat::zeros_with(ctx, n, n);
             triangular::matmul(
                 ctx,
                 prod.as_mut(),
                 BlockStructure::Rectangular,
-                None,
+                Accum::Replace,
                 a.as_ref(),
                 BlockStructure::TriangularLower,
                 inv.as_ref(),
                 BlockStructure::TriangularLower,
                 &1.0,
-                Parallelism::rayon(0),
+                Par::rayon(0),
             );
 
             for i in 0..n {
@@ -301,22 +301,22 @@ mod tests {
             .sample(rng);
             a += MatRef::from_repeated_ref(&2.0, n, n);
             let ctx = &Default::default();
-            let mut inv = Mat::zeros_with_ctx(ctx, n, n);
+            let mut inv = Mat::zeros_with(ctx, n, n);
 
-            invert_unit_lower_triangular(ctx, inv.as_mut(), a.as_ref(), Parallelism::rayon(0));
+            invert_unit_lower_triangular(ctx, inv.as_mut(), a.as_ref(), Par::rayon(0));
 
-            let mut prod = Mat::zeros_with_ctx(ctx, n, n);
+            let mut prod = Mat::zeros_with(ctx, n, n);
             triangular::matmul(
                 ctx,
                 prod.as_mut(),
                 BlockStructure::Rectangular,
-                None,
+                Accum::Replace,
                 a.as_ref(),
                 BlockStructure::UnitTriangularLower,
                 inv.as_ref(),
                 BlockStructure::UnitTriangularLower,
                 &1.0,
-                Parallelism::rayon(0),
+                Par::rayon(0),
             );
 
             for i in 0..n {
@@ -340,22 +340,22 @@ mod tests {
             .sample(rng);
             a += MatRef::from_repeated_ref(&2.0, n, n);
             let ctx = &Default::default();
-            let mut inv = Mat::zeros_with_ctx(ctx, n, n);
+            let mut inv = Mat::zeros_with(ctx, n, n);
 
-            invert_upper_triangular(ctx, inv.as_mut(), a.as_ref(), Parallelism::rayon(0));
+            invert_upper_triangular(ctx, inv.as_mut(), a.as_ref(), Par::rayon(0));
 
-            let mut prod = Mat::zeros_with_ctx(ctx, n, n);
+            let mut prod = Mat::zeros_with(ctx, n, n);
             triangular::matmul(
                 ctx,
                 prod.as_mut(),
                 BlockStructure::Rectangular,
-                None,
+                Accum::Replace,
                 a.as_ref(),
                 BlockStructure::TriangularUpper,
                 inv.as_ref(),
                 BlockStructure::TriangularUpper,
                 &1.0,
-                Parallelism::rayon(0),
+                Par::rayon(0),
             );
 
             for i in 0..n {
@@ -380,22 +380,22 @@ mod tests {
             a += MatRef::from_repeated_ref(&2.0, n, n);
 
             let ctx = &Default::default();
-            let mut inv = Mat::zeros_with_ctx(ctx, n, n);
+            let mut inv = Mat::zeros_with(ctx, n, n);
 
-            invert_unit_upper_triangular(ctx, inv.as_mut(), a.as_ref(), Parallelism::rayon(0));
+            invert_unit_upper_triangular(ctx, inv.as_mut(), a.as_ref(), Par::rayon(0));
 
-            let mut prod = Mat::zeros_with_ctx(ctx, n, n);
+            let mut prod = Mat::zeros_with(ctx, n, n);
             triangular::matmul(
                 ctx,
                 prod.as_mut(),
                 BlockStructure::Rectangular,
-                None,
+                Accum::Replace,
                 a.as_ref(),
                 BlockStructure::UnitTriangularUpper,
                 inv.as_ref(),
                 BlockStructure::UnitTriangularUpper,
                 &1.0,
-                Parallelism::rayon(0),
+                Par::rayon(0),
             );
 
             for i in 0..n {

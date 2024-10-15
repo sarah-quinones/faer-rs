@@ -3,7 +3,7 @@ use crate::internal_prelude::*;
 pub fn solve_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
     rhs_ncols: usize,
-    par: Parallelism,
+    par: Par,
 ) -> Result<StackReq, SizeOverflow> {
     _ = (dim, rhs_ncols, par);
     Ok(StackReq::empty())
@@ -15,7 +15,7 @@ pub fn solve_in_place_with_conj<'N, 'K, C: ComplexContainer, T: ComplexField<C>>
     L: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, Dim<'N>, Dim<'K>>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     _ = stack;

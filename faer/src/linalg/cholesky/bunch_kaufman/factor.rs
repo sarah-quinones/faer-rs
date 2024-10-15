@@ -175,7 +175,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
     mut w: MatMut<'_, C, T, Dim<'N>, Dim<'NB>>,
     pivots: &mut Array<'N, I>,
     alpha: <C::Real as Container>::Of<T::RealUnit>,
-    par: Parallelism,
+    par: Par,
 ) -> (usize, usize, usize) {
     let N = a.nrows();
     let NB = w.ncols();
@@ -220,7 +220,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
         crate::linalg::matmul::matmul(
             ctx,
             w_col.as_mat_mut(),
-            Some(as_ref!(math.one())),
+            Accum::Add,
             a.rb().submatrix_range((k0, N), (zero(), k0)),
             w_row.rb().transpose().as_mat(),
             as_ref!(math(-one())),
@@ -278,7 +278,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 crate::linalg::matmul::matmul(
                     ctx,
                     w_col.as_mat_mut(),
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     a.rb().submatrix_range((k0, N), (zero(), k0)),
                     w_row.rb().transpose().as_mat(),
                     as_ref!(math(-one())),
@@ -491,7 +491,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
         ctx,
         a_right.rb_mut(),
         BlockStructure::TriangularLower,
-        Some(as_ref!(math.one())),
+        Accum::Add,
         a_left.rb(),
         BlockStructure::Rectangular,
         w.rb().submatrix_range((k0, N), (zero(), j0)).transpose(),
@@ -567,7 +567,7 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
     let mut k = 0;
     while let Some(k0) = N.try_check(k) {
         ghost_tree!(FULL(AFTER_K), {
-            let (_, list![after_k], _) = N.split(list![k0.to_incl()..], FULL);
+            let (l![after_k], _) = N.split(l![k0.to_incl()..], FULL);
             let k0_ = after_k.idx(*k0);
 
             let mut k_step = 1;
@@ -606,9 +606,9 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                             let imax_global = imax.unwrap();
                             let imax = imax_global.local();
 
-                            let (_, list![k_imax], _) =
-                                N.split(list![k0.to_incl()..imax.to_incl()], AFTER_K0);
-                            let (_, list![imax_end], _) = N.split(list![imax.next()..], AFTER_K1);
+                            let (l![k_imax], _) =
+                                N.split(l![k0.to_incl()..imax.to_incl()], AFTER_K0);
+                            let (l![imax_end], _) = N.split(l![imax.next()..], AFTER_K1);
 
                             let rowmax = math.max(
                                 best_score(ctx, a.rb().row(imax).col_segment(k_imax).transpose()),
@@ -839,7 +839,7 @@ fn convert<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
 /// decomposition with Bunch-Kaufman pivoting.
 pub fn cholesky_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
-    par: Parallelism,
+    par: Par,
     params: BunchKaufmanParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = par;
@@ -881,7 +881,7 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
     regularization: BunchKaufmanRegularization<'_, C, T>,
     perm: &'out mut [I],
     perm_inv: &'out mut [I],
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: BunchKaufmanParams,
 ) -> (BunchKaufmanInfo, PermRef<'out, I>) {

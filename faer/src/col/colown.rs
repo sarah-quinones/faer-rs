@@ -21,13 +21,13 @@ impl<C: Container, T, Rows: Shape> Col<C, T, Rows> {
     }
 
     #[inline]
-    pub fn zeros_with_ctx(ctx: &Ctx<C, T>, nrows: Rows) -> Self
+    pub fn zeros_with(ctx: &Ctx<C, T>, nrows: Rows) -> Self
     where
         C: ComplexContainer,
         T: ComplexField<C>,
     {
         Self {
-            column: Mat::zeros_with_ctx(ctx, nrows, 1),
+            column: Mat::zeros_with(ctx, nrows, 1),
         }
     }
 

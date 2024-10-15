@@ -408,6 +408,12 @@ pub enum Conj {
     Yes,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Accum {
+    Replace,
+    Add,
+}
+
 impl Conj {
     #[inline]
     pub const fn compose(self, other: Self) -> Self {
@@ -460,13 +466,13 @@ impl Conj {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Parallelism {
-    None,
+pub enum Par {
+    Seq,
     #[cfg(feature = "rayon")]
     Rayon(NonZero<usize>),
 }
 
-impl Parallelism {
+impl Par {
     #[inline]
     #[cfg(feature = "rayon")]
     pub fn rayon(nthreads: usize) -> Self {
@@ -496,7 +502,7 @@ pub use row::{Row, RowGeneric, RowMut, RowMutGeneric, RowRef, RowRefGeneric};
 mod internal_prelude {
     pub use crate::{
         prelude::{ctx, default},
-        variadics::{list, pat_list, List},
+        variadics::{l, L},
     };
 
     pub use crate::{
@@ -514,8 +520,11 @@ mod internal_prelude {
     };
 
     pub use crate::{
-        unzipped, zipped, Conj, ContiguousBwd, ContiguousFwd, Parallelism, Shape, Stride, Unbind,
+        unzipped, zipped, Accum, Conj, ContiguousBwd, ContiguousFwd, Par, Shape, Stride, Unbind,
     };
+
+    pub use unzipped as uz;
+    pub use zipped as z;
 
     pub use crate::utils::{
         bound::{zero, Array, Dim, Idx, IdxInc, MaybeIdx},
@@ -559,6 +568,7 @@ pub mod prelude {
 
 pub struct ScaleGeneric<C: Container, T>(pub C::Of<T>);
 pub type Scale<T> = ScaleGeneric<Unit, T>;
+
 #[inline]
 pub fn scale<T>(value: T) -> Scale<T> {
     ScaleGeneric(value)
@@ -586,11 +596,11 @@ pub fn disable_global_parallelism() {
 }
 
 /// Sets the global parallelism settings.
-pub fn set_global_parallelism(parallelism: Parallelism) {
+pub fn set_global_parallelism(parallelism: Par) {
     let value = match parallelism {
-        Parallelism::None => 1,
+        Par::Seq => 1,
         #[cfg(feature = "rayon")]
-        Parallelism::Rayon(n) => n.get().saturating_add(2),
+        Par::Rayon(n) => n.get().saturating_add(2),
     };
     GLOBAL_PARALLELISM.store(value, core::sync::atomic::Ordering::Relaxed);
 }
@@ -600,13 +610,13 @@ pub fn set_global_parallelism(parallelism: Parallelism) {
 /// # Panics
 /// Panics if global parallelism is disabled.
 #[track_caller]
-pub fn get_global_parallelism() -> Parallelism {
+pub fn get_global_parallelism() -> Par {
     let value = GLOBAL_PARALLELISM.load(core::sync::atomic::Ordering::Relaxed);
     match value {
         0 => panic!("Global parallelism is disabled."),
-        1 => Parallelism::None,
+        1 => Par::Seq,
         #[cfg(feature = "rayon")]
-        n => Parallelism::rayon(n - 2),
+        n => Par::rayon(n - 2),
         #[cfg(not(feature = "rayon"))]
         _ => unreachable!(),
     }

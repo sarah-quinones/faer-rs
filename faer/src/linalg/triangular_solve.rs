@@ -1,15 +1,6 @@
 //! Triangular solve module.
 
-use crate::{
-    assert, debug_assert,
-    mat::{MatMutGeneric as MatMut, MatRefGeneric as MatRef},
-    unzipped,
-    utils::{
-        bound::{Dim, IdxInc},
-        thread::join_raw,
-    },
-    zipped, ComplexField, Conj, Parallelism, Shape, Stride,
-};
+use crate::{assert, debug_assert, internal_prelude::*, utils::thread::join_raw};
 use faer_macros::math;
 use faer_traits::{help, ComplexContainer, ConjUnit, Container, Ctx, SimdArch};
 use generativity::make_guard;
@@ -280,7 +271,7 @@ pub fn solve_lower_triangular_in_place_with_conj<
     triangular_lower: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     assert!(all(
         triangular_lower.nrows() == triangular_lower.ncols(),
@@ -314,7 +305,7 @@ pub fn solve_lower_triangular_in_place<
     ctx: &Ctx<C, T>,
     triangular_lower: MatRef<'_, LhsC, LhsT, N, N, impl Stride, impl Stride>,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     let tri = triangular_lower.canonical();
     solve_lower_triangular_in_place_with_conj(ctx, tri, Conj::get::<LhsC, LhsT>(), rhs, par)
@@ -332,7 +323,7 @@ pub fn solve_unit_lower_triangular_in_place_with_conj<
     triangular_unit_lower: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     assert!(all(
         triangular_unit_lower.nrows() == triangular_unit_lower.ncols(),
@@ -366,7 +357,7 @@ pub fn solve_unit_lower_triangular_in_place<
     ctx: &Ctx<C, T>,
     triangular_unit_lower: MatRef<'_, LhsC, LhsT, N, N, impl Stride, impl Stride>,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     let tri = triangular_unit_lower.canonical();
     solve_unit_lower_triangular_in_place_with_conj(ctx, tri, Conj::get::<LhsC, LhsT>(), rhs, par)
@@ -384,7 +375,7 @@ pub fn solve_upper_triangular_in_place_with_conj<
     triangular_upper: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     assert!(all(
         triangular_upper.nrows() == triangular_upper.ncols(),
@@ -418,7 +409,7 @@ pub fn solve_upper_triangular_in_place<
     ctx: &Ctx<C, T>,
     triangular_upper: MatRef<'_, LhsC, LhsT, N, N, impl Stride, impl Stride>,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     let tri = triangular_upper.canonical();
     solve_upper_triangular_in_place_with_conj(ctx, tri, Conj::get::<LhsC, LhsT>(), rhs, par)
@@ -436,7 +427,7 @@ pub fn solve_unit_upper_triangular_in_place_with_conj<
     triangular_unit_upper: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     assert!(all(
         triangular_unit_upper.nrows() == triangular_unit_upper.ncols(),
@@ -470,7 +461,7 @@ pub fn solve_unit_upper_triangular_in_place<
     ctx: &Ctx<C, T>,
     triangular_unit_upper: MatRef<'_, LhsC, LhsT, N, N, impl Stride, impl Stride>,
     rhs: MatMut<'_, C, T, N, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
 ) {
     let tri = triangular_unit_upper.canonical();
     solve_unit_upper_triangular_in_place_with_conj(ctx, tri, Conj::get::<LhsC, LhsT>(), rhs, par)
@@ -487,7 +478,7 @@ fn solve_unit_lower_triangular_in_place_unchecked<
     tril: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, Dim<'N>, Dim<'K>>,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = tril.nrows();
     let K = rhs.ncols();
@@ -557,7 +548,7 @@ fn solve_unit_lower_triangular_in_place_unchecked<
     crate::linalg::matmul::matmul_with_conj(
         ctx,
         rhs_bot.rb_mut(),
-        Some(as_ref!(math.one())),
+        Accum::Add,
         tril_bot_left,
         conj_lhs,
         rhs_top.into_const(),
@@ -575,7 +566,7 @@ fn solve_lower_triangular_in_place_unchecked<'N, 'K, C: ComplexContainer, T: Com
     tril: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, Dim<'N>, Dim<'K>>,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = tril.nrows();
     let K = rhs.ncols();
@@ -639,7 +630,7 @@ fn solve_lower_triangular_in_place_unchecked<'N, 'K, C: ComplexContainer, T: Com
     crate::linalg::matmul::matmul_with_conj(
         ctx,
         rhs_bot.rb_mut(),
-        Some(as_ref!(math.one())),
+        Accum::Add,
         tril_bot_left,
         conj_lhs,
         rhs_top.into_const(),
@@ -662,7 +653,7 @@ fn solve_unit_upper_triangular_in_place_unchecked<
     triu: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, Dim<'N>, Dim<'K>>,
-    par: Parallelism,
+    par: Par,
 ) {
     solve_unit_lower_triangular_in_place_unchecked(
         ctx,
@@ -679,7 +670,7 @@ fn solve_upper_triangular_in_place_unchecked<'N, 'K, C: ComplexContainer, T: Com
     triu: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
     conj_lhs: Conj,
     rhs: MatMut<'_, C, T, Dim<'N>, Dim<'K>>,
-    par: Parallelism,
+    par: Par,
 ) {
     solve_lower_triangular_in_place_unchecked(
         ctx,

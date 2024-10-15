@@ -274,7 +274,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
     H: RowMut<'_, C, T, Dim<'H>>,
     col_perm: &'out mut Array<'N, I>,
     col_perm_inv: &'out mut Array<'N, I>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: ColPivQrParams,
 ) -> (ColPivQrInfo, PermRef<'out, I, Dim<'N>>) {
@@ -323,17 +323,17 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
             }
 
             ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-                let (_, rows @ list![top, _], disjoint_rows) =
-                    m.split(list![..ki.next(), ..], ROWS);
-                let (_, cols @ list![left, right], disjoint_cols) =
-                    n.split(list![..kj.next(), ..], COLS);
+                let (rows @ l![top, _], (disjoint_rows, ..)) =
+                    m.split(l![..ki.next(), ..], ROWS);
+                let (cols @ l![left, right], (disjoint_cols, ..)) =
+                    n.split(l![..kj.next(), ..], COLS);
 
                 let ki = top.idx(*ki);
                 let kj = left.idx(*kj);
 
-                let list![A0, A1] = A.rb_mut().row_segments_mut(rows, disjoint_rows);
-                let list![A00, A01] = A0.col_segments_mut(cols, disjoint_cols);
-                let list![A10, mut A11] = A1.col_segments_mut(cols, disjoint_cols);
+                let l![A0, A1] = A.rb_mut().row_segments_mut(rows, disjoint_rows);
+                let l![A00, A01] = A0.col_segments_mut(cols, disjoint_cols);
+                let l![A10, mut A11] = A1.col_segments_mut(cols, disjoint_cols);
 
                 let mut A00 = A00.at_mut(top.local(ki), left.local(kj));
                 let mut A01 = A01.row_mut(top.local(ki));
@@ -357,12 +357,12 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                 }
 
                 if (*m - *ki.next()) * (*n - *kj.next()) < params.par_threshold {
-                    par = Parallelism::None;
+                    par = Par::Seq;
                 }
 
                 let best_right;
                 (best_right, _) = match par {
-                    Parallelism::None => update_mat_and_best_norm2(
+                    Par::Seq => update_mat_and_best_norm2(
                         ctx,
                         A11.rb_mut(),
                         A10.rb(),
@@ -370,7 +370,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                         tau_inv,
                         m.next_power_of_two() - *ki.next(),
                     ),
-                    Parallelism::Rayon(nthreads) => {
+                    Par::Rayon(nthreads) => {
                         use rayon::prelude::*;
                         let nthreads = nthreads.get();
 
@@ -444,7 +444,7 @@ pub fn qr_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
-    parallelism: Parallelism,
+    parallelism: Par,
     params: ColPivQrParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = nrows;
@@ -471,7 +471,7 @@ pub fn qr_in_place<'out, 'M, 'N, 'B, 'H, I: Index, C: ComplexContainer, T: Compl
     H: MatMut<'_, C, T, Dim<'B>, Dim<'H>>,
     col_perm: &'out mut Array<'N, I>,
     col_perm_inv: &'out mut Array<'N, I>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: ColPivQrParams,
 ) -> (ColPivQrInfo, PermRef<'out, I, Dim<'N>>) {
@@ -538,7 +538,7 @@ mod tests {
     fn test_unblocked_qr() {
         let rng = &mut StdRng::seed_from_u64(0);
 
-        for par in [Parallelism::None, Parallelism::rayon(8)] {
+        for par in [Par::Seq, Par::rayon(8)] {
             for n in [2, 3, 4, 8, 16, 24, 32, 128, 255] {
                 with_dim!(N, n);
                 with_dim!(B, 15);
@@ -557,7 +557,7 @@ mod tests {
                 .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
-                let mut H = Mat::zeros_with_ctx(&ctx(), B, N);
+                let mut H = Mat::zeros_with(&ctx(), B, N);
 
                 let col_perm = &mut *vec![0usize; *N];
                 let col_perm_inv = &mut *vec![0usize; *N];
@@ -585,7 +585,7 @@ mod tests {
                 )
                 .1;
 
-                let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), N, N);
+                let mut Q = Mat::<c64, _, _>::zeros_with(&ctx(), N, N);
                 let mut R = QR.as_ref().cloned();
 
                 for j in N.indices() {
@@ -598,7 +598,7 @@ mod tests {
                     H.as_ref(),
                     Conj::No,
                     Q.as_mut(),
-                    Parallelism::None,
+                    Par::Seq,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
                             householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, c64>(
@@ -639,7 +639,7 @@ mod tests {
                 .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
-                let mut H = Mat::zeros_with_ctx(&ctx(), B, H);
+                let mut H = Mat::zeros_with(&ctx(), B, H);
 
                 let col_perm = &mut *vec![0usize; *N];
                 let col_perm_inv = &mut *vec![0usize; *N];
@@ -667,7 +667,7 @@ mod tests {
                 )
                 .1;
 
-                let mut Q = Mat::<c64, _, _>::zeros_with_ctx(&ctx(), M, M);
+                let mut Q = Mat::<c64, _, _>::zeros_with(&ctx(), M, M);
                 let mut R = QR.as_ref().cloned();
 
                 for j in M.indices() {
@@ -680,7 +680,7 @@ mod tests {
                     H.as_ref(),
                     Conj::No,
                     Q.as_mut(),
-                    Parallelism::None,
+                    Par::Seq,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
                             householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, c64>(

@@ -71,18 +71,18 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         }
 
         ghost_tree!(FULL_ROWS(TOP, BOT), FULL_COLS(LEFT, RIGHT), {
-            let (_, rows @ list![top, bot], disjoint_rows) =
-                M.split(list![..k_row.next(), ..], FULL_ROWS);
+            let (rows @ l![top, bot], (disjoint_rows, ..)) =
+                M.split(l![..k_row.next(), ..], FULL_ROWS);
 
-            let (_, cols @ list![left, right], disjoint_cols) =
-                N.split(list![..j.next(), ..], FULL_COLS);
+            let (cols @ l![left, right], (disjoint_cols, ..)) =
+                N.split(l![..j.next(), ..], FULL_COLS);
 
             let j = left.idx(*j);
             let k_row = top.idx(*k_row);
 
-            let list![A0, mut A1] = matrix.rb_mut().row_segments_mut(rows, disjoint_rows);
-            let list![_, A01] = A0.rb().col_segments(cols);
-            let list![A10, mut A11] = A1.rb_mut().col_segments_mut(cols, disjoint_cols);
+            let l![A0, mut A1] = matrix.rb_mut().row_segments_mut(rows, disjoint_rows);
+            let l![_, A01] = A0.rb().col_segments(cols);
+            let l![A10, mut A11] = A1.rb_mut().col_segments_mut(cols, disjoint_cols);
             let A10 = A10.rb();
 
             let lhs = A10.col(left.from_global(j));
@@ -110,7 +110,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     A: MatMut<'_, C, T, Dim<'M>, Dim<'NCOLS>>,
     range: Segment<'_, 'NCOLS, 'N>,
     trans: &mut Array<'N, I>,
-    par: Parallelism,
+    par: Par,
     params: PartialPivLuParams,
 ) -> usize {
     help!(C);
@@ -135,7 +135,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     let i_next = M.advance(i, blocksize);
 
     ghost_tree!(FULL_COLS(BLOCK_COLS), {
-        let (_, list![block], _) = range.len().split(list![..j_next], FULL_COLS);
+        let (l![block], _) = range.len().split(l![..j_next], FULL_COLS);
 
         n_trans += lu_in_place_recursion(
             ctx,
@@ -148,15 +148,15 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
     });
 
     ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-        let (_, list![top, bot], disjoint_rows) = M.split(list![..i_next, ..], ROWS);
-        let (_, list![left, right], disjoint_cols) = N.split(list![..j_next, ..], COLS);
+        let (l![top, bot], (disjoint_rows, ..)) = M.split(l![..i_next, ..], ROWS);
+        let (l![left, right], (disjoint_cols, ..)) = N.split(l![..j_next, ..], COLS);
 
         {
             let mut A = A.rb_mut().col_segment_mut(range);
 
-            let list![A0, A1] = A.rb_mut().row_segments_mut(list![top, bot], disjoint_rows);
-            let list![A00, mut A01] = A0.col_segments_mut(list![left, right], disjoint_cols);
-            let list![A10, mut A11] = A1.col_segments_mut(list![left, right], disjoint_cols);
+            let l![A0, A1] = A.rb_mut().row_segments_mut(l![top, bot], disjoint_rows);
+            let l![A00, mut A01] = A0.col_segments_mut(l![left, right], disjoint_cols);
+            let l![A10, mut A11] = A1.col_segments_mut(l![left, right], disjoint_cols);
 
             let A00 = A00.rb().as_col_shape(A00.nrows());
             let A10 = A10.rb().as_col_shape(A00.nrows());
@@ -172,7 +172,7 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             linalg::matmul::matmul(
                 ctx,
                 A11.rb_mut(),
-                Some(as_ref!(math(one()))),
+                Accum::Add,
                 A10.rb(),
                 A01.rb(),
                 as_ref!(math(-one())),
@@ -208,21 +208,20 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         };
 
         ghost_tree!(COLS(BEFORE, AFTER), {
-            let (_, list![before, after], disjoint) = NCOLS.split(
-                list![..range.global(j.to_incl()).local(), range.end()..],
+            let (l![before, after], (disjoint, ..)) = NCOLS.split(
+                l![..range.global(j).local().into(), range.end().local()..],
                 COLS,
             );
 
-            let list![A_left, A_right] =
-                A.rb_mut().col_segments_mut(list![before, after], disjoint);
+            let l![A_left, A_right] = A.rb_mut().col_segments_mut(l![before, after], disjoint);
 
             match par {
-                Parallelism::None => {
+                Par::Seq => {
                     swap(A_left);
                     swap(A_right);
                 }
                 #[cfg(feature = "rayon")]
-                Parallelism::Rayon(nthreads) => {
+                Par::Rayon(nthreads) => {
                     let nthreads = nthreads.get();
                     let len = (*before.len() + *after.len()) as f64;
                     let left_threads = Ord::min(
@@ -297,7 +296,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
     matrix: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
     perm: &'out mut Array<'M, I>,
     perm_inv: &'out mut Array<'M, I>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: PartialPivLuParams,
 ) -> (PartialPivLuInfo, PermRef<'out, I, Dim<'M>>) {
@@ -319,7 +318,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
     let size = Ord::min(*N, *M);
 
     ghost_tree!(FULL_COLS(LEFT, RIGHT), {
-        let (_, list![left, right], disjoint) = N.split(list![..N.idx_inc(size), ..], FULL_COLS);
+        let (l![left, right], (disjoint, ..)) = N.split(l![..N.idx_inc(size), ..], FULL_COLS);
 
         for i in M.indices() {
             let p = &mut perm[i];
@@ -341,7 +340,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
         }
 
         if *M < *N {
-            let list![left, right] = matrix.col_segments_mut(list![left, right], disjoint);
+            let l![left, right] = matrix.col_segments_mut(l![left, right], disjoint);
             linalg::triangular_solve::solve_unit_lower_triangular_in_place(
                 ctx,
                 left.rb().as_shape(M, M),
@@ -409,7 +408,7 @@ mod tests {
                 LU.as_mut(),
                 perm,
                 perm_inv,
-                Parallelism::None,
+                Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
                     lu_in_place_scratch::<usize, Unit, f64>(*N, *N).unwrap(),
                 )),
@@ -463,7 +462,7 @@ mod tests {
                 LU.as_mut(),
                 perm,
                 perm_inv,
-                Parallelism::None,
+                Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
                     lu_in_place_scratch::<usize, Unit, f64>(*N, *N).unwrap(),
                 )),

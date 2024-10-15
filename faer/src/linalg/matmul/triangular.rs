@@ -10,23 +10,6 @@ use crate::{
     zipped,
 };
 
-macro_rules! sync_opt {
-    ($x: expr) => {
-        $x.as_ref().map(|val| sync!(copy!(*val)))
-    };
-}
-macro_rules! unsync_opt {
-    ($x: expr) => {
-        $x.map(|val| unsync!(val))
-    };
-}
-
-macro_rules! copy_opt {
-    ($x: expr) => {
-        $x.as_ref().map(|val| copy!(*val))
-    };
-}
-
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum DiagonalKind {
@@ -77,7 +60,7 @@ fn accum_lower<'N, C: ComplexContainer, T: ComplexField<C>>(
     dst: MatMutGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     src: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     skip_diag: bool,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
 ) {
     let N = dst.nrows();
     debug_assert!(N == dst.nrows());
@@ -87,22 +70,16 @@ fn accum_lower<'N, C: ComplexContainer, T: ComplexField<C>>(
     help!(C);
 
     match beta {
-        Some(alpha) => {
+        Accum::Add => {
             zipped!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |unzipped!(mut dst, src)| {
-                    let val = math(alpha * rb!(dst) + src);
-                    write1!(dst, val);
-                },
+                |unzipped!(mut dst, src)| write1!(dst, math(dst + src)),
             );
         }
-        None => {
+        Accum::Replace => {
             zipped!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |unzipped!(mut dst, src)| {
-                    let src = math(copy(src));
-                    write1!(dst, src)
-                },
+                |unzipped!(mut dst, src)| write1!(dst, math(copy(src))),
             );
         }
     }
@@ -142,14 +119,14 @@ macro_rules! stack_mat_16x16 {
 fn mat_x_lower_impl_unchecked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'M>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, C, T, Dim<'M>, Dim<'N>>,
     rhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     rhs_diag: DiagonalKind,
     alpha: C::Of<&T>,
     conj_lhs: Conj,
     conj_rhs: Conj,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = rhs.nrows();
     let M = lhs.nrows();
@@ -163,7 +140,7 @@ fn mat_x_lower_impl_unchecked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     debug_assert!(N == dst.ncols());
 
     let join_parallelism = if n * n * m < 128 * 128 * 64 {
-        Parallelism::None
+        Par::Seq
     } else {
         par
     };
@@ -205,13 +182,12 @@ fn mat_x_lower_impl_unchecked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
         {
             help!(C);
             let alpha = sync!(copy!(alpha));
-            let beta = beta.as_ref().map(|beta| sync!(copy!(*beta)));
             join_raw(
                 |par| {
                     mat_x_lower_impl_unchecked(
                         ctx,
                         dst_left.rb_mut(),
-                        beta.map(|beta| unsync!(beta)),
+                        beta,
                         lhs_left,
                         rhs_top_left,
                         rhs_diag,
@@ -225,7 +201,7 @@ fn mat_x_lower_impl_unchecked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
                     mat_x_lower_impl_unchecked(
                         ctx,
                         dst_right.rb_mut(),
-                        beta.map(|beta| unsync!(beta)),
+                        beta,
                         lhs_right,
                         rhs_bot_right,
                         rhs_diag,
@@ -242,7 +218,7 @@ fn mat_x_lower_impl_unchecked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
         super::matmul_with_conj(
             ctx,
             dst_left,
-            Some(as_ref!(math.one())),
+            Accum::Add,
             lhs_right,
             conj_lhs,
             rhs_bot_left,
@@ -257,7 +233,7 @@ fn mat_x_lower_impl_unchecked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     skip_diag: bool,
     lhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     lhs_diag: DiagonalKind,
@@ -266,7 +242,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
     alpha: C::Of<&T>,
     conj_lhs: Conj,
     conj_rhs: Conj,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = dst.nrows();
     let n = N.unbound();
@@ -291,7 +267,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
                 super::matmul_with_conj(
                     ctx,
                     temp_dst.rb_mut(),
-                    None,
+                    Accum::Replace,
                     temp_lhs.rb(),
                     conj_lhs,
                     temp_rhs.rb(),
@@ -321,7 +297,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
         lower_x_lower_into_lower_impl_unchecked(
             ctx,
             dst_top_left,
-            copy_opt!(beta),
+            beta,
             skip_diag,
             lhs_top_left,
             lhs_diag,
@@ -335,7 +311,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
         mat_x_lower_impl_unchecked(
             ctx,
             dst_bot_left.rb_mut(),
-            copy_opt!(beta),
+            beta,
             lhs_bot_left,
             rhs_top_left,
             rhs_diag,
@@ -347,7 +323,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
         mat_x_lower_impl_unchecked(
             ctx,
             dst_bot_left.reverse_rows_and_cols_mut().transpose_mut(),
-            Some(as_ref!(math.one())),
+            Accum::Add,
             rhs_bot_left.reverse_rows_and_cols().transpose(),
             lhs_bot_right.reverse_rows_and_cols().transpose(),
             lhs_diag,
@@ -359,7 +335,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
         lower_x_lower_into_lower_impl_unchecked(
             ctx,
             dst_bot_right,
-            copy_opt!(beta),
+            beta,
             skip_diag,
             lhs_bot_right,
             lhs_diag,
@@ -377,7 +353,7 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
 fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     lhs_diag: DiagonalKind,
     rhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
@@ -385,7 +361,7 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
     alpha: C::Of<&T>,
     conj_lhs: Conj,
     conj_rhs: Conj,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = dst.nrows();
     let n = N.unbound();
@@ -438,14 +414,13 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
         // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => mat |   X
 
         help!(C);
-        let beta = sync_opt!(beta);
         let alpha = sync!(alpha);
         join_raw(
             |par| {
                 super::matmul_with_conj(
                     ctx,
                     dst_top_left.rb_mut(),
-                    unsync_opt!(beta),
+                    beta,
                     lhs_top_right,
                     conj_lhs,
                     rhs_bot_left,
@@ -456,7 +431,7 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
                 upper_x_lower_impl_unchecked(
                     ctx,
                     dst_top_left,
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     lhs_top_left,
                     lhs_diag,
                     rhs_top_left,
@@ -473,7 +448,7 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
                         mat_x_lower_impl_unchecked(
                             ctx,
                             dst_top_right,
-                            unsync_opt!(beta),
+                            beta,
                             lhs_top_right,
                             rhs_bot_right,
                             rhs_diag,
@@ -487,7 +462,7 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
                         mat_x_lower_impl_unchecked(
                             ctx,
                             dst_bot_left.transpose_mut(),
-                            unsync_opt!(beta),
+                            beta,
                             rhs_bot_left.transpose(),
                             lhs_bot_right.transpose(),
                             lhs_diag,
@@ -503,7 +478,7 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
                 upper_x_lower_impl_unchecked(
                     ctx,
                     dst_bot_right,
-                    unsync_opt!(beta),
+                    beta,
                     lhs_bot_right,
                     lhs_diag,
                     rhs_bot_right,
@@ -523,7 +498,7 @@ fn upper_x_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
 fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     skip_diag: bool,
     lhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     lhs_diag: DiagonalKind,
@@ -532,7 +507,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
     alpha: C::Of<&T>,
     conj_lhs: Conj,
     conj_rhs: Conj,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = dst.nrows();
     let n = N.unbound();
@@ -557,7 +532,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
                 super::matmul_with_conj(
                     ctx,
                     temp_dst.rb_mut(),
-                    None,
+                    Accum::Replace,
                     temp_lhs.rb(),
                     conj_lhs,
                     temp_rhs.rb(),
@@ -586,7 +561,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
         // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => low |   X
 
         help!(C);
-        let beta = sync_opt!(beta);
+
         let alpha = sync!(alpha);
 
         join_raw(
@@ -594,7 +569,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
                 mat_x_mat_into_lower_impl_unchecked(
                     ctx,
                     dst_top_left.rb_mut(),
-                    unsync_opt!(beta),
+                    beta,
                     skip_diag,
                     lhs_top_right,
                     rhs_bot_left,
@@ -606,7 +581,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
                 upper_x_lower_into_lower_impl_unchecked(
                     ctx,
                     dst_top_left,
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     skip_diag,
                     lhs_top_left,
                     lhs_diag,
@@ -622,7 +597,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
                 mat_x_lower_impl_unchecked(
                     ctx,
                     dst_bot_left.transpose_mut(),
-                    unsync_opt!(beta),
+                    beta,
                     rhs_bot_left.transpose(),
                     lhs_bot_right.transpose(),
                     lhs_diag,
@@ -634,7 +609,7 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
                 upper_x_lower_into_lower_impl_unchecked(
                     ctx,
                     dst_bot_right,
-                    unsync_opt!(beta),
+                    beta,
                     skip_diag,
                     lhs_bot_right,
                     lhs_diag,
@@ -655,14 +630,14 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFi
 fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     skip_diag: bool,
     lhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'K>>,
     rhs: MatRefGeneric<'_, C, T, Dim<'K>, Dim<'N>>,
     alpha: C::Of<&T>,
     conj_lhs: Conj,
     conj_rhs: Conj,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = dst.nrows();
     let K = lhs.ncols();
@@ -674,7 +649,7 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexFi
     debug_assert!(lhs.ncols() == rhs.nrows());
 
     let par = if n * n * k < 128 * 128 * 128 {
-        Parallelism::None
+        Par::Seq
     } else {
         par
     };
@@ -688,7 +663,7 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexFi
                 super::matmul_with_conj(
                     ctx,
                     temp_dst.rb_mut(),
-                    None,
+                    Accum::Replace,
                     lhs,
                     conj_lhs,
                     rhs,
@@ -710,14 +685,14 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexFi
         let (rhs_left, rhs_right) = rhs.split_cols_with(bs);
 
         help!(C);
-        let beta = sync_opt!(beta);
+
         let alpha = sync!(alpha);
         join_raw(
             |par| {
                 super::matmul_with_conj(
                     ctx,
                     dst_bot_left,
-                    unsync_opt!(beta),
+                    beta,
                     lhs_bot,
                     conj_lhs,
                     rhs_left,
@@ -732,7 +707,7 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexFi
                         mat_x_mat_into_lower_impl_unchecked(
                             ctx,
                             dst_top_left,
-                            unsync_opt!(beta),
+                            beta,
                             skip_diag,
                             lhs_top,
                             rhs_left,
@@ -746,7 +721,7 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexFi
                         mat_x_mat_into_lower_impl_unchecked(
                             ctx,
                             dst_bot_right,
-                            unsync_opt!(beta),
+                            beta,
                             skip_diag,
                             lhs_bot,
                             rhs_right,
@@ -768,7 +743,7 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, C: ComplexContainer, T: ComplexFi
 fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     skip_diag: bool,
     lhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
     rhs: MatRefGeneric<'_, C, T, Dim<'N>, Dim<'N>>,
@@ -776,7 +751,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
     alpha: C::Of<&T>,
     conj_lhs: Conj,
     conj_rhs: Conj,
-    par: Parallelism,
+    par: Par,
 ) {
     let N = dst.nrows();
     let n = N.unbound();
@@ -798,7 +773,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
                 super::matmul_with_conj(
                     ctx,
                     temp_dst.rb_mut(),
-                    None,
+                    Accum::Replace,
                     lhs,
                     conj_lhs,
                     temp_rhs.rb(),
@@ -830,7 +805,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
         super::matmul_with_conj(
             ctx,
             dst_bot_left.rb_mut(),
-            copy_opt!(beta),
+            beta,
             lhs_bot_right,
             conj_lhs,
             rhs_bot_left,
@@ -841,7 +816,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
         mat_x_lower_into_lower_impl_unchecked(
             ctx,
             dst_bot_right,
-            copy_opt!(beta),
+            beta,
             skip_diag,
             lhs_bot_right,
             rhs_bot_right,
@@ -855,7 +830,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
         mat_x_lower_into_lower_impl_unchecked(
             ctx,
             dst_top_left.rb_mut(),
-            copy_opt!(beta),
+            beta,
             skip_diag,
             lhs_top_left,
             rhs_top_left,
@@ -868,7 +843,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
         mat_x_mat_into_lower_impl_unchecked(
             ctx,
             dst_top_left,
-            Some(as_ref!(math.one())),
+            Accum::Add,
             skip_diag,
             lhs_top_right,
             rhs_bot_left,
@@ -880,7 +855,7 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, C: ComplexContainer, T: ComplexFiel
         mat_x_lower_impl_unchecked(
             ctx,
             dst_bot_left,
-            Some(as_ref!(math.one())),
+            Accum::Add,
             lhs_bot_left,
             rhs_top_left,
             rhs_diag,
@@ -1008,7 +983,7 @@ pub fn matmul_with_conj<C: ComplexContainer, T: ComplexField<C>, M: Shape, N: Sh
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, M, N, impl Stride, impl Stride>,
     dst_structure: BlockStructure,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, C, T, M, K, impl Stride, impl Stride>,
     lhs_structure: BlockStructure,
     conj_lhs: Conj,
@@ -1016,7 +991,7 @@ pub fn matmul_with_conj<C: ComplexContainer, T: ComplexField<C>, M: Shape, N: Sh
     rhs_structure: BlockStructure,
     conj_rhs: Conj,
     alpha: C::Of<&T>,
-    par: Parallelism,
+    par: Par,
 ) {
     precondition(
         dst.nrows(),
@@ -1069,13 +1044,13 @@ pub fn matmul<
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, M, N, impl Stride, impl Stride>,
     dst_structure: BlockStructure,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, LhsC, LhsT, M, K, impl Stride, impl Stride>,
     lhs_structure: BlockStructure,
     rhs: MatRefGeneric<'_, RhsC, RhsT, K, N, impl Stride, impl Stride>,
     rhs_structure: BlockStructure,
     alpha: C::Of<&T>,
-    par: Parallelism,
+    par: Par,
 ) {
     precondition(
         dst.nrows(),
@@ -1117,7 +1092,7 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     dst: MatMutGeneric<'_, C, T, Dim<'M>, Dim<'N>>,
     dst_structure: BlockStructure,
-    beta: Option<C::Of<&T>>,
+    beta: Accum,
     lhs: MatRefGeneric<'_, C, T, Dim<'M>, Dim<'K>>,
     lhs_structure: BlockStructure,
     conj_lhs: Conj,
@@ -1125,7 +1100,7 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     rhs_structure: BlockStructure,
     conj_rhs: Conj,
     alpha: C::Of<&T>,
-    par: Parallelism,
+    par: Par,
 ) {
     let mut acc = dst.as_dyn_mut();
     let mut lhs = lhs.as_dyn();
@@ -1184,15 +1159,9 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
     let K = lhs.ncols().bind(K);
 
     let clear_upper = |acc: MatMutGeneric<'_, C, T>, skip_diag: bool| match &beta {
-        Some(beta) => zipped!(acc).for_each_triangular_upper(
-            if skip_diag { Diag::Skip } else { Diag::Include },
-            |unzipped!(mut acc)| {
-                let tmp = math(acc * *beta);
-                write1!(acc, tmp);
-            },
-        ),
+        Accum::Add => {}
 
-        None => zipped!(acc).for_each_triangular_upper(
+        Accum::Replace => zipped!(acc).for_each_triangular_upper(
             if skip_diag { Diag::Skip } else { Diag::Include },
             |unzipped!(mut acc)| {
                 let tmp = math(zero());
@@ -1358,17 +1327,17 @@ fn matmul_imp<'M, 'N, 'K, C: ComplexContainer, T: ComplexField<C>>(
             )
         } else if lhs_structure.is_lower() {
             if !skip_diag {
-                match &beta {
-                    Some(beta) => {
+                match beta {
+                    Accum::Add => {
                         for j in 0..N.unbound() {
-                            let tmp = math(beta * acc[(j, j)] + alpha * lhs[(j, j)] * rhs[(j, j)]);
-                            write1!(acc.write(j, j), tmp);
+                            write1!(
+                                acc[(j, j)] = math(acc[(j, j)] + alpha * lhs[(j, j)] * rhs[(j, j)])
+                            );
                         }
                     }
-                    None => {
+                    Accum::Replace => {
                         for j in 0..N.unbound() {
-                            let tmp = math(alpha * lhs[(j, j)] * rhs[(j, j)]);
-                            write1!(acc.write(j, j), tmp);
+                            write1!(acc[(j, j)] = math(alpha * lhs[(j, j)] * rhs[(j, j)]));
                         }
                     }
                 }

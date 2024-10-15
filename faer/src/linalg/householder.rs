@@ -98,7 +98,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
     essentials: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
     blocksize: usize,
     prev_blocksize: usize,
-    par: Parallelism,
+    par: Par,
 ) {
     if blocksize == prev_blocksize || householder_factor.nrows().unbound() <= prev_blocksize {
         return;
@@ -168,7 +168,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
             ctx,
             householder_factor.rb_mut(),
             acc_structure,
-            None,
+            Accum::Replace,
             basis_top.adjoint(),
             BlockStructure::UnitTriangularUpper,
             basis_top,
@@ -180,7 +180,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
             ctx,
             householder_factor.rb_mut(),
             acc_structure,
-            Some(as_ref!(math.one())),
+            Accum::Add,
             basis_bot.adjoint(),
             BlockStructure::Rectangular,
             basis_bot,
@@ -245,7 +245,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
                     ctx,
                     tau_tr.rb_mut(),
                     BlockStructure::Rectangular,
-                    None,
+                    Accum::Replace,
                     basis_left_top.adjoint(),
                     BlockStructure::Rectangular,
                     basis_right_top,
@@ -256,7 +256,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
                 matmul(
                     ctx,
                     tau_tr.rb_mut(),
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     basis_left_bot.adjoint(),
                     basis_right_bot,
                     as_ref!(math.one()),
@@ -395,7 +395,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
     forward: bool,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     assert!(all(
@@ -542,15 +542,15 @@ fn apply_block_householder_on_the_left_in_place_generic<
         }
 
         let inner_parallelism = match par {
-            Parallelism::None => Parallelism::None,
+            Par::Seq => Par::Seq,
             #[cfg(feature = "rayon")]
-            Parallelism::Rayon(par) => {
+            Par::Rayon(par) => {
                 let par = par.get();
 
                 if par >= 2 * n_tasks {
-                    Parallelism::rayon(par / n_tasks)
+                    Par::rayon(par / n_tasks)
                 } else {
-                    Parallelism::None
+                    Par::Seq
                 }
             }
         };
@@ -564,7 +564,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
                     ctx,
                     tmp.rb_mut(),
                     BlockStructure::Rectangular,
-                    None,
+                    Accum::Replace,
                     essentials_top.transpose(),
                     BlockStructure::UnitTriangularUpper,
                     Conj::Yes.compose(conj_lhs),
@@ -578,7 +578,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
                 matmul_with_conj(
                     ctx,
                     tmp.rb_mut(),
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     essentials_bot.transpose(),
                     Conj::Yes.compose(conj_lhs),
                     bot.rb(),
@@ -611,7 +611,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
                     ctx,
                     top.rb_mut(),
                     BlockStructure::Rectangular,
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     essentials_top,
                     BlockStructure::UnitTriangularLower,
                     Conj::No.compose(conj_lhs),
@@ -624,7 +624,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
                 matmul_with_conj(
                     ctx,
                     bot.rb_mut(),
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     essentials_bot,
                     Conj::No.compose(conj_lhs),
                     tmp.rb(),
@@ -665,7 +665,7 @@ pub fn apply_block_householder_on_the_right_in_place_with_conj<
     householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
     matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_transpose_on_the_left_in_place_with_conj(
@@ -694,7 +694,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<
     householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
     matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_on_the_left_in_place_with_conj(
@@ -723,7 +723,7 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<
     householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     make_guard!(M);
@@ -760,7 +760,7 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<
     householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     make_guard!(M);
@@ -800,7 +800,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
     householder_factor: MatRef<'_, C, T, B, H, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     #[track_caller]
@@ -810,7 +810,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
         householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'H>>,
         conj_lhs: Conj,
         matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
-        par: Parallelism,
+        par: Par,
         stack: &mut DynStack,
     ) {
         let mut matrix = matrix;
@@ -903,7 +903,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     householder_factor: MatRef<'_, C, T, B, H, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     #[track_caller]
@@ -913,7 +913,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
         householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'H>>,
         conj_lhs: Conj,
         matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
-        par: Parallelism,
+        par: Par,
         stack: &mut DynStack,
     ) {
         let mut matrix = matrix;
@@ -999,7 +999,7 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<
     householder_factor: MatRef<'_, C, T, H, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
     matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
@@ -1030,7 +1030,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_con
     householder_factor: MatRef<'_, C, T, H, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
     matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_sequence_on_the_left_in_place_with_conj(

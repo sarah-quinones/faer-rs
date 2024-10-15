@@ -27,7 +27,7 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
     let n = A.ncols();
 
     ghost_tree!(ROW(HEAD, TAIL), {
-        let (_, list![head, tail], disjoint) = n.split(list![..start, ..], ROW);
+        let (l![head, tail], (disjoint, ..)) = n.split(l![..start, ..], ROW);
 
         let simd = SimdCtx::<C, T, S>::new_force_mask(simd, tail.len());
         let (idx_head, indices, idx_tail) = simd.indices();
@@ -40,15 +40,13 @@ fn simd_cholesky_row_batch<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>
 
         for j in n.indices() {
             ghost_tree!(COL(LEFT, RIGHT), {
-                let (_, list![left, right], disjoint_col) = n.split(list![..j.to_incl(), j], COL);
+                let (l![left, right], (disjoint_col, ..)) = n.split(l![..j.to_incl(), j], COL);
 
-                let list![A_0, mut Aj] = A
-                    .rb_mut()
-                    .col_segments_mut(list![left, right], disjoint_col);
+                let l![A_0, mut Aj] = A.rb_mut().col_segments_mut(l![left, right], disjoint_col);
                 let A_0 = A_0.rb();
                 let A10 = A_0.row_segment(tail);
 
-                let list![_, mut Aj] = Aj.rb_mut().row_segments_mut(list![head, tail], disjoint);
+                let l![_, mut Aj] = Aj.rb_mut().row_segments_mut(l![head, tail], disjoint);
 
                 {
                     let mut Aj = Aj.rb_mut();
@@ -269,7 +267,7 @@ fn simd_cholesky_matrix<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
         help!(C::Real);
 
         ghost_tree!(FULL(HEAD), {
-            let (_, list![head], _) = N.split(list![..J_next], FULL);
+            let (l![head], _) = N.split(l![..J_next], FULL);
 
             let A = A.rb_mut().row_segment_mut(head).col_segment_mut(head);
             let D = D.rb_mut().col_segment_mut(head);
@@ -465,7 +463,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
     eps: <C::Real as Container>::Of<&T::RealUnit>,
     delta: <C::Real as Container>::Of<&T::RealUnit>,
     signs: Option<&Array<'N, i8>>,
-    par: Parallelism,
+    par: Par,
 ) -> Result<usize, usize> {
     let N = A.ncols();
     if *N <= recursion_threshold {
@@ -483,13 +481,11 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
             j_next = N.advance(j, blocksize);
 
             ghost_tree!(FULL(HEAD, TAIL), {
-                let (_, list![head, tail], disjoint) =
-                    N.split(list![j.to_incl()..j_next, ..], FULL);
+                let (l![head, tail], (disjoint, ..)) = N.split(l![j.to_incl()..j_next, ..], FULL);
 
-                let list![mut A_0, A_1] = A.rb_mut().col_segments_mut(list![head, tail], disjoint);
-                let list![mut A00, mut A10] =
-                    A_0.rb_mut().row_segments_mut(list![head, tail], disjoint);
-                let list![A01, mut A11] = A_1.row_segments_mut(list![head, tail], disjoint);
+                let l![mut A_0, A_1] = A.rb_mut().col_segments_mut(l![head, tail], disjoint);
+                let l![mut A00, mut A10] = A_0.rb_mut().row_segments_mut(l![head, tail], disjoint);
+                let l![A01, mut A11] = A_1.row_segments_mut(l![head, tail], disjoint);
 
                 let mut D0 = D.rb_mut().col_segment_mut(head);
 
@@ -555,7 +551,7 @@ pub(crate) fn cholesky_recursion<'N, C: ComplexContainer, T: ComplexField<C>>(
                     ctx,
                     A11.rb_mut(),
                     BlockStructure::TriangularLower,
-                    Some(as_ref!(math.one())),
+                    Accum::Add,
                     A10,
                     BlockStructure::Rectangular,
                     L10xD0.adjoint(),
@@ -633,7 +629,7 @@ impl Default for LdltParams {
 #[inline]
 pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
-    par: Parallelism,
+    par: Par,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
     temp_mat_scratch::<C, T>(dim, 1)
@@ -644,7 +640,7 @@ pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
     regularization: LdltRegularization<'_, C, T>,
-    par: Parallelism,
+    par: Par,
     stack: &mut DynStack,
     params: LdltParams,
 ) -> Result<LdltInfo, LdltError> {
@@ -724,7 +720,7 @@ mod tests {
 
                     let mut L = A.cloned();
                     let mut L = L.as_mut();
-                    let mut D = Row::zeros_with_ctx(&default(), N);
+                    let mut D = Row::zeros_with(&default(), N);
                     let mut D = D.as_mut();
 
                     f(
@@ -785,7 +781,7 @@ mod tests {
 
                 let mut L = A.cloned();
                 let mut L = L.as_mut();
-                let mut D = Row::zeros_with_ctx(&default(), N);
+                let mut D = Row::zeros_with(&default(), N);
                 let mut D = D.as_mut();
 
                 cholesky_recursion(
@@ -799,7 +795,7 @@ mod tests {
                     &0.0,
                     &0.0,
                     None,
-                    Parallelism::None,
+                    Par::Seq,
                 )
                 .unwrap();
 
