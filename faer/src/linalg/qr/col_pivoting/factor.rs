@@ -323,8 +323,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
             }
 
             ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-                let (rows @ l![top, _], (disjoint_rows, ..)) =
-                    m.split(l![..ki.next(), ..], ROWS);
+                let (rows @ l![top, _], (disjoint_rows, ..)) = m.split(l![..ki.next(), ..], ROWS);
                 let (cols @ l![left, right], (disjoint_cols, ..)) =
                     n.split(l![..kj.next(), ..], COLS);
 
@@ -339,14 +338,8 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                 let mut A01 = A01.row_mut(top.local(ki));
                 let mut A10 = A10.col_mut(left.local(kj));
 
-                let norm = A10.rb().norm_l2_with(ctx);
-
-                let (tau, beta) = householder::make_householder_in_place(
-                    ctx,
-                    Some(A10.rb_mut()),
-                    rb!(A00),
-                    as_ref2!(norm),
-                );
+                let (tau, beta, _) =
+                    householder::make_householder_in_place(ctx, A10.rb_mut(), rb!(A00));
 
                 let tau_inv = math.re(recip(cx.real(tau)));
                 write1!(H[k] = tau);

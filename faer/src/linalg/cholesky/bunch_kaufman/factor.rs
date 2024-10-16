@@ -37,7 +37,7 @@ pub struct BunchKaufmanRegularization<'a, C: ComplexContainer, T: ComplexField<C
 
 impl<C: ComplexContainer, T: ComplexField<C>> BunchKaufmanRegularization<'_, C, T> {
     #[math]
-    fn default_with_ctx(ctx: &Ctx<C, T>) -> Self {
+    fn default_with(ctx: &Ctx<C, T>) -> Self {
         Self {
             dynamic_regularization_signs: None,
             dynamic_regularization_delta: math.re.zero(),
@@ -50,7 +50,7 @@ impl<C: ComplexContainer, T: ComplexField<C, MathCtx: Default>> Default
     for BunchKaufmanRegularization<'_, C, T>
 {
     fn default() -> Self {
-        Self::default_with_ctx(&default())
+        Self::default_with(&default())
     }
 }
 
@@ -99,7 +99,7 @@ fn assign_col<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 ) {
     if i != j {
         let (ai, aj) = a.two_cols_mut(i, j);
-        { ai }.copy_from_with_ctx(ctx, aj);
+        { ai }.copy_from_with(ctx, aj);
     }
 }
 
@@ -208,7 +208,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
         w.rb_mut()
             .subrows_range_mut((k0, N))
             .col_mut(j0)
-            .copy_from_with_ctx(ctx, a.rb().subrows_range((k0, N)).col(k0));
+            .copy_from_with(ctx, a.rb().subrows_range((k0, N)).col(k0));
 
         let (w_left, w_right) = w
             .rb_mut()
@@ -265,7 +265,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 w.rb_mut()
                     .subrows_range_mut((imax, N))
                     .col_mut(j1)
-                    .copy_from_with_ctx(ctx, a.rb().subrows_range((imax, N)).col(imax));
+                    .copy_from_with(ctx, a.rb().subrows_range((imax, N)).col(imax));
 
                 let (w_left, w_right) = w
                     .rb_mut()
@@ -355,7 +355,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 a.rb_mut()
                     .subrows_range_mut((k0, N))
                     .col_mut(k0)
-                    .copy_from_with_ctx(ctx, w.rb().subrows_range((k0, N)).col(j0));
+                    .copy_from_with(ctx, w.rb().subrows_range((k0, N)).col(j0));
 
                 let mut d11 = math(real(w[(k0, j0)]));
                 if has_eps {

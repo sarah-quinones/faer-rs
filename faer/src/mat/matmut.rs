@@ -1056,7 +1056,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
-    pub fn copy_from_triangular_lower_with_ctx<
+    pub fn copy_from_triangular_lower_with<
         RhsC: Container<Canonical = C>,
         RhsT: ConjUnit<Canonical = T>,
     >(
@@ -1109,7 +1109,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
-    pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
+    pub fn copy_from_with<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &Ctx<C, T>,
         other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
@@ -1155,7 +1155,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
-    pub fn copy_from_strict_triangular_lower_with_ctx<
+    pub fn copy_from_strict_triangular_lower_with<
         RhsC: Container<Canonical = C>,
         RhsT: ConjUnit<Canonical = T>,
     >(

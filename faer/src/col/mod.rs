@@ -35,8 +35,8 @@ pub trait AsColRef<C: Container, T, Rows: Shape> {
     fn as_col_ref(&self) -> ColRefGeneric<C, T, Rows>;
 }
 
-impl<C: Container, T, Rows: Shape, CStride: Stride> AsColRef<C, T, Rows>
-    for ColRefGeneric<'_, C, T, Rows, CStride>
+impl<C: Container, T, Rows: Shape, RStride: Stride> AsColRef<C, T, Rows>
+    for ColRefGeneric<'_, C, T, Rows, RStride>
 {
     #[inline]
     fn as_col_ref(&self) -> ColRefGeneric<C, T, Rows> {
@@ -44,8 +44,8 @@ impl<C: Container, T, Rows: Shape, CStride: Stride> AsColRef<C, T, Rows>
     }
 }
 
-impl<C: Container, T, Rows: Shape, CStride: Stride> AsColRef<C, T, Rows>
-    for ColMutGeneric<'_, C, T, Rows, CStride>
+impl<C: Container, T, Rows: Shape, RStride: Stride> AsColRef<C, T, Rows>
+    for ColMutGeneric<'_, C, T, Rows, RStride>
 {
     #[inline]
     fn as_col_ref(&self) -> ColRefGeneric<C, T, Rows> {
@@ -53,11 +53,25 @@ impl<C: Container, T, Rows: Shape, CStride: Stride> AsColRef<C, T, Rows>
     }
 }
 
-impl<C: Container, T, Rows: Shape, CStride: Stride> AsColMut<C, T, Rows>
-    for ColMutGeneric<'_, C, T, Rows, CStride>
+impl<C: Container, T, Rows: Shape, RStride: Stride> AsColMut<C, T, Rows>
+    for ColMutGeneric<'_, C, T, Rows, RStride>
 {
     #[inline]
     fn as_col_mut(&mut self) -> ColMutGeneric<C, T, Rows> {
         self.rb_mut().as_dyn_stride_mut()
+    }
+}
+
+impl<C: Container, T, Rows: Shape> AsColRef<C, T, Rows> for ColGeneric<C, T, Rows> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRefGeneric<C, T, Rows> {
+        self.as_dyn_stride()
+    }
+}
+
+impl<C: Container, T, Rows: Shape> AsColMut<C, T, Rows> for ColGeneric<C, T, Rows> {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMutGeneric<C, T, Rows> {
+        self.as_dyn_stride_mut()
     }
 }

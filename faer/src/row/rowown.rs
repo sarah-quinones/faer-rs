@@ -406,7 +406,7 @@ impl<C: Container, T, Cols: Shape> Row<C, T, Cols> {
     }
 
     #[inline]
-    pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
+    pub fn copy_from_with<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &Ctx<C, T>,
         other: impl AsRowRef<RhsC, RhsT, Cols>,
@@ -414,7 +414,7 @@ impl<C: Container, T, Cols: Shape> Row<C, T, Cols> {
         C: ComplexContainer,
         T: ComplexField<C>,
     {
-        self.as_mut().copy_from_with_ctx(ctx, other)
+        self.as_mut().copy_from_with(ctx, other)
     }
 
     #[inline]

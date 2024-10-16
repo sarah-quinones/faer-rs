@@ -23,8 +23,7 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
 
         ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
             let (rows @ l![top, _], (disjoint_rows, ..)) = M.split(l![..ki.next(), ..], ROWS);
-            let (cols @ l![left, right], (disjoint_cols, ..)) =
-                N.split(l![..kj.next(), ..], COLS);
+            let (cols @ l![left, right], (disjoint_cols, ..)) = N.split(l![..kj.next(), ..], COLS);
 
             let ki = top.idx(*ki);
             let kj = left.idx(*kj);
@@ -37,14 +36,8 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
             let mut A01 = A01.row_mut(top.local(ki));
             let mut A10 = A10.col_mut(left.local(kj));
 
-            let norm = A10.rb().norm_l2_with(ctx);
-
-            let (tau, beta) = householder::make_householder_in_place(
-                ctx,
-                Some(A10.rb_mut()),
-                rb!(A00),
-                as_ref2!(norm),
-            );
+            let (tau, beta, _) =
+                householder::make_householder_in_place(ctx, A10.rb_mut(), rb!(A00));
 
             let tau_inv = math.re(recip(cx.real(tau)));
             write1!(H[k] = tau);
@@ -190,8 +183,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                 }
 
                 ghost_tree!(ROWS(TOP, BOT), BLOCK(SUBCOLS), {
-                    let (rows, (disjoint_rows, ..)) =
-                        blocksize.split(l![..k.to_incl(), ..], ROWS);
+                    let (rows, (disjoint_rows, ..)) = blocksize.split(l![..k.to_incl(), ..], ROWS);
                     let (l![subcols], _) = blocksize.split(l![k.to_incl()..k_next], BLOCK);
 
                     let mut H = H.rb_mut().col_segment_mut(subcols);
@@ -201,7 +193,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                     let H1 = H1.rb_mut().subrows_mut(zero(), subcols.len());
 
                     H1.transpose_mut()
-                        .copy_from_triangular_lower_with_ctx(ctx, H0.transpose());
+                        .copy_from_triangular_lower_with(ctx, H0.transpose());
                 });
             }
 

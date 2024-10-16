@@ -416,6 +416,11 @@ pub enum Accum {
 
 impl Conj {
     #[inline]
+    pub const fn is_conj(self) -> bool {
+        matches!(self, Conj::Yes)
+    }
+
+    #[inline]
     pub const fn compose(self, other: Self) -> Self {
         match (self, other) {
             (Conj::No, Conj::No) => Conj::No,

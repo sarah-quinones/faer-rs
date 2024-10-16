@@ -142,7 +142,7 @@ pub fn permute_rows<I: Index, C: ComplexContainer, T: ComplexField<C>>(
                 let src_i = src.row(perm[i].zx());
                 let mut dst_i = dst.rb_mut().row_mut(i);
 
-                dst_i.copy_from_with_ctx(ctx, src_i);
+                dst_i.copy_from_with(ctx, src_i);
             }
         }
     }
@@ -193,7 +193,7 @@ pub fn permute_rows_in_place<I: Index, C: ComplexContainer, T: ComplexField<C>>(
         let mut matrix = matrix;
         let (mut tmp, _) = unsafe { temp_mat_uninit(ctx, matrix.nrows(), matrix.ncols(), stack) };
         let mut tmp = tmp.as_mat_mut();
-        tmp.copy_from_with_ctx(ctx, matrix.rb());
+        tmp.copy_from_with(ctx, matrix.rb());
         permute_rows(ctx, matrix.rb_mut(), tmp.rb(), perm_indices);
     }
 
@@ -225,7 +225,7 @@ pub fn permute_cols_in_place<I: Index, C: ComplexContainer, T: ComplexField<C>>(
         let mut matrix = matrix;
         let (mut tmp, _) = unsafe { temp_mat_uninit(ctx, matrix.nrows(), matrix.ncols(), stack) };
         let mut tmp = tmp.as_mat_mut();
-        tmp.copy_from_with_ctx(ctx, matrix.rb());
+        tmp.copy_from_with(ctx, matrix.rb());
         permute_cols(ctx, matrix.rb_mut(), tmp.rb(), perm_indices);
     }
 

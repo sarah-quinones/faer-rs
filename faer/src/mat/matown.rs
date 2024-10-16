@@ -1337,7 +1337,7 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
     }
 
     #[inline]
-    pub fn copy_from_triangular_lower_with_ctx<
+    pub fn copy_from_triangular_lower_with<
         RhsC: Container<Canonical = C>,
         RhsT: ConjUnit<Canonical = T>,
     >(
@@ -1349,11 +1349,11 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
         T: ComplexField<C>,
     {
         self.as_mut()
-            .copy_from_triangular_lower_with_ctx(ctx, other)
+            .copy_from_triangular_lower_with(ctx, other)
     }
 
     #[inline]
-    pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
+    pub fn copy_from_with<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &Ctx<C, T>,
         other: impl AsMatRef<C = RhsC, T = RhsT, Rows = Rows, Cols = Cols>,
@@ -1361,11 +1361,11 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
         C: ComplexContainer,
         T: ComplexField<C>,
     {
-        self.as_mut().copy_from_with_ctx(ctx, other)
+        self.as_mut().copy_from_with(ctx, other)
     }
 
     #[inline]
-    pub fn copy_from_strict_triangular_lower_with_ctx<
+    pub fn copy_from_strict_triangular_lower_with<
         RhsC: Container<Canonical = C>,
         RhsT: ConjUnit<Canonical = T>,
     >(
@@ -1376,6 +1376,6 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
         C: ComplexContainer,
         T: ComplexField<C>,
     {
-        self.as_mut().copy_from_with_ctx(ctx, other)
+        self.as_mut().copy_from_with(ctx, other)
     }
 }

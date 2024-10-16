@@ -397,6 +397,39 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowMut<'a, C, T, Cols, C
         self.trans.par_iter_mut()
     }
 
+    #[inline]
+    #[track_caller]
+    #[cfg(feature = "rayon")]
+    pub fn par_partition(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, C, T, usize, CStride>>
+    where
+        T: Sync,
+    {
+        self.into_const().par_partition(count)
+    }
+
+    #[inline]
+    #[track_caller]
+    #[cfg(feature = "rayon")]
+    pub fn par_partition_mut(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowMut<'a, C, T, usize, CStride>>
+    where
+        T: Send,
+    {
+        use crate::mat::matmut::SyncCell;
+        use rayon::prelude::*;
+        unsafe {
+            self.as_type::<SyncCell<T>>()
+                .into_const()
+                .par_partition(count)
+                .map(|col| col.const_cast().as_type::<T>())
+        }
+    }
+
     pub(crate) unsafe fn as_type<U>(self) -> RowMut<'a, C, U, Cols, CStride> {
         help!(C);
         RowMut::from_raw_parts_mut(
@@ -411,7 +444,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowMut<'a, C, T, Cols, C
     }
 
     #[inline]
-    pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
+    pub fn copy_from_with<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &T::MathCtx,
         other: impl AsRowRef<RhsC, RhsT, Cols>,

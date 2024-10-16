@@ -519,7 +519,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline]
-    pub fn copy_from_with_ctx<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
+    pub fn copy_from_with<RhsC: Container<Canonical = C>, RhsT: ConjUnit<Canonical = T>>(
         &mut self,
         ctx: &Ctx<C, T>,
         other: impl AsColRef<RhsC, RhsT, Rows>,

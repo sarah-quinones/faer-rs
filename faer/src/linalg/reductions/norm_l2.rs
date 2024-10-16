@@ -212,8 +212,8 @@ pub fn norm_l2_x3<C: ComplexContainer, T: ComplexField<C>>(
             }
         }
 
-        let sml = math.sqrt_min_positive();
-        let big = math.sqrt_max_positive();
+        let sml = math.min_positive();
+        let big = math.max_positive();
         let mut acc = math.re.zero();
         for j in 0..n {
             for i in 0..m {
@@ -233,6 +233,8 @@ pub fn norm_l2<C: ComplexContainer, T: ComplexField<C>>(
     mat: MatRef<'_, C, T>,
 ) -> <C::Real as Container>::Of<T::RealUnit> {
     let [acc_sml, acc_med, acc_big] = norm_l2_x3(ctx, mat);
+    help!(C::Real);
+
     let sml = math.sqrt_min_positive();
     let big = math.sqrt_max_positive();
 

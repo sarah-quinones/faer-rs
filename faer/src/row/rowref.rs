@@ -250,6 +250,20 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline]
+    #[track_caller]
+    #[cfg(feature = "rayon")]
+    pub fn par_partition(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, C, T, usize, CStride>>
+    where
+        T: Sync,
+    {
+        use rayon::prelude::*;
+        self.transpose().par_partition(count).map(ColRef::transpose)
+    }
+
+    #[inline]
     pub fn try_as_row_major(self) -> Option<RowRef<'a, C, T, Cols, ContiguousFwd>> {
         if self.col_stride().element_stride() == 1 {
             Some(unsafe { RowRef::from_raw_parts(self.as_ptr(), self.ncols(), ContiguousFwd) })

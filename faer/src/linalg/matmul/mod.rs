@@ -34,11 +34,7 @@ pub mod dot {
         if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
             inner_prod_slice::<C, T>(ctx, lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
         } else {
-            let mut acc = math(zero());
-            for j in lhs.ncols().indices() {
-                acc = math(lhs[j] * rhs[j] + acc);
-            }
-            acc
+            inner_prod_schoolbook(ctx, lhs, conj_lhs, rhs, conj_rhs)
         }
     }
 

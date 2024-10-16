@@ -30,7 +30,7 @@ fn copy_lower<'N, C: ComplexContainer, T: ComplexField<C>>(
     let mut dst = dst;
     match src_diag {
         DiagonalKind::Zero => {
-            dst.copy_from_strict_triangular_lower_with_ctx(ctx, src);
+            dst.copy_from_strict_triangular_lower_with(ctx, src);
             let ctx = Ctx::<C, T>::new(ctx);
             for j in N.indices() {
                 let zero = math(zero());
@@ -38,14 +38,14 @@ fn copy_lower<'N, C: ComplexContainer, T: ComplexField<C>>(
             }
         }
         DiagonalKind::Unit => {
-            dst.copy_from_strict_triangular_lower_with_ctx(ctx, src);
+            dst.copy_from_strict_triangular_lower_with(ctx, src);
             let ctx = Ctx::<C, T>::new(ctx);
             for j in N.indices() {
                 let one = math(one());
                 write1!(dst.write(j, j), one);
             }
         }
-        DiagonalKind::Generic => dst.copy_from_triangular_lower_with_ctx(ctx, src),
+        DiagonalKind::Generic => dst.copy_from_triangular_lower_with(ctx, src),
     }
 
     zipped!(dst).for_each_triangular_upper(Diag::Skip, |unzipped!(mut dst)| {

@@ -53,18 +53,19 @@ use crate::internal_prelude::*;
 #[math]
 pub fn make_householder_in_place<'M, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
-    essential: Option<ColMut<'_, C, T, Dim<'M>>>,
+    essential: ColMut<'_, C, T, Dim<'M>>,
     head: C::Of<&T>,
-    tail_norm: <C::Real as Container>::Of<&T::RealUnit>,
-) -> (C::Of<T>, C::Of<T>) {
+) -> (C::Of<T>, C::Of<T>, Option<C::Of<T>>) {
+    let tail_norm = essential.norm_l2_with(ctx);
+
     if math.re.is_zero(tail_norm) {
-        return math((infinity(), copy(head)));
+        return math((infinity(), copy(head), None));
     }
 
     let one_half = math.re.from_f64(0.5);
 
     let head_norm = math.abs(head);
-    let norm = math(hypot(head_norm, re.copy(tail_norm)));
+    let norm = math(hypot(head_norm, tail_norm));
 
     let sign = if !math.re.is_zero(head_norm) {
         math(mul_real(head, re.recip(head_norm)))
@@ -77,17 +78,12 @@ pub fn make_householder_in_place<'M, C: ComplexContainer, T: ComplexField<C>>(
     let head_with_beta_inv = math.recip(head_with_beta);
 
     help!(C);
-    if !math.is_zero(head_with_beta) {
-        if let Some(essential) = essential {
-            zipped!(essential).for_each(|unzipped!(mut e)| {
-                write1!(e, math(e * head_with_beta_inv));
-            });
-        }
-        let tau = math.re(one_half * (one() + abs2(tail_norm * cx.abs(head_with_beta_inv))));
-        math((from_real(tau), -signed_norm))
-    } else {
-        math((infinity(), zero()))
-    }
+    zipped!(essential).for_each(|unzipped!(mut e)| {
+        write1!(e, math(e * head_with_beta_inv));
+    });
+
+    let tau = math.re(one_half * (one() + abs2(tail_norm * cx.abs(head_with_beta_inv))));
+    math((from_real(tau), -signed_norm, head_with_beta_inv.into()))
 }
 
 #[doc(hidden)]

@@ -46,3 +46,17 @@ impl<C: Container, T, Cols: Shape, CStride: Stride> AsRowMut<C, T, Cols>
         self.rb_mut().as_dyn_stride_mut()
     }
 }
+
+impl<C: Container, T, Cols: Shape> AsRowRef<C, T, Cols> for RowGeneric<C, T, Cols> {
+    #[inline]
+    fn as_row_ref(&self) -> RowRefGeneric<C, T, Cols> {
+        self.as_dyn_stride()
+    }
+}
+
+impl<C: Container, T, Cols: Shape> AsRowMut<C, T, Cols> for RowGeneric<C, T, Cols> {
+    #[inline]
+    fn as_row_mut(&mut self) -> RowMutGeneric<C, T, Cols> {
+        self.as_dyn_stride_mut()
+    }
+}
