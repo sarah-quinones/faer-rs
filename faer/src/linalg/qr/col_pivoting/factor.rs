@@ -669,7 +669,7 @@ mod tests {
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
                     &ctx(),
-                    QR.as_ref(),
+                    QR.as_ref().subcols(zero(), H.ncols()),
                     H.as_ref(),
                     Conj::No,
                     Q.as_mut(),

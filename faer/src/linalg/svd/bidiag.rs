@@ -33,11 +33,11 @@ impl Default for BidiagParams {
 }
 
 #[math]
-pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>>(
+pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    H_left: MatMut<'_, C, T, Dim<'BL>, Dim<'N>>,
-    H_right: MatMut<'_, C, T, Dim<'BR>, Dim<'N>>,
+    H_left: MatMut<'_, C, T, Dim<'BL>, Dim<'H>>,
+    H_right: MatMut<'_, C, T, Dim<'BR>, Dim<'H>>,
     mut par: Par,
     stack: &mut DynStack,
     params: BidiagParams,
@@ -47,7 +47,10 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
 
     let m = A.nrows();
     let n = A.ncols();
-    assert!(*m >= *n);
+    let mn = H_left.ncols();
+    let bl = H_left.nrows();
+    let br = H_right.nrows();
+    assert!(*H_left.ncols() == Ord::min(*m, *n));
 
     let (mut y, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
     let (mut z, _) = unsafe { temp_mat_uninit(ctx, m, 1, stack) };
@@ -59,19 +62,17 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
     let mut Hl = H_left;
     let mut Hr = H_right;
 
-    let bl = Hl.nrows();
-    let br = Hr.nrows();
-
     {
         let mut Hl = Hl.rb_mut().row_mut(bl.idx(0));
         let mut Hr = Hr.rb_mut().row_mut(br.idx(0));
 
-        for kj in n.indices() {
+        for kj in mn.indices() {
             write1!(Hr[kj] = math(infinity()));
         }
 
-        for kj in n.indices() {
-            let ki = m.idx(*kj);
+        for k in mn.indices() {
+            let kj = n.idx(*k);
+            let ki = m.idx(*k);
 
             let mut A = A.rb_mut();
             ghost_tree!(ROWS(TOP, I, BOT), COLS(LEFT, J, RIGHT(J1, NEXT)), {
@@ -107,7 +108,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
                 let (tl, beta, _) =
                     householder::make_householder_in_place(ctx, A21.rb_mut(), rb!(a11));
                 let tl_inv = math(re.recip(real(tl)));
-                write1!(Hl[kj] = tl);
+                write1!(Hl[k] = tl);
                 write1!(a11, beta);
 
                 if (*m - *ki.next()) * (*n - *kj.next()) < params.par_threshold {
@@ -188,10 +189,11 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
                     par,
                 );
 
-                if kj.next() == n.end() {
+                if k.next() == mn.end() {
                     break;
                 }
 
+                let k1 = mn.idx(*k + 1);
                 let kj1 = right.global(right.idx(*kj + 1));
 
                 let (l![j1, next], (rows_x2, ..)) =
@@ -206,7 +208,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
                     rb!(a12_a),
                 );
                 let tr_inv = math(re.recip(real(tr)));
-                write1!(Hr[kj1.local()] = tr);
+                write1!(Hr[k1] = tr);
                 write1!(a12_a, math(mul_real(beta, norm)));
 
                 let b = math(
@@ -231,17 +233,18 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
     }
 
     let mut j_next = zero();
-    while let Some(j) = n.try_check(*j_next) {
-        j_next = n.advance(j, *bl);
+    while let Some(j) = mn.try_check(*j_next) {
+        j_next = mn.advance(j, *bl);
 
-        ghost_tree!(COLS, ROWS, {
-            let (cols, _) = n.split(j.into()..j_next, COLS);
+        ghost_tree!(BLOCK, COLS, ROWS, {
+            let (block, _) = mn.split(j.into()..j_next, BLOCK);
+            let (cols, _) = n.split(block, COLS);
             let (rows, _) = m.split(m.idx_inc(*j).., ROWS);
 
             let mut Hl = Hl
                 .rb_mut()
-                .col_segment_mut(cols)
-                .subrows_mut(zero(), cols.len());
+                .col_segment_mut(block)
+                .subrows_mut(zero(), block.len());
 
             let zero = cols.len().idx(0);
             for k in cols.len().indices() {
@@ -260,34 +263,36 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, C: ComplexContainer, T: ComplexField<C>
     }
 
     if *n > 0 {
-        ghost_tree!(COLS, {
+        ghost_tree!(BLOCK, COLS, {
+            let (block, _) = mn.split(mn.idx_inc(1).., BLOCK);
             let (cols, _) = n.split(n.idx_inc(1).., COLS);
+            let mn = block.len();
             let n = cols.len();
-            let A = A.rb().col_segment(cols).subrows(zero(), n);
-            let mut Hr = Hr.rb_mut().col_segment_mut(cols);
+            let A = A.rb().col_segment(cols).subrows(zero(), mn);
+            let mut Hr = Hr.rb_mut().col_segment_mut(block);
 
             let mut j_next = zero();
-            while let Some(j) = n.try_check(*j_next) {
-                j_next = n.advance(j, *br);
+            while let Some(j) = mn.try_check(*j_next) {
+                j_next = mn.advance(j, *br);
 
-                ghost_tree!(COLS, ROWS, {
-                    let (cols, _) = n.split(j.into()..j_next, COLS);
+                ghost_tree!(BLOCK, ROWS, {
+                    let (block, _) = mn.split(j.into()..j_next, BLOCK);
                     let (rows, _) = n.split(n.idx_inc(*j).., ROWS);
 
                     let mut Hr = Hr
                         .rb_mut()
-                        .col_segment_mut(cols)
-                        .subrows_mut(zero(), cols.len());
+                        .col_segment_mut(block)
+                        .subrows_mut(zero(), block.len());
 
-                    let zero = cols.len().idx(0);
-                    for k in cols.len().indices() {
+                    let zero = block.len().idx(0);
+                    for k in block.len().indices() {
                         write1!(Hr[(k, k)] = math(copy(Hr[(zero, k)])));
                     }
 
                     householder::upgrade_householder_factor(
                         ctx,
                         Hr.rb_mut(),
-                        A.transpose().col_segment(cols).row_segment(rows),
+                        A.transpose().col_segment(block).row_segment(rows),
                         *bl,
                         1,
                         par,
@@ -532,157 +537,180 @@ mod tests {
     fn test_bidiag_real() {
         let rng = &mut StdRng::seed_from_u64(0);
 
-        with_dim!(m, 6);
-        with_dim!(n, 6);
+        for (m, n) in [(8, 4), (8, 8)] {
+            with_dim!(m, m);
+            with_dim!(n, n);
+            with_dim!(mn, Ord::min(*m, *n));
 
-        let A = CwiseMatDistribution {
-            nrows: m,
-            ncols: n,
-            dist: StandardNormal,
-        }
-        .rand::<Mat<f64, _, _>>(rng);
+            let A = CwiseMatDistribution {
+                nrows: m,
+                ncols: n,
+                dist: StandardNormal,
+            }
+            .rand::<Mat<f64, _, _>>(rng);
 
-        with_dim!(bl, 4);
-        with_dim!(br, 3);
-        let mut Hl = Mat::zeros_with(&ctx(), bl, n);
-        let mut Hr = Mat::zeros_with(&ctx(), br, n);
+            with_dim!(bl, 4);
+            with_dim!(br, 3);
+            let mut Hl = Mat::zeros_with(&ctx(), bl, mn);
+            let mut Hr = Mat::zeros_with(&ctx(), br, mn);
 
-        let mut UV = A.clone();
-        let mut UV = UV.as_mut();
-        bidiag_in_place(
-            &ctx(),
-            UV.rb_mut(),
-            Hl.as_mut(),
-            Hr.as_mut(),
-            Par::Seq,
-            DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
-            Default::default(),
-        );
-        let UV = UV.rb();
+            let mut UV = A.clone();
+            let mut UV = UV.as_mut();
+            bidiag_in_place(
+                &ctx(),
+                UV.rb_mut(),
+                Hl.as_mut(),
+                Hr.as_mut(),
+                Par::Seq,
+                DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
+                Default::default(),
+            );
 
-        let mut A = A.clone();
-        let mut A = A.as_mut();
+            let mut A = A.clone();
+            let mut A = A.as_mut();
 
-        householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
-            &ctx(),
-            UV,
-            Hl.as_ref(),
-            Conj::Yes,
-            A.rb_mut(),
-            Par::Seq,
-            DynStack::new(&mut GlobalMemBuffer::new(
+            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+                &ctx(),
+                UV.rb().subcols(zero(), mn),
+                Hl.as_ref(),
+                Conj::Yes,
+                A.rb_mut(),
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
                 householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<
                     Unit,
                     f64,
                 >(*n - 1, 1, *m)
-                .unwrap(),
-            )),
-        );
-
-        ghost_tree!(COLS(J0, RIGHT), {
-            let (col_split @ l![_, bot], (col_x, ..)) = n.split(l![n.idx(0), ..], COLS);
-            let l![_, mut A1] = A.rb_mut().col_segments_mut(col_split, col_x);
-            let l![_, V] = UV.col_segments(col_split);
-            let V = V.subrows(zero(), bot.len());
-            let l![_, Hr] = Hr.as_ref().col_segments(col_split);
-
-            householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
-                &ctx(),
-                V.transpose(),
-                Hr.as_ref(),
-                Conj::Yes,
-                A1.rb_mut(),
-                Par::Seq,
-                DynStack::new(&mut GlobalMemBuffer::new(
-                    householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
-                        Unit,
-                        f64,
-                    >(*n - 1, 1, *m)
                     .unwrap(),
                 )),
             );
-        });
 
-        let approx_eq = CwiseMat(ApproxEq::<Unit, f64>::eps());
-        assert!(UV.as_dyn().diagonal().column_vector().as_mat() ~ A.rb().as_dyn().diagonal().column_vector().as_mat());
+            ghost_tree!(BLOCK(K0, REST), COLS(J0, RIGHT), {
+                let (block_split @ l![_, rest], _) = mn.split(l![mn.idx(0), ..], BLOCK);
+                let (col_split, (col_x, ..)) = n.split(l![n.idx(0), ..], COLS);
+                let UV = UV.rb().subrows(zero(), rest.len());
+
+                let l![_, mut A1] = A.rb_mut().col_segments_mut(col_split, col_x);
+                let l![_, V] = UV.rb().col_segments(col_split);
+                let l![_, Hr] = Hr.as_ref().col_segments(block_split);
+
+                householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+                    &ctx(),
+                    V.transpose(),
+                    Hr.as_ref(),
+                    Conj::Yes,
+                    A1.rb_mut(),
+                    Par::Seq,
+                    DynStack::new(&mut GlobalMemBuffer::new(
+                        householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
+                            Unit,
+                            f64,
+                        >(*n - 1, 1, *m)
+                        .unwrap(),
+                    )),
+                );
+            });
+
+            let approx_eq = CwiseMat(ApproxEq::<Unit, f64>::eps());
+            for j in n.indices() {
+                for i in m.indices() {
+                    if *i > *j || *j > *i + 1 {
+                        UV[(i, j)] = 0.0;
+                    }
+                }
+            }
+
+            assert!(UV ~ A);
+        }
     }
 
     #[test]
     fn test_bidiag_cplx() {
         let rng = &mut StdRng::seed_from_u64(0);
 
-        with_dim!(m, 6);
-        with_dim!(n, 6);
+        for (m, n) in [(8, 4), (8, 8)] {
+            with_dim!(m, m);
+            with_dim!(n, n);
+            with_dim!(mn, Ord::min(*m, *n));
+            let A = CwiseMatDistribution {
+                nrows: m,
+                ncols: n,
+                dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+            }
+            .rand::<Mat<c64, _, _>>(rng);
 
-        let A = CwiseMatDistribution {
-            nrows: m,
-            ncols: n,
-            dist: ComplexDistribution::new(StandardNormal, StandardNormal),
-        }
-        .rand::<Mat<c64, _, _>>(rng);
+            with_dim!(bl, 4);
+            with_dim!(br, 3);
+            let mut Hl = Mat::zeros_with(&ctx(), bl, mn);
+            let mut Hr = Mat::zeros_with(&ctx(), br, mn);
 
-        with_dim!(bl, 4);
-        with_dim!(br, 3);
-        let mut Hl = Mat::zeros_with(&ctx(), bl, n);
-        let mut Hr = Mat::zeros_with(&ctx(), br, n);
-
-        let mut UV = A.clone();
-        let mut UV = UV.as_mut();
-        bidiag_in_place(
-            &ctx(),
-            UV.rb_mut(),
-            Hl.as_mut(),
-            Hr.as_mut(),
-            Par::Seq,
-            DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
-            Default::default(),
-        );
-        let UV = UV.rb();
-
-        let mut A = A.clone();
-        let mut A = A.as_mut();
-
-        householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
-            &ctx(),
-            UV,
-            Hl.as_ref(),
-            Conj::Yes,
-            A.rb_mut(),
-            Par::Seq,
-            DynStack::new(&mut GlobalMemBuffer::new(
-                householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<
-                    Unit,
-                    f64,
-                >(*n - 1, 1, *m)
-                .unwrap(),
-            )),
-        );
-
-        ghost_tree!(COLS(J0, RIGHT), {
-            let (col_split @ l![_, bot], (col_x, ..)) = n.split(l![n.idx(0), ..], COLS);
-            let l![_, mut A1] = A.rb_mut().col_segments_mut(col_split, col_x);
-            let l![_, V] = UV.col_segments(col_split);
-            let V = V.subrows(zero(), bot.len());
-            let l![_, Hr] = Hr.as_ref().col_segments(col_split);
-
-            householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+            let mut UV = A.clone();
+            let mut UV = UV.as_mut();
+            bidiag_in_place(
                 &ctx(),
-                V.transpose(),
-                Hr.as_ref(),
+                UV.rb_mut(),
+                Hl.as_mut(),
+                Hr.as_mut(),
+                Par::Seq,
+                DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
+                Default::default(),
+            );
+
+            let mut A = A.clone();
+            let mut A = A.as_mut();
+
+            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+                &ctx(),
+                UV.rb().subcols(zero(), mn),
+                Hl.as_ref(),
                 Conj::Yes,
-                A1.rb_mut(),
+                A.rb_mut(),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
-                        Unit,
-                        f64,
-                    >(*n - 1, 1, *m)
+                householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<
+                    Unit,
+                    c64,
+                >(*n - 1, 1, *m)
                     .unwrap(),
                 )),
             );
-        });
 
-        let approx_eq = CwiseMat(ApproxEq::<Unit, c64>::eps());
-        assert!(UV.as_dyn().diagonal().column_vector().as_mat() ~ A.rb().as_dyn().diagonal().column_vector().as_mat());
+            ghost_tree!(BLOCK(K0, REST), COLS(J0, RIGHT), {
+                let (block_split @ l![_, rest], _) = mn.split(l![mn.idx(0), ..], BLOCK);
+                let (col_split, (col_x, ..)) = n.split(l![n.idx(0), ..], COLS);
+                let UV = UV.rb().subrows(zero(), rest.len());
+
+                let l![_, mut A1] = A.rb_mut().col_segments_mut(col_split, col_x);
+                let l![_, V] = UV.rb().col_segments(col_split);
+                let l![_, Hr] = Hr.as_ref().col_segments(block_split);
+
+                householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+                    &ctx(),
+                    V.transpose(),
+                    Hr.as_ref(),
+                    Conj::Yes,
+                    A1.rb_mut(),
+                    Par::Seq,
+                    DynStack::new(&mut GlobalMemBuffer::new(
+                        householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
+                            Unit,
+                            c64,
+                        >(*n - 1, 1, *m)
+                        .unwrap(),
+                    )),
+                );
+            });
+
+            let approx_eq = CwiseMat(ApproxEq::<Unit, c64>::eps());
+            for j in n.indices() {
+                for i in m.indices() {
+                    if *i > *j || *j > *i + 1 {
+                        UV[(i, j)] = c64::ZERO;
+                    }
+                }
+            }
+
+            assert!(UV ~ A);
+        }
     }
 }

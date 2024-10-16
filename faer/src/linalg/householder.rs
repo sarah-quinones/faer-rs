@@ -789,21 +789,20 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
     N: Shape,
     K: Shape,
     B: Shape,
-    H: Shape,
 >(
     ctx: &Ctx<C, T>,
     householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, B, H, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, C, T, B, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
+    pub fn imp<'M, 'N, 'K, 'B, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'H>>,
+        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'N>>,
         conj_lhs: Conj,
         matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
         par: Par,
@@ -864,16 +863,14 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
     make_guard!(N);
     make_guard!(K);
     make_guard!(B);
-    make_guard!(H);
     let M = householder_basis.nrows().bind(M);
     let N = householder_basis.ncols().bind(N);
     let B = householder_factor.nrows().bind(B);
-    let H = householder_factor.ncols().bind(H);
     let K = matrix.ncols().bind(K);
     imp(
         ctx,
         householder_basis.as_dyn_stride().as_shape(M, N),
-        householder_factor.as_dyn_stride().as_shape(B, H),
+        householder_factor.as_dyn_stride().as_shape(B, N),
         conj_lhs,
         matrix.as_dyn_stride_mut().as_shape_mut(M, K),
         par,
@@ -892,21 +889,20 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     N: Shape,
     K: Shape,
     B: Shape,
-    H: Shape,
 >(
     ctx: &Ctx<C, T>,
     householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, B, H, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, C, T, B, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
     matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
+    pub fn imp<'M, 'N, 'K, 'B, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
         householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'H>>,
+        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'N>>,
         conj_lhs: Conj,
         matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
         par: Par,
@@ -962,16 +958,14 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     make_guard!(N);
     make_guard!(K);
     make_guard!(B);
-    make_guard!(H);
     let M = householder_basis.nrows().bind(M);
     let N = householder_basis.ncols().bind(N);
     let B = householder_factor.nrows().bind(B);
-    let H = householder_factor.ncols().bind(H);
     let K = matrix.ncols().bind(K);
     imp(
         ctx,
         householder_basis.as_dyn_stride().as_shape(M, N),
-        householder_factor.as_dyn_stride().as_shape(B, H),
+        householder_factor.as_dyn_stride().as_shape(B, N),
         conj_lhs,
         matrix.as_dyn_stride_mut().as_shape_mut(M, K),
         par,
