@@ -36,12 +36,10 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
             let mut A01 = A01.row_mut(top.local(ki));
             let mut A10 = A10.col_mut(left.local(kj));
 
-            let (tau, beta, _) =
-                householder::make_householder_in_place(ctx, A10.rb_mut(), rb!(A00));
+            let (tau, _) = householder::make_householder_in_place(ctx, rb_mut!(A00), A10.rb_mut());
 
             let tau_inv = math.re(recip(cx.real(tau)));
             write1!(H[k] = tau);
-            write1!(A00, beta);
 
             for j in right {
                 let mut head = A01.rb_mut().at_mut(right.local(j));

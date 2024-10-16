@@ -38,7 +38,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
     A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
     H_left: MatMut<'_, C, T, Dim<'BL>, Dim<'H>>,
     H_right: MatMut<'_, C, T, Dim<'BR>, Dim<'H>>,
-    mut par: Par,
+    par: Par,
     stack: &mut DynStack,
     params: BidiagParams,
 ) {
@@ -61,6 +61,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
     let mut A = A;
     let mut Hl = H_left;
     let mut Hr = H_right;
+    let mut par = par;
 
     {
         let mut Hl = Hl.rb_mut().row_mut(bl.idx(0));
@@ -105,11 +106,10 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
                         .for_each(|uz!(mut a, y, v)| write1!(a, math(a - up0 * y - z1 * v)));
                 }
 
-                let (tl, beta, _) =
-                    householder::make_householder_in_place(ctx, A21.rb_mut(), rb!(a11));
+                let (tl, _) =
+                    householder::make_householder_in_place(ctx, rb_mut!(a11), A21.rb_mut());
                 let tl_inv = math(re.recip(real(tl)));
                 write1!(Hl[k] = tl);
-                write1!(a11, beta);
 
                 if (*m - *ki.next()) * (*n - *kj.next()) < params.par_threshold {
                     par = Par::Seq;
@@ -202,14 +202,15 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
                 let l![A22_a, _] = A22.rb().col_segments(l![j1, next]);
                 let l![y2_a, y2_b] = y2.rb().col_segments(l![j1, next]);
 
-                let (tr, beta, mul) = householder::make_householder_in_place(
+                let (tr, mul) = householder::make_householder_in_place(
                     ctx,
+                    rb_mut!(a12_a),
                     A12_b.rb_mut().transpose_mut(),
-                    rb!(a12_a),
                 );
                 let tr_inv = math(re.recip(real(tr)));
                 write1!(Hr[k1] = tr);
-                write1!(a12_a, math(mul_real(beta, norm)));
+                let beta = math(copy(a12_a));
+                write1!(a12_a, math(mul_real(a12_a, norm)));
 
                 let b = math(
                     y2_a + dot::inner_prod(ctx, y2_b, Conj::No, A12_b.rb().transpose(), Conj::Yes),

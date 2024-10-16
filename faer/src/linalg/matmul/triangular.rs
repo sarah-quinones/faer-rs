@@ -1049,7 +1049,7 @@ pub fn matmul<
     lhs_structure: BlockStructure,
     rhs: MatRefGeneric<'_, RhsC, RhsT, K, N, impl Stride, impl Stride>,
     rhs_structure: BlockStructure,
-    alpha: C::Of<&T>,
+    alpha: C::Of<impl ByRef<T>>,
     par: Par,
 ) {
     precondition(
@@ -1070,6 +1070,7 @@ pub fn matmul<
     let M = dst.nrows().bind(M);
     let N = dst.ncols().bind(N);
     let K = lhs.ncols().bind(K);
+    help!(C);
 
     matmul_imp(
         ctx,
@@ -1082,7 +1083,7 @@ pub fn matmul<
         rhs.as_dyn_stride().canonical().as_shape(K, N),
         rhs_structure,
         const { Conj::get::<RhsC, RhsT>() },
-        alpha,
+        by_ref!(alpha),
         par,
     );
 }
