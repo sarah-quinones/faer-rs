@@ -4,6 +4,19 @@ use linalg::{
     matmul::{self, dot, triangular::BlockStructure},
 };
 
+pub fn tridiag_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
+    dim: usize,
+    par: Par,
+    params: TridiagParams,
+) -> Result<StackReq, SizeOverflow> {
+    _ = par;
+    _ = params;
+    StackReq::try_all_of([
+        temp_mat_scratch::<C, T>(dim, 1)?.try_array(2)?,
+        temp_mat_scratch::<C, T>(dim, par.degree())?,
+    ])
+}
+
 /// QR factorization tuning parameters.
 #[derive(Copy, Clone)]
 #[non_exhaustive]

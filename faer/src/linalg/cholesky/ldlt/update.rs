@@ -522,6 +522,7 @@ mod tests {
                         linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<Unit, c64>(
                             *N,
                             Par::Seq,
+                            Default::default(),
                         )
                         .unwrap(),
                     )),

@@ -8,8 +8,10 @@ pub fn bidiag_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     nrows: usize,
     ncols: usize,
     par: Par,
+    params: BidiagParams,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
+    _ = params;
     StackReq::try_all_of([
         temp_mat_scratch::<C, T>(nrows, 1)?,
         temp_mat_scratch::<C, T>(ncols, 1)?,

@@ -62,8 +62,10 @@ impl Default for LltParams {
 pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     dim: usize,
     par: Par,
+    params: LltParams,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
+    _ = params;
     temp_mat_scratch::<C, T>(dim, 1)
 }
 

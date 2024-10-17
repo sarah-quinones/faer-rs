@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[inline(always)]
-pub fn best_value<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
+fn best_value<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     simd: &SimdCtxCopy<C, T, S>,
     best_value: Real<C::OfSimd<T::SimdVec<S>>>,
     best_indices: T::SimdIndex<S>,
@@ -25,7 +25,7 @@ pub fn best_value<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 }
 
 #[inline(always)]
-pub fn best_score<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
+fn best_score<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     simd: &SimdCtxCopy<C, T, S>,
     best_score: Real<C::OfSimd<T::SimdVec<S>>>,
     best_indices: T::SimdIndex<S>,
@@ -40,7 +40,7 @@ pub fn best_score<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 }
 
 #[inline(always)]
-pub fn best_score_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
+fn best_score_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     simd: &SimdCtxCopy<C, T, S>,
     best_score: Real<C::OfSimd<T::SimdVec<S>>>,
     best_row: T::SimdIndex<S>,
@@ -85,7 +85,7 @@ fn reduce_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 
 #[inline(always)]
 #[math]
-pub fn best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
+fn best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     simd: SimdCtx<'M, C, T, S>,
     data: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
 ) -> (Real<C::OfSimd<T::SimdVec<S>>>, T::SimdIndex<S>) {
@@ -150,7 +150,7 @@ pub fn best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 
 #[inline(always)]
 #[math]
-pub fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
+fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     simd: SimdCtx<'M, C, T, S>,
     data: ColMut<'_, C, T, Dim<'M>, ContiguousFwd>,
     lhs: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
@@ -249,7 +249,7 @@ pub fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, 
 }
 
 #[inline(always)]
-pub fn best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
+fn best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     data: MatRef<'_, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
 ) -> (usize, usize, RealValue<C, T>) {
@@ -297,7 +297,7 @@ pub fn best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[inline(always)]
-pub fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
+fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     data: MatMut<'_, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
     lhs: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
@@ -614,8 +614,10 @@ pub fn lu_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     nrows: usize,
     ncols: usize,
     par: Par,
+    params: FullPivLuParams,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
+    _ = params;
     let size = Ord::min(nrows, ncols);
     StackReq::try_new::<usize>(size)?.try_array(2)
 }
@@ -765,7 +767,7 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        lu_in_place_scratch::<usize, Unit, f64>(*N, *N, par).unwrap(),
+                        lu_in_place_scratch::<usize, Unit, f64>(*N, *N, par, default()).unwrap(),
                     )),
                     Default::default(),
                 );
@@ -828,7 +830,7 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        lu_in_place_scratch::<usize, Unit, c64>(*N, *N, par).unwrap(),
+                        lu_in_place_scratch::<usize, Unit, c64>(*N, *N, par, default()).unwrap(),
                     )),
                     Default::default(),
                 );

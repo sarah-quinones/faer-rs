@@ -287,7 +287,11 @@ impl Default for PartialPivLuParams {
 pub fn lu_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     nrows: usize,
     ncols: usize,
+    par: Par,
+    params: PartialPivLuParams,
 ) -> Result<StackReq, SizeOverflow> {
+    _ = par;
+    _ = params;
     StackReq::try_new::<I>(Ord::min(nrows, ncols))
 }
 
@@ -410,7 +414,8 @@ mod tests {
                 perm_inv,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    lu_in_place_scratch::<usize, Unit, f64>(*N, *N).unwrap(),
+                    lu_in_place_scratch::<usize, Unit, f64>(*N, *N, Par::Seq, Default::default())
+                        .unwrap(),
                 )),
                 PartialPivLuParams {
                     recursion_threshold: NonZero::new(2).unwrap(),
@@ -464,7 +469,7 @@ mod tests {
                 perm_inv,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    lu_in_place_scratch::<usize, Unit, f64>(*N, *N).unwrap(),
+                    lu_in_place_scratch::<usize, Unit, f64>(*N, *N, Par::Seq, default()).unwrap(),
                 )),
                 PartialPivLuParams::default(),
             )
