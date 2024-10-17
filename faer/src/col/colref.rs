@@ -329,6 +329,41 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     }
 
     #[inline]
+    pub fn cloned(self) -> Col<C, T, Rows>
+    where
+        T: Clone,
+    {
+        fn imp<'M, C: Container, T: Clone, RStride: Stride>(
+            this: ColRef<'_, C, T, Dim<'M>, RStride>,
+        ) -> Col<C, T, Dim<'M>> {
+            help!(C);
+            Col::from_fn(this.nrows(), |i| map!(this.at(i), val, val.clone()))
+        }
+
+        with_dim!(M, self.nrows().unbound());
+        imp(self.as_row_shape(M)).into_row_shape(self.nrows())
+    }
+
+    #[inline]
+    pub fn to_owned(self) -> Col<C::Canonical, T::Canonical, Rows>
+    where
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        fn imp<'M, C: Container, T, RStride: Stride>(
+            this: ColRef<'_, C, T, Dim<'M>, RStride>,
+        ) -> Col<C::Canonical, T::Canonical, Dim<'M>>
+        where
+            T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+        {
+            let ctx = &Ctx::<C::Canonical, T::Canonical>::default();
+            Col::from_fn(this.nrows(), |i| Conj::apply::<C, T>(ctx, this.at(i)))
+        }
+
+        with_dim!(M, self.nrows().unbound());
+        imp(self.as_row_shape(M)).into_row_shape(self.nrows())
+    }
+
+    #[inline]
     pub fn try_as_col_major(self) -> Option<ColRef<'a, C, T, Rows, ContiguousFwd>> {
         if self.row_stride().element_stride() == 1 {
             Some(unsafe { ColRef::from_raw_parts(self.as_ptr(), self.nrows(), ContiguousFwd) })

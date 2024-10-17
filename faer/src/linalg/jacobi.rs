@@ -233,8 +233,10 @@ impl<C: RealContainer, T: RealField<C>> JacobiRotation<C, T> {
             let mut xx = simd.read(x.rb(), i);
             let mut yy = simd.read(y.rb(), i);
 
-            xx = simd.mul_add(c, xx, simd.mul(s, yy));
-            yy = simd.mul_add(c, yy, simd.neg(simd.mul(s, xx)));
+            (xx, yy) = (
+                simd.mul_add(c, xx, simd.mul(s, yy)),
+                simd.mul_add(c, yy, simd.neg(simd.mul(s, xx))),
+            );
 
             simd.write(x.rb_mut(), i, xx);
             simd.write(y.rb_mut(), i, yy);
@@ -243,8 +245,10 @@ impl<C: RealContainer, T: RealField<C>> JacobiRotation<C, T> {
             let mut xx = simd.read(x.rb(), i);
             let mut yy = simd.read(y.rb(), i);
 
-            xx = simd.mul_add(c, xx, simd.mul(s, yy));
-            yy = simd.mul_add(c, yy, simd.neg(simd.mul(s, xx)));
+            (xx, yy) = (
+                simd.mul_add(c, xx, simd.mul(s, yy)),
+                simd.mul_add(c, yy, simd.neg(simd.mul(s, xx))),
+            );
 
             simd.write(x.rb_mut(), i, xx);
             simd.write(y.rb_mut(), i, yy);
@@ -253,8 +257,10 @@ impl<C: RealContainer, T: RealField<C>> JacobiRotation<C, T> {
             let mut xx = simd.read(x.rb(), i);
             let mut yy = simd.read(y.rb(), i);
 
-            xx = simd.mul_add(c, xx, simd.mul(s, yy));
-            yy = simd.mul_add(c, yy, simd.neg(simd.mul(s, xx)));
+            (xx, yy) = (
+                simd.mul_add(c, xx, simd.mul(s, yy)),
+                simd.mul_add(c, yy, simd.neg(simd.mul(s, xx))),
+            );
 
             simd.write(x.rb_mut(), i, xx);
             simd.write(y.rb_mut(), i, yy);
