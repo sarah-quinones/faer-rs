@@ -34,18 +34,14 @@ pub fn hessenberg_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     let _ = par;
     let n = dim;
     if n * n < params.blocking_threshold {
-        StackReq::try_any_of([
-            StackReq::try_all_of([
-                temp_mat_scratch::<C, T>(n, 1)?.try_array(3)?,
-                temp_mat_scratch::<C, T>(n, par.degree())?.try_array(2)?,
-            ])?,
-            householder::apply_block_householder_on_the_right_in_place_scratch::<C, T>(
-                n, blocksize, n,
-            )?,
-        ])
+        StackReq::try_any_of([StackReq::try_all_of([
+            temp_mat_scratch::<C, T>(n, 1)?.try_array(3)?,
+            temp_mat_scratch::<C, T>(n, par.degree())?,
+        ])?])
     } else {
         StackReq::try_all_of([
             temp_mat_scratch::<C, T>(n, blocksize)?,
+            temp_mat_scratch::<C, T>(blocksize, 1)?,
             StackReq::try_any_of([
                 StackReq::try_all_of([
                     temp_mat_scratch::<C, T>(n, 1)?,
@@ -702,6 +698,22 @@ fn hessenberg_gqvdg_unblocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
     }
 }
 
+pub fn hessenberg_in_place<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
+    ctx: &Ctx<C, T>,
+    A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+    H: MatMut<'_, C, T, Dim<'B>, Dim<'N>>,
+    par: Par,
+    stack: &mut DynStack,
+    params: HessenbergParams,
+) {
+    let n = *A.nrows();
+    if n * n < params.blocking_threshold {
+        hessenberg_rearranged_unblocked(ctx, A, H, par, stack, params);
+    } else {
+        hessenberg_gqvdg_blocked(ctx, A, H, par, stack, params);
+    }
+}
+
 #[math]
 fn hessenberg_gqvdg_blocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
@@ -717,8 +729,6 @@ fn hessenberg_gqvdg_blocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
     let mut H = H;
     let (mut Z, stack) = unsafe { temp_mat_uninit(ctx, n, b, stack) };
     let mut Z = Z.as_mat_mut();
-    let (mut X, stack) = unsafe { temp_mat_uninit(ctx, n, b, stack) };
-    let mut X = X.as_mat_mut();
 
     help!(C);
     help2!(C::Real);
@@ -758,6 +768,9 @@ fn hessenberg_gqvdg_blocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
                         params,
                     );
                 }
+
+                let (mut X, _) = unsafe { temp_mat_uninit(ctx, n, b, stack) };
+                let mut X = X.as_mat_mut();
 
                 let l![mut X0, _, mut X2] = X
                     .rb_mut()
