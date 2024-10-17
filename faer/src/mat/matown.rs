@@ -1348,8 +1348,7 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
         C: ComplexContainer,
         T: ComplexField<C>,
     {
-        self.as_mut()
-            .copy_from_triangular_lower_with(ctx, other)
+        self.as_mut().copy_from_triangular_lower_with(ctx, other)
     }
 
     #[inline]

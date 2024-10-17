@@ -510,6 +510,11 @@ mod internal_prelude {
         variadics::{l, L},
     };
 
+    #[inline]
+    pub fn simd_align(i: usize) -> usize {
+        i.wrapping_neg()
+    }
+
     pub use crate::{
         col::{
             AsColMut, AsColRef, ColGeneric as Col, ColMutGeneric as ColMut, ColRefGeneric as ColRef,

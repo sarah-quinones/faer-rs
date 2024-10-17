@@ -4,19 +4,6 @@ use linalg::{
     matmul::{self, dot, triangular::BlockStructure},
 };
 
-pub fn tridiag_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
-    dim: usize,
-    par: Par,
-    params: TridiagParams,
-) -> Result<StackReq, SizeOverflow> {
-    _ = par;
-    _ = params;
-    StackReq::try_all_of([
-        temp_mat_scratch::<C, T>(dim, 1)?.try_array(2)?,
-        temp_mat_scratch::<C, T>(dim, par.degree())?,
-    ])
-}
-
 /// QR factorization tuning parameters.
 #[derive(Copy, Clone)]
 #[non_exhaustive]
@@ -33,8 +20,21 @@ impl Default for TridiagParams {
     }
 }
 
+pub fn tridiag_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
+    dim: usize,
+    par: Par,
+    params: TridiagParams,
+) -> Result<StackReq, SizeOverflow> {
+    _ = par;
+    _ = params;
+    StackReq::try_all_of([
+        temp_mat_scratch::<C, T>(dim, 1)?.try_array(2)?,
+        temp_mat_scratch::<C, T>(dim, par.degree())?,
+    ])
+}
+
 #[math]
-pub fn tridiag_fused_op_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
+fn tridiag_fused_op_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
     y2: ColMut<'_, C, T, Dim<'N>>,
@@ -245,7 +245,7 @@ pub fn tridiag_fused_op_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-pub fn tridiag_fused_op<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
+fn tridiag_fused_op<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
     y2: ColMut<'_, C, T, Dim<'N>>,
@@ -283,7 +283,7 @@ pub fn tridiag_fused_op<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-pub fn tridiag_fused_op_fallback<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
+fn tridiag_fused_op_fallback<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
     y2: ColMut<'_, C, T, Dim<'N>>,
@@ -486,7 +486,7 @@ pub fn tridiag_in_place<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
                         householder::make_householder_in_place(ctx, rb_mut!(a11), x2.rb_mut());
 
                     tau_inv = math(re.recip(real(tau)));
-                    write1!(H[k1.local()] = tau);
+                    write1!(H[k] = tau);
 
                     let l![_, mut z2] = z
                         .rb_mut()
@@ -529,7 +529,7 @@ pub fn tridiag_in_place<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
                                     x2.rb(),
                                     x2.rb(),
                                     math(from_real(tau_inv)),
-                                    n.next_power_of_two() - *k1.next(),
+                                    simd_align(*k1.next()),
                                 );
                                 z!(y2.rb_mut(), z2.rb_mut())
                                     .for_each(|uz!(mut y, z)| write1!(y, math(y + z)));
@@ -688,7 +688,7 @@ pub fn tridiag_in_place<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
             let (block, _) = n.split(n.idx_inc(1).., BLOCK);
             let n = block.len();
             let A = A.rb().subcols(zero(), n).row_segment(block);
-            let mut Hr = H.rb_mut().col_segment_mut(block);
+            let mut H = H.rb_mut().subcols_mut(zero(), block.len());
 
             let mut j_next = zero();
             while let Some(j) = n.try_check(*j_next) {
@@ -698,19 +698,19 @@ pub fn tridiag_in_place<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
                     let (block, _) = n.split(j.into()..j_next, BLOCK);
                     let (rows, _) = n.split(n.idx_inc(*j).., ROWS);
 
-                    let mut Hr = Hr
+                    let mut H = H
                         .rb_mut()
                         .col_segment_mut(block)
                         .subrows_mut(zero(), block.len());
 
                     let zero = block.len().idx(0);
                     for k in block.len().indices() {
-                        write1!(Hr[(k, k)] = math(copy(Hr[(zero, k)])));
+                        write1!(H[(k, k)] = math(copy(H[(zero, k)])));
                     }
 
                     householder::upgrade_householder_factor(
                         ctx,
-                        Hr.rb_mut(),
+                        H.rb_mut(),
                         A.col_segment(block).row_segment(rows),
                         *b,
                         1,
@@ -749,14 +749,14 @@ mod tests {
             let A = &A + A.adjoint();
 
             with_dim!(br, 3);
-            let mut Hr = Mat::zeros_with(&ctx(), br, n);
+            let mut H = Mat::zeros_with(&ctx(), br, n);
 
             let mut V = A.clone();
             let mut V = V.as_mut();
             tridiag_in_place(
                 &ctx(),
                 V.rb_mut(),
-                Hr.as_mut(),
+                H.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
                 Default::default(),
@@ -778,12 +778,12 @@ mod tests {
                     let V = V.rb().row_segment(rest);
                     let V = V.rb().subcols(zero(), rest.len());
                     let mut A = A.rb_mut().row_segment_mut(rest);
-                    let Hr = Hr.as_ref().col_segment(rest);
+                    let H = H.as_ref().subcols(zero(), rest.len());
 
                     householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                         &ctx(),
                         V,
-                        Hr.as_ref(),
+                        H.as_ref(),
                         Conj::No,
                         A.rb_mut(),
                         Par::Seq,
@@ -833,14 +833,14 @@ mod tests {
                 let A = &A + A.adjoint();
 
                 with_dim!(br, 1);
-                let mut Hr = Mat::zeros_with(&ctx(), br, n);
+                let mut H = Mat::zeros_with(&ctx(), br, n);
 
                 let mut V = A.clone();
                 let mut V = V.as_mut();
                 tridiag_in_place(
                     &ctx(),
                     V.rb_mut(),
-                    Hr.as_mut(),
+                    H.as_mut(),
                     par,
                     DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
                     TridiagParams { par_threshold: 0 },
@@ -862,12 +862,12 @@ mod tests {
                         let V = V.rb().row_segment(rest);
                         let V = V.rb().subcols(zero(), rest.len());
                         let mut A = A.rb_mut().row_segment_mut(rest);
-                        let Hr = Hr.as_ref().col_segment(rest);
+                        let H = H.as_ref().subcols(zero(), rest.len());
 
                         householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                         &ctx(),
                         V,
-                        Hr.as_ref(),
+                        H.as_ref(),
                         if iter == 0{Conj::Yes} else {Conj::No},
                         A.rb_mut(),
                         Par::Seq,

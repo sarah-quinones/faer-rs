@@ -61,8 +61,7 @@ mod tests {
             let a = Mat::from_fn(m, n, |_, _| 1 as f64);
             let b = Mat::from_fn(p, q, |_, _| 1 as f64);
             let expected = Mat::from_fn(m * p, n * q, |_, _| 1 as f64);
-            let mut out =
-                Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
             kron(&default(), out.as_mut(), a.as_ref(), b.as_ref());
             assert!(out == expected);
         }
@@ -71,24 +70,20 @@ mod tests {
             let a = Mat::from_fn(m, n, |_, _| 1 as f64);
             let b = Col::from_fn(p, |_| 1 as f64);
             let expected = Mat::from_fn(m * p, n, |_, _| 1 as f64);
-            let mut out =
-                Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
             kron(&default(), out.as_mut(), a.as_ref(), b.as_ref().as_mat());
             assert!(out == expected);
-            let mut out =
-                Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
+            let mut out = Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
             kron(&default(), out.as_mut(), b.as_ref().as_mat(), a.as_ref());
             assert!(out == expected);
 
             let a = Mat::from_fn(m, n, |_, _| 1 as f64);
             let b = Row::from_fn(p, |_| 1 as f64);
             let expected = Mat::from_fn(m, n * p, |_, _| 1 as f64);
-            let mut out =
-                Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
             kron(&default(), out.as_mut(), a.as_ref(), b.as_ref().as_mat());
             assert!(out == expected);
-            let mut out =
-                Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
+            let mut out = Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
             kron(&default(), out.as_mut(), b.as_ref().as_mat(), a.as_ref());
             assert!(out == expected);
         }
@@ -97,8 +92,7 @@ mod tests {
             let a = Row::from_fn(m, |_| 1 as f64);
             let b = Col::from_fn(n, |_| 1 as f64);
             let expected = Mat::from_fn(n, m, |_, _| 1 as f64);
-            let mut out =
-                Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
             kron(
                 &default(),
                 out.as_mut(),
@@ -106,8 +100,7 @@ mod tests {
                 b.as_ref().as_mat(),
             );
             assert!(out == expected);
-            let mut out =
-                Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
+            let mut out = Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
             kron(
                 &default(),
                 out.as_mut(),
@@ -118,8 +111,7 @@ mod tests {
 
             let c = Row::from_fn(n, |_| 1 as f64);
             let expected = Mat::from_fn(1, m * n, |_, _| 1 as f64);
-            let mut out =
-                Mat::zeros_with(&default(), a.nrows() * c.nrows(), a.ncols() * c.ncols());
+            let mut out = Mat::zeros_with(&default(), a.nrows() * c.nrows(), a.ncols() * c.ncols());
             kron(
                 &default(),
                 out.as_mut(),
@@ -130,8 +122,7 @@ mod tests {
 
             let d = Col::from_fn(m, |_| 1 as f64);
             let expected = Mat::from_fn(m * n, 1, |_, _| 1 as f64);
-            let mut out =
-                Mat::zeros_with(&default(), d.nrows() * b.nrows(), d.ncols() * b.ncols());
+            let mut out = Mat::zeros_with(&default(), d.nrows() * b.nrows(), d.ncols() * b.ncols());
             kron(
                 &default(),
                 out.as_mut(),

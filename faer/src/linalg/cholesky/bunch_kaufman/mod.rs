@@ -38,8 +38,7 @@ mod tests {
 
             let params = Default::default();
             let mut mem = GlobalMemBuffer::new(
-                factor::cholesky_in_place_scratch::<usize, Unit, f64>(n, Par::Seq, params)
-                    .unwrap(),
+                factor::cholesky_in_place_scratch::<usize, Unit, f64>(n, Par::Seq, params).unwrap(),
             );
             let (_, perm) = factor::cholesky_in_place(
                 &default(),
@@ -54,12 +53,8 @@ mod tests {
             );
 
             let mut mem = GlobalMemBuffer::new(
-                solve::solve_in_place_scratch::<usize, Unit, f64>(
-                    n,
-                    rhs.ncols(),
-                    Par::Seq,
-                )
-                .unwrap(),
+                solve::solve_in_place_scratch::<usize, Unit, f64>(n, rhs.ncols(), Par::Seq)
+                    .unwrap(),
             );
             let mut x = rhs.clone();
             solve::solve_in_place_with_conj(
@@ -117,8 +112,7 @@ mod tests {
                 blocksize: 32,
             };
             let mut mem = GlobalMemBuffer::new(
-                factor::cholesky_in_place_scratch::<usize, Unit, c64>(n, Par::Seq, params)
-                    .unwrap(),
+                factor::cholesky_in_place_scratch::<usize, Unit, c64>(n, Par::Seq, params).unwrap(),
             );
             let (_, perm) = factor::cholesky_in_place(
                 &default(),
@@ -134,12 +128,8 @@ mod tests {
 
             let mut x = rhs.clone();
             let mut mem = GlobalMemBuffer::new(
-                solve::solve_in_place_scratch::<usize, Unit, c64>(
-                    n,
-                    rhs.ncols(),
-                    Par::Seq,
-                )
-                .unwrap(),
+                solve::solve_in_place_scratch::<usize, Unit, c64>(n, rhs.ncols(), Par::Seq)
+                    .unwrap(),
             );
             solve::solve_in_place_with_conj(
                 &default(),

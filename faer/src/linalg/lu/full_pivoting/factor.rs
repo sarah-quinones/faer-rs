@@ -535,7 +535,7 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
                         A11.rb_mut(),
                         lhs,
                         rhs,
-                        M.next_power_of_two() - *ki.next(),
+                        simd_align(*ki.next()),
                     );
                 }
                 #[cfg(feature = "rayon")]
@@ -561,7 +561,7 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
                                     A11.as_col_shape_mut(N),
                                     lhs,
                                     rhs.transpose().as_col_shape(N),
-                                    M.next_power_of_two() - *ki.next(),
+                                    simd_align(*ki.next()),
                                 );
                                 b += par_split_indices(full_cols, idx, nthreads).0;
                                 (a, b, send2!(c))

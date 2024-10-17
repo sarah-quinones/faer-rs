@@ -418,7 +418,7 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                                         W_col,
                                         p.rb(),
                                         beta.rb(),
-                                        N.next_power_of_two() - *j.next(),
+                                        simd_align(*j.next()),
                                     );
                                 } else {
                                     rank_update_step_fallback(ctx, L_col, W_col, p.rb(), beta.rb());

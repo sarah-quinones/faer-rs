@@ -360,7 +360,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                         A10.rb(),
                         A01.rb_mut(),
                         tau_inv,
-                        m.next_power_of_two() - *ki.next(),
+                        simd_align(*ki.next()),
                     ),
                     Par::Rayon(nthreads) => {
                         use rayon::prelude::*;
@@ -386,7 +386,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
                                     A10.rb(),
                                     A01.transpose_mut().as_col_shape_mut(N),
                                     math.re(copy(unsync2!(tau_inv))),
-                                    m.next_power_of_two() - *ki.next(),
+                                    simd_align(*ki.next()),
                                 );
 
                                 *max_col = *col + par_split_indices(full_cols, idx, nthreads).0;

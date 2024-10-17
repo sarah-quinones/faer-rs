@@ -26,9 +26,8 @@ pub mod thread {
                     if n_threads == 1 {
                         (op_a(Par::Seq), op_b(Par::Seq))
                     } else {
-                        let parallelism = Par::Rayon(
-                            core::num::NonZero::new(n_threads - n_threads / 2).unwrap(),
-                        );
+                        let parallelism =
+                            Par::Rayon(core::num::NonZero::new(n_threads - n_threads / 2).unwrap());
                         rayon::join(|| op_a(parallelism), || op_b(parallelism))
                     }
                 }

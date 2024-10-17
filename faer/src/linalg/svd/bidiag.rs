@@ -133,7 +133,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
                             z2.rb(),
                             y2.rb_mut(),
                             vp.rb(),
-                            m.next_power_of_two() - *ki.next(),
+                            simd_align(*ki.next()),
                         ),
                         #[cfg(feature = "rayon")]
                         Par::Rayon(nthreads) => {
@@ -155,7 +155,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
                                         z2.rb(),
                                         y2.as_col_shape_mut(N),
                                         vp.rb().as_col_shape(N),
-                                        m.next_power_of_two() - *ki.next(),
+                                        simd_align(*ki.next()),
                                     );
                                 });
                         }
@@ -195,7 +195,6 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
                     break;
                 }
 
-                let k1 = mn.idx(*k + 1);
                 let kj1 = right.global(right.idx(*kj + 1));
 
                 let (l![j1, next], (rows_x2, ..)) =
@@ -210,7 +209,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
                     A12_b.rb_mut().transpose_mut(),
                 );
                 let tr_inv = math(re.recip(real(tr)));
-                write1!(Hr[k1] = tr);
+                write1!(Hr[k] = tr);
                 let beta = math(copy(a12_a));
                 write1!(a12_a, math(mul_real(a12_a, norm)));
 
@@ -272,7 +271,7 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
             let mn = block.len();
             let n = cols.len();
             let A = A.rb().col_segment(cols).subrows(zero(), mn);
-            let mut Hr = Hr.rb_mut().col_segment_mut(block);
+            let mut Hr = Hr.rb_mut().subcols_mut(zero(), mn);
 
             let mut j_next = zero();
             while let Some(j) = mn.try_check(*j_next) {
@@ -589,13 +588,13 @@ mod tests {
             );
 
             ghost_tree!(BLOCK(K0, REST), COLS(J0, RIGHT), {
-                let (block_split @ l![_, rest], _) = mn.split(l![mn.idx(0), ..], BLOCK);
+                let (l![_, rest], _) = mn.split(l![mn.idx(0), ..], BLOCK);
                 let (col_split, (col_x, ..)) = n.split(l![n.idx(0), ..], COLS);
                 let UV = UV.rb().subrows(zero(), rest.len());
 
                 let l![_, mut A1] = A.rb_mut().col_segments_mut(col_split, col_x);
                 let l![_, V] = UV.rb().col_segments(col_split);
-                let l![_, Hr] = Hr.as_ref().col_segments(block_split);
+                let Hr = Hr.as_ref().subcols(zero(), rest.len());
 
                 householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
                     &ctx(),
@@ -679,13 +678,13 @@ mod tests {
             );
 
             ghost_tree!(BLOCK(K0, REST), COLS(J0, RIGHT), {
-                let (block_split @ l![_, rest], _) = mn.split(l![mn.idx(0), ..], BLOCK);
+                let (l![_, rest], _) = mn.split(l![mn.idx(0), ..], BLOCK);
                 let (col_split, (col_x, ..)) = n.split(l![n.idx(0), ..], COLS);
                 let UV = UV.rb().subrows(zero(), rest.len());
 
                 let l![_, mut A1] = A.rb_mut().col_segments_mut(col_split, col_x);
                 let l![_, V] = UV.rb().col_segments(col_split);
-                let l![_, Hr] = Hr.as_ref().col_segments(block_split);
+                let Hr = Hr.as_ref().subcols(zero(), rest.len());
 
                 householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
                     &ctx(),
