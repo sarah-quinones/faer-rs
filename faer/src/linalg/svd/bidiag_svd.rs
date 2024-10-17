@@ -12,9 +12,9 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use linalg::jacobi::JacobiRotation;
-
 use crate::{internal_prelude::*, perm::swap_cols_idx};
+use core::mem::swap;
+use linalg::jacobi::JacobiRotation;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SvdError {
@@ -284,6 +284,698 @@ fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
 }
 
 #[math]
+fn compute_svd_of_m<'N, C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    um: Option<MatMut<'_, C, T, usize, usize, ContiguousFwd>>,
+    vm: Option<MatMut<'_, C, T, usize, usize, ContiguousFwd>>,
+    diag: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+    col0: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    outer_perm: &Array<'N, Idx<'N>>,
+    stack: &mut DynStack,
+) {
+    help!(C);
+
+    let mut diag = diag;
+    let mut um = um;
+    let mut vm = vm;
+    let n = diag.nrows();
+
+    write1!(diag[n.idx(0)] = math.zero());
+    let mut actual_n = n.end();
+    while *actual_n > 1 && math(is_zero(diag[n.idx(*actual_n - 1)])) {
+        actual_n = n.idx_inc(*actual_n - 1);
+    }
+
+    let (perm, stack) = stack.collect(
+        col0.iter()
+            .take(*actual_n)
+            .map(|x| math.abs(x))
+            .enumerate()
+            .filter(|(_, x)| !math.is_zero(*x))
+            .map(|(i, _)| n.idx(i)),
+    );
+    let perm = &*perm;
+    let (mut col0_perm, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    let (mut diag_perm, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+
+    let mut col0_perm = col0_perm
+        .as_mat_mut()
+        .col_mut(0)
+        .try_as_col_major_mut()
+        .unwrap();
+    let mut diag_perm = diag_perm
+        .as_mat_mut()
+        .col_mut(0)
+        .try_as_col_major_mut()
+        .unwrap();
+
+    for (k, &p) in perm.iter().enumerate() {
+        let k = n.idx(k);
+        write1!(col0_perm[k] = math(copy(col0[p])));
+        write1!(diag_perm[k] = math(copy(diag[p])));
+    }
+
+    let (mut shifts, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    let shifts = shifts.as_mat_mut();
+    let (mut mus, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    let mus = mus.as_mat_mut();
+    let (mut singular_vals, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    let singular_vals = singular_vals.as_mat_mut();
+    let (mut zhat, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    let zhat = zhat.as_mat_mut();
+
+    let mut shifts = shifts.col_mut(0).try_as_col_major_mut().unwrap();
+    let mut mus = mus.col_mut(0).try_as_col_major_mut().unwrap();
+    let mut s = singular_vals.col_mut(0).try_as_col_major_mut().unwrap();
+    let mut zhat = zhat.col_mut(0).try_as_col_major_mut().unwrap();
+
+    compute_singular_values(
+        ctx,
+        shifts.rb_mut(),
+        mus.rb_mut(),
+        s.rb_mut(),
+        diag.rb(),
+        diag_perm.rb(),
+        col0,
+        col0_perm.rb(),
+    );
+    perturb_col0(
+        ctx,
+        zhat.rb_mut(),
+        col0,
+        diag.rb(),
+        perm,
+        s.rb(),
+        shifts.rb(),
+        mus.rb(),
+    );
+
+    let (mut col_perm, stack) = stack.make_with(*actual_n, |i| i);
+    let (mut col_perm_inv, _) = stack.make_with(*actual_n, |i| i);
+
+    for i0 in zero().to(n.idx_inc(*actual_n - 1)) {
+        let i1 = n.idx(*i0 + 1);
+        math(if s[i0] > s[i1] {
+            let si = copy(s[i0]);
+            let sj = copy(s[i1]);
+            write1!(s.rb_mut().at_mut(i0), sj);
+            write1!(s.rb_mut().at_mut(i1), si);
+
+            col_perm.swap(*i0, *i1);
+        })
+    }
+    for (i, p) in col_perm.iter().copied().enumerate() {
+        col_perm_inv[p] = i;
+    }
+
+    compute_singular_vectors(
+        ctx,
+        um.rb_mut(),
+        vm.rb_mut(),
+        zhat.rb(),
+        diag.rb(),
+        perm,
+        outer_perm,
+        &col_perm_inv,
+        *actual_n,
+        shifts.rb(),
+        mus.rb(),
+    );
+
+    for (idx, mut diag) in diag
+        .rb_mut()
+        .subrows_range_mut((zero(), actual_n))
+        .iter_mut()
+        .enumerate()
+    {
+        write1!(diag, math(copy(s[n.idx(*actual_n - idx - 1)])));
+    }
+
+    for (idx, mut diag) in diag
+        .rb_mut()
+        .subrows_range_mut((actual_n, n.end()))
+        .iter_mut()
+        .enumerate()
+    {
+        write1!(diag, math(copy(s[n.idx(*actual_n + idx)])));
+    }
+}
+
+#[math]
+#[inline(never)]
+fn compute_singular_vectors<'N, C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    mut um: Option<MatMut<C, T, usize, usize, ContiguousFwd>>,
+    mut vm: Option<MatMut<C, T, usize, usize, ContiguousFwd>>,
+    zhat: ColRef<C, T, Dim<'N>, ContiguousFwd>,
+    diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    perm: &[Idx<'N>],
+    outer_perm: &Array<'N, Idx<'N>>,
+    col_perm_inv: &[usize],
+    actual_n: usize,
+    shifts: ColRef<C, T, Dim<'N>, ContiguousFwd>,
+    mus: ColRef<C, T, Dim<'N>, ContiguousFwd>,
+) {
+    let n = diag.nrows();
+
+    help!(C);
+    for k in n.indices() {
+        let actual_k = if *k >= actual_n {
+            k
+        } else {
+            n.idx(actual_n - col_perm_inv[*k] - 1)
+        };
+
+        if let Some(mut u) = um.rb_mut() {
+            write1!(u[(*n, *actual_k)] = math.zero());
+        }
+
+        let mut u = um
+            .rb_mut()
+            .map(|u| u.submatrix_mut(0, 0, n, n).col_mut(actual_k));
+        let mut v = vm
+            .rb_mut()
+            .map(|v| v.submatrix_mut(0, 0, n, n).col_mut(actual_k));
+
+        if math(is_zero(zhat[k])) {
+            if let Some(mut u) = u.rb_mut() {
+                write1!(u[outer_perm[k]] = math.one());
+            }
+            if let Some(mut v) = v.rb_mut() {
+                write1!(v[outer_perm[k]] = math.one());
+            }
+            continue;
+        }
+
+        let mu = math(mus[k]);
+        let shift = math(shifts[k]);
+
+        if let Some(mut u) = u.rb_mut() {
+            for &i in perm {
+                write1!(
+                    u[outer_perm[i]] =
+                        math(zhat[i] / ((diag[i] - shift) - mu) / ((diag[i] + shift) + mu))
+                );
+            }
+            let norm_inv = math.recip(u.norm_l2_with(ctx));
+            z!(u.rb_mut()).for_each(|uz!(mut x)| write1!(x, math(x * norm_inv)));
+        }
+
+        if let Some(mut v) = v {
+            write1!(v[outer_perm[n.idx(0)]] = math(-one()));
+            for &i in &perm[1..] {
+                write1!(
+                    v[outer_perm[i]] = math(
+                        (diag[i] * zhat[i]) / ((diag[i] - shift) - mu) / ((diag[i] + shift) + mu)
+                    )
+                );
+            }
+            let norm_inv = math.recip(v.norm_l2_with(ctx));
+            z!(v.rb_mut()).for_each(|uz!(mut x)| write1!(x, math(x * norm_inv)));
+        }
+    }
+    if let Some(mut u) = um.rb_mut() {
+        write1!(u[(*n, *n)] = math.one());
+    }
+}
+
+#[math]
+fn perturb_col0<'N, C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    zhat: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+    col0: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    perm: &[Idx<'N>],
+    s: ColRef<C, T, Dim<'N>, ContiguousFwd>,
+    shifts: ColRef<C, T, Dim<'N>, ContiguousFwd>,
+    mus: ColRef<C, T, Dim<'N>, ContiguousFwd>,
+) {
+    let mut zhat = zhat;
+
+    help!(C);
+    let n = diag.nrows();
+    let m = perm.len();
+    if m == 0 {
+        z!(zhat).for_each(|uz!(mut x)| write1!(x, math(zero())));
+        return;
+    }
+
+    let last_idx = perm[m - 1];
+    for k in n.indices() {
+        if math(is_zero(col0[k])) {
+            write1!(zhat[k] = math(zero()));
+            continue;
+        }
+
+        let dk = math(diag[k]);
+        let mut prod = math((s[last_idx] + dk) * ((mus[last_idx] + shifts[last_idx]) - dk));
+
+        for (l, &i) in perm.iter().enumerate() {
+            if i == k {
+                continue;
+            }
+            if i >= k && l == 0 {
+                prod = math.zero();
+                break;
+            }
+
+            let j = if i < k {
+                i
+            } else if l > 0 {
+                perm[l - 1]
+            } else {
+                i
+            };
+
+            let term = math(
+                ((s[j] + dk) / (diag[i] + dk)) * ((mus[j] + (shifts[j] - dk)) / (diag[i] - dk)),
+            );
+            prod = math(prod * term);
+        }
+
+        let tmp = math.sqrt(prod);
+        if math(gt_zero(col0[k])) {
+            write1!(zhat[k] = tmp);
+        } else {
+            write1!(zhat[k] = math(-tmp));
+        }
+    }
+}
+
+#[math]
+fn compute_singular_values<'N, C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    mut shifts: ColMut<C, T, Dim<'N>, ContiguousFwd>,
+    mut mus: ColMut<C, T, Dim<'N>, ContiguousFwd>,
+    mut s: ColMut<C, T, Dim<'N>, ContiguousFwd>,
+    diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    diag_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    col0: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    col0_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+) {
+    let n = diag.nrows();
+    let mut actual_n = *n;
+    while actual_n > 1 && math(is_zero(col0[n.idx(actual_n - 1)])) {
+        actual_n -= 1;
+    }
+    let actual_n = actual_n;
+
+    let two = math(from_f64(2.0));
+    let eight = math(from_f64(8.0));
+    let one_half = math(from_f64(0.5));
+
+    help!(C);
+    let first = n.idx(0);
+    let epsilon = math.eps();
+
+    'kth_iter: for k in n.indices() {
+        write1!(s[k] = math(zero()));
+        write1!(shifts[k] = math(zero()));
+        write1!(mus[k] = math(zero()));
+
+        if math(is_zero(col0[k])) || actual_n == 1 {
+            write1!(
+                s[k] = if *k == 0 {
+                    math(copy(col0[first]))
+                } else {
+                    math(copy(diag[k]))
+                }
+            );
+            write1!(shifts[k] = math(copy(s[k])));
+            write1!(mus[k] = math(zero()));
+
+            continue 'kth_iter;
+        }
+
+        let last_k = *k == actual_n - 1;
+        let left = math(diag[k]);
+        let right = if last_k {
+            math(diag[n.idx(actual_n - 1)] + (col0.norm_l2_with(ctx)))
+        } else {
+            let mut l = n.idx(*k + 1);
+            while math(is_zero(col0[l])) {
+                l = n.idx(*l + 1);
+            }
+            math(copy(diag[l]))
+        };
+
+        let mid = math(left + mul_pow2((right - left), one_half));
+        let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = secular_eq_multi_fast(
+            ctx,
+            math(&[
+                mid,
+                if last_k {
+                    right - left
+                } else {
+                    mul_pow2(right - left, one_half)
+                },
+                mul_pow2(right - left, one_half),
+                mul_pow2(left - right, one_half),
+            ]),
+            col0_perm,
+            diag_perm,
+            math([zero(), copy(left), copy(left), copy(right)]),
+        );
+
+        let (mut shift, mu) = if last_k || math(gt_zero(f_mid)) {
+            math((copy(left), mul_pow2(right - left, one_half)))
+        } else {
+            math((copy(right), mul_pow2(left - right, one_half)))
+        };
+
+        if math(le_zero(f_mid_left_shift) && gt_zero(f_mid_right_shift)) {
+            write1!(s[k] = math(shift + mu));
+            write1!(shifts[k] = shift);
+            write1!(mus[k] = mu);
+
+            continue 'kth_iter;
+        }
+
+        if !last_k {
+            if math(shift == left) {
+                if math(lt_zero(f_mid_left_shift)) {
+                    shift = math.copy(right);
+                    f_mid = f_mid_right_shift;
+                }
+            } else if math(gt_zero(f_mid_right_shift)) {
+                shift = math.copy(left);
+                f_mid = f_mid_left_shift;
+            }
+        }
+
+        enum SecantError {
+            OutOfBounds,
+            PrecisionLimitReached,
+        }
+
+        let secant = {
+            |mut mu_cur: C::Of<T>,
+             mut mu_prev: C::Of<T>,
+             mut f_cur: C::Of<T>,
+             mut f_prev: C::Of<T>| {
+                if math(abs(f_prev) < abs(f_cur)) {
+                    swap(&mut f_prev, &mut f_cur);
+                    swap(&mut mu_prev, &mut mu_cur);
+                }
+
+                let mut left_candidate = None;
+                let mut right_candidate = None;
+
+                let mut use_bisection = false;
+                let same_sign = math.gt_zero(f_prev) == math.gt_zero(f_cur);
+                if !same_sign {
+                    let (min, max) = if math(mu_cur < mu_prev) {
+                        math((copy(mu_cur), copy(mu_prev)))
+                    } else {
+                        math((copy(mu_prev), copy(mu_cur)))
+                    };
+                    left_candidate = Some(min);
+                    right_candidate = Some(max);
+                }
+
+                let mut err = SecantError::PrecisionLimitReached;
+
+                while !math.is_zero(f_cur)
+                    && math(
+                        abs(mu_cur - mu_prev) > eight * epsilon * max(abs(mu_cur), abs(mu_prev)),
+                    )
+                    && math(abs(f_cur - f_prev) > epsilon)
+                    && !use_bisection
+                {
+                    // rational interpolation: fit a function of the form a / mu + b through
+                    // the two previous iterates and use its
+                    // zero to compute the next iterate
+                    let a = math((f_cur - f_prev) * (mu_prev * mu_cur) / (mu_prev - mu_cur));
+                    let b = math(f_cur - a / mu_cur);
+                    let mu_zero = math(-a / b);
+                    let f_zero = secular_eq(
+                        ctx,
+                        math.copy(mu_zero),
+                        col0_perm,
+                        diag_perm,
+                        math.copy(shift),
+                    );
+
+                    if math.lt_zero(f_zero) {
+                        left_candidate = Some(math.copy(mu_zero));
+                    } else {
+                        right_candidate = Some(math.copy(mu_zero));
+                    }
+
+                    mu_prev = math.copy(mu_cur);
+                    f_prev = math.copy(f_cur);
+                    mu_cur = math.copy(mu_zero);
+                    f_cur = math.copy(f_zero);
+
+                    if math(shift == left && (lt_zero(mu_cur) || mu_cur > right - left)) {
+                        err = SecantError::OutOfBounds;
+                        use_bisection = true;
+                    }
+                    if math(shift == right && (gt_zero(mu_cur) || mu_cur < left - right)) {
+                        err = SecantError::OutOfBounds;
+                        use_bisection = true;
+                    }
+                    if math(abs(f_cur) > abs(f_prev)) {
+                        // find mu such that a / mu + b = -k * f_zero
+                        // a / mu = -f_zero - b
+                        // mu = -a / (f_zero + b)
+                        let mut k = math(one());
+                        for _ in 0..4 {
+                            let mu_opposite = math(-a / (k * f_zero + b));
+                            let f_opposite = secular_eq(
+                                ctx,
+                                math.copy(mu_opposite),
+                                col0_perm,
+                                diag_perm,
+                                math.copy(shift),
+                            );
+                            if math(lt_zero(f_zero) && ge_zero(f_opposite)) {
+                                // this will be our right candidate
+                                right_candidate = Some(mu_opposite);
+                                break;
+                            }
+                            if math(gt_zero(f_zero) && le_zero(f_opposite)) {
+                                // this will be our left candidate
+                                left_candidate = Some(mu_opposite);
+                                break;
+                            }
+                            k = math.mul_pow2(k, two);
+                        }
+                        use_bisection = true;
+                    }
+                }
+                (use_bisection, mu_cur, left_candidate, right_candidate, err)
+            }
+        };
+
+        let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) = if math(shift == left)
+        {
+            math((
+                zero(),
+                -infinity(),
+                if last_k {
+                    right - left
+                } else {
+                    (right - left) * one_half
+                },
+                copy(*if last_k { &f_max } else { &f_mid }),
+            ))
+        } else {
+            math(((left - right) * one_half, copy(f_mid), zero(), infinity()))
+        };
+
+        let mut iteration_count = 0;
+        let mut f_prev = math.copy(f_mid);
+        // try to find non zero starting bounds
+
+        let half0 = math.copy(one_half);
+        let half1 = math(mul_pow2(half0, half0));
+        let half2 = math(mul_pow2(half1, half1));
+        let half3 = math(mul_pow2(half2, half2));
+        let half4 = math(mul_pow2(half3, half3));
+        let half5 = math(mul_pow2(half4, half4));
+        let half6 = math(mul_pow2(half5, half5));
+        let half7 = math(mul_pow2(half6, half6));
+
+        let mu_values = math(if shift == left {
+            [
+                mul_pow2(right_shifted, half7),
+                mul_pow2(right_shifted, half6),
+                mul_pow2(right_shifted, half5),
+                mul_pow2(right_shifted, half4),
+                mul_pow2(right_shifted, half3),
+                mul_pow2(right_shifted, half2),
+                mul_pow2(right_shifted, half1),
+                mul_pow2(right_shifted, half0),
+            ]
+        } else {
+            [
+                mul_pow2(left_shifted, half7),
+                mul_pow2(left_shifted, half6),
+                mul_pow2(left_shifted, half5),
+                mul_pow2(left_shifted, half4),
+                mul_pow2(left_shifted, half3),
+                mul_pow2(left_shifted, half2),
+                mul_pow2(left_shifted, half1),
+                mul_pow2(left_shifted, half0),
+            ]
+        });
+
+        let f_values = secular_eq_multi_fast(
+            ctx,
+            &mu_values,
+            col0_perm,
+            diag_perm,
+            [(); 8].map(|_| math.copy(shift)),
+        );
+
+        if math(shift == left) {
+            let mut i = 0;
+            for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
+                if math.lt_zero(*f) {
+                    left_shifted = math.copy(*mu);
+                    f_left = math.copy(*f);
+                    i = idx + 1;
+                }
+            }
+            if i < f_values.len() {
+                right_shifted = math.copy(mu_values[i]);
+                f_right = math.copy(f_values[i]);
+            }
+        } else {
+            let mut i = 0;
+            for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
+                if math.gt_zero(f) {
+                    right_shifted = math.copy(*mu);
+                    f_right = math.copy(*f);
+                    i = idx + 1;
+                }
+            }
+            if i < f_values.len() {
+                left_shifted = math.copy(mu_values[i]);
+                f_left = math.copy(f_values[i]);
+            }
+        }
+
+        // try bisection just to get a good guess for secant
+        while math(
+            right_shifted - left_shifted
+                > two * epsilon * (max(abs(left_shifted), abs(right_shifted))),
+        ) {
+            let mid_shifted_arithmetic = math((left_shifted + right_shifted) * one_half);
+            let mut mid_shifted_geometric =
+                math(sqrt(abs(left_shifted)) * sqrt(abs(right_shifted)));
+            if math.lt_zero(left_shifted) {
+                mid_shifted_geometric = math(-mid_shifted_geometric);
+            }
+            let mid_shifted = if math.is_zero(mid_shifted_geometric) {
+                mid_shifted_arithmetic
+            } else {
+                mid_shifted_geometric
+            };
+            let f_mid = secular_eq(
+                ctx,
+                math.copy(mid_shifted),
+                col0_perm,
+                diag_perm,
+                math.copy(shift),
+            );
+
+            if math.is_zero(f_mid) {
+                write1!(s[k] = math(shift + mid_shifted));
+                write1!(shifts[k] = shift);
+                write1!(mus[k] = mid_shifted);
+                continue 'kth_iter;
+            } else if math.gt_zero(f_mid) {
+                right_shifted = mid_shifted;
+                f_prev = f_right;
+                f_right = f_mid;
+            } else {
+                left_shifted = mid_shifted;
+                f_prev = f_left;
+                f_left = f_mid;
+            }
+
+            if iteration_count == 4 {
+                break;
+            }
+
+            iteration_count += 1;
+        }
+
+        // try secant with the guess from bisection
+        let args = if math.is_zero(left_shifted) {
+            (
+                math(mul_pow2(right_shifted, two)),
+                math.copy(right_shifted),
+                f_prev,
+                f_right,
+            )
+        } else if math.is_zero(right_shifted) {
+            (
+                math(mul_pow2(left_shifted, two)),
+                math.copy(left_shifted),
+                f_prev,
+                f_left,
+            )
+        } else {
+            (
+                math.copy(left_shifted),
+                math.copy(right_shifted),
+                f_left,
+                f_right,
+            )
+        };
+
+        let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
+            secant(args.0, args.1, args.2, args.3);
+
+        match (left_candidate, right_candidate) {
+            (Some(left), Some(right)) if math(left < right) => math({
+                if left > left_shifted {
+                    left_shifted = left;
+                }
+                if right < right_shifted {
+                    right_shifted = right;
+                }
+            }),
+            _ => (),
+        }
+
+        // secant failed, use bisection again
+        if use_bisection {
+            while math(
+                right_shifted - left_shifted
+                    > two * epsilon * (max(abs(left_shifted), abs(right_shifted))),
+            ) {
+                let mid_shifted = math((left_shifted + right_shifted) * one_half);
+                let f_mid = secular_eq(
+                    ctx,
+                    math.copy(mid_shifted),
+                    col0_perm,
+                    diag_perm,
+                    math.copy(shift),
+                );
+
+                if math.is_zero(f_mid) {
+                    break;
+                } else if math.gt_zero(f_mid) {
+                    right_shifted = mid_shifted;
+                } else {
+                    left_shifted = mid_shifted;
+                }
+            }
+
+            mu_cur = math((left_shifted + right_shifted) * one_half);
+        }
+
+        write1!(s[k] = math(shift + mu_cur));
+        write1!(shifts[k] = shift);
+        write1!(mus[k] = mu_cur);
+    }
+}
+
+#[math]
 fn secular_eq<'N, C: RealContainer, T: RealField<C>>(
     ctx: &Ctx<C, T>,
     mu: C::Of<T>,
@@ -301,6 +993,27 @@ fn secular_eq<'N, C: RealContainer, T: RealField<C>>(
     }
 
     res
+}
+
+#[math]
+fn secular_eq_multi_fast<'N, const N: usize, C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    mu: &[C::Of<T>; N],
+    col0_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    diag_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    shift: [C::Of<T>; N],
+) -> [C::Of<T>; N] {
+    let n = col0_perm.nrows();
+    let mut res0 = [(); N].map(|_| math(one()));
+    for i in n.indices() {
+        let c = math(col0_perm[i]);
+        let d = math(diag_perm[i]);
+
+        for ((res0, mu), shift) in res0.iter_mut().zip(mu.iter()).zip(shift.iter()) {
+            *res0 = math((*res0) + (abs2(c) / (((d - *shift) - *mu) * ((d + *shift) + *mu))));
+        }
+    }
+    res0
 }
 
 #[math]
