@@ -315,8 +315,10 @@ fn compute_svd_of_m<'N, C: RealContainer, T: RealField<C>>(
             .map(|(i, _)| n.idx(i)),
     );
     let perm = &*perm;
-    let (mut col0_perm, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut diag_perm, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    with_dim!(o, perm.len());
+
+    let (mut col0_perm, stack) = unsafe { temp_mat_uninit(ctx, o, 1, stack) };
+    let (mut diag_perm, stack) = unsafe { temp_mat_uninit(ctx, o, 1, stack) };
 
     let mut col0_perm = col0_perm
         .as_mat_mut()
@@ -330,7 +332,7 @@ fn compute_svd_of_m<'N, C: RealContainer, T: RealField<C>>(
         .unwrap();
 
     for (k, &p) in perm.iter().enumerate() {
-        let k = n.idx(k);
+        let k = o.idx(k);
         write1!(col0_perm[k] = math(copy(col0[p])));
         write1!(diag_perm[k] = math(copy(diag[p])));
     }
@@ -563,15 +565,15 @@ fn perturb_col0<'N, C: RealContainer, T: RealField<C>>(
 }
 
 #[math]
-fn compute_singular_values<'N, C: RealContainer, T: RealField<C>>(
+fn compute_singular_values<'N, 'O, C: RealContainer, T: RealField<C>>(
     ctx: &Ctx<C, T>,
     mut shifts: ColMut<C, T, Dim<'N>, ContiguousFwd>,
     mut mus: ColMut<C, T, Dim<'N>, ContiguousFwd>,
     mut s: ColMut<C, T, Dim<'N>, ContiguousFwd>,
     diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
-    diag_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    diag_perm: ColRef<'_, C, T, Dim<'O>, ContiguousFwd>,
     col0: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
-    col0_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    col0_perm: ColRef<'_, C, T, Dim<'O>, ContiguousFwd>,
 ) {
     let n = diag.nrows();
     let mut actual_n = *n;
