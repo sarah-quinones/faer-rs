@@ -69,10 +69,6 @@ pub fn bidiag_in_place<'M, 'N, 'BL, 'BR, 'H, C: ComplexContainer, T: ComplexFiel
         let mut Hl = Hl.rb_mut().row_mut(bl.idx(0));
         let mut Hr = Hr.rb_mut().row_mut(br.idx(0));
 
-        for kj in mn.indices() {
-            write1!(Hr[kj] = math(infinity()));
-        }
-
         for k in mn.indices() {
             let kj = n.idx(*k);
             let ki = m.idx(*k);

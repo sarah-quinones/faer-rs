@@ -1,6 +1,7 @@
 use linalg::{
     householder,
-    matmul::{dot, matmul},
+    matmul::{self, dot, matmul, triangular::BlockStructure},
+    triangular_solve,
 };
 
 use crate::internal_prelude::*;
@@ -534,6 +535,403 @@ fn hessenberg_rearranged_unblocked<'N, 'B, C: ComplexContainer, T: ComplexField<
     }
 }
 
+#[math]
+fn hessenberg_gqvdg_unblocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
+    ctx: &Ctx<C, T>,
+    A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+    Z: MatMut<'_, C, T, Dim<'N>, Dim<'B>>,
+    H: MatMut<'_, C, T, Dim<'B>, Dim<'B>>,
+    beta: ColMut<'_, C, T, Dim<'B>>,
+    par: Par,
+    stack: &mut DynStack,
+    params: HessenbergParams,
+) {
+    let n = A.nrows();
+    let b = H.nrows();
+    let mut A = A;
+    let mut H = H;
+    let mut Z = Z;
+    _ = params;
+
+    let (mut x, _) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
+    let mut x = x.as_mat_mut().col_mut(0);
+    let mut beta = beta;
+
+    help!(C);
+    help2!(C::Real);
+
+    for k in b.indices() {
+        let ki = n.idx(*k);
+
+        ghost_tree!(COL(LEFT, J, RIGHT), ROW(TOP, I, BOT(I1, END)), {
+            let (col_split @ l![left, _, _], (col_x, _, _)) = b.split(l![..k.into(), k, ..], COL);
+            let (row_split @ l![_, _, bot], (row_x, _, l![_, _, BOT])) =
+                n.split(l![left, ki, ..], ROW);
+            let bot_split = if ki.next() == n.end() {
+                None
+            } else {
+                Some(bot.len().split(l![bot.len().idx(0), ..], BOT))
+            };
+
+            let l![mut x0, _, _] = x.rb_mut().row_segments_mut(row_split, row_x);
+
+            let l![T0, T1, _] = H.rb_mut().row_segments_mut(col_split, col_x);
+            let l![T00, mut T01, _] = T0.col_segments_mut(col_split, col_x);
+            let l![_, mut T11, _] = T1.col_segments_mut(col_split, col_x);
+
+            let l![U0, mut A1, A2] = A.rb_mut().col_segments_mut(row_split, row_x);
+            let l![Z0, mut Z1, _] = Z.rb_mut().col_segments_mut(col_split, col_x);
+
+            let U0 = U0.rb();
+            let Z0 = Z0.rb();
+            let T00 = T00.rb();
+            let l![U00, U10, U20] = U0.row_segments(row_split);
+
+            x0.copy_from_with(ctx, U10.adjoint());
+            triangular_solve::solve_upper_triangular_in_place(
+                ctx,
+                T00,
+                x0.rb_mut().as_mat_mut(),
+                par,
+            );
+            matmul::matmul(
+                ctx,
+                A1.rb_mut().as_mat_mut(),
+                Accum::Add,
+                Z0,
+                x0.rb().as_mat(),
+                math(-one()),
+                par,
+            );
+
+            let l![mut A01, mut A11, mut A21] = A1.rb_mut().row_segments_mut(row_split, row_x);
+
+            {
+                matmul::triangular::matmul(
+                    ctx,
+                    x0.rb_mut().as_mat_mut(),
+                    BlockStructure::Rectangular,
+                    Accum::Replace,
+                    U00.adjoint(),
+                    BlockStructure::StrictTriangularUpper,
+                    A01.rb().as_mat(),
+                    BlockStructure::Rectangular,
+                    math(one()),
+                    par,
+                );
+                z!(x0.rb_mut(), U10.transpose())
+                    .for_each(|uz!(mut x, u)| write1!(x, math(x + A11 * conj(u))));
+                matmul::matmul(
+                    ctx,
+                    x0.rb_mut().as_mat_mut(),
+                    Accum::Add,
+                    U20.adjoint(),
+                    A21.rb().as_mat(),
+                    math(one()),
+                    par,
+                );
+            }
+            {
+                triangular_solve::solve_lower_triangular_in_place(
+                    ctx,
+                    T00.adjoint(),
+                    x0.rb_mut().as_mat_mut(),
+                    par,
+                );
+            }
+            {
+                matmul::triangular::matmul(
+                    ctx,
+                    A01.rb_mut().as_mat_mut(),
+                    BlockStructure::Rectangular,
+                    Accum::Add,
+                    U00,
+                    BlockStructure::StrictTriangularLower,
+                    x0.rb().as_mat(),
+                    BlockStructure::Rectangular,
+                    math(-one()),
+                    par,
+                );
+                write1!(
+                    A11,
+                    math(A11 - dot::inner_prod(ctx, U10, Conj::No, x0.rb(), Conj::No))
+                );
+                matmul::matmul(
+                    ctx,
+                    A21.rb_mut().as_mat_mut(),
+                    Accum::Add,
+                    U20,
+                    x0.rb().as_mat(),
+                    math(-one()),
+                    par,
+                );
+            }
+            if let Some((bot_split, (bot_x, _, _))) = bot_split {
+                let l![mut A11, mut A21] = A21.rb_mut().row_segments_mut(bot_split, bot_x);
+
+                let (tau, _) =
+                    householder::make_householder_in_place(ctx, rb_mut!(A11), A21.rb_mut());
+
+                write1!(beta[k] = math(copy(A11)));
+                write1!(A11, math(one()));
+                write1!(T11, tau);
+            } else {
+                write1!(T11, math(infinity()));
+            }
+
+            matmul::matmul(
+                ctx,
+                Z1.rb_mut().as_mat_mut(),
+                Accum::Replace,
+                A2.rb(),
+                A21.rb().as_mat(),
+                math(one()),
+                par,
+            );
+
+            matmul::matmul(
+                ctx,
+                T01.rb_mut().as_mat_mut(),
+                Accum::Replace,
+                U20.adjoint(),
+                A21.rb().as_mat(),
+                math(one()),
+                par,
+            );
+        });
+    }
+}
+
+#[math]
+fn hessenberg_gqvdg_blocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
+    ctx: &Ctx<C, T>,
+    A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+    H: MatMut<'_, C, T, Dim<'B>, Dim<'N>>,
+    par: Par,
+    stack: &mut DynStack,
+    params: HessenbergParams,
+) {
+    let n = A.nrows();
+    let b = H.nrows();
+    let mut A = A;
+    let mut H = H;
+    let (mut Z, stack) = unsafe { temp_mat_uninit(ctx, n, b, stack) };
+    let mut Z = Z.as_mat_mut();
+    let (mut X, stack) = unsafe { temp_mat_uninit(ctx, n, b, stack) };
+    let mut X = X.as_mat_mut();
+
+    help!(C);
+    help2!(C::Real);
+
+    let mut j_next = zero();
+    while let Some(j) = n.try_check(*j_next) {
+        j_next = n.advance(j, *b);
+
+        ghost_tree!(BLOCK_TAIL, MAT(HEAD, BLOCK, TAIL), {
+            let (tail, _) = n.split(j.into().., BLOCK_TAIL);
+            let (split @ l![_, b, _], (mat_x, _, _)) =
+                n.split(l![..j.into(), j.into()..j_next, ..], MAT);
+
+            let b = b.len();
+            let (mut beta, stack) = unsafe { temp_mat_uninit(ctx, b, 1, stack) };
+            let mut beta = beta.as_mat_mut().col_mut(0);
+
+            {
+                let mut T11 = H
+                    .rb_mut()
+                    .col_segment_mut(tail)
+                    .subcols_mut(zero(), b)
+                    .subrows_mut(zero(), b);
+                {
+                    let A1 = A.rb_mut().row_segment_mut(tail);
+                    let A11 = A1.col_segment_mut(tail);
+                    let Z1 = Z.rb_mut().row_segment_mut(tail).subcols_mut(zero(), b);
+
+                    hessenberg_gqvdg_unblocked(
+                        ctx,
+                        A11,
+                        Z1,
+                        T11.rb_mut(),
+                        beta.rb_mut(),
+                        par,
+                        stack,
+                        params,
+                    );
+                }
+
+                let l![mut X0, _, mut X2] = X
+                    .rb_mut()
+                    .subcols_mut(zero(), b)
+                    .row_segments_mut(split, mat_x);
+                let l![A0, A1, A2] = A.rb_mut().row_segments_mut(split, mat_x);
+
+                let l![_, mut A01, mut A02] = A0.col_segments_mut(split, mat_x);
+                let l![_, A11, mut A12] = A1.col_segments_mut(split, mat_x);
+                let l![_, A21, mut A22] = A2.col_segments_mut(split, mat_x);
+
+                let U1 = A11.rb();
+                let U2 = A21.rb();
+
+                let l![_, mut Z1, mut Z2] = Z
+                    .rb_mut()
+                    .subcols_mut(zero(), b)
+                    .row_segments_mut(split, mat_x);
+                let T1 = T11.rb();
+
+                matmul::triangular::matmul(
+                    ctx,
+                    X0.rb_mut(),
+                    BlockStructure::Rectangular,
+                    Accum::Replace,
+                    A01.rb(),
+                    BlockStructure::Rectangular,
+                    U1,
+                    BlockStructure::StrictTriangularLower,
+                    math(one()),
+                    par,
+                );
+                matmul::matmul(ctx, X0.rb_mut(), Accum::Add, A02.rb(), U2, math(one()), par);
+
+                triangular_solve::solve_lower_triangular_in_place(
+                    ctx,
+                    T1.transpose(),
+                    X0.rb_mut().transpose_mut(),
+                    par,
+                );
+
+                matmul::triangular::matmul(
+                    ctx,
+                    A01.rb_mut(),
+                    BlockStructure::Rectangular,
+                    Accum::Add,
+                    X0.rb(),
+                    BlockStructure::Rectangular,
+                    U1.adjoint(),
+                    BlockStructure::StrictTriangularUpper,
+                    math(-one()),
+                    par,
+                );
+                matmul::matmul(
+                    ctx,
+                    A02.rb_mut(),
+                    Accum::Add,
+                    X0.rb(),
+                    U2.adjoint(),
+                    math(-one()),
+                    par,
+                );
+
+                triangular_solve::solve_lower_triangular_in_place(
+                    ctx,
+                    T1.transpose(),
+                    Z1.rb_mut().transpose_mut(),
+                    par,
+                );
+                triangular_solve::solve_lower_triangular_in_place(
+                    ctx,
+                    T1.transpose(),
+                    Z2.rb_mut().transpose_mut(),
+                    par,
+                );
+
+                matmul::matmul(
+                    ctx,
+                    A12.rb_mut(),
+                    Accum::Add,
+                    Z1.rb(),
+                    U2.adjoint(),
+                    math(-one()),
+                    par,
+                );
+                matmul::matmul(
+                    ctx,
+                    A22.rb_mut(),
+                    Accum::Add,
+                    Z2.rb(),
+                    U2.adjoint(),
+                    math(-one()),
+                    par,
+                );
+
+                let mut X = X2.rb_mut().transpose_mut();
+
+                matmul::triangular::matmul(
+                    ctx,
+                    X.rb_mut(),
+                    BlockStructure::Rectangular,
+                    Accum::Replace,
+                    U1.adjoint(),
+                    BlockStructure::StrictTriangularUpper,
+                    A12.rb(),
+                    BlockStructure::Rectangular,
+                    math(one()),
+                    par,
+                );
+                matmul::matmul(
+                    ctx,
+                    X.rb_mut(),
+                    Accum::Add,
+                    U2.adjoint(),
+                    A22.rb(),
+                    math(one()),
+                    par,
+                );
+
+                triangular_solve::solve_lower_triangular_in_place(
+                    ctx,
+                    T1.adjoint(),
+                    X.rb_mut(),
+                    par,
+                );
+
+                matmul::triangular::matmul(
+                    ctx,
+                    A12.rb_mut(),
+                    BlockStructure::Rectangular,
+                    Accum::Add,
+                    U1,
+                    BlockStructure::StrictTriangularLower,
+                    X.rb(),
+                    BlockStructure::Rectangular,
+                    math(-one()),
+                    par,
+                );
+                matmul::matmul(ctx, A22.rb_mut(), Accum::Add, U2, X.rb(), math(-one()), par);
+            }
+
+            {
+                let l![_, mut A, _] = A
+                    .rb_mut()
+                    .row_segment_mut(tail)
+                    .col_segments_mut(split, mat_x);
+                let n = tail.len();
+                for k in b.indices() {
+                    let ki = n.idx(*k);
+
+                    ghost_tree!(COL(LEFT, J, RIGHT), ROW(TOP, I, BOT(I1, END)), {
+                        let (col_split @ l![left, _, _], (col_x, _, _)) =
+                            b.split(l![..k.into(), k, ..], COL);
+                        let (row_split @ l![_, _, bot], (row_x, _, l![_, _, BOT])) =
+                            n.split(l![left, ki, ..], ROW);
+                        let bot_split = if ki.next() == n.end() {
+                            None
+                        } else {
+                            Some(bot.len().split(l![bot.len().idx(0), ..], BOT))
+                        };
+
+                        let l![_, mut A1, _] = A.rb_mut().col_segments_mut(col_split, col_x);
+                        let l![_, _, mut A21] = A1.rb_mut().row_segments_mut(row_split, row_x);
+                        if let Some((bot_split, (bot_x, _, _))) = bot_split {
+                            let l![mut A11, _] = A21.rb_mut().row_segments_mut(bot_split, bot_x);
+                            write1!(A11, math(copy(beta[k])));
+                        }
+                    });
+                }
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::mem::MaybeUninit;
@@ -682,6 +1080,105 @@ mod tests {
                                 Unit,
                                 c64,
                             >(*n - 1, 1, *n)
+                            .unwrap(),
+                        )),
+                    );
+                    });
+                }
+
+                let approx_eq = CwiseMat(ApproxEq::<Unit, c64>::eps());
+                for j in n.indices() {
+                    for i in n.indices() {
+                        if *i > *j + 1 {
+                            V[(i, j)] = c64::ZERO;
+                        }
+                    }
+                }
+
+                assert!(V ~ A);
+            }
+        }
+    }
+
+    #[test]
+    fn test_hessenberg_cplx_gqvdg() {
+        let rng = &mut StdRng::seed_from_u64(0);
+
+        for n in [2, 3, 4, 8, 16, 21] {
+            for par in [Par::Seq, Par::rayon(4)] {
+                with_dim!(n, n);
+                with_dim!(b, 4);
+
+                let A = CwiseMatDistribution {
+                    nrows: n,
+                    ncols: n,
+                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+                }
+                .rand::<Mat<c64, _, _>>(rng);
+
+                let mut H = Mat::zeros_with(&ctx(), b, n);
+
+                let mut V = A.clone();
+                let mut V = V.as_mut();
+                hessenberg_gqvdg_blocked(
+                    &ctx(),
+                    V.rb_mut(),
+                    H.as_mut(),
+                    par,
+                    DynStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]),
+                    HessenbergParams {
+                        par_threshold: 0,
+                        ..Default::default()
+                    },
+                );
+
+                {
+                    let mut V = A.clone();
+                    let mut V = V.as_mut();
+                    let mut H = Mat::zeros_with(&ctx(), n, n);
+                    hessenberg_rearranged_unblocked(
+                        &ctx(),
+                        V.rb_mut(),
+                        H.as_mut(),
+                        par,
+                        DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
+                        HessenbergParams {
+                            par_threshold: 0,
+                            ..Default::default()
+                        },
+                    );
+                }
+
+                let mut A = A.clone();
+                let mut A = A.as_mut();
+
+                for iter in 0..2 {
+                    let mut A = if iter == 0 {
+                        A.rb_mut()
+                    } else {
+                        A.rb_mut().transpose_mut()
+                    };
+
+                    ghost_tree!(BLOCK(K0, REST), {
+                        let (l![_, rest], _) = n.split(l![n.idx(0), ..], BLOCK);
+
+                        let V = V.rb().row_segment(rest);
+                        let V = V.rb().subcols(zero(), rest.len());
+                        let mut A = A.rb_mut().row_segment_mut(rest);
+                        let H = H.as_ref().subcols(zero(), rest.len());
+
+                        householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+                        &ctx(),
+                        V,
+                        H.as_ref(),
+                        if iter == 0{Conj::Yes} else {Conj::No},
+                        A.rb_mut(),
+                        Par::Seq,
+                        DynStack::new(&mut GlobalMemBuffer::new(
+                            householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
+                                Unit,
+                                c64,
+                            >(*n - 1, *n, *n)
                             .unwrap(),
                         )),
                     );
