@@ -22,6 +22,71 @@ pub enum SvdError {
 }
 
 #[math]
+#[allow(dead_code)]
+fn bidiag_to_mat<'N, C: RealContainer, T: RealField<C, MathCtx: Default>>(
+    diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    subdiag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+) -> Mat<C, T, Dim<'N>, Dim<'N>> {
+    let n = diag.nrows();
+    let ctx: &Ctx<C, T> = &ctx();
+    let mut m = Mat::zeros_with(ctx, n, n);
+
+    help!(C);
+    {
+        let mut m = m.as_mut();
+        for i in n.indices() {
+            write1!(m[(i, i)] = math(copy(diag[i])));
+            if let Some(i1) = n.try_check(*i + 1) {
+                write1!(m[(i1, i)] = math(copy(subdiag[i])));
+            }
+        }
+    }
+    m
+}
+
+#[math]
+#[allow(dead_code)]
+fn bidiag_to_mat2<'N, C: RealContainer, T: RealField<C, MathCtx: Default>>(
+    diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    subdiag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+) -> Mat<C, T, usize, Dim<'N>> {
+    let n = diag.nrows();
+    let ctx: &Ctx<C, T> = &ctx();
+    let mut m = Mat::zeros_with(ctx, *n + 1, n);
+
+    help!(C);
+    {
+        let mut m = m.as_mut();
+        for i in n.indices() {
+            write1!(m[(*i, i)] = math(copy(diag[i])));
+            write1!(m[(*i + 1, i)] = math(copy(subdiag[i])));
+        }
+    }
+    m
+}
+
+#[math]
+#[allow(dead_code)]
+fn arrow_to_mat<'N, C: RealContainer, T: RealField<C, MathCtx: Default>>(
+    diag: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+    col0: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+) -> Mat<C, T, usize, Dim<'N>> {
+    let n = diag.nrows();
+    let ctx: &Ctx<C, T> = &ctx();
+    let mut m = Mat::zeros_with(ctx, *n + 1, n);
+
+    help!(C);
+    {
+        let mut m = m.as_mut();
+        for i in n.indices() {
+            write1!(m[(*i, n.idx(0))] = math(copy(col0[i])));
+            write1!(m[(*i, i)] = math(copy(diag[i])));
+        }
+    }
+    m
+}
+
+#[math]
 fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
     ctx: &Ctx<C, T>,
 
@@ -1969,7 +2034,6 @@ mod tests {
     }
 
     #[test]
-    #[math]
     fn test_divide_and_conquer() {
         for file in
             std::fs::read_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/"))
@@ -1977,6 +2041,7 @@ mod tests {
         {
             let (diag, subdiag) = parse_bidiag(&file.unwrap().path());
             with_dim!(n, diag.nrows());
+
             if *n > 1024 {
                 continue;
             }
@@ -2027,6 +2092,75 @@ mod tests {
                 f64::max(diag.norm_max(), subdiag.norm_max()) * (*n as f64).sqrt() * 10.0;
             approx_eq.0.rel_tol *=
                 f64::max(diag.norm_max(), subdiag.norm_max()) * (*n as f64).sqrt() * 10.0;
+            let reconstructed = &u * &d2 * v.adjoint();
+
+            assert!(reconstructed ~ bidiag_to_mat2(diag, subdiag));
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_josef() {
+        for file in
+            std::fs::read_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/"))
+                .unwrap()
+        {
+            let (diag, subdiag) = parse_bidiag(&file.unwrap().path());
+            let diag = z!(&diag).map(|uz!(x)| *x as f32);
+            let subdiag = z!(&subdiag).map(|uz!(x)| *x as f32);
+
+            with_dim!(n, diag.nrows());
+
+            if *n <= 1024 {
+                continue;
+            }
+
+            let diag = diag.as_ref().as_row_shape(n).try_as_col_major().unwrap();
+            let subdiag = subdiag.as_ref().as_row_shape(n).try_as_col_major().unwrap();
+
+            let mut d = diag.to_owned();
+            let mut subd = subdiag.to_owned();
+
+            let mut u = Mat::zeros_with(&ctx(), *n + 1, *n + 1);
+            let mut v = Mat::zeros_with(&ctx(), n, n);
+
+            for i in n.indices() {
+                u[(*i, *i)] = 1.0;
+                v[(i, i)] = 1.0;
+            }
+            u[(*n, *n)] = 1.0;
+
+            help!(Unit);
+            let ctx = &Ctx::<Unit, f32>(Default::default());
+
+            divide_and_conquer(
+                &ctx,
+                d.as_mut().try_as_col_major_mut().unwrap(),
+                subd.as_mut().try_as_col_major_mut().unwrap(),
+                MatU::Full(u.as_mut()),
+                Some(v.as_mut()),
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    divide_and_conquer_scratch::<Unit, f32>(*n, 4, true, true, Par::Seq).unwrap(),
+                )),
+                4,
+            )
+            .unwrap();
+
+            for x in subd.iter_mut() {
+                *x = 0.0;
+            }
+
+            let mut d2 = Mat::zeros_with(&ctx, *n + 1, n);
+            for i in n.indices() {
+                d2[(*i, i)] = d[i];
+            }
+
+            let mut approx_eq = CwiseMat(ApproxEq::<Unit, f32>::eps());
+            approx_eq.0.abs_tol *=
+                f32::max(diag.norm_max(), subdiag.norm_max()) * (*n as f32).sqrt() * 10.0;
+            approx_eq.0.rel_tol *=
+                f32::max(diag.norm_max(), subdiag.norm_max()) * (*n as f32).sqrt() * 10.0;
             let reconstructed = &u * &d2 * v.adjoint();
 
             assert!(reconstructed ~ bidiag_to_mat2(diag, subdiag));
