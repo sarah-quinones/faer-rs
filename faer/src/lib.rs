@@ -28,7 +28,7 @@ macro_rules! __dbg {
     ($val:expr $(,)?) => {
         match $val {
             tmp => {
-                std::eprintln!("[{}:{}:{}] {} = {:10.6?}",
+                std::eprintln!("[{}:{}:{}] {} = {:16.13?}",
                     std::file!(), std::line!(), std::column!(), std::stringify!($val), &tmp);
                 tmp
             }
@@ -541,7 +541,7 @@ mod internal_prelude {
         simd::SimdCtx,
     };
 
-    pub use crate::linalg::{self, temp_mat_scratch, temp_mat_uninit};
+    pub use crate::linalg::{self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed};
 
     pub use faer_macros::{ghost_tree, math};
 

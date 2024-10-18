@@ -37,6 +37,83 @@ pub fn temp_mat_scratch<C: ComplexContainer, T: ComplexField<C>>(
     scratch
 }
 
+struct DynMat<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> {
+    ptr: C::Of<*mut T>,
+    nrows: Rows,
+    ncols: Cols,
+    col_stride: usize,
+    __marker: PhantomData<(&'a T, T)>,
+}
+
+impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> Drop
+    for DynMat<'a, C, T, Rows, Cols>
+{
+    #[inline]
+    fn drop(&mut self) {
+        help!(C);
+        unsafe {
+            map!(
+                copy!(self.ptr),
+                ptr,
+                core::ptr::drop_in_place(core::slice::from_raw_parts_mut(
+                    ptr,
+                    self.col_stride * self.ncols.unbound()
+                ))
+            )
+        };
+    }
+}
+
+impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> AsMatRef
+    for DynMat<'a, C, T, Rows, Cols>
+{
+    type C = C;
+    type T = T;
+    type Rows = Rows;
+    type Cols = Cols;
+
+    fn as_mat_ref(&self) -> crate::mat::MatRefGeneric<C, T, Rows, Cols> {
+        help!(C);
+        unsafe {
+            MatRef::from_raw_parts(
+                map!(copy!(self.ptr), ptr, ptr as *const T),
+                self.nrows,
+                self.ncols,
+                1,
+                self.col_stride as isize,
+            )
+        }
+    }
+}
+
+impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> AsMatMut
+    for DynMat<'a, C, T, Rows, Cols>
+{
+    fn as_mat_mut(&mut self) -> crate::mat::MatMutGeneric<C, T, Rows, Cols> {
+        help!(C);
+        unsafe {
+            MatMutGeneric::from_raw_parts_mut(
+                copy!(self.ptr),
+                self.nrows,
+                self.ncols,
+                1,
+                self.col_stride as isize,
+            )
+        }
+    }
+}
+
+struct DropGuard<T> {
+    ptr: *mut T,
+    len: usize,
+}
+impl<T> Drop for DropGuard<T> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe { core::ptr::drop_in_place(core::slice::from_raw_parts_mut(self.ptr, self.len)) };
+    }
+}
+
 #[track_caller]
 pub unsafe fn temp_mat_uninit<
     'a,
@@ -55,68 +132,6 @@ pub unsafe fn temp_mat_uninit<
 ) {
     help!(C);
 
-    struct DynMat<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> {
-        ptr: C::Of<*mut T>,
-        nrows: Rows,
-        ncols: Cols,
-        col_stride: usize,
-        __marker: PhantomData<(&'a T, T)>,
-    }
-
-    impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> Drop
-        for DynMat<'a, C, T, Rows, Cols>
-    {
-        #[inline]
-        fn drop(&mut self) {
-            unsafe {
-                map!(
-                    copy!(self.ptr),
-                    ptr,
-                    core::ptr::drop_in_place(core::slice::from_raw_parts_mut(
-                        ptr,
-                        self.col_stride * self.ncols.unbound()
-                    ))
-                )
-            };
-        }
-    }
-
-    impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> AsMatRef
-        for DynMat<'a, C, T, Rows, Cols>
-    {
-        type C = C;
-        type T = T;
-        type Rows = Rows;
-        type Cols = Cols;
-
-        fn as_mat_ref(&self) -> crate::mat::MatRefGeneric<C, T, Rows, Cols> {
-            unsafe {
-                MatRef::from_raw_parts(
-                    map!(copy!(self.ptr), ptr, ptr as *const T),
-                    self.nrows,
-                    self.ncols,
-                    1,
-                    self.col_stride as isize,
-                )
-            }
-        }
-    }
-
-    impl<'a, C: ComplexContainer, T: ComplexField<C>, Rows: Shape, Cols: Shape> AsMatMut
-        for DynMat<'a, C, T, Rows, Cols>
-    {
-        fn as_mat_mut(&mut self) -> crate::mat::MatMutGeneric<C, T, Rows, Cols> {
-            unsafe {
-                MatMutGeneric::from_raw_parts_mut(
-                    copy!(self.ptr),
-                    self.nrows,
-                    self.ncols,
-                    1,
-                    self.col_stride as isize,
-                )
-            }
-        }
-    }
     let align = align_for(
         size_of::<T>(),
         align_of::<T>(),
@@ -137,21 +152,6 @@ pub unsafe fn temp_mat_uninit<
     let ptr = map!(uninit, uninit, uninit.as_mut_ptr() as *mut T);
     if core::mem::needs_drop::<T>() {
         unsafe {
-            struct DropGuard<T> {
-                ptr: *mut T,
-                len: usize,
-            }
-            impl<T> Drop for DropGuard<T> {
-                #[inline]
-                fn drop(&mut self) {
-                    unsafe {
-                        core::ptr::drop_in_place(core::slice::from_raw_parts_mut(
-                            self.ptr, self.len,
-                        ))
-                    };
-                }
-            }
-
             let mut guard = map!(copy!(ptr), ptr, DropGuard { ptr, len: 0 });
             for j in 0..len {
                 let ptr = map!(copy!(ptr), ptr, ptr.add(j));
@@ -162,6 +162,66 @@ pub unsafe fn temp_mat_uninit<
             core::mem::forget(guard);
         }
     }
+    (
+        DynMat {
+            ptr,
+            nrows,
+            ncols,
+            col_stride,
+            __marker: PhantomData,
+        },
+        stack,
+    )
+}
+
+#[track_caller]
+pub fn temp_mat_zeroed<
+    'a,
+    C: ComplexContainer,
+    T: ComplexField<C> + 'a,
+    Rows: Shape + 'a,
+    Cols: Shape + 'a,
+>(
+    ctx: &Ctx<C, T>,
+    nrows: Rows,
+    ncols: Cols,
+    stack: &'a mut DynStack,
+) -> (
+    impl 'a + AsMatMut<C = C, T = T, Rows = Rows, Cols = Cols>,
+    &'a mut DynStack,
+) {
+    help!(C);
+
+    let align = align_for(
+        size_of::<T>(),
+        align_of::<T>(),
+        core::mem::needs_drop::<T>(),
+    );
+
+    let mut col_stride = nrows.unbound();
+    if align > size_of::<T>() {
+        col_stride = col_stride.next_multiple_of(align / size_of::<T>());
+    }
+    let len = col_stride.checked_mul(ncols.unbound()).unwrap();
+    _ = stack.make_aligned_uninit::<T>(len * C::N_COMPONENTS, align);
+
+    let (uninit, stack) = C::map_impl(C::NIL, stack, &mut |(), stack| {
+        stack.make_aligned_uninit::<T>(len, align)
+    });
+
+    let ptr = map!(uninit, uninit, uninit.as_mut_ptr() as *mut T);
+
+    unsafe {
+        let mut guard = map!(copy!(ptr), ptr, DropGuard { ptr, len: 0 });
+        for j in 0..len {
+            let ptr = map!(copy!(ptr), ptr, ptr.add(j));
+            let val = T::zero_impl(ctx);
+            map!(zip!(ptr, val), (ptr, val), ptr.write(val));
+            map!(as_mut!(guard), guard, guard.len += 1);
+        }
+        core::mem::forget(guard);
+    }
+
     (
         DynMat {
             ptr,

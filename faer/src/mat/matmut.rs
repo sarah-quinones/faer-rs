@@ -343,6 +343,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn row(self, i: Idx<Rows>) -> RowRef<'a, C, T, Cols, CStride> {
         self.into_const().row(i)
     }
@@ -813,11 +814,13 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    #[track_caller]
     pub fn row_mut(self, i: Idx<Rows>) -> RowMut<'a, C, T, Cols, CStride> {
         unsafe { self.into_const().row(i).const_cast() }
     }
 
     #[inline]
+    #[track_caller]
     pub fn col_mut(self, j: Idx<Cols>) -> ColMut<'a, C, T, Rows, RStride> {
         unsafe { self.into_const().col(j).const_cast() }
     }

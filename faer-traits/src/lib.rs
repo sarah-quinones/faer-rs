@@ -597,6 +597,11 @@ impl<C: ComplexContainer, T: ComplexField<C>> Ctx<C, T> {
     }
 
     #[inline(always)]
+    pub fn nbits(&self) -> usize {
+        T::RealUnit::nbits_impl(&self.0)
+    }
+
+    #[inline(always)]
     pub fn min_positive(&self) -> <C::Real as Container>::Of<T::RealUnit> {
         T::RealUnit::min_positive_impl(&self.0)
     }
@@ -2356,6 +2361,7 @@ pub trait ComplexField<C: ComplexContainer = Unit>:
 
 pub trait RealField<C: RealContainer = Unit>: RealUnit + ComplexField<C, RealUnit = Self> {
     fn epsilon_impl(ctx: &Self::MathCtx) -> C::Of<Self>;
+    fn nbits_impl(ctx: &Self::MathCtx) -> usize;
 
     fn min_positive_impl(ctx: &Self::MathCtx) -> C::Of<Self>;
     fn max_positive_impl(ctx: &Self::MathCtx) -> C::Of<Self>;
@@ -3533,6 +3539,11 @@ impl RealField for f32 {
     fn partial_cmp_zero_impl(_: &Self::MathCtx, value: &Self) -> Option<Ordering> {
         (*value).partial_cmp(&0.0)
     }
+
+    #[inline(always)]
+    fn nbits_impl(_: &Self::MathCtx) -> usize {
+        Self::MANTISSA_DIGITS as usize
+    }
 }
 
 impl ComplexField for f64 {
@@ -3975,6 +3986,11 @@ impl RealField for f64 {
     #[inline(always)]
     fn partial_cmp_zero_impl(_: &Self::MathCtx, value: &Self) -> Option<Ordering> {
         (*value).partial_cmp(&0.0)
+    }
+
+    #[inline(always)]
+    fn nbits_impl(_: &Self::MathCtx) -> usize {
+        Self::MANTISSA_DIGITS as usize
     }
 }
 
