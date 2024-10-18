@@ -8,7 +8,7 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use linalg::jacobi::JacobiRotation;
+use linalg::{jacobi::JacobiRotation, svd::bidiag_svd::secular_eq_root_finder};
 
 use crate::{internal_prelude::*, perm::swap_cols_idx};
 
@@ -202,6 +202,104 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
     }
 
     Ok(())
+}
+
+#[math]
+fn secular_eq<C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    shift: C::Of<T>,
+    mu: C::Of<T>,
+    d: ColRef<'_, C, T, usize, ContiguousFwd>,
+    z: ColRef<'_, C, T, usize, ContiguousFwd>,
+    rho_recip: C::Of<T>,
+) -> C::Of<T> {
+    with_dim!(n, d.nrows());
+    let d = d.as_row_shape(n);
+    let z = z.as_row_shape(n);
+
+    let mut res = rho_recip;
+
+    for i in n.indices() {
+        let d = math(d[i]);
+        let z = math(z[i]);
+
+        res = math(res + z * (z / ((d - shift) - mu)));
+    }
+
+    res
+}
+
+#[math]
+fn batch_secular_eq<const N: usize, C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    shift: &[C::Of<T>; N],
+    mu: &[C::Of<T>; N],
+    d: ColRef<'_, C, T, usize, ContiguousFwd>,
+    z: ColRef<'_, C, T, usize, ContiguousFwd>,
+    rho_recip: C::Of<T>,
+) -> [C::Of<T>; N] {
+    with_dim!(n, d.nrows());
+    let d = d.as_row_shape(n);
+    let z = z.as_row_shape(n);
+
+    let mut res = [(); N].map(|_| math(copy(rho_recip)));
+    for i in n.indices() {
+        let d = math(d[i]);
+        let z = math(z[i]);
+
+        for ((res, mu), shift) in res.iter_mut().zip(mu.iter()).zip(shift.iter()) {
+            *res = math(res + z * (z / ((d - *shift) - *mu)));
+        }
+    }
+    res
+}
+
+#[math]
+fn compute_eigenvalues<C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    mut mus: ColMut<'_, C, T, usize, ContiguousFwd>,
+    mut shifts: ColMut<'_, C, T, usize, ContiguousFwd>,
+    d: ColRef<'_, C, T, usize, ContiguousFwd>,
+    z: ColRef<'_, C, T, usize, ContiguousFwd>,
+    rho: C::Of<T>,
+    non_deflated: usize,
+) {
+    let n = non_deflated;
+    let full_n = d.nrows();
+
+    let rho_recip = math.recip(rho);
+
+    help!(C);
+
+    for i in 0..n {
+        let left = math(copy(d[i]));
+        let last = i == n - 1;
+
+        let right = if last {
+            math(d[i] + rho * z.norm_l2_squared_with(ctx))
+        } else {
+            math(copy(d[i + 1]))
+        };
+
+        let d = d.subrows(0, n);
+        let z = z.subrows(0, n);
+
+        let (shift, mu) = secular_eq_root_finder(
+            ctx,
+            &|ctx, shift, mu| secular_eq(ctx, shift, mu, d, z, math(copy(rho_recip))),
+            &|ctx, shift, mu| batch_secular_eq(ctx, shift, mu, d, z, math(copy(rho_recip))),
+            left,
+            right,
+            last,
+        );
+
+        write1!(shifts[i] = shift);
+        write1!(mus[i] = mu);
+    }
+    for i in n..full_n {
+        write1!(shifts[i] = math.zero());
+        write1!(mus[i] = math(copy(d[i])));
+    }
 }
 
 #[cfg(test)]

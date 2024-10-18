@@ -465,6 +465,27 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     {
         self.norm_l2_with(&default())
     }
+
+    #[inline]
+    pub fn norm_l2_squared_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_l2_sqr::norm_l2_sqr(
+            ctx,
+            self.canonical().as_dyn_stride().as_dyn_rows().as_mat(),
+        )
+    }
+
+    #[inline]
+    pub fn norm_l2_squared(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l2_squared_with(&default())
+    }
 }
 
 impl<'a, C: Container, T, Rows: Shape> ColRef<'a, C, T, Rows, ContiguousFwd> {

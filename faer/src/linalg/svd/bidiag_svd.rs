@@ -86,6 +86,316 @@ fn arrow_to_mat<'N, C: RealContainer, T: RealField<C, MathCtx: Default>>(
     m
 }
 
+/// secular eq must be increasing
+#[math]
+pub(crate) fn secular_eq_root_finder<C: RealContainer, T: RealField<C>>(
+    ctx: &Ctx<C, T>,
+    secular_eq: &dyn Fn(&Ctx<C, T>, C::Of<T>, C::Of<T>) -> C::Of<T>,
+    batch_secular_eq: &dyn Fn(&Ctx<C, T>, &[C::Of<T>; 4], &[C::Of<T>; 4]) -> [C::Of<T>; 4],
+    left: C::Of<T>,
+    right: C::Of<T>,
+    last: bool,
+) -> (C::Of<T>, C::Of<T>) {
+    help!(C);
+    let two = math(from_f64(2.0));
+    let eight = math(from_f64(8.0));
+    let one_half = math(from_f64(0.5));
+    let epsilon = math.eps();
+
+    let mid = math(left + mul_pow2((right - left), one_half));
+    let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = batch_secular_eq(
+        ctx,
+        math(&[zero(), copy(left), copy(left), copy(right)]),
+        math(&[
+            mid,
+            if last {
+                right - left
+            } else {
+                mul_pow2(right - left, one_half)
+            },
+            mul_pow2(right - left, one_half),
+            mul_pow2(left - right, one_half),
+        ]),
+    );
+
+    let (mut shift, mu) = if last || math(gt_zero(f_mid)) {
+        math((copy(left), mul_pow2(right - left, one_half)))
+    } else {
+        math((copy(right), mul_pow2(left - right, one_half)))
+    };
+
+    if math(le_zero(f_mid_left_shift) && gt_zero(f_mid_right_shift)) {
+        return (shift, mu);
+    }
+
+    if !last {
+        if math(shift == left) {
+            if math(lt_zero(f_mid_left_shift)) {
+                shift = math.copy(right);
+                f_mid = f_mid_right_shift;
+            }
+        } else if math(gt_zero(f_mid_right_shift)) {
+            shift = math.copy(left);
+            f_mid = f_mid_left_shift;
+        }
+    }
+
+    enum SecantError {
+        OutOfBounds,
+        PrecisionLimitReached,
+    }
+
+    let secant = {
+        |mut mu_cur: C::Of<T>, mut mu_prev: C::Of<T>, mut f_cur: C::Of<T>, mut f_prev: C::Of<T>| {
+            if math(abs(f_prev) < abs(f_cur)) {
+                swap(&mut f_prev, &mut f_cur);
+                swap(&mut mu_prev, &mut mu_cur);
+            }
+
+            let mut left_candidate = None;
+            let mut right_candidate = None;
+
+            let mut use_bisection = false;
+            let same_sign = math.gt_zero(f_prev) == math.gt_zero(f_cur);
+            if !same_sign {
+                let (min, max) = if math(mu_cur < mu_prev) {
+                    math((copy(mu_cur), copy(mu_prev)))
+                } else {
+                    math((copy(mu_prev), copy(mu_cur)))
+                };
+                left_candidate = Some(min);
+                right_candidate = Some(max);
+            }
+
+            let mut err = SecantError::PrecisionLimitReached;
+
+            while !math.is_zero(f_cur)
+                && math(abs(mu_cur - mu_prev) > eight * epsilon * max(abs(mu_cur), abs(mu_prev)))
+                && math(abs(f_cur - f_prev) > epsilon)
+                && !use_bisection
+            {
+                // rational interpolation: fit a function of the form a / mu + b through
+                // the two previous iterates and use its
+                // zero to compute the next iterate
+                let a = math((f_cur - f_prev) * (mu_prev * mu_cur) / (mu_prev - mu_cur));
+                let b = math(f_cur - a / mu_cur);
+                let mu_zero = math(-a / b);
+                let f_zero = secular_eq(ctx, math.copy(shift), math.copy(mu_zero));
+
+                if math.lt_zero(f_zero) {
+                    left_candidate = Some(math.copy(mu_zero));
+                } else {
+                    right_candidate = Some(math.copy(mu_zero));
+                }
+
+                mu_prev = math.copy(mu_cur);
+                f_prev = math.copy(f_cur);
+                mu_cur = math.copy(mu_zero);
+                f_cur = math.copy(f_zero);
+
+                if math(shift == left && (lt_zero(mu_cur) || mu_cur > right - left)) {
+                    err = SecantError::OutOfBounds;
+                    use_bisection = true;
+                }
+                if math(shift == right && (gt_zero(mu_cur) || mu_cur < left - right)) {
+                    err = SecantError::OutOfBounds;
+                    use_bisection = true;
+                }
+                if math(abs(f_cur) > abs(f_prev)) {
+                    // find mu such that a / mu + b = -k * f_zero
+                    // a / mu = -f_zero - b
+                    // mu = -a / (f_zero + b)
+                    let mut k = math(one());
+                    for _ in 0..4 {
+                        let mu_opposite = math(-a / (k * f_zero + b));
+                        let f_opposite = secular_eq(ctx, math.copy(shift), math.copy(mu_opposite));
+                        if math(lt_zero(f_zero) && ge_zero(f_opposite)) {
+                            // this will be our right candidate
+                            right_candidate = Some(mu_opposite);
+                            break;
+                        }
+                        if math(gt_zero(f_zero) && le_zero(f_opposite)) {
+                            // this will be our left candidate
+                            left_candidate = Some(mu_opposite);
+                            break;
+                        }
+                        k = math.mul_pow2(k, two);
+                    }
+                    use_bisection = true;
+                }
+            }
+            (use_bisection, mu_cur, left_candidate, right_candidate, err)
+        }
+    };
+
+    let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) = if math(shift == left) {
+        math((
+            zero(),
+            -infinity(),
+            if last {
+                right - left
+            } else {
+                (right - left) * one_half
+            },
+            copy(*if last { &f_max } else { &f_mid }),
+        ))
+    } else {
+        math(((left - right) * one_half, copy(f_mid), zero(), infinity()))
+    };
+
+    let mut iteration_count = 0;
+    let mut f_prev = math.copy(f_mid);
+    // try to find non zero starting bounds
+
+    let half0 = math.copy(one_half);
+    let half1 = math(mul_pow2(half0, half0));
+    let half2 = math(mul_pow2(half1, half1));
+    let half3 = math(mul_pow2(half2, half2));
+
+    let mu_values = math(if shift == left {
+        [
+            mul_pow2(right_shifted, half3),
+            mul_pow2(right_shifted, half2),
+            mul_pow2(right_shifted, half1),
+            mul_pow2(right_shifted, half0),
+        ]
+    } else {
+        [
+            mul_pow2(left_shifted, half3),
+            mul_pow2(left_shifted, half2),
+            mul_pow2(left_shifted, half1),
+            mul_pow2(left_shifted, half0),
+        ]
+    });
+
+    let f_values = batch_secular_eq(ctx, &[(); 4].map(|_| math.copy(shift)), &mu_values);
+
+    if math(shift == left) {
+        let mut i = 0;
+        for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
+            if math.lt_zero(*f) {
+                left_shifted = math.copy(*mu);
+                f_left = math.copy(*f);
+                i = idx + 1;
+            }
+        }
+        if i < f_values.len() {
+            right_shifted = math.copy(mu_values[i]);
+            f_right = math.copy(f_values[i]);
+        }
+    } else {
+        let mut i = 0;
+        for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
+            if math.gt_zero(f) {
+                right_shifted = math.copy(*mu);
+                f_right = math.copy(*f);
+                i = idx + 1;
+            }
+        }
+        if i < f_values.len() {
+            left_shifted = math.copy(mu_values[i]);
+            f_left = math.copy(f_values[i]);
+        }
+    }
+
+    // try bisection just to get a good guess for secant
+    while math(
+        right_shifted - left_shifted > two * epsilon * (max(abs(left_shifted), abs(right_shifted))),
+    ) {
+        let mid_shifted_arithmetic = math((left_shifted + right_shifted) * one_half);
+        let mut mid_shifted_geometric = math(sqrt(abs(left_shifted)) * sqrt(abs(right_shifted)));
+        if math.lt_zero(left_shifted) {
+            mid_shifted_geometric = math(-mid_shifted_geometric);
+        }
+        let mid_shifted = if math.is_zero(mid_shifted_geometric) {
+            mid_shifted_arithmetic
+        } else {
+            mid_shifted_geometric
+        };
+        let f_mid = secular_eq(ctx, math.copy(shift), math.copy(mid_shifted));
+
+        if math.is_zero(f_mid) {
+            return (shift, mid_shifted);
+        } else if math.gt_zero(f_mid) {
+            right_shifted = mid_shifted;
+            f_prev = f_right;
+            f_right = f_mid;
+        } else {
+            left_shifted = mid_shifted;
+            f_prev = f_left;
+            f_left = f_mid;
+        }
+
+        if iteration_count == 4 {
+            break;
+        }
+
+        iteration_count += 1;
+    }
+
+    // try secant with the guess from bisection
+    let args = if math.is_zero(left_shifted) {
+        (
+            math(mul_pow2(right_shifted, two)),
+            math.copy(right_shifted),
+            f_prev,
+            f_right,
+        )
+    } else if math.is_zero(right_shifted) {
+        (
+            math(mul_pow2(left_shifted, two)),
+            math.copy(left_shifted),
+            f_prev,
+            f_left,
+        )
+    } else {
+        (
+            math.copy(left_shifted),
+            math.copy(right_shifted),
+            f_left,
+            f_right,
+        )
+    };
+
+    let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
+        secant(args.0, args.1, args.2, args.3);
+
+    match (left_candidate, right_candidate) {
+        (Some(left), Some(right)) if math(left < right) => math({
+            if left > left_shifted {
+                left_shifted = left;
+            }
+            if right < right_shifted {
+                right_shifted = right;
+            }
+        }),
+        _ => (),
+    }
+
+    // secant failed, use bisection again
+    if use_bisection {
+        while math(
+            right_shifted - left_shifted
+                > two * epsilon * (max(abs(left_shifted), abs(right_shifted))),
+        ) {
+            let mid_shifted = math((left_shifted + right_shifted) * one_half);
+            let f_mid = secular_eq(ctx, math.copy(shift), math.copy(mid_shifted));
+
+            if math.is_zero(f_mid) {
+                break;
+            } else if math.gt_zero(f_mid) {
+                right_shifted = mid_shifted;
+            } else {
+                left_shifted = mid_shifted;
+            }
+        }
+
+        mu_cur = math((left_shifted + right_shifted) * one_half);
+    }
+
+    (shift, mu_cur)
+}
+
 #[math]
 fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
     ctx: &Ctx<C, T>,
@@ -643,13 +953,8 @@ fn compute_singular_values<'N, 'O, C: RealContainer, T: RealField<C>>(
     }
     let actual_n = actual_n;
 
-    let two = math(from_f64(2.0));
-    let eight = math(from_f64(8.0));
-    let one_half = math(from_f64(0.5));
-
     help!(C);
     let first = n.idx(0);
-    let epsilon = math.eps();
 
     'kth_iter: for k in n.indices() {
         write1!(s[k] = math(zero()));
@@ -671,7 +976,7 @@ fn compute_singular_values<'N, 'O, C: RealContainer, T: RealField<C>>(
         }
 
         let last_k = *k == actual_n - 1;
-        let left = math(diag[k]);
+        let left = math(copy(diag[k]));
         let right = if last_k {
             math(diag[n.idx(actual_n - 1)] + (col0.norm_l2_with(ctx)))
         } else {
@@ -682,369 +987,28 @@ fn compute_singular_values<'N, 'O, C: RealContainer, T: RealField<C>>(
             math(copy(diag[l]))
         };
 
-        let mid = math(left + mul_pow2((right - left), one_half));
-        let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = secular_eq_multi_fast(
+        let (shift, mu) = secular_eq_root_finder(
             ctx,
-            math(&[
-                mid,
-                if last_k {
-                    right - left
-                } else {
-                    mul_pow2(right - left, one_half)
-                },
-                mul_pow2(right - left, one_half),
-                mul_pow2(left - right, one_half),
-            ]),
-            col0_perm,
-            diag_perm,
-            math([zero(), copy(left), copy(left), copy(right)]),
+            &|ctx, shift, mu| secular_eq(ctx, shift, mu, col0_perm, diag_perm),
+            &|ctx, shift, mu| batch_secular_eq(ctx, shift, mu, col0_perm, diag_perm),
+            left,
+            right,
+            last_k,
         );
 
-        let (mut shift, mu) = if last_k || math(gt_zero(f_mid)) {
-            math((copy(left), mul_pow2(right - left, one_half)))
-        } else {
-            math((copy(right), mul_pow2(left - right, one_half)))
-        };
-
-        if math(le_zero(f_mid_left_shift) && gt_zero(f_mid_right_shift)) {
-            write1!(s[k] = math(shift + mu));
-            write1!(shifts[k] = shift);
-            write1!(mus[k] = mu);
-
-            continue 'kth_iter;
-        }
-
-        if !last_k {
-            if math(shift == left) {
-                if math(lt_zero(f_mid_left_shift)) {
-                    shift = math.copy(right);
-                    f_mid = f_mid_right_shift;
-                }
-            } else if math(gt_zero(f_mid_right_shift)) {
-                shift = math.copy(left);
-                f_mid = f_mid_left_shift;
-            }
-        }
-
-        enum SecantError {
-            OutOfBounds,
-            PrecisionLimitReached,
-        }
-
-        let secant = {
-            |mut mu_cur: C::Of<T>,
-             mut mu_prev: C::Of<T>,
-             mut f_cur: C::Of<T>,
-             mut f_prev: C::Of<T>| {
-                if math(abs(f_prev) < abs(f_cur)) {
-                    swap(&mut f_prev, &mut f_cur);
-                    swap(&mut mu_prev, &mut mu_cur);
-                }
-
-                let mut left_candidate = None;
-                let mut right_candidate = None;
-
-                let mut use_bisection = false;
-                let same_sign = math.gt_zero(f_prev) == math.gt_zero(f_cur);
-                if !same_sign {
-                    let (min, max) = if math(mu_cur < mu_prev) {
-                        math((copy(mu_cur), copy(mu_prev)))
-                    } else {
-                        math((copy(mu_prev), copy(mu_cur)))
-                    };
-                    left_candidate = Some(min);
-                    right_candidate = Some(max);
-                }
-
-                let mut err = SecantError::PrecisionLimitReached;
-
-                while !math.is_zero(f_cur)
-                    && math(
-                        abs(mu_cur - mu_prev) > eight * epsilon * max(abs(mu_cur), abs(mu_prev)),
-                    )
-                    && math(abs(f_cur - f_prev) > epsilon)
-                    && !use_bisection
-                {
-                    // rational interpolation: fit a function of the form a / mu + b through
-                    // the two previous iterates and use its
-                    // zero to compute the next iterate
-                    let a = math((f_cur - f_prev) * (mu_prev * mu_cur) / (mu_prev - mu_cur));
-                    let b = math(f_cur - a / mu_cur);
-                    let mu_zero = math(-a / b);
-                    let f_zero = secular_eq(
-                        ctx,
-                        math.copy(mu_zero),
-                        col0_perm,
-                        diag_perm,
-                        math.copy(shift),
-                    );
-
-                    if math.lt_zero(f_zero) {
-                        left_candidate = Some(math.copy(mu_zero));
-                    } else {
-                        right_candidate = Some(math.copy(mu_zero));
-                    }
-
-                    mu_prev = math.copy(mu_cur);
-                    f_prev = math.copy(f_cur);
-                    mu_cur = math.copy(mu_zero);
-                    f_cur = math.copy(f_zero);
-
-                    if math(shift == left && (lt_zero(mu_cur) || mu_cur > right - left)) {
-                        err = SecantError::OutOfBounds;
-                        use_bisection = true;
-                    }
-                    if math(shift == right && (gt_zero(mu_cur) || mu_cur < left - right)) {
-                        err = SecantError::OutOfBounds;
-                        use_bisection = true;
-                    }
-                    if math(abs(f_cur) > abs(f_prev)) {
-                        // find mu such that a / mu + b = -k * f_zero
-                        // a / mu = -f_zero - b
-                        // mu = -a / (f_zero + b)
-                        let mut k = math(one());
-                        for _ in 0..4 {
-                            let mu_opposite = math(-a / (k * f_zero + b));
-                            let f_opposite = secular_eq(
-                                ctx,
-                                math.copy(mu_opposite),
-                                col0_perm,
-                                diag_perm,
-                                math.copy(shift),
-                            );
-                            if math(lt_zero(f_zero) && ge_zero(f_opposite)) {
-                                // this will be our right candidate
-                                right_candidate = Some(mu_opposite);
-                                break;
-                            }
-                            if math(gt_zero(f_zero) && le_zero(f_opposite)) {
-                                // this will be our left candidate
-                                left_candidate = Some(mu_opposite);
-                                break;
-                            }
-                            k = math.mul_pow2(k, two);
-                        }
-                        use_bisection = true;
-                    }
-                }
-                (use_bisection, mu_cur, left_candidate, right_candidate, err)
-            }
-        };
-
-        let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) = if math(shift == left)
-        {
-            math((
-                zero(),
-                -infinity(),
-                if last_k {
-                    right - left
-                } else {
-                    (right - left) * one_half
-                },
-                copy(*if last_k { &f_max } else { &f_mid }),
-            ))
-        } else {
-            math(((left - right) * one_half, copy(f_mid), zero(), infinity()))
-        };
-
-        let mut iteration_count = 0;
-        let mut f_prev = math.copy(f_mid);
-        // try to find non zero starting bounds
-
-        let half0 = math.copy(one_half);
-        let half1 = math(mul_pow2(half0, half0));
-        let half2 = math(mul_pow2(half1, half1));
-        let half3 = math(mul_pow2(half2, half2));
-        let half4 = math(mul_pow2(half3, half3));
-        let half5 = math(mul_pow2(half4, half4));
-        let half6 = math(mul_pow2(half5, half5));
-        let half7 = math(mul_pow2(half6, half6));
-
-        let mu_values = math(if shift == left {
-            [
-                mul_pow2(right_shifted, half7),
-                mul_pow2(right_shifted, half6),
-                mul_pow2(right_shifted, half5),
-                mul_pow2(right_shifted, half4),
-                mul_pow2(right_shifted, half3),
-                mul_pow2(right_shifted, half2),
-                mul_pow2(right_shifted, half1),
-                mul_pow2(right_shifted, half0),
-            ]
-        } else {
-            [
-                mul_pow2(left_shifted, half7),
-                mul_pow2(left_shifted, half6),
-                mul_pow2(left_shifted, half5),
-                mul_pow2(left_shifted, half4),
-                mul_pow2(left_shifted, half3),
-                mul_pow2(left_shifted, half2),
-                mul_pow2(left_shifted, half1),
-                mul_pow2(left_shifted, half0),
-            ]
-        });
-
-        let f_values = secular_eq_multi_fast(
-            ctx,
-            &mu_values,
-            col0_perm,
-            diag_perm,
-            [(); 8].map(|_| math.copy(shift)),
-        );
-
-        if math(shift == left) {
-            let mut i = 0;
-            for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
-                if math.lt_zero(*f) {
-                    left_shifted = math.copy(*mu);
-                    f_left = math.copy(*f);
-                    i = idx + 1;
-                }
-            }
-            if i < f_values.len() {
-                right_shifted = math.copy(mu_values[i]);
-                f_right = math.copy(f_values[i]);
-            }
-        } else {
-            let mut i = 0;
-            for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
-                if math.gt_zero(f) {
-                    right_shifted = math.copy(*mu);
-                    f_right = math.copy(*f);
-                    i = idx + 1;
-                }
-            }
-            if i < f_values.len() {
-                left_shifted = math.copy(mu_values[i]);
-                f_left = math.copy(f_values[i]);
-            }
-        }
-
-        // try bisection just to get a good guess for secant
-        while math(
-            right_shifted - left_shifted
-                > two * epsilon * (max(abs(left_shifted), abs(right_shifted))),
-        ) {
-            let mid_shifted_arithmetic = math((left_shifted + right_shifted) * one_half);
-            let mut mid_shifted_geometric =
-                math(sqrt(abs(left_shifted)) * sqrt(abs(right_shifted)));
-            if math.lt_zero(left_shifted) {
-                mid_shifted_geometric = math(-mid_shifted_geometric);
-            }
-            let mid_shifted = if math.is_zero(mid_shifted_geometric) {
-                mid_shifted_arithmetic
-            } else {
-                mid_shifted_geometric
-            };
-            let f_mid = secular_eq(
-                ctx,
-                math.copy(mid_shifted),
-                col0_perm,
-                diag_perm,
-                math.copy(shift),
-            );
-
-            if math.is_zero(f_mid) {
-                write1!(s[k] = math(shift + mid_shifted));
-                write1!(shifts[k] = shift);
-                write1!(mus[k] = mid_shifted);
-                continue 'kth_iter;
-            } else if math.gt_zero(f_mid) {
-                right_shifted = mid_shifted;
-                f_prev = f_right;
-                f_right = f_mid;
-            } else {
-                left_shifted = mid_shifted;
-                f_prev = f_left;
-                f_left = f_mid;
-            }
-
-            if iteration_count == 4 {
-                break;
-            }
-
-            iteration_count += 1;
-        }
-
-        // try secant with the guess from bisection
-        let args = if math.is_zero(left_shifted) {
-            (
-                math(mul_pow2(right_shifted, two)),
-                math.copy(right_shifted),
-                f_prev,
-                f_right,
-            )
-        } else if math.is_zero(right_shifted) {
-            (
-                math(mul_pow2(left_shifted, two)),
-                math.copy(left_shifted),
-                f_prev,
-                f_left,
-            )
-        } else {
-            (
-                math.copy(left_shifted),
-                math.copy(right_shifted),
-                f_left,
-                f_right,
-            )
-        };
-
-        let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
-            secant(args.0, args.1, args.2, args.3);
-
-        match (left_candidate, right_candidate) {
-            (Some(left), Some(right)) if math(left < right) => math({
-                if left > left_shifted {
-                    left_shifted = left;
-                }
-                if right < right_shifted {
-                    right_shifted = right;
-                }
-            }),
-            _ => (),
-        }
-
-        // secant failed, use bisection again
-        if use_bisection {
-            while math(
-                right_shifted - left_shifted
-                    > two * epsilon * (max(abs(left_shifted), abs(right_shifted))),
-            ) {
-                let mid_shifted = math((left_shifted + right_shifted) * one_half);
-                let f_mid = secular_eq(
-                    ctx,
-                    math.copy(mid_shifted),
-                    col0_perm,
-                    diag_perm,
-                    math.copy(shift),
-                );
-
-                if math.is_zero(f_mid) {
-                    break;
-                } else if math.gt_zero(f_mid) {
-                    right_shifted = mid_shifted;
-                } else {
-                    left_shifted = mid_shifted;
-                }
-            }
-
-            mu_cur = math((left_shifted + right_shifted) * one_half);
-        }
-
-        write1!(s[k] = math(shift + mu_cur));
+        write1!(s[k] = math(shift + mu));
         write1!(shifts[k] = shift);
-        write1!(mus[k] = mu_cur);
+        write1!(mus[k] = mu);
     }
 }
 
 #[math]
 fn secular_eq<'N, C: RealContainer, T: RealField<C>>(
     ctx: &Ctx<C, T>,
+    shift: C::Of<T>,
     mu: C::Of<T>,
     col0_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
     diag_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
-    shift: C::Of<T>,
 ) -> C::Of<T> {
     let mut res = math(one());
 
@@ -1059,12 +1023,12 @@ fn secular_eq<'N, C: RealContainer, T: RealField<C>>(
 }
 
 #[math]
-fn secular_eq_multi_fast<'N, const N: usize, C: RealContainer, T: RealField<C>>(
+fn batch_secular_eq<'N, const N: usize, C: RealContainer, T: RealField<C>>(
     ctx: &Ctx<C, T>,
+    shift: &[C::Of<T>; N],
     mu: &[C::Of<T>; N],
     col0_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
     diag_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
-    shift: [C::Of<T>; N],
 ) -> [C::Of<T>; N] {
     let n = col0_perm.nrows();
     let mut res0 = [(); N].map(|_| math(one()));
