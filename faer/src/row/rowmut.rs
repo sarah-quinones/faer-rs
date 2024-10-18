@@ -499,6 +499,14 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowMut<'a, C, T, Cols, C
     }
 
     #[inline]
+    pub fn fill(&mut self, value: C::Of<T>)
+    where
+        T: Clone,
+    {
+        self.rb_mut().transpose_mut().fill(value)
+    }
+
+    #[inline]
     pub(crate) fn __at_mut(self, i: Idx<Cols>) -> C::Of<&'a mut T> {
         self.at_mut(i)
     }

@@ -161,12 +161,17 @@ impl<C: RealContainer, T: RealField<C>> JacobiRotation<C, T> {
     }
 
     #[inline]
-    pub fn apply_on_the_right_in_place<'N>(
+    pub fn apply_on_the_right_in_place<N: Shape>(
         &self,
         ctx: &Ctx<C, T>,
-        x: ColMut<'_, C, T, Dim<'N>>,
-        y: ColMut<'_, C, T, Dim<'N>>,
+        x: ColMut<'_, C, T, N>,
+        y: ColMut<'_, C, T, N>,
     ) {
+        with_dim!(N, x.nrows().unbound());
+
+        let x = x.as_row_shape_mut(N);
+        let y = y.as_row_shape_mut(N);
+
         self.transpose(ctx)
             .apply_on_the_left_in_place(ctx, x.transpose_mut(), y.transpose_mut());
     }

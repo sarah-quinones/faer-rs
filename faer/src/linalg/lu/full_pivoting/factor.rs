@@ -489,12 +489,12 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 
         if max_row != *ki {
             let row = M.idx(max_row);
-            swap_rows_idx(ctx, A.rb_mut(), ki, row);
+            swap_rows_idx(A.rb_mut(), ki, row);
             n_trans += 1;
         }
         if max_col != *kj {
             let col = N.idx(max_col);
-            swap_cols_idx(ctx, A.rb_mut(), kj, col);
+            swap_cols_idx(A.rb_mut(), kj, col);
             n_trans += 1;
         }
 

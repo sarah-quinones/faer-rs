@@ -338,13 +338,11 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 );
 
                 swap_rows_idx(
-                    ctx,
                     a.rb_mut().split_at_col_mut(k0.into()).0.bind_c(unique!()),
                     kk,
                     kp,
                 );
                 swap_rows_idx(
-                    ctx,
                     w.rb_mut().split_at_col_mut(jk.next()).0.bind_c(unique!()),
                     kk,
                     kp,
@@ -521,7 +519,6 @@ fn cholesky_diagonal_pivoting_blocked_step<
 
         if jp != jj {
             swap_rows_idx(
-                ctx,
                 a.rb_mut()
                     .subcols_range_mut((zero(), j.next()))
                     .bind_c(unique!()),
@@ -635,7 +632,6 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
 
                     pivot_count += 1;
                     swap_cols_idx(
-                        ctx,
                         a.rb_mut()
                             .subrows_range_mut((kp.next(), N))
                             .bind_r(unique!()),
@@ -825,11 +821,11 @@ fn convert<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
             let i1 = N.check(i + 1);
             let p = N.check(p);
 
-            swap_rows_idx(ctx, a, i1, p);
+            swap_rows_idx(a, i1, p);
             i += 2;
         } else {
             let p = N.check(p);
-            swap_rows_idx(ctx, a, i0, p);
+            swap_rows_idx(a, i0, p);
             i += 1;
         }
     }

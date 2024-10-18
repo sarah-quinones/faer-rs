@@ -60,6 +60,15 @@ unsafe impl<C: Container, T: Sync, Rows: Send, RStride: Send> Send
 {
 }
 
+impl<'a, C: Container, T> ColRef<'a, C, T> {
+    #[inline]
+    pub fn from_slice(slice: C::Of<&'a [T]>) -> Self {
+        help!(C);
+        let len = crate::slice_len::<C>(rb!(slice));
+        unsafe { Self::from_raw_parts(map!(slice, slice, slice.as_ptr()), len, 1) }
+    }
+}
+
 impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, RStride> {
     #[inline(always)]
     #[track_caller]

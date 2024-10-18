@@ -30,6 +30,14 @@ impl<'a, C: Container, T, N: Shape, Stride: crate::Stride> DiagMut<'a, C, T, N, 
     pub fn as_mut(&mut self) -> DiagMut<'_, C, T, N, Stride> {
         self.rb_mut()
     }
+
+    #[inline]
+    pub fn fill(&mut self, value: C::Of<T>)
+    where
+        T: Clone,
+    {
+        self.inner.fill(value)
+    }
 }
 
 impl<'short, C: Container, T, N: Copy, Stride: Copy> Reborrow<'short>

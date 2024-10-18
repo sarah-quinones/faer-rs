@@ -439,6 +439,44 @@ impl<C: Container, T, Rows: Shape, Cols: Shape> Mat<C, T, Rows, Cols> {
         Self::from_fn(nrows, ncols, |_, _| T::zero_impl(ctx))
     }
 
+    #[inline]
+    pub fn zeros(nrows: Rows, ncols: Cols) -> Self
+    where
+        C: ComplexContainer,
+        T: ComplexField<C, MathCtx: Default>,
+    {
+        Self::zeros_with(&ctx(), nrows, ncols)
+    }
+
+    #[inline]
+    pub fn ones_with(ctx: &Ctx<C, T>, nrows: Rows, ncols: Cols) -> Self
+    where
+        C: ComplexContainer,
+        T: ComplexField<C>,
+    {
+        Self::from_fn(nrows, ncols, |_, _| T::one_impl(ctx))
+    }
+
+    #[inline]
+    pub fn ones(nrows: Rows, ncols: Cols) -> Self
+    where
+        C: ComplexContainer,
+        T: ComplexField<C, MathCtx: Default>,
+    {
+        Self::ones_with(&ctx(), nrows, ncols)
+    }
+
+    #[inline]
+    pub fn full(nrows: Rows, ncols: Cols, value: C::Of<T>) -> Self
+    where
+        T: Clone,
+    {
+        help!(C);
+        Self::from_fn(nrows, ncols, |_, _| {
+            map!(as_ref!(value), value, value.clone())
+        })
+    }
+
     pub fn try_reserve(
         &mut self,
         new_row_capacity: usize,

@@ -319,7 +319,7 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, C: ComplexContainer, T: Com
             if best_col != kj {
                 n_trans += 1;
                 col_perm.as_mut().swap(*best_col, *kj);
-                swap_cols_idx(ctx, A.rb_mut(), best_col, kj);
+                swap_cols_idx(A.rb_mut(), best_col, kj);
             }
 
             ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {

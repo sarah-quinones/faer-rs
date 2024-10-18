@@ -9,6 +9,7 @@ use core::ops::{Index, IndexMut};
 use equator::assert;
 use faer_traits::{ComplexField, Ctx, RealValue};
 use generativity::{make_guard, Guard};
+use linalg::zip::Last;
 use matref::MatRef;
 
 pub struct MatMut<'a, C: Container, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize>
@@ -1208,6 +1209,23 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
                 }
             }
         }
+    }
+
+    #[inline]
+    pub fn fill(&mut self, value: C::Of<T>)
+    where
+        T: Clone,
+    {
+        fn cloner<C: Container, T: Clone>(
+            value: C::Of<T>,
+        ) -> impl for<'a> FnMut(Last<C::Of<&'a mut T>>) {
+            help!(C);
+            #[inline(always)]
+            move |x| {
+                map!(zip!(x.0, as_ref!(value)), (x, value), *x = value.clone());
+            }
+        }
+        z!(self.rb_mut().as_dyn_mut()).for_each(cloner::<C, T>(value));
     }
 
     #[inline]

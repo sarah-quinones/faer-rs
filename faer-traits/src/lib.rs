@@ -538,6 +538,15 @@ pub mod utils {
     }
 
     #[inline(always)]
+    pub fn swap<C: Container, T>(a: &mut C::Of<&mut T>, b: &mut C::Of<&mut T>) {
+        map::<C, _, _>(
+            C::zip(rb_mut::<C, _>(a), rb_mut::<C, _>(b)),
+            #[inline(always)]
+            |(a, b)| core::mem::swap(a, b),
+        );
+    }
+
+    #[inline(always)]
     pub fn into_const<C: Container, T: IntoConst>(ptr: C::Of<T>) -> C::Of<T::Target> {
         map::<C, _, _>(
             ptr,
@@ -2105,6 +2114,7 @@ pub trait ComplexField<C: ComplexContainer = Unit>:
     type SimdCtx<S: Simd>: Copy;
     type Index: Index;
 
+    // FIXME: remove the default bound
     type MathCtx: Send + Sync + Default;
 
     type RealUnit: RealField<C::Real, MathCtx = Self::MathCtx>;

@@ -99,11 +99,23 @@ fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
     let eps = math(eps());
     let sml = math(min_positive());
 
+    let mut u = u;
+    let mut v = v;
+
+    if let Some(mut u) = u.rb_mut() {
+        u.fill(math(zero()));
+        u.diagonal_mut().fill(math(one()));
+    }
+    if let Some(mut u) = v.rb_mut() {
+        u.fill(math(zero()));
+        u.diagonal_mut().fill(math(one()));
+    }
+
     if *n == 0 {
         return Ok(());
     }
 
-    let max_iters = Ord::max(30, ctx.nbits())
+    let max_iters = Ord::max(30, ctx.nbits() / 2)
         .saturating_mul(*n)
         .saturating_mul(*n);
 
@@ -311,10 +323,10 @@ fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
             write1!(diag[k] = di);
 
             if let Some(u) = u.rb_mut() {
-                swap_cols_idx(ctx, u, k, idx);
+                swap_cols_idx(u, k, idx);
             }
             if let Some(v) = v.rb_mut() {
-                swap_cols_idx(ctx, v, k, idx);
+                swap_cols_idx(v, k, idx);
             }
         }
     }
@@ -1411,14 +1423,10 @@ fn divide_and_conquer<'N, C: RealContainer, T: RealField<C>>(
         write1!(diag_alloc[i1] = math(zero()));
         write1!(subdiag_alloc[i1] = math(zero()));
 
-        let (mut u_alloc, stack) = temp_mat_zeroed(ctx, n1, n1, stack);
-        let (mut v_alloc, _) = temp_mat_zeroed(ctx, n1, n1, stack);
+        let (mut u_alloc, stack) = unsafe { temp_mat_uninit(ctx, n1, n1, stack) };
+        let (mut v_alloc, _) = unsafe { temp_mat_uninit(ctx, n1, n1, stack) };
         let mut u_alloc = u_alloc.as_mat_mut();
         let mut v_alloc = v_alloc.as_mat_mut();
-        for i in n1.indices() {
-            write1!(u_alloc[(i, i)] = math.one());
-            write1!(v_alloc[(i, i)] = math.one());
-        }
 
         qr_algorithm(
             ctx,
@@ -1559,8 +1567,7 @@ fn divide_and_conquer<'N, C: RealContainer, T: RealField<C>>(
                 for i in (0..*k).rev() {
                     with_dim!(ncols, u1.ncols());
 
-                    crate::perm::swap_cols_idx(
-                        ctx,
+                    swap_cols_idx(
                         u1.rb_mut().as_shape_mut(ncols, ncols),
                         ncols.idx(i),
                         ncols.idx(i + 1),
@@ -2001,8 +2008,8 @@ mod tests {
             let mut d = diag.to_owned();
             let mut subd = subdiag.to_owned();
 
-            let mut u = Mat::zeros_with(&ctx(), n, n);
-            let mut v = Mat::zeros_with(&ctx(), n, n);
+            let mut u = Mat::zeros(n, n);
+            let mut v = Mat::zeros(n, n);
 
             for i in n.indices() {
                 u[(i, i)] = 1.0;
@@ -2053,7 +2060,7 @@ mod tests {
             let mut subd = subdiag.to_owned();
 
             let mut u = Mat::zeros_with(&ctx(), *n + 1, *n + 1);
-            let mut v = Mat::zeros_with(&ctx(), n, n);
+            let mut v = Mat::zeros(n, n);
 
             for i in n.indices() {
                 u[(*i, *i)] = 1.0;
@@ -2122,7 +2129,7 @@ mod tests {
             let mut subd = subdiag.to_owned();
 
             let mut u = Mat::zeros_with(&ctx(), *n + 1, *n + 1);
-            let mut v = Mat::zeros_with(&ctx(), n, n);
+            let mut v = Mat::zeros(n, n);
 
             for i in n.indices() {
                 u[(*i, *i)] = 1.0;
@@ -2214,13 +2221,13 @@ mod tests {
 
         let P = crate::perm::PermRef::new_checked(perm, perm_inv, n);
 
-        let mut M_orig = Mat::zeros_with(&ctx(), n, n);
+        let mut M_orig = Mat::zeros(n, n);
         for i in n.indices() {
             M_orig[(i, i)] = diag_orig[*i];
             M_orig[(i, n.idx(0))] = col_orig[*i];
         }
 
-        let mut M = Mat::zeros_with(&ctx(), n, n);
+        let mut M = Mat::zeros(n, n);
         for i in n.indices() {
             M[(i, i)] = diag[i];
             M[(i, n.idx(0))] = col[i];
@@ -2283,13 +2290,13 @@ mod tests {
 
         let P = crate::perm::PermRef::new_checked(perm, perm_inv, n);
 
-        let mut M_orig = Mat::zeros_with(&ctx(), n, n);
+        let mut M_orig = Mat::zeros(n, n);
         for i in n.indices() {
             M_orig[(i, i)] = diag_orig[*i];
             M_orig[(i, n.idx(0))] = col_orig[*i];
         }
 
-        let mut M = Mat::zeros_with(&ctx(), n, n);
+        let mut M = Mat::zeros(n, n);
         for i in n.indices() {
             M[(i, i)] = diag[i];
             M[(i, n.idx(0))] = col[i];
@@ -2359,13 +2366,13 @@ mod tests {
 
         let P = crate::perm::PermRef::new_checked(perm, perm_inv, n);
 
-        let mut M_orig = Mat::zeros_with(&ctx(), n, n);
+        let mut M_orig = Mat::zeros(n, n);
         for i in n.indices() {
             M_orig[(i, i)] = diag_orig[*i];
             M_orig[(i, n.idx(0))] = col_orig[*i];
         }
 
-        let mut M = Mat::zeros_with(&ctx(), n, n);
+        let mut M = Mat::zeros(n, n);
         for i in n.indices() {
             M[(i, i)] = diag[i];
             M[(i, n.idx(0))] = col[i];

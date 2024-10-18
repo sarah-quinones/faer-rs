@@ -1,59 +1,50 @@
-use crate::internal_prelude::*;
+use crate::{internal_prelude::*, Idx};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use linalg::zip::{Last, Zip};
 use reborrow::*;
 
 #[track_caller]
 #[inline]
 #[math]
-pub fn swap_cols<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: ColMut<'_, C, T, Dim<'N>>,
-    b: ColMut<'_, C, T, Dim<'N>>,
-) {
+pub fn swap_cols<N: Shape, C: Container, T>(a: ColMut<'_, C, T, N>, b: ColMut<'_, C, T, N>) {
     help!(C);
 
-    zipped!(a, b).for_each(|unzipped!(mut a, mut b)| {
-        let (a_, b_) = math((copy(a), copy(b)));
-        write1!(a, b_);
-        write1!(b, a_);
-    });
+    fn swap<C: Container, T>() -> impl FnMut(Zip<C::Of<&mut T>, Last<C::Of<&mut T>>>) {
+        |unzipped!(mut a, mut b)| faer_traits::utils::swap::<C, _>(&mut a, &mut b)
+    }
+
+    zipped!(a, b).for_each(swap::<C, T>());
 }
 
 #[track_caller]
 #[inline]
-pub fn swap_rows<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: RowMut<'_, C, T, Dim<'N>>,
-    b: RowMut<'_, C, T, Dim<'N>>,
-) {
-    swap_cols(ctx, a.transpose_mut(), b.transpose_mut())
+pub fn swap_rows<N: Shape, C: Container, T>(a: RowMut<'_, C, T, N>, b: RowMut<'_, C, T, N>) {
+    swap_cols(a.transpose_mut(), b.transpose_mut())
 }
 
 #[track_caller]
 #[inline]
-pub fn swap_rows_idx<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mat: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    a: Idx<'M>,
-    b: Idx<'M>,
+pub fn swap_rows_idx<M: Shape, N: Shape, C: Container, T>(
+    mat: MatMut<'_, C, T, M, N>,
+    a: Idx<M>,
+    b: Idx<M>,
 ) {
     if a != b {
         let (a, b) = mat.two_rows_mut(a, b);
-        swap_rows(ctx, a, b);
+        swap_rows(a, b);
     }
 }
 
 #[track_caller]
 #[inline]
-pub fn swap_cols_idx<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mat: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    a: Idx<'N>,
-    b: Idx<'N>,
+pub fn swap_cols_idx<M: Shape, N: Shape, C: Container, T>(
+    mat: MatMut<'_, C, T, M, N>,
+    a: Idx<N>,
+    b: Idx<N>,
 ) {
     if a != b {
         let (a, b) = mat.two_cols_mut(a, b);
-        swap_cols(ctx, a, b);
+        swap_cols(a, b);
     }
 }
 

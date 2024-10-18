@@ -66,6 +66,15 @@ unsafe impl<C: Container, T: Send, Rows: Send, RStride: Send> Send
 {
 }
 
+impl<'a, C: Container, T> ColMut<'a, C, T> {
+    #[inline]
+    pub fn from_slice_mut(slice: C::Of<&'a mut [T]>) -> Self {
+        help!(C);
+        let len = crate::slice_len::<C>(rb!(slice));
+        unsafe { Self::from_raw_parts_mut(map!(slice, slice, slice.as_mut_ptr()), len, 1) }
+    }
+}
+
 impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, RStride> {
     #[inline(always)]
     #[track_caller]
@@ -561,6 +570,23 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
                 }
             }
         }
+    }
+
+    #[inline]
+    pub fn fill(&mut self, value: C::Of<T>)
+    where
+        T: Clone,
+    {
+        fn cloner<C: Container, T: Clone>(
+            value: C::Of<T>,
+        ) -> impl for<'a> FnMut(crate::linalg::zip::Last<C::Of<&'a mut T>>) {
+            help!(C);
+            #[inline(always)]
+            move |x| {
+                map!(zip!(x.0, as_ref!(value)), (x, value), *x = value.clone());
+            }
+        }
+        z!(self.rb_mut().as_dyn_rows_mut()).for_each(cloner::<C, T>(value));
     }
 
     #[inline]
