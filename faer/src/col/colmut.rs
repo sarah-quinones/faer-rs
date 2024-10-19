@@ -204,6 +204,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_row_shape<V: Shape>(self, nrows: V) -> ColRef<'a, C, T, V, RStride> {
         self.into_const().as_row_shape(nrows)
     }
@@ -409,6 +410,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn at_mut(self, row: Idx<Rows>) -> C::Of<&'a mut T> {
         assert!(all(row < self.nrows()));
         unsafe { self.at_mut_unchecked(row) }
@@ -443,6 +445,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_row_shape_mut<V: Shape>(self, nrows: V) -> ColMut<'a, C, T, V, RStride> {
         unsafe { self.into_const().as_row_shape(nrows).const_cast() }
     }
@@ -590,6 +593,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub(crate) fn __at_mut(self, i: Idx<Rows>) -> C::Of<&'a mut T> {
         self.at_mut(i)
     }

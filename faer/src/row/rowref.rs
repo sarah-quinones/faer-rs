@@ -214,6 +214,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_col_shape<V: Shape>(self, ncols: V) -> RowRef<'a, C, T, V, CStride> {
         assert!(all(self.ncols().unbound() == ncols.unbound()));
         unsafe { RowRef::from_raw_parts(self.as_ptr(), ncols, self.col_stride()) }

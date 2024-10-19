@@ -1031,16 +1031,16 @@ fn batch_secular_eq<'N, const N: usize, C: RealContainer, T: RealField<C>>(
     diag_perm: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
 ) -> [C::Of<T>; N] {
     let n = col0_perm.nrows();
-    let mut res0 = [(); N].map(|_| math(one()));
+    let mut res = [(); N].map(|_| math(one()));
     for i in n.indices() {
         let c = math(col0_perm[i]);
         let d = math(diag_perm[i]);
 
-        for ((res0, mu), shift) in res0.iter_mut().zip(mu.iter()).zip(shift.iter()) {
-            *res0 = math((*res0) + (abs2(c) / (((d - *shift) - *mu) * ((d + *shift) + *mu))));
+        for ((res, mu), shift) in res.iter_mut().zip(mu.iter()).zip(shift.iter()) {
+            *res = math((*res) + (abs2(c) / (((d - *shift) - *mu) * ((d + *shift) + *mu))));
         }
     }
-    res0
+    res
 }
 
 #[math]

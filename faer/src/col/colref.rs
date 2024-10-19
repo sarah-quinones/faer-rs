@@ -218,12 +218,14 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn at(self, row: Idx<Rows>) -> C::Of<&'a T> {
         assert!(all(row < self.nrows()));
         unsafe { self.at_unchecked(row) }
     }
 
     #[inline(always)]
+    #[track_caller]
     pub unsafe fn at_unchecked(self, row: Idx<Rows>) -> C::Of<&'a T> {
         help!(C);
         map!(self.ptr_inbounds_at(row), ptr, &*ptr)
@@ -275,6 +277,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_row_shape<V: Shape>(self, nrows: V) -> ColRef<'a, C, T, V, RStride> {
         assert!(all(self.nrows().unbound() == nrows.unbound()));
         unsafe { ColRef::from_raw_parts(self.as_ptr(), nrows, self.row_stride()) }
@@ -415,6 +418,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub(crate) fn __at(self, i: Idx<Rows>) -> C::Of<&'a T> {
         self.at(i)
     }

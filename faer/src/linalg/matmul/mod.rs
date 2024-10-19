@@ -23,19 +23,37 @@ pub mod dot {
     use super::*;
     use faer_traits::SimdArch;
 
-    #[math]
-    pub fn inner_prod<'K, C: ComplexContainer, T: ComplexField<C>>(
+    pub fn inner_prod<K: Shape, C: ComplexContainer, T: ComplexField<C>>(
         ctx: &Ctx<C, T>,
-        lhs: RowRefGeneric<C, T, Dim<'K>>,
+        lhs: RowRefGeneric<C, T, K>,
         conj_lhs: Conj,
-        rhs: ColRefGeneric<C, T, Dim<'K>>,
+        rhs: ColRefGeneric<C, T, K>,
         conj_rhs: Conj,
     ) -> C::Of<T> {
-        if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
-            inner_prod_slice::<C, T>(ctx, lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
-        } else {
-            inner_prod_schoolbook(ctx, lhs, conj_lhs, rhs, conj_rhs)
+        #[math]
+        pub fn imp<'K, C: ComplexContainer, T: ComplexField<C>>(
+            ctx: &Ctx<C, T>,
+            lhs: RowRefGeneric<C, T, Dim<'K>>,
+            conj_lhs: Conj,
+            rhs: ColRefGeneric<C, T, Dim<'K>>,
+            conj_rhs: Conj,
+        ) -> C::Of<T> {
+            if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
+                inner_prod_slice::<C, T>(ctx, lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
+            } else {
+                inner_prod_schoolbook(ctx, lhs, conj_lhs, rhs, conj_rhs)
+            }
         }
+
+        with_dim!(K, lhs.ncols().unbound());
+
+        imp(
+            ctx,
+            lhs.as_col_shape(K),
+            conj_lhs,
+            rhs.as_row_shape(K),
+            conj_rhs,
+        )
     }
 
     #[inline(always)]

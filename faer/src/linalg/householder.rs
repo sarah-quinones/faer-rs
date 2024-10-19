@@ -49,44 +49,53 @@ use crate::internal_prelude::*;
 ///
 /// $x$ is determined by $x_0$, contained in `head`, and $|x_{1\dots}|$, contained in `tail_norm`.
 /// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
-#[inline]
 #[math]
-pub fn make_householder_in_place<'M, C: ComplexContainer, T: ComplexField<C>>(
+#[inline]
+pub fn make_householder_in_place<M: Shape, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
     head: C::Of<&mut T>,
-    tail: ColMut<'_, C, T, Dim<'M>>,
+    tail: ColMut<'_, C, T, M>,
 ) -> (C::Of<T>, Option<C::Of<T>>) {
-    let tail_norm = tail.norm_l2_with(ctx);
+    #[inline]
+    pub fn imp<'M, C: ComplexContainer, T: ComplexField<C>>(
+        ctx: &Ctx<C, T>,
+        head: C::Of<&mut T>,
+        tail: ColMut<'_, C, T, Dim<'M>>,
+    ) -> (C::Of<T>, Option<C::Of<T>>) {
+        let tail_norm = tail.norm_l2_with(ctx);
 
-    if math.re.is_zero(tail_norm) {
-        return math((infinity(), None));
+        if math.re.is_zero(tail_norm) {
+            return math((infinity(), None));
+        }
+
+        let one_half = math.re.from_f64(0.5);
+
+        let head_norm = math.abs(head);
+        let norm = math(hypot(head_norm, tail_norm));
+
+        let sign = if !math.re.is_zero(head_norm) {
+            math(mul_real(head, re.recip(head_norm)))
+        } else {
+            math.one()
+        };
+
+        let signed_norm = math(sign * from_real(norm));
+        let head_with_beta = math(head + signed_norm);
+        let head_with_beta_inv = math.recip(head_with_beta);
+
+        help!(C);
+        zipped!(tail).for_each(|unzipped!(mut e)| {
+            write1!(e, math(e * head_with_beta_inv));
+        });
+        let mut head = head;
+
+        write1!(head, math(-signed_norm));
+
+        let tau = math.re(one_half * (one() + abs2(tail_norm * cx.abs(head_with_beta_inv))));
+        math((from_real(tau), head_with_beta_inv.into()))
     }
 
-    let one_half = math.re.from_f64(0.5);
-
-    let head_norm = math.abs(head);
-    let norm = math(hypot(head_norm, tail_norm));
-
-    let sign = if !math.re.is_zero(head_norm) {
-        math(mul_real(head, re.recip(head_norm)))
-    } else {
-        math.one()
-    };
-
-    let signed_norm = math(sign * from_real(norm));
-    let head_with_beta = math(head + signed_norm);
-    let head_with_beta_inv = math.recip(head_with_beta);
-
-    help!(C);
-    zipped!(tail).for_each(|unzipped!(mut e)| {
-        write1!(e, math(e * head_with_beta_inv));
-    });
-    let mut head = head;
-
-    write1!(head, math(-signed_norm));
-
-    let tau = math.re(one_half * (one() + abs2(tail_norm * cx.abs(head_with_beta_inv))));
-    math((from_real(tau), head_with_beta_inv.into()))
+    imp(ctx, head, tail.bind_r(unique!()))
 }
 
 #[doc(hidden)]

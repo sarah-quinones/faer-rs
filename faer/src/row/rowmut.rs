@@ -167,6 +167,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowMut<'a, C, T, Cols, C
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_col_shape<V: Shape>(self, ncols: V) -> RowRef<'a, C, T, V, CStride> {
         self.into_const().as_col_shape(ncols)
     }
@@ -365,6 +366,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowMut<'a, C, T, Cols, C
     }
 
     #[inline]
+    #[track_caller]
     pub fn as_col_shape_mut<V: Shape>(self, ncols: V) -> RowMut<'a, C, T, V, CStride> {
         unsafe { self.into_const().as_col_shape(ncols).const_cast() }
     }
