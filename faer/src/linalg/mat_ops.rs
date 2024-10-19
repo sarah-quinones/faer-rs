@@ -904,8 +904,8 @@ impl<
             for j in n.indices() {
                 for i in m.indices() {
                     if !math(
-                        Conj::apply::<LhsC, LhsT>(ctx, lhs[(i, j)])
-                            == Conj::apply::<RhsC, RhsT>(ctx, rhs[(i, j)]),
+                        Conj::apply::<LhsC, LhsT>(ctx, lhs.at(i, j))
+                            == Conj::apply::<RhsC, RhsT>(ctx, rhs.at(i, j)),
                     ) {
                         return false;
                     }
@@ -1005,8 +1005,8 @@ impl<
             let n = lhs.ncols();
             for j in n.indices() {
                 if !math(
-                    Conj::apply::<LhsC, LhsT>(ctx, lhs[j])
-                        == Conj::apply::<RhsC, RhsT>(ctx, rhs[j]),
+                    Conj::apply::<LhsC, LhsT>(ctx, lhs.at(j))
+                        == Conj::apply::<RhsC, RhsT>(ctx, rhs.at(j)),
                 ) {
                     return false;
                 }
@@ -2398,8 +2398,8 @@ mod matmul {
             let ctx = &Ctx::<C, T>(T::MathCtx::default());
             Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| {
                 math(
-                    Conj::apply::<LhsC, LhsT>(ctx, lhs[i])
-                        * Conj::apply::<RhsC, RhsT>(ctx, rhs[(i, j)]),
+                    Conj::apply::<LhsC, LhsT>(ctx, lhs.at(i))
+                        * Conj::apply::<RhsC, RhsT>(ctx, rhs.at(i, j)),
                 )
             })
         }
@@ -2534,8 +2534,8 @@ mod matmul {
             Mat::from_fn(lhs.nrows(), lhs.ncols(), |i, j| {
                 (i, j);
                 math(
-                    Conj::apply::<LhsC, LhsT>(ctx, lhs[(i, j)])
-                        * Conj::apply::<RhsC, RhsT>(ctx, rhs[j]),
+                    Conj::apply::<LhsC, LhsT>(ctx, lhs.at(i, j))
+                        * Conj::apply::<RhsC, RhsT>(ctx, rhs.at(j)),
                 )
             })
         }

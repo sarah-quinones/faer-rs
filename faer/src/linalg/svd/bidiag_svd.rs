@@ -499,7 +499,7 @@ fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
                         }
                         if let Some(v) = v.rb_mut() {
                             let (i, j) = v.two_cols_mut(i, j);
-                            rot.apply_on_the_right_in_place(ctx, (i, j));
+                            rot.apply_on_the_right_in_place(ctx, (j, i));
                         }
                     }
                 }
@@ -561,7 +561,7 @@ fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
 
                 if let Some(u) = u.rb_mut() {
                     let (k, k1) = u.two_cols_mut(k, k1);
-                    rot.apply_on_the_right_in_place(ctx, (k, k1));
+                    rot.apply_on_the_right_in_place(ctx, (k1, k));
                 }
 
                 let rot = JacobiRotation::make_givens(ctx, math(copy(y)), math(copy(z)));
@@ -584,7 +584,7 @@ fn qr_algorithm<'N, C: RealContainer, T: RealField<C>>(
 
                 if let Some(v) = v.rb_mut() {
                     let (k, k1) = v.two_cols_mut(k, k1);
-                    rot.apply_on_the_right_in_place(ctx, (k, k1));
+                    rot.apply_on_the_right_in_place(ctx, (k1, k));
                 }
             }
 
@@ -1703,17 +1703,17 @@ fn divide_and_conquer<'N, C: RealContainer, T: RealField<C>>(
                 .rb_mut()
                 .subcols_mut(0, n)
                 .two_rows_mut(*actual_i, *actual_j);
-            rot.apply_on_the_left_in_place(ctx, (i, j));
+            rot.apply_on_the_left_in_place(ctx, (j, i));
         }
         if let Some(mut vm) = vm.rb_mut() {
             let (i, j) = vm.rb_mut().two_rows_mut(actual_i, actual_j);
-            rot.apply_on_the_left_in_place(ctx, (i, j));
+            rot.apply_on_the_left_in_place(ctx, (j, i));
         }
     }
 
     for (rot, &i) in core::iter::zip(&jacobi_coeff[..jacobi_0i], &jacobi_idx[..jacobi_0i]).rev() {
         let (i, j) = um.rb_mut().subcols_mut(0, n).two_rows_mut(0, *i);
-        rot.apply_on_the_left_in_place(ctx, (i, j));
+        rot.apply_on_the_left_in_place(ctx, (j, i));
     }
 
     let _v_is_none = v.is_none();
@@ -2201,7 +2201,7 @@ mod tests {
 
         for (&rot, &i) in core::iter::zip(&*jacobi_coeffs, &*jacobi_indices).rev() {
             let (x, y) = M.two_rows_mut(n.idx(0), i);
-            rot.apply_on_the_left_in_place(&ctx(), (x, y));
+            rot.apply_on_the_left_in_place(&ctx(), (y, x));
         }
 
         assert!(M ~ M_orig);
@@ -2273,11 +2273,11 @@ mod tests {
             let (pi, pj) = (perm[*i], perm[*j]);
 
             let (x, y) = M.two_rows_mut(pi, pj);
-            rot.apply_on_the_left_in_place(&ctx(), (x, y));
+            rot.apply_on_the_left_in_place(&ctx(), (y, x));
 
             let (x, y) = M.two_cols_mut(pi, pj);
             rot.adjoint(&ctx())
-                .apply_on_the_right_in_place(&ctx(), (x, y));
+                .apply_on_the_right_in_place(&ctx(), (y, x));
         }
 
         assert!(M ~ M_orig);
@@ -2349,16 +2349,16 @@ mod tests {
             let (pi, pj) = (perm[*i], perm[*j]);
 
             let (x, y) = M.two_rows_mut(pi, pj);
-            rot.apply_on_the_left_in_place(&ctx(), (x, y));
+            rot.apply_on_the_left_in_place(&ctx(), (y, x));
 
             let (x, y) = M.two_cols_mut(pi, pj);
             rot.adjoint(&ctx())
-                .apply_on_the_right_in_place(&ctx(), (x, y));
+                .apply_on_the_right_in_place(&ctx(), (y, x));
         }
 
         for (&rot, &i) in core::iter::zip(&jacobi_coeffs[..1], &jacobi_indices[..1]).rev() {
             let (x, y) = M.two_rows_mut(n.idx(0), i);
-            rot.apply_on_the_left_in_place(&ctx(), (x, y));
+            rot.apply_on_the_left_in_place(&ctx(), (y, x));
         }
 
         assert!(M ~ M_orig);

@@ -87,7 +87,7 @@ fn sqrt_impl<C: RealContainer, T: RealField<C>>(
     }
 
     let out_re = math(sqrt(mul_pow2(sum, half)));
-    let mut out_im = math(sqrt(mul_pow2(re - abs, half)));
+    let mut out_im = math(sqrt(mul_pow2(abs - re, half)));
     if im_negative {
         out_im = math(-out_im);
     }
@@ -1159,8 +1159,9 @@ impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtxCopy<C, T, S> {
     }
 
     #[inline(always)]
-    pub fn splat(&self, value: C::Of<&T>) -> C::OfSimd<T::SimdVec<S>> {
-        unsafe { core::mem::transmute_copy(&T::simd_splat(&self.0, value)) }
+    pub fn splat(&self, value: C::Of<impl ByRef<T>>) -> C::OfSimd<T::SimdVec<S>> {
+        help!(C);
+        unsafe { core::mem::transmute_copy(&T::simd_splat(&self.0, by_ref!(value))) }
     }
 
     #[inline(always)]

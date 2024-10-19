@@ -154,11 +154,11 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
     let mut end = n - 1;
     let mut start = 0;
 
-    let max_iter = Ord::max(30, ctx.nbits() / 2)
+    let max_iters = Ord::max(30, ctx.nbits() / 2)
         .saturating_mul(n)
         .saturating_mul(n);
 
-    for iter in 0..max_iter {
+    for iter in 0..max_iters {
         for i in start..end {
             if math(abs(offdiag[i]) < sml || abs(offdiag[i]) < eps * hypot(diag[i], diag[i + 1])) {
                 write1!(offdiag[i] = math.zero());
@@ -173,7 +173,7 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
             break;
         }
 
-        if iter + 1 == max_iter {
+        if iter + 1 == max_iters {
             for mut x in diag.rb_mut().iter_mut() {
                 write1!(x, math(x * max));
             }
@@ -240,8 +240,7 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
                 }
 
                 if let Some(u) = u.rb_mut() {
-                    let (x, y) = u.two_cols_mut(k, k + 1);
-                    rot.apply_on_the_right_in_place(ctx, (x, y));
+                    rot.apply_on_the_right_in_place(ctx, u.two_cols_mut(k + 1, k));
                 }
                 k += 1;
             }

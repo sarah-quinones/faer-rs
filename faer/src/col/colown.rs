@@ -31,6 +31,15 @@ impl<C: Container, T, Rows: Shape> Col<C, T, Rows> {
         }
     }
 
+    #[inline]
+    pub fn zeros(nrows: Rows) -> Self
+    where
+        C: ComplexContainer,
+        T: ComplexField<C, MathCtx: Default>,
+    {
+        Self::zeros_with(&ctx(), nrows)
+    }
+
     pub fn try_reserve(&mut self, new_row_capacity: usize) -> Result<(), TryReserveError> {
         self.column.try_reserve(new_row_capacity, 1)
     }

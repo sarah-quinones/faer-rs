@@ -89,6 +89,23 @@ fn from_strided_column_major_slice_assert(
     }
 }
 
+impl<'a, C: Container, T> MatRef<'a, C, T> {
+    pub fn from_row_major_array<const ROWS: usize, const COLS: usize>(
+        array: C::Of<&'a [[T; COLS]; ROWS]>,
+    ) -> Self {
+        help!(C);
+        unsafe {
+            Self::from_raw_parts(
+                map!(array, ptr, ptr as *const _ as *const T),
+                ROWS,
+                COLS,
+                COLS as isize,
+                1,
+            )
+        }
+    }
+}
+
 impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols> {
     #[inline(always)]
     #[track_caller]

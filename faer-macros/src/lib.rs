@@ -51,7 +51,7 @@ impl visit_mut::VisitMut for MathCtx<'_> {
         match i {
             Expr::Index(idx) => {
                 let expr = &mut *idx.expr;
-                *i = Expr::MethodCall(ExprMethodCall {
+                let e = Expr::MethodCall(ExprMethodCall {
                     attrs: vec![],
                     receiver: Box::new(Expr::MethodCall(ExprMethodCall {
                         attrs: vec![],
@@ -68,6 +68,12 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                     paren_token: Default::default(),
                     args: iter::once((*idx.index).clone()).collect(),
                 });
+                *i = math_expr(
+                    idx.index.span(),
+                    self.ctx.clone(),
+                    &Ident::new("copy", idx.index.span()),
+                    std::iter::once(&e),
+                );
 
                 return;
             }
