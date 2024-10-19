@@ -241,7 +241,7 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
 
                 if let Some(u) = u.rb_mut() {
                     let (x, y) = u.two_cols_mut(k, k + 1);
-                    rot.apply_on_the_right_in_place(ctx, x, y);
+                    rot.apply_on_the_right_in_place(ctx, (x, y));
                 }
                 k += 1;
             }
