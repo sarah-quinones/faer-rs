@@ -2276,7 +2276,7 @@ mod tests {
             rot.apply_on_the_left_in_place(&ctx(), (x, y));
 
             let (x, y) = M.two_cols_mut(pi, pj);
-            rot.transpose(&ctx())
+            rot.adjoint(&ctx())
                 .apply_on_the_right_in_place(&ctx(), (x, y));
         }
 
@@ -2352,7 +2352,7 @@ mod tests {
             rot.apply_on_the_left_in_place(&ctx(), (x, y));
 
             let (x, y) = M.two_cols_mut(pi, pj);
-            rot.transpose(&ctx())
+            rot.adjoint(&ctx())
                 .apply_on_the_right_in_place(&ctx(), (x, y));
         }
 
