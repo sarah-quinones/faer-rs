@@ -264,7 +264,7 @@ fn lahqr<C: ComplexContainer, T: ComplexField<C>>(
                 let h00 = math(A[(i, i)] - (s1));
                 let h10 = math(A[(i + 1, i)]);
 
-                let JacobiRotation { c: _, s: sn } = JacobiRotation::make_givens(ctx, h00, h10);
+                let JacobiRotation { c: _, s: sn } = JacobiRotation::rotg(ctx, h00, h10).0;
                 if math(
                     abs1(conj(sn) * A[(i, i - 1)])
                         <= re.mul(

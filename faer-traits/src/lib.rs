@@ -856,6 +856,11 @@ impl<C: ComplexContainer, T: ComplexField<C>> Ctx<C, T> {
     }
 
     #[inline(always)]
+    pub fn ne(&self, lhs: &C::Of<impl ByRef<T>>, rhs: &C::Of<impl ByRef<T>>) -> bool {
+        !self.eq(lhs, rhs)
+    }
+
+    #[inline(always)]
     pub fn is_zero(&self, value: &C::Of<impl ByRef<T>>) -> bool {
         help!(C);
         T::is_zero_impl(&self.0, by_ref!(value))

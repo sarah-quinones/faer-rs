@@ -14,8 +14,12 @@ macro_rules! stack_mat {
             core::mem::MaybeUninit::<C::Of<__Mat<T, $M, $N>>>::uninit()
         };
         let __stack = DynStack::new_any(core::slice::from_mut(&mut __tmp));
-        let mut $name = unsafe { temp_mat_uninit($ctx, $m, $n, __stack) }.0;
+        let mut $name = $crate::linalg::temp_mat_zeroed($ctx, $m, $n, __stack).0;
         let mut $name = $name.as_mat_mut();
+    };
+
+    ($ctx: expr, $name: ident, $m: expr, $n: expr, $C: ty, $T: ty $(,)?) => {
+        stack_mat!($ctx, $name, $m, $n, $m, $n, $C, $T)
     };
 }
 
@@ -564,6 +568,7 @@ pub mod prelude {
 
     pub use faer_traits::Unit;
 
+    pub use super::Par;
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};

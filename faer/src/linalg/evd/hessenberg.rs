@@ -698,15 +698,21 @@ fn hessenberg_gqvdg_unblocked<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
     }
 }
 
-pub fn hessenberg_in_place<'N, 'B, C: ComplexContainer, T: ComplexField<C>>(
+pub fn hessenberg_in_place<N: Shape, B: Shape, C: ComplexContainer, T: ComplexField<C>>(
     ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
-    H: MatMut<'_, C, T, Dim<'B>, Dim<'N>>,
+    A: MatMut<'_, C, T, N, N>,
+    H: MatMut<'_, C, T, B, N>,
     par: Par,
     stack: &mut DynStack,
     params: HessenbergParams,
 ) {
-    let n = *A.nrows();
+    let n = A.nrows().unbound();
+    with_dim!(N, n);
+    with_dim!(B, H.nrows().unbound());
+
+    let A = A.as_shape_mut(N, N);
+    let H = H.as_shape_mut(B, N);
+
     if n * n < params.blocking_threshold {
         hessenberg_rearranged_unblocked(ctx, A, H, par, stack, params);
     } else {

@@ -1119,8 +1119,8 @@ mod tests {
                 )
             }
             match beta {
-                Accum::Add => *acc.write(0, 0) = math(acc[(0, 0)] + local_acc * alpha),
-                Accum::Replace => *acc.write(0, 0) = math(local_acc * alpha),
+                Accum::Add => *acc.rb_mut().at_mut(0, 0) = math(acc[(0, 0)] + local_acc * alpha),
+                Accum::Replace => *acc.rb_mut().at_mut(0, 0) = math(local_acc * alpha),
             }
         };
 
@@ -1207,13 +1207,13 @@ mod tests {
             if structure.is_lower() {
                 for j in 0..ncols {
                     for i in 0..j {
-                        *mat.as_mut().write(i, j) = 0.0;
+                        *mat.as_mut().at_mut(i, j) = 0.0;
                     }
                 }
             } else if structure.is_upper() {
                 for j in 0..ncols {
                     for i in j + 1..nrows {
-                        *mat.as_mut().write(i, j) = 0.0;
+                        *mat.as_mut().at_mut(i, j) = 0.0;
                     }
                 }
             }
@@ -1221,12 +1221,12 @@ mod tests {
             match kind {
                 triangular::DiagonalKind::Zero => {
                     for i in 0..nrows {
-                        *mat.as_mut().write(i, i) = 0.0;
+                        *mat.as_mut().at_mut(i, i) = 0.0;
                     }
                 }
                 triangular::DiagonalKind::Unit => {
                     for i in 0..nrows {
-                        *mat.as_mut().write(i, i) = 1.0;
+                        *mat.as_mut().at_mut(i, i) = 1.0;
                     }
                 }
                 triangular::DiagonalKind::Generic => (),

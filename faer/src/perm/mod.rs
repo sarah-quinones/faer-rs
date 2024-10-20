@@ -125,7 +125,7 @@ pub fn permute_rows<I: Index, C: ComplexContainer, T: ComplexField<C>>(
         if dst.rb().row_stride().unsigned_abs() < dst.rb().col_stride().unsigned_abs() {
             for j in n.indices() {
                 for i in m.indices() {
-                    math(write1!(dst.write(i, j), copy(src[(perm[i].zx(), j)])));
+                    write1!(dst[(i, j)] = math(copy(src[(perm[i].zx(), j)])));
                 }
             }
         } else {

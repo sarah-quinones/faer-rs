@@ -9,8 +9,57 @@ pub struct JacobiRotation<C: Container, T> {
 
 impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
     #[math]
-    pub fn make_givens(ctx: &Ctx<C, T>, p: C::Of<T>, q: C::Of<T>) -> Self {
-        Self::rotg(ctx, p, q).0
+    pub fn make_givens(ctx: &Ctx<C, T>, p: C::Of<T>, q: C::Of<T>) -> Self
+    where
+        C: RealContainer,
+        T: RealField<C>,
+    {
+        math({
+            let p = cx.real(p);
+            let q = cx.real(q);
+
+            if is_zero(q) {
+                let c = if lt_zero(p) { -one() } else { one() };
+                let s = zero();
+                let c = cx.from_real(c);
+                let s = cx.from_real(s);
+
+                Self { c, s }
+            } else if is_zero(p) {
+                let c = zero();
+                let s = if lt_zero(q) { -one() } else { one() };
+                let c = cx.from_real(c);
+                let s = cx.from_real(s);
+
+                Self { c, s }
+            } else if abs(p) > abs(q) {
+                let t = q / p;
+                let mut u = hypot(one(), t);
+                if lt_zero(p) {
+                    u = -u;
+                }
+                let c = recip(u);
+                let s = -t * c;
+
+                let c = cx.from_real(c);
+                let s = cx.from_real(s);
+
+                Self { c, s }
+            } else {
+                let t = p / q;
+                let mut u = hypot(one(), t);
+                if lt_zero(q) {
+                    u = -u;
+                }
+                let s = -recip(u);
+                let c = -t * s;
+
+                let c = cx.from_real(c);
+                let s = cx.from_real(s);
+
+                Self { c, s }
+            }
+        })
     }
 
     #[math]
@@ -21,7 +70,7 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
                 let q = cx.real(q);
 
                 if is_zero(q) {
-                    let c = if lt_zero(p) { -one() } else { one() };
+                    let c = one();
                     let s = zero();
                     let c = cx.from_real(c);
                     let s = cx.from_real(s);
@@ -29,37 +78,35 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
                     (Self { c, s }, cx.from_real(p))
                 } else if is_zero(p) {
                     let c = zero();
-                    let s = if lt_zero(q) { -one() } else { one() };
+                    let s = one();
                     let c = cx.from_real(c);
                     let s = cx.from_real(s);
 
                     (Self { c, s }, cx.from_real(q))
-                } else if abs(p) > abs(q) {
-                    let t = q / p;
-                    let mut u = hypot(one(), t);
-                    if lt_zero(p) {
-                        u = -u;
-                    }
-                    let c = recip(u);
-                    let s = -t * c;
-
-                    let r = cx.from_real(p / c);
-                    let c = cx.from_real(c);
-                    let s = cx.from_real(s);
-
-                    (Self { c, s }, r)
                 } else {
-                    let t = p / q;
-                    let mut u = hypot(one(), t);
-                    if lt_zero(q) {
-                        u = -u;
-                    }
-                    let s = -recip(u);
-                    let c = -t * s;
+                    let safmin = min_positive();
+                    let safmax = recip(safmin);
+                    let a = p;
+                    let b = q;
 
-                    let r = cx.from_real(p / c);
-                    let c = cx.from_real(c);
-                    let s = cx.from_real(s);
+                    let scl = min(safmax, max(safmin, max(abs(a), abs(b))));
+                    let r = scl * (sqrt(abs2(a / scl) + abs2(b / scl)));
+                    let r = if abs(a) > abs(b) {
+                        if a > zero() {
+                            r
+                        } else {
+                            -r
+                        }
+                    } else {
+                        if b > zero() {
+                            r
+                        } else {
+                            -r
+                        }
+                    };
+                    let c = cx.from_real(a / r);
+                    let s = cx.from_real(b / r);
+                    let r = cx.from_real(r);
 
                     (Self { c, s }, r)
                 }

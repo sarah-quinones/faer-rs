@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::iter;
+use std::{collections::HashMap, iter};
 use syn::{
     parse::Parser,
     punctuated::Punctuated,
@@ -9,6 +9,54 @@ use syn::{
     visit_mut::{self, VisitMut},
     Expr, ExprCall, ExprMethodCall, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
 };
+
+struct MigrationCtx(HashMap<&'static str, &'static str>);
+
+impl visit_mut::VisitMut for MigrationCtx {
+    fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
+        if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
+            for expr in expr.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+
+            *i = Macro {
+                path: i.path.clone(),
+                bang_token: i.bang_token,
+                delimiter: i.delimiter.clone(),
+                tokens: quote! { #expr },
+            };
+        }
+    }
+
+    fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
+        visit_mut::visit_expr_mut(self, i);
+
+        match i {
+            Expr::MethodCall(call) if call.method.to_string().starts_with("faer_") => {
+                if let Some(new_method) = self.0.get(&*call.method.to_string()).map(|x| &**x) {
+                    *i = math_expr(
+                        ident_expr(&Ident::new("ctx", call.method.span())),
+                        &Ident::new(new_method, call.method.span()),
+                        std::iter::once(&*call.receiver)
+                            .chain(call.args.iter())
+                            .map(|x| {
+                                Expr::Reference(ExprReference {
+                                    attrs: vec![],
+                                    and_token: Default::default(),
+                                    mutability: None,
+                                    expr: Box::new(x.clone()),
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .iter(),
+                    )
+                }
+            }
+
+            _ => {}
+        }
+    }
+}
 
 struct RustCtx;
 struct MathCtx<'a> {
@@ -69,7 +117,6 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                     args: iter::once((*idx.index).clone()).collect(),
                 });
                 *i = math_expr(
-                    idx.index.span(),
                     self.ctx.clone(),
                     &Ident::new("copy", idx.index.span()),
                     std::iter::once(&e),
@@ -126,10 +173,7 @@ impl visit_mut::VisitMut for MathCtx<'_> {
             Expr::Call(call) => match &*call.func {
                 Expr::Path(path) => {
                     if let Some(method) = path.path.get_ident() {
-                        let span = method.span();
-
                         *i = math_expr(
-                            span,
                             if self.real { self.real_ctx } else { self.ctx }.clone(),
                             method,
                             call.args.iter(),
@@ -148,9 +192,8 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                         == Some("re") =>
                 {
                     let method = &call.method;
-                    let span = method.span();
 
-                    *i = math_expr(span, self.real_ctx.clone(), method, call.args.iter());
+                    *i = math_expr(self.real_ctx.clone(), method, call.args.iter());
                 }
                 Expr::Path(path)
                     if path
@@ -161,9 +204,8 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                         == Some("cx") =>
                 {
                     let method = &call.method;
-                    let span = method.span();
 
-                    *i = math_expr(span, self.ctx.clone(), method, call.args.iter());
+                    *i = math_expr(self.ctx.clone(), method, call.args.iter());
                 }
                 _ => {}
             },
@@ -286,7 +328,7 @@ impl visit_mut::VisitMut for RustCtx {
                                     args: Punctuated::new(),
                                 });
 
-                                *i = math_expr(span, receiver, method, call.args.iter());
+                                *i = math_expr(receiver, method, call.args.iter());
                             }
                             _ => {}
                         }
@@ -306,7 +348,7 @@ impl visit_mut::VisitMut for RustCtx {
                     let span = method.span();
                     let receiver = &syn::Ident::new("ctx", span);
 
-                    *i = math_expr(span, ident_expr(receiver), method, call.args.iter());
+                    *i = math_expr(ident_expr(receiver), method, call.args.iter());
                 }
                 _ => {}
             },
@@ -315,12 +357,7 @@ impl visit_mut::VisitMut for RustCtx {
     }
 }
 
-fn math_expr<'a>(
-    _: proc_macro2::Span,
-    receiver: Expr,
-    method: &Ident,
-    args: impl Iterator<Item = &'a Expr>,
-) -> Expr {
+fn math_expr<'a>(receiver: Expr, method: &Ident, args: impl Iterator<Item = &'a Expr>) -> Expr {
     Expr::MethodCall(ExprMethodCall {
         attrs: vec![],
         receiver: Box::new(receiver),
@@ -349,6 +386,43 @@ pub fn math(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_m
     };
     let mut rust_ctx = RustCtx;
     rust_ctx.visit_item_fn_mut(&mut item);
+    let item = quote! { #item };
+    item.into()
+}
+
+#[proc_macro_attribute]
+pub fn migrate(
+    _: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let Ok(mut item) = syn::parse::<syn::ItemFn>(item.clone()) else {
+        return item;
+    };
+
+    let mut rust_ctx = MigrationCtx(
+        [
+            //
+            ("faer_add", "add"),
+            ("faer_sub", "sub"),
+            ("faer_mul", "mul"),
+            ("faer_div", "div"),
+            ("faer_inv", "recip"),
+            ("faer_neg", "neg"),
+            ("faer_abs", "abs"),
+            ("faer_abs2", "abs2"),
+            ("faer_sqrt", "sqrt"),
+            ("faer_conj", "conj"),
+            ("faer_real", "real"),
+            ("faer_scale_real", "mul_real"),
+            ("faer_scale_power_of_two", "mul_pow2"),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    rust_ctx.visit_item_fn_mut(&mut item);
+    let mut rust_ctx = RustCtx;
+    rust_ctx.visit_item_fn_mut(&mut item);
+
     let item = quote! { #item };
     item.into()
 }

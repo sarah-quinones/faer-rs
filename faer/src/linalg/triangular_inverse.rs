@@ -14,7 +14,7 @@ fn invert_lower_triangular_impl_small<'N, C: ComplexContainer, T: ComplexField<C
         0 => {}
         1 => {
             let i0 = N.check(0);
-            write1!(dst.write(i0, i0), recip(src[(i0, i0)]))
+            write1!(dst.rb_mut().at_mut(i0, i0), recip(src[(i0, i0)]))
         }
         2 => {
             let i0 = N.check(0);
@@ -23,9 +23,9 @@ fn invert_lower_triangular_impl_small<'N, C: ComplexContainer, T: ComplexField<C
             let dst11 = recip(src[(i1, i1)]);
             let dst10 = -dst11 * src[(i1, i0)] * dst00;
 
-            write1!(dst.write(i0, i0), dst00);
-            write1!(dst.write(i1, i1), dst11);
-            write1!(dst.write(i1, i0), dst10);
+            write1!(dst.rb_mut().at_mut(i0, i0), dst00);
+            write1!(dst.rb_mut().at_mut(i1, i1), dst11);
+            write1!(dst.rb_mut().at_mut(i1, i0), dst10);
         }
         _ => unreachable!(),
     })
@@ -44,7 +44,7 @@ fn invert_unit_lower_triangular_impl_small<'N, C: ComplexContainer, T: ComplexFi
             help!(C);
             let i0 = N.check(0);
             let i1 = N.check(1);
-            math(write1!(dst.write(i1, i0), -src[(i1, i0)]));
+            math(write1!(dst.rb_mut().at_mut(i1, i0), -src[(i1, i0)]));
         }
         _ => unreachable!(),
     }

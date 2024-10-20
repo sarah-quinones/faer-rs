@@ -417,6 +417,16 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
         unsafe { ColRef::from_raw_parts(self.as_ptr(), self.nrows().bind(row), self.row_stride()) }
     }
 
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: Idx<Rows>) -> C::Of<T>
+    where
+        T: Clone,
+    {
+        help!(C);
+        map!(self.at(row), x, x.clone())
+    }
+
     #[inline]
     #[track_caller]
     pub(crate) fn __at(self, i: Idx<Rows>) -> C::Of<&'a T> {

@@ -70,6 +70,23 @@ unsafe impl<C: Container, T: Send, Rows: Send, Cols: Send, RStride: Send, CStrid
 {
 }
 
+impl<'a, C: Container, T> MatMut<'a, C, T> {
+    pub fn from_row_major_array_mut<const ROWS: usize, const COLS: usize>(
+        array: C::Of<&'a mut [[T; COLS]; ROWS]>,
+    ) -> Self {
+        help!(C);
+        unsafe {
+            Self::from_raw_parts_mut(
+                map!(array, ptr, ptr as *mut _ as *mut T),
+                ROWS,
+                COLS,
+                COLS as isize,
+                1,
+            )
+        }
+    }
+}
+
 impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     MatMut<'a, C, T, Rows, Cols, RStride, CStride>
 {
@@ -1026,12 +1043,6 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
 
     #[inline]
     #[track_caller]
-    pub fn write(&mut self, i: Idx<Rows>, j: Idx<Cols>) -> C::Of<&'_ mut T> {
-        self.rb_mut().at_mut(i, j)
-    }
-
-    #[inline]
-    #[track_caller]
     pub fn two_cols_mut(
         self,
         i0: Idx<Cols>,
@@ -1226,6 +1237,21 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
             }
         }
         z!(self.rb_mut().as_dyn_mut()).for_each(cloner::<C, T>(value));
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<T>
+    where
+        T: Clone,
+    {
+        self.rb().read(row, col)
+    }
+
+    #[inline]
+    pub fn write(&mut self, i: Idx<Rows>, j: Idx<Cols>, value: C::Of<T>) {
+        help!(C);
+        write1!(self.rb_mut().at_mut(i, j), value);
     }
 
     #[inline]

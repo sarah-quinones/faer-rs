@@ -592,6 +592,21 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
         z!(self.rb_mut().as_dyn_rows_mut()).for_each(cloner::<C, T>(value));
     }
 
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: Idx<Rows>) -> C::Of<T>
+    where
+        T: Clone,
+    {
+        self.rb().read(row)
+    }
+
+    #[inline]
+    pub fn write(&mut self, i: Idx<Rows>, value: C::Of<T>) {
+        help!(C);
+        write1!(self.rb_mut().at_mut(i,), value);
+    }
+
     #[inline]
     #[track_caller]
     pub(crate) fn __at_mut(self, i: Idx<Rows>) -> C::Of<&'a mut T> {

@@ -2794,7 +2794,7 @@ impl<
                     let rhs = rhs.at(fwd.zx(), j);
                     help!(C);
                     math(write1!(
-                        out.as_mut().write(i, j),
+                        out.as_mut().at_mut(i, j),
                         Conj::apply::<CC, TT>(ctx, rhs)
                     ));
                 }

@@ -466,12 +466,24 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn at(self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<&'a T> {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { self.at_unchecked(row, col) }
     }
 
     #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<T>
+    where
+        T: Clone,
+    {
+        help!(C);
+        map!(self.at(row, col), x, x.clone())
+    }
+
+    #[inline(always)]
+    #[track_caller]
     pub unsafe fn at_unchecked(self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<&'a T> {
         help!(C);
         map!(self.ptr_inbounds_at(row, col), ptr, &*ptr)
