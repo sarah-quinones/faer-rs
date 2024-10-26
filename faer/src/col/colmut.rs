@@ -417,6 +417,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline(always)]
+    #[track_caller]
     pub unsafe fn at_mut_unchecked(self, row: Idx<Rows>) -> C::Of<&'a mut T> {
         help!(C);
         map!(self.ptr_inbounds_at_mut(row), ptr, &mut *ptr)
@@ -428,6 +429,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn subrows_mut<V: Shape>(
         self,
         row_start: IdxInc<Rows>,
@@ -437,6 +439,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColMut<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn subrows_range_mut(
         self,
         rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),

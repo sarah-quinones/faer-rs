@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::{assert, debug_assert, internal_prelude::*};
+use crate::{assert, debug_assert};
 use linalg::{householder::*, jacobi::JacobiRotation, matmul::matmul};
 
 // ret: (a b c d) (eig1_re eig1_im) (eig2_re eig2_im) (cs sn)

@@ -240,6 +240,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn subrows<V: Shape>(
         self,
         row_start: IdxInc<Rows>,
@@ -258,6 +259,7 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> ColRef<'a, C, T, Rows, R
     }
 
     #[inline]
+    #[track_caller]
     pub fn subrows_range(
         self,
         rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
