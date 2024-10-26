@@ -581,12 +581,11 @@ pub mod prelude {
     pub use default as ctx;
 }
 
-pub struct ScaleGeneric<C: Container, T>(pub C::Of<T>);
-pub type Scale<T> = ScaleGeneric<Unit, T>;
+pub struct Scale<T>(pub T);
 
 #[inline]
 pub fn scale<T>(value: T) -> Scale<T> {
-    ScaleGeneric(value)
+    Scale(value)
 }
 
 /// 0: Disable

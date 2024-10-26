@@ -274,6 +274,13 @@ impl<'n, I: Index> PartialOrd<Dim<'n>> for IdxInc<'n, I> {
     }
 }
 
+impl Dim<'static> {
+    pub const ONE: Self = Dim {
+        unbound: 1,
+        __marker: PhantomData,
+    };
+}
+
 impl<'n> Dim<'n> {
     pub fn with<R>(dim: usize, f: impl for<'dim> FnOnce(Dim<'dim>) -> R) -> R {
         f(unsafe { Self::new_unbound(dim) })

@@ -945,23 +945,6 @@ pub fn multishift_qr<C: ComplexContainer, T: ComplexField<C>>(
     let mut count_aed = 0;
     let mut count_sweep = 0;
 
-    help!(C::Real);
-    let orig;
-    if let Some(z) = z.rb() {
-        let mut a = a.rb().cloned();
-
-        for j in 0..n {
-            for i in 0..n {
-                if i > j + 1 {
-                    a.as_mut().write(i, j, math.zero());
-                }
-            }
-        }
-        orig = &z * &a * z.adjoint();
-    } else {
-        panic!();
-    }
-
     for iter in 0..itmax + 1 {
         if iter == itmax {
             // The QR algorithm failed to converge, return with error.
@@ -1303,14 +1286,6 @@ fn multishift_qr_sweep<C: ComplexContainer, T: ComplexField<C>>(
     // i_pos_block points to the start of the block of bulges
     let mut i_pos_block = 0;
 
-    help!(C::Real);
-    let orig;
-    if let Some(z) = z.rb() {
-        let a = a.rb().cloned();
-        orig = &z * &a * z.adjoint();
-    } else {
-        panic!();
-    }
     introduce_bulges(
         ctx,
         ilo,

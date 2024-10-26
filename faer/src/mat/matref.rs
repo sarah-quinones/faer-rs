@@ -90,6 +90,7 @@ fn from_strided_column_major_slice_assert(
 }
 
 impl<'a, C: Container, T> MatRef<'a, C, T> {
+    #[inline]
     pub fn from_row_major_array<const ROWS: usize, const COLS: usize>(
         array: C::Of<&'a [[T; COLS]; ROWS]>,
     ) -> Self {
@@ -104,11 +105,50 @@ impl<'a, C: Container, T> MatRef<'a, C, T> {
             )
         }
     }
+
+    #[inline]
+    pub fn from_column_major_array<const ROWS: usize, const COLS: usize>(
+        array: C::Of<&'a [[T; ROWS]; COLS]>,
+    ) -> Self {
+        help!(C);
+        unsafe {
+            Self::from_raw_parts(
+                map!(array, ptr, ptr as *const _ as *const T),
+                ROWS,
+                COLS,
+                1,
+                ROWS as isize,
+            )
+        }
+    }
+
+    #[inline]
+    pub fn from_ref(value: C::Of<&'a T>) -> Self
+    where
+        T: Sized,
+    {
+        unsafe {
+            help!(C);
+            MatRef::from_raw_parts(map!(value, ptr, ptr as *const T), 1, 1, 0, 0)
+        }
+    }
+}
+
+impl<'a, C: Container, T> MatRef<'a, C, T, Dim<'static>, Dim<'static>> {
+    #[inline]
+    pub fn from_ref_bound(value: C::Of<&'a T>) -> Self
+    where
+        T: Sized,
+    {
+        unsafe {
+            help!(C);
+            MatRef::from_raw_parts(map!(value, ptr, ptr as *const T), Dim::ONE, Dim::ONE, 0, 0)
+        }
+    }
 }
 
 impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols> {
-    #[inline(always)]
-    #[track_caller]
+    #[inline]
     pub fn from_repeated_ref(value: C::Of<&'a T>, nrows: Rows, ncols: Cols) -> Self
     where
         T: Sized,
@@ -119,7 +159,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols>
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn from_column_major_slice(slice: C::Of<&'a [T]>, nrows: Rows, ncols: Cols) -> Self
     where
@@ -143,7 +183,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols>
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn from_column_major_slice_with_stride(
         slice: C::Of<&'a [T]>,
@@ -173,7 +213,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols>
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn from_row_major_slice(slice: C::Of<&'a [T]>, nrows: Rows, ncols: Cols) -> Self
     where
@@ -182,7 +222,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols>
         MatRef::from_column_major_slice(slice, ncols, nrows).transpose()
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn from_row_major_slice_with_stride(
         slice: C::Of<&'a [T]>,
@@ -200,7 +240,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape> MatRef<'a, C, T, Rows, Cols>
 impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     MatRef<'a, C, T, Rows, Cols, RStride, CStride>
 {
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub unsafe fn from_raw_parts(
         ptr: C::Of<*const T>,
@@ -226,7 +266,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn as_ptr(&self) -> C::Of<*const T> {
         help!(C);
         map!(
@@ -238,32 +278,32 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         )
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn nrows(&self) -> Rows {
         self.imp.nrows
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn ncols(&self) -> Cols {
         self.imp.ncols
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn shape(&self) -> (Rows, Cols) {
         (self.nrows(), self.ncols())
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn row_stride(&self) -> RStride {
         self.imp.row_stride
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn col_stride(&self) -> CStride {
         self.imp.col_stride
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn ptr_at(&self, row: IdxInc<Rows>, col: IdxInc<Cols>) -> C::Of<*const T> {
         help!(C);
         let ptr = self.as_ptr();
@@ -278,7 +318,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub unsafe fn ptr_inbounds_at(&self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<*const T> {
         help!(C);
@@ -401,7 +441,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn transpose(self) -> MatRef<'a, C, T, Cols, Rows, CStride, RStride> {
         MatRef {
             imp: MatView {
@@ -415,7 +455,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn conjugate(self) -> MatRef<'a, C::Conj, T::Conj, Rows, Cols, RStride, CStride>
     where
         T: ConjUnit,
@@ -436,7 +476,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn canonical(self) -> MatRef<'a, C::Canonical, T::Canonical, Rows, Cols, RStride, CStride>
     where
         T: ConjUnit,
@@ -457,7 +497,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn adjoint(self) -> MatRef<'a, C::Conj, T::Conj, Cols, Rows, CStride, RStride>
     where
         T: ConjUnit,
@@ -465,14 +505,14 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         self.conjugate().transpose()
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn at(self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<&'a T> {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { self.at_unchecked(row, col) }
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<T>
     where
@@ -482,7 +522,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         map!(self.at(row, col), x, x.clone())
     }
 
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub unsafe fn at_unchecked(self, row: Idx<Rows>, col: Idx<Cols>) -> C::Of<&'a T> {
         help!(C);
@@ -956,6 +996,68 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
+    pub fn split_first_row(
+        self,
+    ) -> Option<(
+        RowRef<'a, C, T, Cols, CStride>,
+        MatRef<'a, C, T, usize, Cols, RStride, CStride>,
+    )> {
+        if let Some(i0) = self.nrows().idx_inc(1) {
+            let (head, tail) = self.split_at_row(i0);
+            Some((head.row(0), tail))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn split_first_col(
+        self,
+    ) -> Option<(
+        ColRef<'a, C, T, Rows, RStride>,
+        MatRef<'a, C, T, Rows, usize, RStride, CStride>,
+    )> {
+        if let Some(i0) = self.ncols().idx_inc(1) {
+            let (head, tail) = self.split_at_col(i0);
+            Some((head.col(0), tail))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn split_last_row(
+        self,
+    ) -> Option<(
+        RowRef<'a, C, T, Cols, CStride>,
+        MatRef<'a, C, T, usize, Cols, RStride, CStride>,
+    )> {
+        if self.nrows().unbound() > 0 {
+            let i0 = self.nrows().checked_idx_inc(self.nrows().unbound() - 1);
+            let (head, tail) = self.split_at_row(i0);
+            Some((tail.row(0), head))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn split_last_col(
+        self,
+    ) -> Option<(
+        ColRef<'a, C, T, Rows, RStride>,
+        MatRef<'a, C, T, Rows, usize, RStride, CStride>,
+    )> {
+        if self.ncols().unbound() > 0 {
+            let i0 = self.ncols().checked_idx_inc(self.ncols().unbound() - 1);
+            let (head, tail) = self.split_at_col(i0);
+            Some((tail.col(0), head))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     pub fn cloned(self) -> Mat<C, T, Rows, Cols>
     where
         T: Clone,
@@ -975,17 +1077,20 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 
     #[inline]
-    pub fn to_owned(self) -> Mat<C::Canonical, T::Canonical, Rows, Cols>
+    pub fn to_owned_with(
+        self,
+        ctx: &Ctx<C::Canonical, T::Canonical>,
+    ) -> Mat<C::Canonical, T::Canonical, Rows, Cols>
     where
-        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
     {
         fn imp<'M, 'N, C: Container, T, RStride: Stride, CStride: Stride>(
             this: MatRef<'_, C, T, Dim<'M>, Dim<'N>, RStride, CStride>,
+            ctx: &Ctx<C::Canonical, T::Canonical>,
         ) -> Mat<C::Canonical, T::Canonical, Dim<'M>, Dim<'N>>
         where
-            T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+            T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
         {
-            let ctx = &Ctx::<C::Canonical, T::Canonical>::default();
             Mat::from_fn(this.nrows(), this.ncols(), |i, j| {
                 Conj::apply::<C, T>(ctx, this.at(i, j))
             })
@@ -994,10 +1099,18 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         help!(C);
         with_dim!(M, self.nrows().unbound());
         with_dim!(N, self.ncols().unbound());
-        imp(self.as_shape(M, N)).into_shape(self.nrows(), self.ncols())
+        imp(self.as_shape(M, N), ctx).into_shape(self.nrows(), self.ncols())
     }
 
-    #[inline(always)]
+    #[inline]
+    pub fn to_owned(self) -> Mat<C::Canonical, T::Canonical, Rows, Cols>
+    where
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.to_owned_with(&ctx())
+    }
+
+    #[inline]
     pub unsafe fn const_cast(self) -> MatMut<'a, C, T, Rows, Cols, RStride, CStride> {
         help!(C);
         MatMut::from_raw_parts_mut(
@@ -1106,7 +1219,7 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         C: Container<Canonical: ComplexContainer>,
         T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
     {
-        self.norm_max_with(&default())
+        self.norm_max_with(&ctx())
     }
 
     #[inline]
@@ -1124,7 +1237,70 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         C: Container<Canonical: ComplexContainer>,
         T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
     {
-        self.norm_l2_with(&default())
+        self.norm_l2_with(&ctx())
+    }
+
+    #[inline]
+    pub fn squared_norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_l2_sqr::norm_l2_sqr(ctx, self.canonical().as_dyn_stride().as_dyn())
+    }
+
+    #[inline]
+    pub fn squared_norm_l2(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.squared_norm_l2_with(&ctx())
+    }
+
+    #[inline]
+    pub fn norm_l1_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        linalg::reductions::norm_l1::norm_l1(ctx, self.canonical().as_dyn_stride().as_dyn())
+    }
+
+    #[inline]
+    pub fn norm_l1(&self) -> RealValue<C, T>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.norm_l1_with(&ctx())
+    }
+
+    #[inline]
+    #[math]
+    pub fn sum_with(
+        &self,
+        ctx: &Ctx<C::Canonical, T::Canonical>,
+    ) -> <C::Canonical as Container>::Of<T::Canonical>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+    {
+        let val = linalg::reductions::sum::sum(ctx, self.canonical().as_dyn_stride().as_dyn());
+        if const { Conj::get::<C, T>().is_conj() } {
+            math.conj(val)
+        } else {
+            val
+        }
+    }
+
+    #[inline]
+    pub fn sum(&self) -> <C::Canonical as Container>::Of<T::Canonical>
+    where
+        C: Container<Canonical: ComplexContainer>,
+        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+    {
+        self.sum_with(&ctx())
     }
 
     #[inline]
