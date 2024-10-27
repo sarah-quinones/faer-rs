@@ -94,15 +94,7 @@ macro_rules! unique {
     };
 }
 
-#[macro_export]
-macro_rules! unique_dim {
-    ($n: expr $(,)?) => {
-        unsafe { $crate::hacks::make_guard_pair(&$crate::hacks::Id::new()).1 }
-    };
-}
 pub mod utils;
-
-pub mod iter;
 
 pub mod col;
 pub mod diag;
@@ -459,18 +451,6 @@ impl Conj {
         } else {
             T::Canonical::copy_impl(ctx, value)
         }
-    }
-
-    #[inline]
-    pub(crate) fn apply_val<
-        C: Container<Canonical: ComplexContainer>,
-        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
-    >(
-        ctx: &Ctx<C::Canonical, T::Canonical>,
-        value: &C::Of<T>,
-    ) -> <C::Canonical as Container>::Of<T::Canonical> {
-        help!(C);
-        Self::apply::<C, T>(ctx, as_ref!(value))
     }
 }
 
