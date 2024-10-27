@@ -4,11 +4,11 @@ use core::num::NonZero;
 /// Dynamic LDLT regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
-pub struct LltRegularization<C: ComplexContainer, T: ComplexField<C>> {
+pub struct LltRegularization<T: ComplexField> {
     /// Regularized value.
-    pub dynamic_regularization_delta: RealValue<C, T>,
+    pub dynamic_regularization_delta: RealValue<T>,
     /// Regularization threshold.
-    pub dynamic_regularization_epsilon: RealValue<C, T>,
+    pub dynamic_regularization_epsilon: RealValue<T>,
 }
 
 /// Info about the result of the LDLT factorization.
@@ -24,21 +24,12 @@ pub enum LltError {
     NonPositivePivot { index: usize },
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>> LltRegularization<C, T> {
-    #[math]
-    pub fn default_with(ctx: &Ctx<C, T>) -> Self {
-        Self {
-            dynamic_regularization_delta: math.re(zero()),
-            dynamic_regularization_epsilon: math.re(zero()),
-        }
-    }
-}
-
-impl<C: ComplexContainer, T: ComplexField<C, MathCtx: Default>> Default
-    for LltRegularization<C, T>
-{
+impl<T: ComplexField> Default for LltRegularization<T> {
     fn default() -> Self {
-        Self::default_with(&ctx())
+        Self {
+            dynamic_regularization_delta: zero(),
+            dynamic_regularization_epsilon: zero(),
+        }
     }
 }
 
@@ -59,41 +50,38 @@ impl Default for LltParams {
 }
 
 #[inline]
-pub fn cholesky_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
+pub fn cholesky_in_place_scratch<T: ComplexField>(
     dim: usize,
     par: Par,
     params: LltParams,
 ) -> Result<StackReq, SizeOverflow> {
     _ = par;
     _ = params;
-    temp_mat_scratch::<C, T>(dim, 1)
+    temp_mat_scratch::<T>(dim, 1)
 }
 
 #[math]
-pub fn cholesky_in_place<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
-    regularization: LltRegularization<C, T>,
+pub fn cholesky_in_place<'N, T: ComplexField>(
+    A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+    regularization: LltRegularization<T>,
     par: Par,
     stack: &mut DynStack,
     params: LltParams,
 ) -> Result<LltInfo, LltError> {
     let N = A.nrows();
-    let mut D = unsafe { temp_mat_uninit(ctx, N, 1, stack).0 };
+    let mut D = unsafe { temp_mat_uninit(N, 1, stack).0 };
     let D = D.as_mat_mut();
 
-    help!(C::Real);
     match cholesky_recursion(
-        ctx,
         A,
         D.col_mut(0).transpose_mut(),
         params.recursion_threshold.get(),
         params.blocksize.get(),
         true,
-        math.gt_zero(regularization.dynamic_regularization_delta)
-            && math.gt_zero(regularization.dynamic_regularization_epsilon),
-        as_ref!(regularization.dynamic_regularization_epsilon),
-        as_ref!(regularization.dynamic_regularization_delta),
+        regularization.dynamic_regularization_delta > zero()
+            && regularization.dynamic_regularization_epsilon > zero(),
+        &regularization.dynamic_regularization_epsilon,
+        &regularization.dynamic_regularization_delta,
         None,
         par,
     ) {

@@ -2,16 +2,12 @@ use crate::{assert, internal_prelude::*};
 use linalg::householder;
 
 #[math]
-fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    H: RowMut<'_, C, T, Dim<'H>>,
+fn qr_in_place_unblocked<'M, 'N, 'H, T: ComplexField>(
+    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
+    H: RowMut<'_, T, Dim<'H>>,
 ) {
     let mut A = A;
     let mut H = H;
-
-    help!(C);
-    help2!(C::Real);
 
     let M = A.nrows();
     let N = A.ncols();
@@ -36,28 +32,26 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
             let mut A01 = A01.row_mut(top.local(ki));
             let mut A10 = A10.col_mut(left.local(kj));
 
-            let (tau, _) = householder::make_householder_in_place(ctx, rb_mut!(A00), A10.rb_mut());
+            let (tau, _) = householder::make_householder_in_place(A00, A10.rb_mut());
 
-            let tau_inv = math.re(recip(cx.real(tau)));
-            write1!(H[k] = tau);
+            let tau_inv = recip(real(tau));
+            H[k] = tau;
 
             for j in right {
                 let mut head = A01.rb_mut().at_mut(right.local(j));
                 let tail = A11.rb_mut().col_mut(right.local(j));
 
-                let dot = math(
-                    head + linalg::matmul::dot::inner_prod(
-                        ctx,
+                let dot = *head
+                    + linalg::matmul::dot::inner_prod(
                         A10.rb().transpose(),
                         Conj::Yes,
                         tail.rb(),
                         Conj::No,
-                    ),
-                );
-                let k = math(-mul_real(dot, tau_inv));
-                write1!(head, math(head + k));
+                    );
+                let k = -mul_real(dot, tau_inv);
+                *head = head + k;
                 zipped!(tail, A10.rb()).for_each(|unzipped!(mut dst, src)| {
-                    write1!(dst, math(dst + k * src));
+                    *dst = dst + k * src;
                 });
             }
         });
@@ -66,10 +60,7 @@ fn qr_in_place_unblocked<'M, 'N, 'H, C: ComplexContainer, T: ComplexField<C>>(
 
 /// The recommended block size to use for a QR decomposition of a matrix with the given shape.
 #[inline]
-pub fn recommended_blocksize<C: ComplexContainer, T: ComplexField<C>>(
-    nrows: usize,
-    ncols: usize,
-) -> usize {
+pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
     let prod = nrows * ncols;
     let size = nrows.min(ncols);
 
@@ -115,10 +106,9 @@ impl Default for QrParams {
 }
 
 #[math]
-fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    H: MatMut<'_, C, T, Dim<'B>, Dim<'H>>,
+fn qr_in_place_blocked<'M, 'N, 'B, 'H, T: ComplexField>(
+    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
+    H: MatMut<'_, T, Dim<'B>, Dim<'H>>,
     par: Par,
     stack: &mut DynStack,
     params: QrParams,
@@ -131,7 +121,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
     assert!(*blocksize > 0);
 
     if *blocksize == 1 {
-        return qr_in_place_unblocked(ctx, A, H.row_mut(blocksize.idx(0)));
+        return qr_in_place_unblocked(A, H.row_mut(blocksize.idx(0)));
     }
     let sub_blocksize = if *m * *n < params.blocking_threshold {
         blocksize.idx(1)
@@ -142,7 +132,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
     let mut A = A;
     let mut H = H;
 
-    let mut j_next = zero();
+    let mut j_next = IdxInc::ZERO;
     while let Some(j) = size.try_check(*j_next) {
         j_next = size.advance(j, *blocksize);
         let ji = m.idx(*j);
@@ -155,10 +145,9 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
             let mut A = A.rb_mut().row_segment_mut(bot);
 
             qr_in_place_blocked(
-                ctx,
                 A.rb_mut().col_segment_mut(col_block),
                 H.rb_mut()
-                    .subrows_mut(zero(), *sub_blocksize)
+                    .subrows_mut(IdxInc::ZERO, *sub_blocksize)
                     .col_segment_mut(h_block)
                     .bind_r(unique!()),
                 par,
@@ -170,9 +159,9 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
 
             let mut H = H
                 .rb_mut()
-                .submatrix_mut(zero(), j.to_incl(), blocksize, blocksize);
+                .submatrix_mut(IdxInc::ZERO, j.to_incl(), blocksize, blocksize);
 
-            let mut k_next = zero();
+            let mut k_next = IdxInc::ZERO;
             while let Some(k) = blocksize.try_check(*k_next) {
                 k_next = blocksize.advance(k, *sub_blocksize);
 
@@ -187,11 +176,11 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
                     let mut H = H.rb_mut().col_segment_mut(subcols);
 
                     let l![H0, mut H1] = H.rb_mut().row_segments_mut(rows, disjoint_rows);
-                    let H0 = H0.rb().subrows(zero(), subcols.len());
-                    let H1 = H1.rb_mut().subrows_mut(zero(), subcols.len());
+                    let H0 = H0.rb().subrows(IdxInc::ZERO, subcols.len());
+                    let H1 = H1.rb_mut().subrows_mut(IdxInc::ZERO, subcols.len());
 
                     H1.transpose_mut()
-                        .copy_from_triangular_lower_with(ctx, H0.transpose());
+                        .copy_from_triangular_lower_with(H0.transpose());
                 });
             }
 
@@ -199,7 +188,6 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
             let A0 = A0.rb();
 
             householder::upgrade_householder_factor(
-                ctx,
                 H.rb_mut(),
                 A0,
                 *blocksize,
@@ -208,7 +196,6 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
             );
             if *A1.ncols() > 0 {
                 householder::apply_block_householder_transpose_on_the_left_in_place_with_conj(
-                    ctx,
                     A0,
                     H.rb(),
                     Conj::Yes,
@@ -223,10 +210,9 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
 
 #[track_caller]
 #[math]
-pub fn qr_in_place<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    H: MatMut<'_, C, T, Dim<'B>, Dim<'H>>,
+pub fn qr_in_place<'M, 'N, 'B, 'H, T: ComplexField>(
+    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
+    H: MatMut<'_, T, Dim<'B>, Dim<'H>>,
     par: Par,
     stack: &mut DynStack,
     params: QrParams,
@@ -246,13 +232,13 @@ pub fn qr_in_place<'M, 'N, 'B, 'H, C: ComplexContainer, T: ComplexField<C>>(
         }
     }
 
-    qr_in_place_blocked(ctx, A, H, par, stack, params);
+    qr_in_place_blocked(A, H, par, stack, params);
 }
 
 /// Computes the size and alignment of required workspace for performing a QR
 /// decomposition with no pivoting.
 #[inline]
-pub fn qr_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
+pub fn qr_in_place_scratch<T: ComplexField>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
@@ -262,7 +248,7 @@ pub fn qr_in_place_scratch<C: ComplexContainer, T: ComplexField<C>>(
     let _ = par;
     let _ = nrows;
     let _ = &params;
-    temp_mat_scratch::<C, T>(blocksize, ncols)
+    temp_mat_scratch::<T>(blocksize, ncols)
 }
 
 #[cfg(test)]
@@ -270,7 +256,6 @@ mod tests {
     use super::*;
     use crate::{assert, c64, stats::prelude::*, utils::approx::*, Mat, Row};
     use dyn_stack::GlobalMemBuffer;
-    use faer_traits::Unit;
 
     #[test]
     fn test_unblocked_qr() {
@@ -280,7 +265,6 @@ mod tests {
             for n in [2, 4, 8, 16, 24, 32, 127, 128, 257] {
                 with_dim!(N, n);
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, c64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -294,11 +278,11 @@ mod tests {
                 let A = A.as_ref();
 
                 let mut QR = A.cloned();
-                let mut H = Row::zeros_with(&ctx(), N);
+                let mut H = Row::zeros(N);
 
-                qr_in_place_unblocked(&ctx(), QR.as_mut(), H.as_mut());
+                qr_in_place_unblocked(QR.as_mut(), H.as_mut());
 
-                let mut Q = Mat::<c64, _, _>::zeros_with(&ctx(), N, N);
+                let mut Q = Mat::<c64, _, _>::zeros(N, N);
                 let mut R = QR.as_ref().cloned();
 
                 for j in N.indices() {
@@ -306,7 +290,6 @@ mod tests {
                 }
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-                    &ctx(),
                     QR.as_ref(),
                     H.as_mat(),
                     Conj::No,
@@ -314,7 +297,7 @@ mod tests {
                     Par::Seq,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<Unit, c64>(
+                            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(
                                 *N,
                                 1,
                                 *N,
@@ -337,7 +320,6 @@ mod tests {
                 with_dim!(B, 15);
 
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, c64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -350,21 +332,19 @@ mod tests {
                 .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
-                let mut H = Mat::zeros_with(&ctx(), B, N);
+                let mut H = Mat::zeros(B, N);
 
                 qr_in_place_blocked(
-                    &ctx(),
                     QR.as_mut(),
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<Unit, c64>(*N, *N, *B, par, Default::default())
-                            .unwrap(),
+                        qr_in_place_scratch::<c64>(*N, *N, *B, par, Default::default()).unwrap(),
                     )),
                     Default::default(),
                 );
 
-                let mut Q = Mat::<c64, _, _>::zeros_with(&ctx(), N, N);
+                let mut Q = Mat::<c64, _, _>::zeros(N, N);
                 let mut R = QR.as_ref().cloned();
 
                 for j in N.indices() {
@@ -372,7 +352,6 @@ mod tests {
                 }
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-                    &ctx(),
                     QR.as_ref(),
                     H.as_ref(),
                     Conj::No,
@@ -380,7 +359,7 @@ mod tests {
                     Par::Seq,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, c64>(
+                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(
                                 *N,
                                 *B,
                                 *N,
@@ -405,7 +384,6 @@ mod tests {
                 with_dim!(H, Ord::min(*M, *N));
 
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, c64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -418,21 +396,19 @@ mod tests {
                 .rand::<Mat<c64, Dim, Dim>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
-                let mut H = Mat::zeros_with(&ctx(), B, H);
+                let mut H = Mat::zeros(B, H);
 
                 qr_in_place_blocked(
-                    &ctx(),
                     QR.as_mut(),
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<Unit, c64>(*M, *N, *B, par, Default::default())
-                            .unwrap(),
+                        qr_in_place_scratch::<c64>(*M, *N, *B, par, Default::default()).unwrap(),
                     )),
                     Default::default(),
                 );
 
-                let mut Q = Mat::<c64, _, _>::zeros_with(&ctx(), M, M);
+                let mut Q = Mat::<c64, _, _>::zeros(M, M);
                 let mut R = QR.as_ref().cloned();
 
                 for j in M.indices() {
@@ -440,15 +416,14 @@ mod tests {
                 }
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-                    &ctx(),
-                    QR.as_ref().subcols(zero(), H.ncols()),
+                    QR.as_ref().subcols(IdxInc::ZERO, H.ncols()),
                     H.as_ref(),
                     Conj::No,
                     Q.as_mut(),
                     Par::Seq,
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<Unit, c64>(
+                            householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(
                                 *M,
                                 *B,
                                 *M,

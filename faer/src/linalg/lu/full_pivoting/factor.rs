@@ -1,4 +1,4 @@
-use faer_traits::{Real, RealValue, SimdCtxCopy};
+use faer_traits::{Real, RealValue};
 use linalg::matmul::matmul;
 use pulp::Simd;
 
@@ -9,13 +9,13 @@ use crate::{
 };
 
 #[inline(always)]
-fn best_value<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
-    simd: &SimdCtxCopy<C, T, S>,
-    best_value: Real<C::OfSimd<T::SimdVec<S>>>,
+fn best_value<T: ComplexField, S: Simd>(
+    simd: &SimdCtx<T, S>,
+    best_value: Real<T::SimdVec<S>>,
     best_indices: T::SimdIndex<S>,
-    value: C::OfSimd<T::SimdVec<S>>,
+    value: T::SimdVec<S>,
     indices: T::SimdIndex<S>,
-) -> (Real<C::OfSimd<T::SimdVec<S>>>, T::SimdIndex<S>) {
+) -> (Real<T::SimdVec<S>>, T::SimdIndex<S>) {
     let value = simd.abs1(value);
     let is_better = simd.gt(value, best_value);
     (
@@ -25,13 +25,13 @@ fn best_value<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 }
 
 #[inline(always)]
-fn best_score<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
-    simd: &SimdCtxCopy<C, T, S>,
-    best_score: Real<C::OfSimd<T::SimdVec<S>>>,
+fn best_score<T: ComplexField, S: Simd>(
+    simd: &SimdCtx<T, S>,
+    best_score: Real<T::SimdVec<S>>,
     best_indices: T::SimdIndex<S>,
-    score: Real<C::OfSimd<T::SimdVec<S>>>,
+    score: Real<T::SimdVec<S>>,
     indices: T::SimdIndex<S>,
-) -> (Real<C::OfSimd<T::SimdVec<S>>>, T::SimdIndex<S>) {
+) -> (Real<T::SimdVec<S>>, T::SimdIndex<S>) {
     let is_better = simd.gt(score, best_score);
     (
         Real(simd.select(is_better, score.0, best_score.0)),
@@ -40,19 +40,15 @@ fn best_score<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 }
 
 #[inline(always)]
-fn best_score_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
-    simd: &SimdCtxCopy<C, T, S>,
-    best_score: Real<C::OfSimd<T::SimdVec<S>>>,
+fn best_score_2d<T: ComplexField, S: Simd>(
+    simd: &SimdCtx<T, S>,
+    best_score: Real<T::SimdVec<S>>,
     best_row: T::SimdIndex<S>,
     best_col: T::SimdIndex<S>,
-    score: Real<C::OfSimd<T::SimdVec<S>>>,
+    score: Real<T::SimdVec<S>>,
     row: T::SimdIndex<S>,
     col: T::SimdIndex<S>,
-) -> (
-    Real<C::OfSimd<T::SimdVec<S>>>,
-    T::SimdIndex<S>,
-    T::SimdIndex<S>,
-) {
+) -> (Real<T::SimdVec<S>>, T::SimdIndex<S>, T::SimdIndex<S>) {
     let is_better = simd.gt(score, best_score);
     (
         Real(simd.select(is_better, score.0, best_score.0)),
@@ -63,15 +59,14 @@ fn best_score_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 
 #[inline(always)]
 #[math]
-fn reduce_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
-    simd: &SimdCtxCopy<C, T, S>,
-    best_values: Real<C::OfSimd<T::SimdVec<S>>>,
+fn reduce_2d<T: ComplexField, S: Simd>(
+    simd: &SimdCtx<T, S>,
+    best_values: Real<T::SimdVec<S>>,
     best_row: T::SimdIndex<S>,
     best_col: T::SimdIndex<S>,
-) -> (usize, usize, RealValue<C, T>) {
-    help!(C::Real);
+) -> (usize, usize, RealValue<T>) {
     let best_val = simd.reduce_max(best_values);
-    let best_val_splat = simd.splat_real(as_ref!(best_val));
+    let best_val_splat = simd.splat_real(&best_val);
     let is_best = simd.ge(best_values, best_val_splat);
     let idx = simd.first_true_mask(is_best);
 
@@ -85,12 +80,10 @@ fn reduce_2d<C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 
 #[inline(always)]
 #[math]
-fn best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
-    simd: SimdCtx<'M, C, T, S>,
-    data: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
-) -> (Real<C::OfSimd<T::SimdVec<S>>>, T::SimdIndex<S>) {
-    let ctx = &Ctx::<C, T>(T::ctx_from_simd(&simd.0).0);
-
+fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
+    simd: SimdCtx<'M, T, S>,
+    data: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+) -> (Real<T::SimdVec<S>>, T::SimdIndex<S>) {
     let (head, body4, body1, tail) = simd.batch_indices::<4>();
 
     let iota = T::simd_iota(&simd.0);
@@ -99,10 +92,10 @@ fn best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
     let inc1 = simd.isplat(T::Index::truncate(lane_count));
     let inc4 = simd.isplat(T::Index::truncate(4 * lane_count));
 
-    let mut best_val0 = simd.splat_real(math.re(zero()));
-    let mut best_val1 = simd.splat_real(math.re(zero()));
-    let mut best_val2 = simd.splat_real(math.re(zero()));
-    let mut best_val3 = simd.splat_real(math.re(zero()));
+    let mut best_val0 = simd.splat_real(&zero());
+    let mut best_val1 = simd.splat_real(&zero());
+    let mut best_val2 = simd.splat_real(&zero());
+    let mut best_val3 = simd.splat_real(&zero());
 
     let mut best_idx0 = simd.isplat(T::Index::truncate(0));
     let mut best_idx1 = simd.isplat(T::Index::truncate(0));
@@ -150,13 +143,12 @@ fn best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
 
 #[inline(always)]
 #[math]
-fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: Simd>(
-    simd: SimdCtx<'M, C, T, S>,
-    data: ColMut<'_, C, T, Dim<'M>, ContiguousFwd>,
-    lhs: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
-    rhs: C::Of<T>,
-) -> (Real<C::OfSimd<T::SimdVec<S>>>, T::SimdIndex<S>) {
-    let ctx = &Ctx::<C, T>(T::ctx_from_simd(&simd.0).0);
+fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
+    simd: SimdCtx<'M, T, S>,
+    data: ColMut<'_, T, Dim<'M>, ContiguousFwd>,
+    lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+    rhs: T,
+) -> (Real<T::SimdVec<S>>, T::SimdIndex<S>) {
     let mut data = data;
 
     let (head, body4, body1, tail) = simd.batch_indices::<3>();
@@ -167,9 +159,9 @@ fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: S
     let inc1 = simd.isplat(T::Index::truncate(lane_count));
     let inc3 = simd.isplat(T::Index::truncate(3 * lane_count));
 
-    let mut best_val0 = simd.splat_real(math.re(zero()));
-    let mut best_val1 = simd.splat_real(math.re(zero()));
-    let mut best_val2 = simd.splat_real(math.re(zero()));
+    let mut best_val0 = simd.splat_real(&zero());
+    let mut best_val1 = simd.splat_real(&zero());
+    let mut best_val2 = simd.splat_real(&zero());
 
     let mut best_idx0 = simd.isplat(T::Index::truncate(0));
     let mut best_idx1 = simd.isplat(T::Index::truncate(0));
@@ -182,8 +174,7 @@ fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: S
     let mut idx1 = simd.iadd(idx0, inc1);
     let mut idx2 = simd.iadd(idx1, inc1);
 
-    help!(C);
-    let rhs = simd.splat(as_ref!(math(-rhs)));
+    let rhs = simd.splat(&-rhs);
 
     if let Some(i0) = head {
         let mut x0 = simd.read(data.rb(), i0);
@@ -249,31 +240,27 @@ fn update_and_best_in_col_simd<'M, C: ComplexContainer, T: ComplexField<C>, S: S
 }
 
 #[inline(always)]
-fn best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: MatRef<'_, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
-) -> (usize, usize, RealValue<C, T>) {
-    struct Impl<'a, 'M, 'N, C: ComplexContainer, T: ComplexField<C>> {
-        ctx: &'a Ctx<C, T>,
-        data: MatRef<'a, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+fn best_in_mat_simd<'M, 'N, T: ComplexField>(
+    data: MatRef<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+) -> (usize, usize, RealValue<T>) {
+    struct Impl<'a, 'M, 'N, T: ComplexField> {
+        data: MatRef<'a, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
     }
 
-    impl<'a, 'M, 'N, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd
-        for Impl<'a, 'M, 'N, C, T>
-    {
-        type Output = (usize, usize, RealValue<C, T>);
+    impl<'a, 'M, 'N, T: ComplexField> pulp::WithSimd for Impl<'a, 'M, 'N, T> {
+        type Output = (usize, usize, RealValue<T>);
 
         #[math]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let Self { ctx, data } = self;
+            let Self { data } = self;
 
             let M = data.nrows();
             let N = data.ncols();
-            let simd = SimdCtx::<'_, C, T, S>::new(T::simd_ctx(ctx, simd), M);
+            let simd = SimdCtx::<'_, T, S>::new(T::simd_ctx(simd), M);
 
             let mut best_row = simd.isplat(T::Index::truncate(0));
             let mut best_col = simd.isplat(T::Index::truncate(0));
-            let mut best_val = simd.splat_real(math.re(zero()));
+            let mut best_val = simd.splat_real(&zero());
 
             for j in N.indices() {
                 let col = data.col(j);
@@ -293,34 +280,29 @@ fn best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
         }
     }
 
-    T::Arch::default().dispatch(Impl { ctx, data })
+    T::Arch::default().dispatch(Impl { data })
 }
 
 #[inline(always)]
-fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: MatMut<'_, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
-    lhs: ColRef<'_, C, T, Dim<'M>, ContiguousFwd>,
-    rhs: RowRef<'_, C, T, Dim<'N>>,
+fn update_and_best_in_mat_simd<'M, 'N, T: ComplexField>(
+    data: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+    lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+    rhs: RowRef<'_, T, Dim<'N>>,
     align: usize,
-) -> (usize, usize, RealValue<C, T>) {
-    struct Impl<'a, 'M, 'N, C: ComplexContainer, T: ComplexField<C>> {
-        ctx: &'a Ctx<C, T>,
-        data: MatMut<'a, C, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
-        lhs: ColRef<'a, C, T, Dim<'M>, ContiguousFwd>,
-        rhs: RowRef<'a, C, T, Dim<'N>>,
+) -> (usize, usize, RealValue<T>) {
+    struct Impl<'a, 'M, 'N, T: ComplexField> {
+        data: MatMut<'a, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+        lhs: ColRef<'a, T, Dim<'M>, ContiguousFwd>,
+        rhs: RowRef<'a, T, Dim<'N>>,
         align: usize,
     }
 
-    impl<'a, 'M, 'N, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd
-        for Impl<'a, 'M, 'N, C, T>
-    {
-        type Output = (usize, usize, RealValue<C, T>);
+    impl<'a, 'M, 'N, T: ComplexField> pulp::WithSimd for Impl<'a, 'M, 'N, T> {
+        type Output = (usize, usize, RealValue<T>);
 
         #[math]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self {
-                ctx,
                 data,
                 lhs,
                 rhs,
@@ -329,16 +311,16 @@ fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 
             let M = data.nrows();
             let N = data.ncols();
-            let simd = SimdCtx::<'_, C, T, S>::new_align(T::simd_ctx(ctx, simd), M, align);
+            let simd = SimdCtx::<'_, T, S>::new_align(T::simd_ctx(simd), M, align);
 
             let mut best_row = simd.isplat(T::Index::truncate(0));
             let mut best_col = simd.isplat(T::Index::truncate(0));
-            let mut best_val = simd.splat_real(math.re(zero()));
+            let mut best_val = simd.splat_real(&zero());
             let mut data = data;
 
             for j in N.indices() {
                 let data = data.rb_mut().col_mut(j);
-                let rhs = math(copy(rhs[j]));
+                let rhs = copy(rhs[j]);
                 let (best_val_j, best_row_j) = update_and_best_in_col_simd(simd, data, lhs, rhs);
 
                 (best_val, best_row, best_col) = best_score_2d(
@@ -356,7 +338,6 @@ fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     }
 
     T::Arch::default().dispatch(Impl {
-        ctx,
         data,
         lhs,
         rhs,
@@ -365,13 +346,10 @@ fn update_and_best_in_mat_simd<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-fn best_in_matrix_fallback<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-) -> (usize, usize, RealValue<C, T>) {
-    help!(C);
-
-    let mut max = math.re(zero());
+fn best_in_matrix_fallback<'M, 'N, T: ComplexField>(
+    data: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+) -> (usize, usize, RealValue<T>) {
+    let mut max = zero();
     let mut row = 0;
     let mut col = 0;
 
@@ -379,8 +357,8 @@ fn best_in_matrix_fallback<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 
     for j in N.indices() {
         for i in M.indices() {
-            let abs = math.re(cx.abs1(data[(i, j)]));
-            if math(abs > max) {
+            let abs = abs1(data[(i, j)]);
+            if abs > max {
                 row = *i;
                 col = *j;
                 max = abs;
@@ -392,67 +370,58 @@ fn best_in_matrix_fallback<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-fn best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-) -> (usize, usize, RealValue<C, T>) {
+fn best_in_matrix<'M, 'N, T: ComplexField>(
+    data: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+) -> (usize, usize, RealValue<T>) {
     if const { T::SIMD_CAPABILITIES.is_unshuffled_simd() } {
         if let Some(dst) = data.try_as_col_major() {
-            best_in_mat_simd(ctx, dst)
+            best_in_mat_simd(dst)
         } else {
-            best_in_matrix_fallback(ctx, data)
+            best_in_matrix_fallback(data)
         }
     } else {
-        best_in_matrix_fallback(ctx, data)
+        best_in_matrix_fallback(data)
     }
 }
 #[math]
-fn rank_one_update_and_best_in_matrix<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut dst: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    lhs: ColRef<'_, C, T, Dim<'M>>,
-    rhs: RowRef<'_, C, T, Dim<'N>>,
+fn rank_one_update_and_best_in_matrix<'M, 'N, T: ComplexField>(
+    mut dst: MatMut<'_, T, Dim<'M>, Dim<'N>>,
+    lhs: ColRef<'_, T, Dim<'M>>,
+    rhs: RowRef<'_, T, Dim<'N>>,
     align: usize,
-) -> (usize, usize, RealValue<C, T>) {
+) -> (usize, usize, RealValue<T>) {
     if const { T::SIMD_CAPABILITIES.is_unshuffled_simd() } {
         if let (Some(dst), Some(lhs)) =
             (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
         {
-            update_and_best_in_mat_simd(ctx, dst, lhs, rhs, align)
+            update_and_best_in_mat_simd(dst, lhs, rhs, align)
         } else {
-            help!(C);
-
             matmul(
-                ctx,
                 dst.rb_mut(),
                 Accum::Add,
                 lhs.as_mat(),
                 rhs.as_mat(),
-                as_ref!(math(-one())),
+                -one(),
                 Par::Seq,
             );
-            best_in_matrix(ctx, dst.rb())
+            best_in_matrix(dst.rb())
         }
     } else {
-        help!(C);
-
         matmul(
-            ctx,
             dst.rb_mut(),
             Accum::Add,
             lhs.as_mat(),
             rhs.as_mat(),
-            as_ref!(math(-one())),
+            -one(),
             Par::Seq,
         );
-        best_in_matrix(ctx, dst.rb())
+        best_in_matrix(dst.rb())
     }
 }
 
 #[math]
-fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
+fn lu_in_place_unblocked<'M, 'N, T: ComplexField>(
+    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
     row_trans: &mut [usize],
     col_trans: &mut [usize],
     par: Par,
@@ -460,8 +429,6 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     params: FullPivLuParams,
 ) -> usize {
     let mut n_trans = 0;
-    help!(C);
-    help2!(C::Real);
 
     let (M, N) = A.shape();
     if *M == 0 || *N == 0 {
@@ -471,10 +438,10 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
     let mut par = par;
 
     let mut A = A;
-    let (mut max_row, mut max_col, mut max_score) = best_in_matrix(ctx, A.rb());
+    let (mut max_row, mut max_col, mut max_score) = best_in_matrix(A.rb());
 
     for (ki, kj) in core::iter::zip(M.indices(), N.indices()) {
-        if math(max_score < min_positive()) {
+        if max_score < min_positive() {
             for (k, (row, col)) in
                 core::iter::zip(&mut row_trans[*ki..], &mut col_trans[*kj..]).enumerate()
             {
@@ -498,14 +465,14 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
             n_trans += 1;
         }
 
-        let inv = math(recip(A[(ki, kj)]));
+        let inv = recip(A[(ki, kj)]);
         if transpose {
             for j in kj.next().to(N.end()) {
-                write1!(A[(ki, j)] = math(A[(ki, j)] * inv));
+                A[(ki, j)] = A[(ki, j)] * inv;
             }
         } else {
             for i in ki.next().to(M.end()) {
-                write1!(A[(i, kj)] = math(A[(i, kj)] * inv));
+                A[(i, kj)] = A[(i, kj)] * inv;
             }
         }
 
@@ -531,7 +498,6 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
             match par {
                 Par::Seq => {
                     (max_row, max_col, max_score) = rank_one_update_and_best_in_matrix(
-                        ctx,
                         A11.rb_mut(),
                         lhs,
                         rhs,
@@ -543,7 +509,7 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
                     use rayon::prelude::*;
                     let nthreads = nthreads.get();
 
-                    let mut best = core::iter::repeat_with(|| (0, 0, send2!(math.re(zero()))))
+                    let mut best = core::iter::repeat_with(|| (0, 0, zero()))
                         .take(nthreads)
                         .collect::<Vec<_>>();
                     let full_cols = *A11.ncols();
@@ -557,24 +523,22 @@ fn lu_in_place_unblocked<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
 
                             (*max_row, *max_col, *max_score) = {
                                 let (a, mut b, c) = rank_one_update_and_best_in_matrix(
-                                    ctx,
                                     A11.as_col_shape_mut(N),
                                     lhs,
                                     rhs.transpose().as_col_shape(N),
                                     simd_align(*ki.next()),
                                 );
                                 b += par_split_indices(full_cols, idx, nthreads).0;
-                                (a, b, send2!(c))
+                                (a, b, c)
                             };
                         });
 
                     max_row = 0;
                     max_col = 0;
-                    max_score = math.re.zero();
+                    max_score = zero();
 
                     for (row, col, val) in best {
-                        let val = unsend2!(val);
-                        if math(val > max_score) {
+                        if val > max_score {
                             max_row = row;
                             max_col = col;
                             max_score = val;
@@ -610,7 +574,7 @@ impl Default for FullPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
     nrows: usize,
     ncols: usize,
     par: Par,
@@ -627,9 +591,8 @@ pub struct FullPivLuInfo {
     pub transposition_count: usize,
 }
 
-pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mat: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
+pub fn lu_in_place<'out, 'M, 'N, I: Index, T: ComplexField>(
+    mat: MatMut<'_, T, Dim<'M>, Dim<'N>>,
     row_perm: &'out mut Array<'M, I>,
     row_perm_inv: &'out mut Array<'M, I>,
     col_perm: &'out mut Array<'N, I>,
@@ -660,7 +623,6 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
 
     let n_transpositions = if mat.row_stride().abs() < mat.col_stride().abs() {
         lu_in_place_unblocked(
-            ctx,
             mat,
             row_transpositions,
             col_transpositions,
@@ -670,7 +632,6 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
         )
     } else {
         lu_in_place_unblocked(
-            ctx,
             mat.transpose_mut(),
             col_transpositions,
             row_transpositions,
@@ -724,7 +685,6 @@ mod tests {
     use super::*;
     use crate::{assert, c64, stats::prelude::*, utils::approx::*, Mat};
     use dyn_stack::GlobalMemBuffer;
-    use faer_traits::Unit;
 
     #[test]
     fn test_flu() {
@@ -734,7 +694,6 @@ mod tests {
             for n in [16, 24, 32, 128, 255, 256, 257] {
                 with_dim!(N, n);
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, f64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -759,7 +718,6 @@ mod tests {
                 let col_perm_inv = Array::from_mut(col_perm_inv, N);
 
                 let (_, p, q) = lu_in_place(
-                    &ctx(),
                     LU.as_mut(),
                     row_perm,
                     row_perm_inv,
@@ -767,7 +725,7 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        lu_in_place_scratch::<usize, Unit, f64>(*N, *N, par, default()).unwrap(),
+                        lu_in_place_scratch::<usize, f64>(*N, *N, par, default()).unwrap(),
                     )),
                     Default::default(),
                 );
@@ -776,7 +734,7 @@ mod tests {
                 let mut U = LU.as_ref().cloned();
 
                 for j in N.indices() {
-                    for i in zero().to(j.excl()) {
+                    for i in IdxInc::ZERO.to(j.excl()) {
                         L[(i, j)] = 0.0;
                     }
                     L[(j, j)] = 1.0;
@@ -797,7 +755,6 @@ mod tests {
                 with_dim!(N, 8);
 
                 let approx_eq = CwiseMat(ApproxEq {
-                    ctx: ctx::<Ctx<Unit, c64>>(),
                     abs_tol: 1e-10,
                     rel_tol: 1e-10,
                 });
@@ -822,7 +779,6 @@ mod tests {
                 let col_perm_inv = Array::from_mut(col_perm_inv, N);
 
                 let (_, p, q) = lu_in_place(
-                    &ctx(),
                     LU.as_mut(),
                     row_perm,
                     row_perm_inv,
@@ -830,7 +786,7 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        lu_in_place_scratch::<usize, Unit, c64>(*N, *N, par, default()).unwrap(),
+                        lu_in_place_scratch::<usize, c64>(*N, *N, par, default()).unwrap(),
                     )),
                     Default::default(),
                 );
@@ -840,7 +796,7 @@ mod tests {
 
                 for j in N.indices() {
                     let i = M.check(*j);
-                    for i in zero().to(i.excl()) {
+                    for i in IdxInc::ZERO.to(i.excl()) {
                         if *i >= *j {
                             break;
                         }
@@ -857,7 +813,7 @@ mod tests {
                 let L = L.as_ref();
                 let U = U.as_ref();
 
-                let U = U.subrows(zero(), N);
+                let U = U.subrows(IdxInc::ZERO, N);
 
                 assert!(p.inverse() * L * U * q ~ A);
             }

@@ -6,40 +6,36 @@ use crate::{
 use equator::{assert, debug_assert};
 use faer_traits::RealValue;
 
-pub struct RowRef<'a, C: Container, T, Cols = usize, CStride = isize> {
-    pub(crate) trans: ColRef<'a, C, T, Cols, CStride>,
+pub struct RowRef<'a, T, Cols = usize, CStride = isize> {
+    pub(crate) trans: ColRef<'a, T, Cols, CStride>,
 }
 
-impl<C: Container, T, Rows: Copy, CStride: Copy> Copy for RowRef<'_, C, T, Rows, CStride> {}
-impl<C: Container, T, Rows: Copy, CStride: Copy> Clone for RowRef<'_, C, T, Rows, CStride> {
+impl<T, Rows: Copy, CStride: Copy> Copy for RowRef<'_, T, Rows, CStride> {}
+impl<T, Rows: Copy, CStride: Copy> Clone for RowRef<'_, T, Rows, CStride> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'short, C: Container, T, Rows: Copy, CStride: Copy> Reborrow<'short>
-    for RowRef<'_, C, T, Rows, CStride>
-{
-    type Target = RowRef<'short, C, T, Rows, CStride>;
+impl<'short, T, Rows: Copy, CStride: Copy> Reborrow<'short> for RowRef<'_, T, Rows, CStride> {
+    type Target = RowRef<'short, T, Rows, CStride>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
         *self
     }
 }
-impl<'short, C: Container, T, Rows: Copy, CStride: Copy> ReborrowMut<'short>
-    for RowRef<'_, C, T, Rows, CStride>
-{
-    type Target = RowRef<'short, C, T, Rows, CStride>;
+impl<'short, T, Rows: Copy, CStride: Copy> ReborrowMut<'short> for RowRef<'_, T, Rows, CStride> {
+    type Target = RowRef<'short, T, Rows, CStride>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
         *self
     }
 }
-impl<'a, C: Container, T, Rows: Copy, CStride: Copy> IntoConst for RowRef<'a, C, T, Rows, CStride> {
-    type Target = RowRef<'a, C, T, Rows, CStride>;
+impl<'a, T, Rows: Copy, CStride: Copy> IntoConst for RowRef<'a, T, Rows, CStride> {
+    type Target = RowRef<'a, T, Rows, CStride>;
 
     #[inline]
     fn into_const(self) -> Self::Target {
@@ -47,27 +43,20 @@ impl<'a, C: Container, T, Rows: Copy, CStride: Copy> IntoConst for RowRef<'a, C,
     }
 }
 
-unsafe impl<C: Container, T: Sync, Rows: Sync, CStride: Sync> Sync
-    for RowRef<'_, C, T, Rows, CStride>
-{
-}
-unsafe impl<C: Container, T: Sync, Rows: Send, CStride: Send> Send
-    for RowRef<'_, C, T, Rows, CStride>
-{
-}
+unsafe impl<T: Sync, Rows: Sync, CStride: Sync> Sync for RowRef<'_, T, Rows, CStride> {}
+unsafe impl<T: Sync, Rows: Send, CStride: Send> Send for RowRef<'_, T, Rows, CStride> {}
 
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, CStride> {
+impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn from_raw_parts(ptr: C::Of<*const T>, ncols: Cols, col_stride: CStride) -> Self {
-        help!(C);
+    pub unsafe fn from_raw_parts(ptr: *const T, ncols: Cols, col_stride: CStride) -> Self {
         Self {
             trans: ColRef::from_raw_parts(ptr, ncols, col_stride),
         }
     }
 
     #[inline(always)]
-    pub fn as_ptr(&self) -> C::Of<*const T> {
+    pub fn as_ptr(&self) -> *const T {
         self.trans.as_ptr()
     }
 
@@ -92,13 +81,13 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline(always)]
-    pub fn ptr_at(&self, col: IdxInc<Cols>) -> C::Of<*const T> {
+    pub fn ptr_at(&self, col: IdxInc<Cols>) -> *const T {
         self.trans.ptr_at(col)
     }
 
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(&self, col: Idx<Cols>) -> C::Of<*const T> {
+    pub unsafe fn ptr_inbounds_at(&self, col: Idx<Cols>) -> *const T {
         debug_assert!(all(col < self.ncols()));
         self.trans.ptr_inbounds_at(col)
     }
@@ -108,10 +97,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     pub fn split_at_col(
         self,
         col: IdxInc<Cols>,
-    ) -> (
-        RowRef<'a, C, T, usize, CStride>,
-        RowRef<'a, C, T, usize, CStride>,
-    ) {
+    ) -> (RowRef<'a, T, usize, CStride>, RowRef<'a, T, usize, CStride>) {
         assert!(all(col <= self.ncols()));
         let rs = self.col_stride();
 
@@ -126,14 +112,14 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline(always)]
-    pub fn transpose(self) -> ColRef<'a, C, T, Cols, CStride> {
+    pub fn transpose(self) -> ColRef<'a, T, Cols, CStride> {
         self.trans
     }
 
     #[inline(always)]
-    pub fn conjugate(self) -> RowRef<'a, C::Conj, T::Conj, Cols, CStride>
+    pub fn conjugate(self) -> RowRef<'a, T::Conj, Cols, CStride>
     where
-        T: ConjUnit,
+        T: Conjugate,
     {
         RowRef {
             trans: self.trans.conjugate(),
@@ -141,9 +127,9 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline(always)]
-    pub fn canonical(self) -> RowRef<'a, C::Canonical, T::Canonical, Cols, CStride>
+    pub fn canonical(self) -> RowRef<'a, T::Canonical, Cols, CStride>
     where
-        T: ConjUnit,
+        T: Conjugate,
     {
         RowRef {
             trans: self.trans.canonical(),
@@ -151,38 +137,33 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline(always)]
-    pub fn adjoint(self) -> ColRef<'a, C::Conj, T::Conj, Cols, CStride>
+    pub fn adjoint(self) -> ColRef<'a, T::Conj, Cols, CStride>
     where
-        T: ConjUnit,
+        T: Conjugate,
     {
         self.conjugate().transpose()
     }
 
     #[inline(always)]
-    pub fn at(self, col: Idx<Cols>) -> C::Of<&'a T> {
+    pub fn at(self, col: Idx<Cols>) -> &'a T {
         assert!(all(col < self.ncols()));
         unsafe { self.at_unchecked(col) }
     }
 
     #[inline(always)]
-    pub unsafe fn at_unchecked(self, col: Idx<Cols>) -> C::Of<&'a T> {
-        help!(C);
-        map!(self.ptr_inbounds_at(col), ptr, &*ptr)
+    pub unsafe fn at_unchecked(self, col: Idx<Cols>) -> &'a T {
+        &*self.ptr_inbounds_at(col)
     }
 
     #[inline]
-    pub fn reverse_cols(self) -> RowRef<'a, C, T, Cols, CStride::Rev> {
+    pub fn reverse_cols(self) -> RowRef<'a, T, Cols, CStride::Rev> {
         RowRef {
             trans: self.trans.reverse_rows(),
         }
     }
 
     #[inline]
-    pub fn subcols<V: Shape>(
-        self,
-        col_start: IdxInc<Cols>,
-        ncols: V,
-    ) -> RowRef<'a, C, T, V, CStride> {
+    pub fn subcols<V: Shape>(self, col_start: IdxInc<Cols>, ncols: V) -> RowRef<'a, T, V, CStride> {
         assert!(all(col_start <= self.ncols()));
         {
             let ncols = ncols.unbound();
@@ -198,7 +179,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     pub fn subcols_range(
         self,
         cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> RowRef<'a, C, T, usize, CStride> {
+    ) -> RowRef<'a, T, usize, CStride> {
         let cols = cols.0.into()..cols.1.into();
         assert!(all(cols.start <= self.ncols()));
 
@@ -215,18 +196,18 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
 
     #[inline]
     #[track_caller]
-    pub fn as_col_shape<V: Shape>(self, ncols: V) -> RowRef<'a, C, T, V, CStride> {
+    pub fn as_col_shape<V: Shape>(self, ncols: V) -> RowRef<'a, T, V, CStride> {
         assert!(all(self.ncols().unbound() == ncols.unbound()));
         unsafe { RowRef::from_raw_parts(self.as_ptr(), ncols, self.col_stride()) }
     }
 
     #[inline]
-    pub fn as_dyn_cols(self) -> RowRef<'a, C, T, usize, CStride> {
+    pub fn as_dyn_cols(self) -> RowRef<'a, T, usize, CStride> {
         unsafe { RowRef::from_raw_parts(self.as_ptr(), self.ncols().unbound(), self.col_stride()) }
     }
 
     #[inline]
-    pub fn as_dyn_stride(self) -> RowRef<'a, C, T, Cols, isize> {
+    pub fn as_dyn_stride(self) -> RowRef<'a, T, Cols, isize> {
         unsafe {
             RowRef::from_raw_parts(
                 self.as_ptr(),
@@ -237,13 +218,13 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline]
-    pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = C::Of<&'a T>> {
+    pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T> {
         self.trans.iter()
     }
 
     #[inline]
     #[cfg(feature = "rayon")]
-    pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = C::OfSend<&'a T>>
+    pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
     where
         T: Sync,
     {
@@ -256,7 +237,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     pub fn par_partition(
         self,
         count: usize,
-    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, C, T, usize, CStride>>
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, usize, CStride>>
     where
         T: Sync,
     {
@@ -265,7 +246,7 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline]
-    pub fn try_as_row_major(self) -> Option<RowRef<'a, C, T, Cols, ContiguousFwd>> {
+    pub fn try_as_row_major(self) -> Option<RowRef<'a, T, Cols, ContiguousFwd>> {
         if self.col_stride().element_stride() == 1 {
             Some(unsafe { RowRef::from_raw_parts(self.as_ptr(), self.ncols(), ContiguousFwd) })
         } else {
@@ -274,154 +255,92 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> RowRef<'a, C, T, Cols, C
     }
 
     #[inline(always)]
-    pub unsafe fn const_cast(self) -> RowMut<'a, C, T, Cols, CStride> {
-        help!(C);
+    pub unsafe fn const_cast(self) -> RowMut<'a, T, Cols, CStride> {
         RowMut {
             trans: self.trans.const_cast(),
         }
     }
 
     #[inline]
-    pub fn as_ref(&self) -> RowRef<'_, C, T, Cols, CStride> {
+    pub fn as_ref(&self) -> RowRef<'_, T, Cols, CStride> {
         *self
     }
 
     #[inline]
-    pub fn as_mat(self) -> MatRef<'a, C, T, usize, Cols, isize, CStride> {
+    pub fn as_mat(self) -> MatRef<'a, T, usize, Cols, isize, CStride> {
         self.transpose().as_mat().transpose()
     }
 
     #[inline]
-    pub fn as_diagonal(self) -> DiagRef<'a, C, T, Cols, CStride> {
+    pub fn as_diagonal(self) -> DiagRef<'a, T, Cols, CStride> {
         DiagRef { inner: self.trans }
     }
 
     #[inline]
-    pub(crate) fn __at(self, i: Idx<Cols>) -> C::Of<&'a T> {
+    pub(crate) fn __at(self, i: Idx<Cols>) -> &'a T {
         self.at(i)
     }
 
     #[inline]
-    pub fn norm_max_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
+    pub fn norm_max(&self) -> RealValue<T>
     where
-        C: Container<Canonical: ComplexContainer>,
-        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
+        T: Conjugate,
     {
-        self.as_ref().transpose().norm_max_with(ctx)
+        self.as_ref().transpose().norm_max()
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<C, T>
+    pub fn norm_l2(&self) -> RealValue<T>
     where
-        C: Container<Canonical: ComplexContainer>,
-        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
+        T: Conjugate,
     {
-        self.norm_max_with(&default())
-    }
-
-    #[inline]
-    pub fn norm_l2_with(&self, ctx: &Ctx<C::Canonical, T::Canonical>) -> RealValue<C, T>
-    where
-        C: Container<Canonical: ComplexContainer>,
-        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
-    {
-        self.as_ref().transpose().norm_l2_with(ctx)
-    }
-
-    #[inline]
-    pub fn norm_l2(&self) -> RealValue<C, T>
-    where
-        C: Container<Canonical: ComplexContainer>,
-        T: ConjUnit<Canonical: ComplexField<C::Canonical, MathCtx: Default>>,
-    {
-        self.norm_l2_with(&default())
+        self.as_ref().transpose().norm_l2()
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape> RowRef<'a, C, T, Rows, ContiguousFwd> {
+impl<'a, T, Rows: Shape> RowRef<'a, T, Rows, ContiguousFwd> {
     #[inline]
-    pub fn as_slice(self) -> C::Of<&'a [T]> {
+    pub fn as_slice(self) -> &'a [T] {
         self.transpose().as_slice()
     }
 }
 
-impl<'a, 'ROWS, C: Container, T> RowRef<'a, C, T, Dim<'ROWS>, ContiguousFwd> {
+impl<'a, 'ROWS, T> RowRef<'a, T, Dim<'ROWS>, ContiguousFwd> {
     #[inline]
-    pub fn as_array(self) -> C::Of<&'a Array<'ROWS, T>> {
+    pub fn as_array(self) -> &'a Array<'ROWS, T> {
         self.transpose().as_array()
     }
 }
 
-impl<'COLS, 'a, C: Container, T, CStride: Stride> RowRef<'a, C, T, Dim<'COLS>, CStride> {
+impl<'COLS, 'a, T, CStride: Stride> RowRef<'a, T, Dim<'COLS>, CStride> {
     #[inline]
     pub fn split_cols_with<'LEFT, 'RIGHT>(
         self,
         col: Partition<'LEFT, 'RIGHT, 'COLS>,
     ) -> (
-        RowRef<'a, C, T, Dim<'LEFT>, CStride>,
-        RowRef<'a, C, T, Dim<'RIGHT>, CStride>,
+        RowRef<'a, T, Dim<'LEFT>, CStride>,
+        RowRef<'a, T, Dim<'RIGHT>, CStride>,
     ) {
         let (a, b) = self.split_at_col(col.midpoint());
         (a.as_col_shape(col.head), b.as_col_shape(col.tail))
     }
 }
 
-impl<C: Container, T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug
-    for RowRef<'_, C, T, Cols, CStride>
+impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug
+    for RowRef<'_, T, Cols, CStride>
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        fn imp<C: Container, T: core::fmt::Debug>(
+        fn imp<T: core::fmt::Debug>(
             f: &mut core::fmt::Formatter<'_>,
-            this: RowRef<'_, C, T, Dim<'_>>,
+            this: RowRef<'_, T, Dim<'_>>,
         ) -> core::fmt::Result {
-            if const { C::IS_COMPLEX } {
-                help!(C);
-                if const { C::IS_CANONICAL } {
-                    f.debug_list()
-                        .entries(this.ncols().indices().map(|j| unsafe {
-                            crate::hacks::coerce::<
-                                C::Of<&dyn core::fmt::Debug>,
-                                num_complex::Complex<
-                                    <C::Real as Container>::OfDebug<&dyn core::fmt::Debug>,
-                                >,
-                            >(map!(
-                                this.at(j),
-                                dbg,
-                                crate::hacks::hijack_debug(dbg)
-                            ))
-                        }))
-                        .finish()
-                } else {
-                    f.debug_list()
-                        .entries(this.ncols().indices().map(|j| unsafe {
-                            crate::hacks::coerce::<
-                                C::Of<&dyn core::fmt::Debug>,
-                                faer_traits::ComplexConj<
-                                    <C::Real as Container>::OfDebug<&dyn core::fmt::Debug>,
-                                >,
-                            >(map!(
-                                this.at(j),
-                                dbg,
-                                crate::hacks::hijack_debug(dbg)
-                            ))
-                        }))
-                        .finish()
-                }
-            } else {
-                help!(C);
-                f.debug_list()
-                    .entries(this.ncols().indices().map(|j| unsafe {
-                        crate::hacks::coerce::<
-                            C::Of<&dyn core::fmt::Debug>,
-                            C::OfDebug<&dyn core::fmt::Debug>,
-                        >(map!(
-                            this.at(j),
-                            dbg,
-                            crate::hacks::hijack_debug(dbg)
-                        ))
-                    }))
-                    .finish()
-            }
+            f.debug_list()
+                .entries(
+                    this.ncols()
+                        .indices()
+                        .map(|j| unsafe { crate::hacks::hijack_debug(this.at(j)) }),
+                )
+                .finish()
         }
 
         with_dim!(N, self.ncols().unbound());

@@ -803,163 +803,159 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ArraySplit<'scope, 'dim, 'a>> ArraySpli
 }
 
 pub trait RowSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Separable<'scope, 'dim> {
-    type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>;
-    type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>;
+    type MatRefSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>;
+    type MatMutSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>;
 
-    type ColRefSegments<C: Container, T: 'a, RStride: Stride>;
-    type ColMutSegments<C: Container, T: 'a, RStride: Stride>;
+    type ColRefSegments<T: 'a, RStride: Stride>;
+    type ColMutSegments<T: 'a, RStride: Stride>;
 
-    fn mat_ref_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatRef<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Cols, RStride, CStride>;
-    fn mat_mut_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+        mat: MatRef<'a, T, Dim<'dim>, Cols, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Cols, RStride, CStride>;
+    fn mat_mut_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatMut<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
+        mat: MatMut<'a, T, Dim<'dim>, Cols, RStride, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Cols, RStride, CStride>;
+    ) -> Self::MatMutSegments<T, Cols, RStride, CStride>;
 
-    fn col_ref_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_ref_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: ColRef<'a, C, T, Dim<'dim>, RStride>,
-    ) -> Self::ColRefSegments<C, T, RStride>;
-    fn col_mut_segments<C: Container, T: 'a, RStride: Stride>(
+        mat: ColRef<'a, T, Dim<'dim>, RStride>,
+    ) -> Self::ColRefSegments<T, RStride>;
+    fn col_mut_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: ColMut<'a, C, T, Dim<'dim>, RStride>,
+        mat: ColMut<'a, T, Dim<'dim>, RStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::ColMutSegments<C, T, RStride>;
+    ) -> Self::ColMutSegments<T, RStride>;
 
-    unsafe fn cast_cell<C: Container, T, RStride: Stride>(
-        segment: Self::ColRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::ColMutSegments<C, T, RStride>;
+    unsafe fn cast_cell<T, RStride: Stride>(
+        segment: Self::ColRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::ColMutSegments<T, RStride>;
 }
 
 pub trait ColSplit<'scope, 'dim: 'a, 'a, Outlives = &'a Self>: Separable<'scope, 'dim> {
-    type MatRefSegments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>;
-    type MatMutSegments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>;
+    type MatRefSegments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>;
+    type MatMutSegments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>;
 
-    type RowRefSegments<C: Container, T: 'a, CStride: Stride>;
-    type RowMutSegments<C: Container, T: 'a, CStride: Stride>;
+    type RowRefSegments<T: 'a, CStride: Stride>;
+    type RowMutSegments<T: 'a, CStride: Stride>;
 
-    fn mat_ref_segments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatRef<'a, C, T, Rows, Dim<'dim>, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Rows, RStride, CStride>;
-    fn mat_mut_segments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
+        mat: MatRef<'a, T, Rows, Dim<'dim>, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Rows, RStride, CStride>;
+    fn mat_mut_segments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatMut<'a, C, T, Rows, Dim<'dim>, RStride, CStride>,
+        mat: MatMut<'a, T, Rows, Dim<'dim>, RStride, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Rows, RStride, CStride>;
+    ) -> Self::MatMutSegments<T, Rows, RStride, CStride>;
 
-    fn row_ref_segments<C: Container, T: 'a, CStride: Stride>(
+    fn row_ref_segments<T: 'a, CStride: Stride>(
         this: Self,
-        mat: RowRef<'a, C, T, Dim<'dim>, CStride>,
-    ) -> Self::RowRefSegments<C, T, CStride>;
-    fn row_mut_segments<C: Container, T: 'a, CStride: Stride>(
+        mat: RowRef<'a, T, Dim<'dim>, CStride>,
+    ) -> Self::RowRefSegments<T, CStride>;
+    fn row_mut_segments<T: 'a, CStride: Stride>(
         this: Self,
-        mat: RowMut<'a, C, T, Dim<'dim>, CStride>,
+        mat: RowMut<'a, T, Dim<'dim>, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::RowMutSegments<C, T, CStride>;
+    ) -> Self::RowMutSegments<T, CStride>;
 
-    unsafe fn cast_cell<C: Container, T, RStride: Stride>(
-        segment: Self::RowRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::RowMutSegments<C, T, RStride>;
+    unsafe fn cast_cell<T, RStride: Stride>(
+        segment: Self::RowRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::RowMutSegments<T, RStride>;
 }
 
 impl<'scope, 'dim: 'a, 'a> RowSplit<'scope, 'dim, 'a> for Nil {
-    type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Nil;
-    type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Nil;
+    type MatRefSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> = Nil;
+    type MatMutSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> = Nil;
 
-    type ColRefSegments<C: Container, T: 'a, RStride: Stride> = Nil;
-    type ColMutSegments<C: Container, T: 'a, RStride: Stride> = Nil;
+    type ColRefSegments<T: 'a, RStride: Stride> = Nil;
+    type ColMutSegments<T: 'a, RStride: Stride> = Nil;
 
     #[inline]
-    fn mat_ref_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         _: Self,
-        _: MatRef<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Cols, RStride, CStride> {
+        _: MatRef<'a, T, Dim<'dim>, Cols, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Cols, RStride, CStride> {
         Nil
     }
     #[inline]
-    fn mat_mut_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_mut_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         _: Self,
-        _: MatMut<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
+        _: MatMut<'a, T, Dim<'dim>, Cols, RStride, CStride>,
         _: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Cols, RStride, CStride> {
+    ) -> Self::MatMutSegments<T, Cols, RStride, CStride> {
         Nil
     }
 
     #[inline]
-    fn col_ref_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_ref_segments<T: 'a, RStride: Stride>(
         _: Self,
-        _: ColRef<'a, C, T, Dim<'dim>, RStride>,
-    ) -> Self::ColRefSegments<C, T, RStride> {
+        _: ColRef<'a, T, Dim<'dim>, RStride>,
+    ) -> Self::ColRefSegments<T, RStride> {
         Nil
     }
     #[inline]
-    fn col_mut_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_mut_segments<T: 'a, RStride: Stride>(
         _: Self,
-        _: ColMut<'a, C, T, Dim<'dim>, RStride>,
+        _: ColMut<'a, T, Dim<'dim>, RStride>,
         _: Self::Disjoint,
-    ) -> Self::ColMutSegments<C, T, RStride> {
+    ) -> Self::ColMutSegments<T, RStride> {
         Nil
     }
 
     #[inline]
-    unsafe fn cast_cell<C: Container, T: 'a, RStride: Stride>(
-        _: Self::ColRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::ColMutSegments<C, T, RStride> {
+    unsafe fn cast_cell<T: 'a, RStride: Stride>(
+        _: Self::ColRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::ColMutSegments<T, RStride> {
         Nil
     }
 }
 
 impl<'scope, 'dim: 'a, 'a> ColSplit<'scope, 'dim, 'a> for Nil {
-    type MatRefSegments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Nil;
-    type MatMutSegments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Nil;
+    type MatRefSegments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride> = Nil;
+    type MatMutSegments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride> = Nil;
 
-    type RowRefSegments<C: Container, T: 'a, RStride: Stride> = Nil;
-    type RowMutSegments<C: Container, T: 'a, RStride: Stride> = Nil;
+    type RowRefSegments<T: 'a, RStride: Stride> = Nil;
+    type RowMutSegments<T: 'a, RStride: Stride> = Nil;
 
     #[inline]
-    fn mat_ref_segments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
         _: Self,
-        _: MatRef<'a, C, T, Rows, Dim<'dim>, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Rows, RStride, CStride> {
+        _: MatRef<'a, T, Rows, Dim<'dim>, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Rows, RStride, CStride> {
         Nil
     }
     #[inline]
-    fn mat_mut_segments<C: Container, T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_mut_segments<T: 'a, Rows: 'a + Shape, RStride: Stride, CStride: Stride>(
         _: Self,
-        _: MatMut<'a, C, T, Rows, Dim<'dim>, RStride, CStride>,
+        _: MatMut<'a, T, Rows, Dim<'dim>, RStride, CStride>,
         _: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Rows, RStride, CStride> {
+    ) -> Self::MatMutSegments<T, Rows, RStride, CStride> {
         Nil
     }
 
     #[inline]
-    fn row_ref_segments<C: Container, T: 'a, RStride: Stride>(
+    fn row_ref_segments<T: 'a, RStride: Stride>(
         _: Self,
-        _: RowRef<'a, C, T, Dim<'dim>, RStride>,
-    ) -> Self::RowRefSegments<C, T, RStride> {
+        _: RowRef<'a, T, Dim<'dim>, RStride>,
+    ) -> Self::RowRefSegments<T, RStride> {
         Nil
     }
     #[inline]
-    fn row_mut_segments<C: Container, T: 'a, RStride: Stride>(
+    fn row_mut_segments<T: 'a, RStride: Stride>(
         _: Self,
-        _: RowMut<'a, C, T, Dim<'dim>, RStride>,
+        _: RowMut<'a, T, Dim<'dim>, RStride>,
         _: Self::Disjoint,
-    ) -> Self::RowMutSegments<C, T, RStride> {
+    ) -> Self::RowMutSegments<T, RStride> {
         Nil
     }
 
     #[inline]
-    unsafe fn cast_cell<C: Container, T: 'a, RStride: Stride>(
-        _: Self::RowRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::RowMutSegments<C, T, RStride> {
+    unsafe fn cast_cell<T: 'a, RStride: Stride>(
+        _: Self::RowRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::RowMutSegments<T, RStride> {
         Nil
     }
 }
@@ -973,26 +969,24 @@ pub struct Private<T>(T);
 impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'scope, 'dim, 'a>
     for Cons<Segment<'scope, 'dim, 'range>, Tail>
 {
-    type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<
-            MatRef<'a, C, T, Dim<'range>, Cols, RStride, CStride>,
-            Tail::MatRefSegments<C, T, Cols, RStride, CStride>,
-        >;
-    type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<
-            MatMut<'a, C, T, Dim<'range>, Cols, RStride, CStride>,
-            Tail::MatMutSegments<C, T, Cols, RStride, CStride>,
-        >;
-    type ColRefSegments<C: Container, T: 'a, RStride: Stride> =
-        Cons<ColRef<'a, C, T, Dim<'range>, RStride>, Tail::ColRefSegments<C, T, RStride>>;
-    type ColMutSegments<C: Container, T: 'a, RStride: Stride> =
-        Cons<ColMut<'a, C, T, Dim<'range>, RStride>, Tail::ColMutSegments<C, T, RStride>>;
+    type MatRefSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> = Cons<
+        MatRef<'a, T, Dim<'range>, Cols, RStride, CStride>,
+        Tail::MatRefSegments<T, Cols, RStride, CStride>,
+    >;
+    type MatMutSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> = Cons<
+        MatMut<'a, T, Dim<'range>, Cols, RStride, CStride>,
+        Tail::MatMutSegments<T, Cols, RStride, CStride>,
+    >;
+    type ColRefSegments<T: 'a, RStride: Stride> =
+        Cons<ColRef<'a, T, Dim<'range>, RStride>, Tail::ColRefSegments<T, RStride>>;
+    type ColMutSegments<T: 'a, RStride: Stride> =
+        Cons<ColMut<'a, T, Dim<'range>, RStride>, Tail::ColMutSegments<T, RStride>>;
 
     #[inline]
-    fn mat_ref_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatRef<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Cols, RStride, CStride> {
+        mat: MatRef<'a, T, Dim<'dim>, Cols, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Cols, RStride, CStride> {
         let head = mat.row_segment(this.head);
         Cons {
             head,
@@ -1001,11 +995,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
     }
 
     #[inline]
-    fn mat_mut_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_mut_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatMut<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
+        mat: MatMut<'a, T, Dim<'dim>, Cols, RStride, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Cols, RStride, CStride> {
+    ) -> Self::MatMutSegments<T, Cols, RStride, CStride> {
         let mat = mat.into_const();
         let head = unsafe { mat.row_segment(this.head).const_cast() };
         Cons {
@@ -1015,10 +1009,10 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
     }
 
     #[inline]
-    fn col_ref_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_ref_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: ColRef<'a, C, T, Dim<'dim>, RStride>,
-    ) -> Self::ColRefSegments<C, T, RStride> {
+        mat: ColRef<'a, T, Dim<'dim>, RStride>,
+    ) -> Self::ColRefSegments<T, RStride> {
         let head = mat.row_segment(this.head);
         Cons {
             head,
@@ -1026,11 +1020,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
         }
     }
     #[inline]
-    fn col_mut_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_mut_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: ColMut<'a, C, T, Dim<'dim>, RStride>,
+        mat: ColMut<'a, T, Dim<'dim>, RStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::ColMutSegments<C, T, RStride> {
+    ) -> Self::ColMutSegments<T, RStride> {
         let mat = mat.into_const();
         let head = unsafe { mat.row_segment(this.head).const_cast() };
         Cons {
@@ -1040,9 +1034,9 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
     }
 
     #[inline]
-    unsafe fn cast_cell<C: Container, T, RStride: Stride>(
-        segment: Self::ColRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::ColMutSegments<C, T, RStride> {
+    unsafe fn cast_cell<T, RStride: Stride>(
+        segment: Self::ColRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::ColMutSegments<T, RStride> {
         Cons {
             head: segment.head.const_cast().as_type::<T>(),
             tail: Tail::cast_cell(segment.tail),
@@ -1053,20 +1047,18 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
 impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'scope, 'dim, 'a>
     for Cons<SegmentIdx<'scope, 'dim, 'range>, Tail>
 {
-    type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<RowRef<'a, C, T, Cols, CStride>, Tail::MatRefSegments<C, T, Cols, RStride, CStride>>;
-    type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<RowMut<'a, C, T, Cols, CStride>, Tail::MatMutSegments<C, T, Cols, RStride, CStride>>;
-    type ColRefSegments<C: Container, T: 'a, RStride: Stride> =
-        Cons<C::Of<&'a T>, Tail::ColRefSegments<C, T, RStride>>;
-    type ColMutSegments<C: Container, T: 'a, RStride: Stride> =
-        Cons<C::Of<&'a mut T>, Tail::ColMutSegments<C, T, RStride>>;
+    type MatRefSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
+        Cons<RowRef<'a, T, Cols, CStride>, Tail::MatRefSegments<T, Cols, RStride, CStride>>;
+    type MatMutSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
+        Cons<RowMut<'a, T, Cols, CStride>, Tail::MatMutSegments<T, Cols, RStride, CStride>>;
+    type ColRefSegments<T: 'a, RStride: Stride> = Cons<&'a T, Tail::ColRefSegments<T, RStride>>;
+    type ColMutSegments<T: 'a, RStride: Stride> = Cons<&'a mut T, Tail::ColMutSegments<T, RStride>>;
 
     #[inline]
-    fn mat_ref_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatRef<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Cols, RStride, CStride> {
+        mat: MatRef<'a, T, Dim<'dim>, Cols, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Cols, RStride, CStride> {
         let head = mat.row(this.head.local());
         Cons {
             head,
@@ -1075,11 +1067,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
     }
 
     #[inline]
-    fn mat_mut_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_mut_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatMut<'a, C, T, Dim<'dim>, Cols, RStride, CStride>,
+        mat: MatMut<'a, T, Dim<'dim>, Cols, RStride, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Cols, RStride, CStride> {
+    ) -> Self::MatMutSegments<T, Cols, RStride, CStride> {
         let mat = mat.into_const();
         let head = unsafe { mat.row(this.head.local()).const_cast() };
         Cons {
@@ -1089,10 +1081,10 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
     }
 
     #[inline]
-    fn col_ref_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_ref_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: ColRef<'a, C, T, Dim<'dim>, RStride>,
-    ) -> Self::ColRefSegments<C, T, RStride> {
+        mat: ColRef<'a, T, Dim<'dim>, RStride>,
+    ) -> Self::ColRefSegments<T, RStride> {
         let head = mat.at(this.head.local());
         Cons {
             head,
@@ -1100,11 +1092,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
         }
     }
     #[inline]
-    fn col_mut_segments<C: Container, T: 'a, RStride: Stride>(
+    fn col_mut_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: ColMut<'a, C, T, Dim<'dim>, RStride>,
+        mat: ColMut<'a, T, Dim<'dim>, RStride>,
         _: Self::Disjoint,
-    ) -> Self::ColMutSegments<C, T, RStride> {
+    ) -> Self::ColMutSegments<T, RStride> {
         unsafe {
             let cell = Self::col_ref_segments(this, mat.as_type::<UnsafeCell<T>>().into_const());
             Self::cast_cell(cell)
@@ -1112,12 +1104,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
     }
 
     #[inline]
-    unsafe fn cast_cell<C: Container, T, RStride: Stride>(
-        segment: Self::ColRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::ColMutSegments<C, T, RStride> {
-        help!(C);
+    unsafe fn cast_cell<T, RStride: Stride>(
+        segment: Self::ColRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::ColMutSegments<T, RStride> {
         Cons {
-            head: map!(segment.head, head, unsafe { &mut *(head.get()) }),
+            head: unsafe { &mut *(segment.head.get()) },
             tail: Tail::cast_cell(segment.tail),
         }
     }
@@ -1126,26 +1117,24 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: RowSplit<'scope, 'dim, 'a>> RowSplit<'s
 impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'scope, 'dim, 'a>
     for Cons<Segment<'scope, 'dim, 'range>, Tail>
 {
-    type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<
-            MatRef<'a, C, T, Cols, Dim<'range>, RStride, CStride>,
-            Tail::MatRefSegments<C, T, Cols, RStride, CStride>,
-        >;
-    type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<
-            MatMut<'a, C, T, Cols, Dim<'range>, RStride, CStride>,
-            Tail::MatMutSegments<C, T, Cols, RStride, CStride>,
-        >;
-    type RowRefSegments<C: Container, T: 'a, CStride: Stride> =
-        Cons<RowRef<'a, C, T, Dim<'range>, CStride>, Tail::RowRefSegments<C, T, CStride>>;
-    type RowMutSegments<C: Container, T: 'a, CStride: Stride> =
-        Cons<RowMut<'a, C, T, Dim<'range>, CStride>, Tail::RowMutSegments<C, T, CStride>>;
+    type MatRefSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> = Cons<
+        MatRef<'a, T, Cols, Dim<'range>, RStride, CStride>,
+        Tail::MatRefSegments<T, Cols, RStride, CStride>,
+    >;
+    type MatMutSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> = Cons<
+        MatMut<'a, T, Cols, Dim<'range>, RStride, CStride>,
+        Tail::MatMutSegments<T, Cols, RStride, CStride>,
+    >;
+    type RowRefSegments<T: 'a, CStride: Stride> =
+        Cons<RowRef<'a, T, Dim<'range>, CStride>, Tail::RowRefSegments<T, CStride>>;
+    type RowMutSegments<T: 'a, CStride: Stride> =
+        Cons<RowMut<'a, T, Dim<'range>, CStride>, Tail::RowMutSegments<T, CStride>>;
 
     #[inline]
-    fn mat_ref_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatRef<'a, C, T, Cols, Dim<'dim>, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Cols, RStride, CStride> {
+        mat: MatRef<'a, T, Cols, Dim<'dim>, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Cols, RStride, CStride> {
         let head = mat.col_segment(this.head);
         Cons {
             head,
@@ -1154,11 +1143,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
     }
 
     #[inline]
-    fn mat_mut_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_mut_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatMut<'a, C, T, Cols, Dim<'dim>, RStride, CStride>,
+        mat: MatMut<'a, T, Cols, Dim<'dim>, RStride, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Cols, RStride, CStride> {
+    ) -> Self::MatMutSegments<T, Cols, RStride, CStride> {
         let mat = mat.into_const();
         let head = unsafe { mat.col_segment(this.head).const_cast() };
         Cons {
@@ -1168,10 +1157,10 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
     }
 
     #[inline]
-    fn row_ref_segments<C: Container, T: 'a, CStride: Stride>(
+    fn row_ref_segments<T: 'a, CStride: Stride>(
         this: Self,
-        mat: RowRef<'a, C, T, Dim<'dim>, CStride>,
-    ) -> Self::RowRefSegments<C, T, CStride> {
+        mat: RowRef<'a, T, Dim<'dim>, CStride>,
+    ) -> Self::RowRefSegments<T, CStride> {
         let head = mat.col_segment(this.head);
         Cons {
             head,
@@ -1179,11 +1168,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
         }
     }
     #[inline]
-    fn row_mut_segments<C: Container, T: 'a, CStride: Stride>(
+    fn row_mut_segments<T: 'a, CStride: Stride>(
         this: Self,
-        mat: RowMut<'a, C, T, Dim<'dim>, CStride>,
+        mat: RowMut<'a, T, Dim<'dim>, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::RowMutSegments<C, T, CStride> {
+    ) -> Self::RowMutSegments<T, CStride> {
         let mat = mat.into_const();
         let head = unsafe { mat.col_segment(this.head).const_cast() };
         Cons {
@@ -1193,9 +1182,9 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
     }
 
     #[inline]
-    unsafe fn cast_cell<C: Container, T, RStride: Stride>(
-        segment: Self::RowRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::RowMutSegments<C, T, RStride> {
+    unsafe fn cast_cell<T, RStride: Stride>(
+        segment: Self::RowRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::RowMutSegments<T, RStride> {
         Cons {
             head: segment.head.const_cast().as_type::<T>(),
             tail: Tail::cast_cell(segment.tail),
@@ -1206,20 +1195,18 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
 impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'scope, 'dim, 'a>
     for Cons<SegmentIdx<'scope, 'dim, 'range>, Tail>
 {
-    type MatRefSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<ColRef<'a, C, T, Cols, RStride>, Tail::MatRefSegments<C, T, Cols, RStride, CStride>>;
-    type MatMutSegments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
-        Cons<ColMut<'a, C, T, Cols, RStride>, Tail::MatMutSegments<C, T, Cols, RStride, CStride>>;
-    type RowRefSegments<C: Container, T: 'a, RStride: Stride> =
-        Cons<C::Of<&'a T>, Tail::RowRefSegments<C, T, RStride>>;
-    type RowMutSegments<C: Container, T: 'a, RStride: Stride> =
-        Cons<C::Of<&'a mut T>, Tail::RowMutSegments<C, T, RStride>>;
+    type MatRefSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
+        Cons<ColRef<'a, T, Cols, RStride>, Tail::MatRefSegments<T, Cols, RStride, CStride>>;
+    type MatMutSegments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride> =
+        Cons<ColMut<'a, T, Cols, RStride>, Tail::MatMutSegments<T, Cols, RStride, CStride>>;
+    type RowRefSegments<T: 'a, RStride: Stride> = Cons<&'a T, Tail::RowRefSegments<T, RStride>>;
+    type RowMutSegments<T: 'a, RStride: Stride> = Cons<&'a mut T, Tail::RowMutSegments<T, RStride>>;
 
     #[inline]
-    fn mat_ref_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_ref_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatRef<'a, C, T, Cols, Dim<'dim>, RStride, CStride>,
-    ) -> Self::MatRefSegments<C, T, Cols, RStride, CStride> {
+        mat: MatRef<'a, T, Cols, Dim<'dim>, RStride, CStride>,
+    ) -> Self::MatRefSegments<T, Cols, RStride, CStride> {
         let head = mat.col(this.head.local());
         Cons {
             head,
@@ -1228,11 +1215,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
     }
 
     #[inline]
-    fn mat_mut_segments<C: Container, T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
+    fn mat_mut_segments<T: 'a, Cols: 'a + Shape, RStride: Stride, CStride: Stride>(
         this: Self,
-        mat: MatMut<'a, C, T, Cols, Dim<'dim>, RStride, CStride>,
+        mat: MatMut<'a, T, Cols, Dim<'dim>, RStride, CStride>,
         disjoint: Self::Disjoint,
-    ) -> Self::MatMutSegments<C, T, Cols, RStride, CStride> {
+    ) -> Self::MatMutSegments<T, Cols, RStride, CStride> {
         let mat = mat.into_const();
         let head = unsafe { mat.col(this.head.local()).const_cast() };
         Cons {
@@ -1242,10 +1229,10 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
     }
 
     #[inline]
-    fn row_ref_segments<C: Container, T: 'a, RStride: Stride>(
+    fn row_ref_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: RowRef<'a, C, T, Dim<'dim>, RStride>,
-    ) -> Self::RowRefSegments<C, T, RStride> {
+        mat: RowRef<'a, T, Dim<'dim>, RStride>,
+    ) -> Self::RowRefSegments<T, RStride> {
         let head = mat.at(this.head.local());
         Cons {
             head,
@@ -1253,11 +1240,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
         }
     }
     #[inline]
-    fn row_mut_segments<C: Container, T: 'a, RStride: Stride>(
+    fn row_mut_segments<T: 'a, RStride: Stride>(
         this: Self,
-        mat: RowMut<'a, C, T, Dim<'dim>, RStride>,
+        mat: RowMut<'a, T, Dim<'dim>, RStride>,
         _: Self::Disjoint,
-    ) -> Self::RowMutSegments<C, T, RStride> {
+    ) -> Self::RowMutSegments<T, RStride> {
         unsafe {
             let cell = Self::row_ref_segments(this, mat.as_type::<UnsafeCell<T>>().into_const());
             Self::cast_cell(cell)
@@ -1265,12 +1252,11 @@ impl<'scope, 'dim: 'a, 'range, 'a, Tail: ColSplit<'scope, 'dim, 'a>> ColSplit<'s
     }
 
     #[inline]
-    unsafe fn cast_cell<C: Container, T, RStride: Stride>(
-        segment: Self::RowRefSegments<C, UnsafeCell<T>, RStride>,
-    ) -> Self::RowMutSegments<C, T, RStride> {
-        help!(C);
+    unsafe fn cast_cell<T, RStride: Stride>(
+        segment: Self::RowRefSegments<UnsafeCell<T>, RStride>,
+    ) -> Self::RowMutSegments<T, RStride> {
         Cons {
-            head: map!(segment.head, head, unsafe { &mut *(head.get()) }),
+            head: unsafe { &mut *(segment.head.get()) },
             tail: Tail::cast_cell(segment.tail),
         }
     }

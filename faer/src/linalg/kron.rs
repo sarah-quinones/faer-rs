@@ -2,12 +2,7 @@ use crate::internal_prelude::*;
 
 #[track_caller]
 #[math]
-pub fn kron<C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    dst: MatMut<C, T>,
-    lhs: MatRef<C, T>,
-    rhs: MatRef<C, T>,
-) {
+pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef<'_, T>) {
     // pull the lever kron
 
     let mut dst = dst;
@@ -37,11 +32,7 @@ pub fn kron<C: ComplexContainer, T: ComplexField<C>>(
                     // SAFETY: Bounds have been checked.
                     unsafe {
                         let rhs_val = rhs.at_unchecked(rhs_i, rhs_j);
-                        help!(C);
-                        write1!(
-                            dst.rb_mut().at_mut_unchecked(rhs_i, rhs_j),
-                            math(lhs_val * rhs_val)
-                        );
+                        *dst.rb_mut().at_mut_unchecked(rhs_i, rhs_j) = lhs_val * rhs_val;
                     }
                 }
             }
@@ -53,7 +44,7 @@ pub fn kron<C: ComplexContainer, T: ComplexField<C>>(
 #[cfg(test)]
 mod tests {
     use super::kron;
-    use crate::{assert, internal_prelude::*, Col, Mat, Row};
+    use crate::{assert, Col, Mat, Row};
 
     #[test]
     fn test_kron_ones() {
@@ -61,8 +52,8 @@ mod tests {
             let a = Mat::from_fn(m, n, |_, _| 1 as f64);
             let b = Mat::from_fn(p, q, |_, _| 1 as f64);
             let expected = Mat::from_fn(m * p, n * q, |_, _| 1 as f64);
-            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
-            kron(&default(), out.as_mut(), a.as_ref(), b.as_ref());
+            let mut out = Mat::zeros(a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            kron(out.as_mut(), a.as_ref(), b.as_ref());
             assert!(out == expected);
         }
 
@@ -70,21 +61,21 @@ mod tests {
             let a = Mat::from_fn(m, n, |_, _| 1 as f64);
             let b = Col::from_fn(p, |_| 1 as f64);
             let expected = Mat::from_fn(m * p, n, |_, _| 1 as f64);
-            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
-            kron(&default(), out.as_mut(), a.as_ref(), b.as_ref().as_mat());
+            let mut out = Mat::zeros(a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            kron(out.as_mut(), a.as_ref(), b.as_ref().as_mat());
             assert!(out == expected);
-            let mut out = Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
-            kron(&default(), out.as_mut(), b.as_ref().as_mat(), a.as_ref());
+            let mut out = Mat::zeros(b.nrows() * a.nrows(), b.ncols() * a.ncols());
+            kron(out.as_mut(), b.as_ref().as_mat(), a.as_ref());
             assert!(out == expected);
 
             let a = Mat::from_fn(m, n, |_, _| 1 as f64);
             let b = Row::from_fn(p, |_| 1 as f64);
             let expected = Mat::from_fn(m, n * p, |_, _| 1 as f64);
-            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
-            kron(&default(), out.as_mut(), a.as_ref(), b.as_ref().as_mat());
+            let mut out = Mat::zeros(a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            kron(out.as_mut(), a.as_ref(), b.as_ref().as_mat());
             assert!(out == expected);
-            let mut out = Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
-            kron(&default(), out.as_mut(), b.as_ref().as_mat(), a.as_ref());
+            let mut out = Mat::zeros(b.nrows() * a.nrows(), b.ncols() * a.ncols());
+            kron(out.as_mut(), b.as_ref().as_mat(), a.as_ref());
             assert!(out == expected);
         }
 
@@ -92,43 +83,23 @@ mod tests {
             let a = Row::from_fn(m, |_| 1 as f64);
             let b = Col::from_fn(n, |_| 1 as f64);
             let expected = Mat::from_fn(n, m, |_, _| 1 as f64);
-            let mut out = Mat::zeros_with(&default(), a.nrows() * b.nrows(), a.ncols() * b.ncols());
-            kron(
-                &default(),
-                out.as_mut(),
-                a.as_ref().as_mat(),
-                b.as_ref().as_mat(),
-            );
+            let mut out = Mat::zeros(a.nrows() * b.nrows(), a.ncols() * b.ncols());
+            kron(out.as_mut(), a.as_ref().as_mat(), b.as_ref().as_mat());
             assert!(out == expected);
-            let mut out = Mat::zeros_with(&default(), b.nrows() * a.nrows(), b.ncols() * a.ncols());
-            kron(
-                &default(),
-                out.as_mut(),
-                b.as_ref().as_mat(),
-                a.as_ref().as_mat(),
-            );
+            let mut out = Mat::zeros(b.nrows() * a.nrows(), b.ncols() * a.ncols());
+            kron(out.as_mut(), b.as_ref().as_mat(), a.as_ref().as_mat());
             assert!(out == expected);
 
             let c = Row::from_fn(n, |_| 1 as f64);
             let expected = Mat::from_fn(1, m * n, |_, _| 1 as f64);
-            let mut out = Mat::zeros_with(&default(), a.nrows() * c.nrows(), a.ncols() * c.ncols());
-            kron(
-                &default(),
-                out.as_mut(),
-                a.as_ref().as_mat(),
-                c.as_ref().as_mat(),
-            );
+            let mut out = Mat::zeros(a.nrows() * c.nrows(), a.ncols() * c.ncols());
+            kron(out.as_mut(), a.as_ref().as_mat(), c.as_ref().as_mat());
             assert!(out == expected);
 
             let d = Col::from_fn(m, |_| 1 as f64);
             let expected = Mat::from_fn(m * n, 1, |_, _| 1 as f64);
-            let mut out = Mat::zeros_with(&default(), d.nrows() * b.nrows(), d.ncols() * b.ncols());
-            kron(
-                &default(),
-                out.as_mut(),
-                d.as_ref().as_mat(),
-                b.as_ref().as_mat(),
-            );
+            let mut out = Mat::zeros(d.nrows() * b.nrows(), d.ncols() * b.ncols());
+            kron(out.as_mut(), d.as_ref().as_mat(), b.as_ref().as_mat());
             assert!(out == expected);
         }
     }

@@ -2,24 +2,17 @@ use crate::{internal_prelude::*, utils::bound::Segment};
 use core::num::NonZero;
 
 #[math]
-fn swap_elems<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut col: ColMut<'_, C, T, Dim<'N>>,
-    i: Idx<'N>,
-    j: Idx<'N>,
-) {
-    help!(C);
-    let a = math(copy(col[i]));
-    let b = math(copy(col[j]));
+fn swap_elems<'N, T: ComplexField>(mut col: ColMut<'_, T, Dim<'N>>, i: Idx<'N>, j: Idx<'N>) {
+    let a = copy(col[i]);
+    let b = copy(col[j]);
 
-    write1!(col[i] = b);
-    write1!(col[j] = a);
+    col[i] = b;
+    col[j] = a;
 }
 
 #[math]
-fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut matrix: MatMut<'_, C, T, Dim<'M>, Dim<'NCOLS>>,
+fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, T: ComplexField>(
+    mut matrix: MatMut<'_, T, Dim<'M>, Dim<'NCOLS>>,
     range: Segment<'_, 'NCOLS, 'N>,
     trans: &mut Array<'N, I>,
 ) -> usize {
@@ -38,13 +31,11 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
 
         let k_row = M.idx(*range.from_global(k));
         let mut imax = k_row;
-        let mut max = math.re(zero());
+        let mut max = zero();
 
         for i in imax.to_incl().to(M.end()) {
-            let abs = math(abs1(
-                matrix.rb().col_segment(range)[(i, range.from_global(k))],
-            ));
-            if math(abs > max) {
+            let abs = abs1(matrix.rb().col_segment(range)[(i, range.from_global(k))]);
+            if abs > max {
                 max = abs;
                 imax = i;
             }
@@ -56,18 +47,17 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             n_trans += 1;
 
             for j in NCOLS.indices() {
-                swap_elems(ctx, matrix.rb_mut().col_mut(j), k_row, imax);
+                swap_elems(matrix.rb_mut().col_mut(j), k_row, imax);
             }
         }
 
         let mut matrix = matrix.rb_mut().col_segment_mut(range);
 
         let j = range.from_global(k);
-        help!(C);
 
-        let inv = math(recip(matrix[(k_row, j)]));
+        let inv = recip(matrix[(k_row, j)]);
         for i in k_row.next().to(M.end()) {
-            write1!(matrix[(i, j)] = math(matrix[(i, j)] * inv));
+            matrix[(i, j)] = matrix[(i, j)] * inv;
         }
 
         ghost_tree!(FULL_ROWS(TOP, BOT), FULL_COLS(LEFT, RIGHT), {
@@ -89,13 +79,11 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             let rhs = A01.row(top.from_global(k_row));
             for j in right {
                 let mut col = A11.rb_mut().col_mut(right.from_global(j));
-                let rhs = math(rhs[right.from_global(j)]);
+                let rhs = &rhs[right.from_global(j)];
 
                 for i in bot {
-                    write1!(
-                        col[bot.from_global(i)] =
-                            math(col[bot.from_global(i)] - lhs[bot.from_global(i)] * rhs)
-                    );
+                    col[bot.from_global(i)] =
+                        col[bot.from_global(i)] - lhs[bot.from_global(i)] * *rhs;
                 }
             }
         });
@@ -105,22 +93,20 @@ fn lu_in_place_unblocked<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
 }
 
 #[math]
-fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    A: MatMut<'_, C, T, Dim<'M>, Dim<'NCOLS>>,
+fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, T: ComplexField>(
+    A: MatMut<'_, T, Dim<'M>, Dim<'NCOLS>>,
     range: Segment<'_, 'NCOLS, 'N>,
     trans: &mut Array<'N, I>,
     par: Par,
     params: PartialPivLuParams,
 ) -> usize {
-    help!(C);
     let mut A = A;
     let M = A.nrows();
     let NCOLS = A.ncols();
     let N = range.len();
 
     if *N <= params.recursion_threshold.get() {
-        return lu_in_place_unblocked(ctx, A, range, trans);
+        return lu_in_place_unblocked(A, range, trans);
     }
 
     let blocksize = Ord::min(
@@ -138,7 +124,6 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
         let (l![block], _) = range.len().split(l![..j_next], FULL_COLS);
 
         n_trans += lu_in_place_recursion(
-            ctx,
             A.rb_mut().col_segment_mut(range),
             block,
             trans.segment_mut(block),
@@ -162,25 +147,15 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             let A10 = A10.rb().as_col_shape(A00.nrows());
             {
                 linalg::triangular_solve::solve_unit_lower_triangular_in_place(
-                    ctx,
                     A00.rb(),
                     A01.rb_mut(),
                     par,
                 );
             }
 
-            linalg::matmul::matmul(
-                ctx,
-                A11.rb_mut(),
-                Accum::Add,
-                A10.rb(),
-                A01.rb(),
-                as_ref!(math(-one())),
-                par,
-            );
+            linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one(), par);
 
             n_trans += lu_in_place_recursion(
-                ctx,
                 A.rb_mut().row_segment_mut(bot),
                 right,
                 trans.segment_mut(right),
@@ -189,20 +164,20 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, C: ComplexContainer, T: Compl
             );
         }
 
-        let swap = |mat: MatMut<'_, C, T, Dim<'M>, Dim<'_>>| {
+        let swap = |mat: MatMut<'_, T, Dim<'M>, Dim<'_>>| {
             let mut mat = mat;
             for j in mat.ncols().indices() {
                 let mut col = mat.rb_mut().col_mut(j);
 
                 for (i, j) in core::iter::zip(top, left) {
                     let t = trans[j.local()];
-                    swap_elems(ctx, col.rb_mut(), i.local(), M.check(t.zx() + *i.local()));
+                    swap_elems(col.rb_mut(), i.local(), M.check(t.zx() + *i.local()));
                 }
 
                 for (i, j) in core::iter::zip(bot, right) {
                     let t = trans[j.local()];
 
-                    swap_elems(ctx, col.rb_mut(), i.local(), M.check(t.zx() + *i.local()));
+                    swap_elems(col.rb_mut(), i.local(), M.check(t.zx() + *i.local()));
                 }
             }
         };
@@ -284,7 +259,7 @@ impl Default for PartialPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
     nrows: usize,
     ncols: usize,
     par: Par,
@@ -295,9 +270,8 @@ pub fn lu_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
     StackReq::try_new::<I>(Ord::min(nrows, ncols))
 }
 
-pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    matrix: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
+pub fn lu_in_place<'out, 'M, 'N, I: Index, T: ComplexField>(
+    matrix: MatMut<'_, T, Dim<'M>, Dim<'N>>,
     perm: &'out mut Array<'M, I>,
     perm_inv: &'out mut Array<'M, I>,
     par: Par,
@@ -336,7 +310,7 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
         let transpositions = Array::from_mut(transpositions, left.len());
 
         let n_transpositions =
-            lu_in_place_recursion(ctx, matrix.rb_mut(), left, transpositions, par, params);
+            lu_in_place_recursion(matrix.rb_mut(), left, transpositions, par, params);
 
         for idx in left {
             let t = transpositions[left.from_global(idx)];
@@ -346,7 +320,6 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
         if *M < *N {
             let l![left, right] = matrix.col_segments_mut(l![left, right], disjoint);
             linalg::triangular_solve::solve_unit_lower_triangular_in_place(
-                ctx,
                 left.rb().as_shape(M, M),
                 right,
                 par,
@@ -375,7 +348,6 @@ pub fn lu_in_place<'out, 'M, 'N, I: Index, C: ComplexContainer, T: ComplexField<
 #[cfg(test)]
 mod tests {
     use dyn_stack::GlobalMemBuffer;
-    use faer_traits::Unit;
 
     use super::*;
     use crate::{assert, stats::prelude::*, utils::approx::*, Mat};
@@ -385,7 +357,6 @@ mod tests {
         let rng = &mut StdRng::seed_from_u64(0);
 
         let approx_eq = CwiseMat(ApproxEq {
-            ctx: ctx::<Ctx<Unit, f64>>(),
             abs_tol: 1e-13,
             rel_tol: 1e-13,
         });
@@ -408,13 +379,12 @@ mod tests {
             let perm_inv = Array::from_mut(perm_inv, N);
 
             let p = lu_in_place(
-                &ctx(),
                 LU.as_mut(),
                 perm,
                 perm_inv,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    lu_in_place_scratch::<usize, Unit, f64>(*N, *N, Par::Seq, Default::default())
+                    lu_in_place_scratch::<usize, f64>(*N, *N, Par::Seq, Default::default())
                         .unwrap(),
                 )),
                 PartialPivLuParams {
@@ -428,7 +398,7 @@ mod tests {
             let mut U = LU.as_ref().cloned();
 
             for j in N.indices() {
-                for i in zero().to(j.excl()) {
+                for i in IdxInc::ZERO.to(j.excl()) {
                     L[(i, j)] = 0.0;
                 }
                 L[(j, j)] = 1.0;
@@ -463,13 +433,12 @@ mod tests {
             let perm_inv = Array::from_mut(perm_inv, M);
 
             let p = lu_in_place(
-                &ctx(),
                 LU.as_mut(),
                 perm,
                 perm_inv,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    lu_in_place_scratch::<usize, Unit, f64>(*N, *N, Par::Seq, default()).unwrap(),
+                    lu_in_place_scratch::<usize, f64>(*N, *N, Par::Seq, default()).unwrap(),
                 )),
                 PartialPivLuParams::default(),
             )
@@ -480,7 +449,7 @@ mod tests {
 
             for j in N.indices() {
                 let i = M.check(*j);
-                for i in zero().to(i.excl()) {
+                for i in IdxInc::ZERO.to(i.excl()) {
                     if *i >= *j {
                         break;
                     }
@@ -497,7 +466,7 @@ mod tests {
             let L = L.as_ref();
             let U = U.as_ref();
 
-            let U = U.subrows(zero(), N);
+            let U = U.subrows(IdxInc::ZERO, N);
 
             assert!(p.inverse() * L * U ~ A);
         }

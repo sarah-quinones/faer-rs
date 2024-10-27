@@ -4,7 +4,6 @@ use std::{collections::HashMap, iter};
 use syn::{
     parse::Parser,
     punctuated::Punctuated,
-    spanned::Spanned,
     token::Comma,
     visit_mut::{self, VisitMut},
     Expr, ExprCall, ExprMethodCall, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
@@ -58,12 +57,7 @@ impl visit_mut::VisitMut for MigrationCtx {
     }
 }
 
-struct RustCtx;
-struct MathCtx<'a> {
-    ctx: &'a Expr,
-    real_ctx: &'a Expr,
-    real: bool,
-}
+struct MathCtx;
 
 fn ident_expr(ident: &syn::Ident) -> Expr {
     Expr::Path(ExprPath {
@@ -79,7 +73,7 @@ fn ident_expr(ident: &syn::Ident) -> Expr {
     })
 }
 
-impl visit_mut::VisitMut for MathCtx<'_> {
+impl visit_mut::VisitMut for MathCtx {
     fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
         if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
             for expr in expr.iter_mut() {
@@ -96,37 +90,6 @@ impl visit_mut::VisitMut for MathCtx<'_> {
     }
 
     fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
-        match i {
-            Expr::Index(idx) => {
-                let expr = &mut *idx.expr;
-                let e = Expr::MethodCall(ExprMethodCall {
-                    attrs: vec![],
-                    receiver: Box::new(Expr::MethodCall(ExprMethodCall {
-                        attrs: vec![],
-                        receiver: Box::new(expr.clone()),
-                        dot_token: Default::default(),
-                        method: Ident::new("rb", idx.index.span()),
-                        turbofish: None,
-                        paren_token: Default::default(),
-                        args: std::iter::empty::<Expr>().collect(),
-                    })),
-                    dot_token: Default::default(),
-                    method: Ident::new("__at", idx.index.span()),
-                    turbofish: None,
-                    paren_token: Default::default(),
-                    args: iter::once((*idx.index).clone()).collect(),
-                });
-                *i = math_expr(
-                    self.ctx.clone(),
-                    &Ident::new("copy", idx.index.span()),
-                    std::iter::once(&e),
-                );
-
-                return;
-            }
-            _ => {}
-        }
-
         visit_mut::visit_expr_mut(self, i);
 
         match i {
@@ -136,7 +99,16 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                         attrs: vec![],
                         func: Box::new(ident_expr(&Ident::new("neg", minus.span))),
                         paren_token: Default::default(),
-                        args: std::iter::once((*unary.expr).clone()).collect(),
+                        args: std::iter::once((*unary.expr).clone())
+                            .map(|e| {
+                                Expr::Reference(ExprReference {
+                                    attrs: vec![],
+                                    and_token: Default::default(),
+                                    mutability: None,
+                                    expr: Box::new(e),
+                                })
+                            })
+                            .collect(),
                     })
                 }
                 _ => {}
@@ -147,12 +119,6 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                     syn::BinOp::Sub(minus) => Some(Ident::new("sub", minus.span)),
                     syn::BinOp::Mul(star) => Some(Ident::new("mul", star.span)),
                     syn::BinOp::Div(star) => Some(Ident::new("div", star.span)),
-                    syn::BinOp::Eq(eq_eq) => Some(Ident::new("eq", eq_eq.span())),
-                    syn::BinOp::Ne(ne) => Some(Ident::new("ne", ne.span())),
-                    syn::BinOp::Le(le) => Some(Ident::new("le", le.span())),
-                    syn::BinOp::Ge(ge) => Some(Ident::new("ge", ge.span())),
-                    syn::BinOp::Lt(lt) => Some(Ident::new("lt", lt.span)),
-                    syn::BinOp::Gt(gt) => Some(Ident::new("gt", gt.span)),
                     _ => None,
                 };
                 if let Some(func) = func {
@@ -162,198 +128,66 @@ impl visit_mut::VisitMut for MathCtx<'_> {
                         paren_token: Default::default(),
                         args: [(*binop.left).clone(), (*binop.right).clone()]
                             .into_iter()
+                            .map(|e| {
+                                Expr::Reference(ExprReference {
+                                    attrs: vec![],
+                                    and_token: Default::default(),
+                                    mutability: None,
+                                    expr: Box::new(e),
+                                })
+                            })
                             .collect(),
                     })
                 }
             }
-            _ => {}
-        }
 
-        match i {
             Expr::Call(call) => match &*call.func {
-                Expr::Path(path) => {
-                    if let Some(method) = path.path.get_ident() {
-                        *i = math_expr(
-                            if self.real { self.real_ctx } else { self.ctx }.clone(),
-                            method,
-                            call.args.iter(),
-                        );
-                    }
-                }
-                _ => {}
-            },
-            Expr::MethodCall(call) => match &*call.receiver {
-                Expr::Path(path)
-                    if path
-                        .path
-                        .get_ident()
-                        .map(|ident| ident.to_string())
-                        .as_deref()
-                        == Some("re") =>
-                {
-                    let method = &call.method;
-
-                    *i = math_expr(self.real_ctx.clone(), method, call.args.iter());
-                }
-                Expr::Path(path)
-                    if path
-                        .path
-                        .get_ident()
-                        .map(|ident| ident.to_string())
-                        .as_deref()
-                        == Some("cx") =>
-                {
-                    let method = &call.method;
-
-                    *i = math_expr(self.ctx.clone(), method, call.args.iter());
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-}
-
-impl visit_mut::VisitMut for RustCtx {
-    fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
-        if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
-            for expr in expr.iter_mut() {
-                self.visit_expr_mut(expr);
-            }
-
-            *i = Macro {
-                path: i.path.clone(),
-                bang_token: i.bang_token,
-                delimiter: i.delimiter.clone(),
-                tokens: quote! { #expr },
-            };
-        }
-    }
-
-    fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
-        match i {
-            Expr::MethodCall(call) if call.method.to_string().as_str() == "re" => {
-                match &*call.receiver {
-                    Expr::Path(path)
-                        if path
-                            .path
-                            .get_ident()
-                            .map(|name| name.to_string())
-                            .as_deref()
-                            == Some("math") =>
-                    {
-                        let first = call.args.first_mut().unwrap();
-                        let span = call.method.span();
-                        let ctx = &syn::Ident::new("ctx", span);
-                        MathCtx {
-                            ctx: &ident_expr(&syn::Ident::new("ctx", call.method.span())),
-                            real_ctx: &Expr::MethodCall(ExprMethodCall {
+                Expr::Path(e) if e.path.get_ident().is_some() => {
+                    let name = &*e.path.get_ident().unwrap().to_string().to_string();
+                    if matches!(
+                        name,
+                        "sqrt"
+                            | "from_real"
+                            | "copy"
+                            | "max"
+                            | "min"
+                            | "conj"
+                            | "abs2"
+                            | "abs1"
+                            | "abs"
+                            | "add"
+                            | "sub"
+                            | "div"
+                            | "mul"
+                            | "mul_real"
+                            | "mul_pow2"
+                            | "hypot"
+                            | "neg"
+                            | "recip"
+                            | "real"
+                            | "imag"
+                            | "is_nan"
+                            | "is_finite"
+                            | "is_zero"
+                            | "lt_zero"
+                            | "gt_zero"
+                            | "le_zero"
+                            | "ge_zero"
+                    ) {
+                        call.args.iter_mut().for_each(|x| {
+                            *x = Expr::Reference(ExprReference {
                                 attrs: vec![],
-                                receiver: Box::new(ident_expr(ctx)),
-                                dot_token: Default::default(),
-                                method: Ident::new("real_ctx", span),
-                                turbofish: None,
-                                paren_token: Default::default(),
-                                args: Punctuated::new(),
-                            }),
-                            real: true,
-                        }
-                        .visit_expr_mut(first);
-                        *i = first.clone();
-                        return;
+                                and_token: Default::default(),
+                                mutability: None,
+                                expr: Box::new(x.clone()),
+                            })
+                        })
                     }
-                    _ => {}
-                }
-            }
-
-            Expr::Call(call) => match &*call.func {
-                Expr::Path(path)
-                    if path
-                        .path
-                        .get_ident()
-                        .map(|name| name.to_string())
-                        .as_deref()
-                        == Some("math") =>
-                {
-                    let first = call.args.first_mut().unwrap();
-                    let span = call.func.span();
-                    let ctx = &syn::Ident::new("ctx", span);
-                    MathCtx {
-                        ctx: &ident_expr(&syn::Ident::new("ctx", call.func.span())),
-                        real_ctx: &Expr::MethodCall(ExprMethodCall {
-                            attrs: vec![],
-                            receiver: Box::new(ident_expr(ctx)),
-                            dot_token: Default::default(),
-                            method: Ident::new("real_ctx", span),
-                            turbofish: None,
-                            paren_token: Default::default(),
-                            args: Punctuated::new(),
-                        }),
-                        real: false,
-                    }
-                    .visit_expr_mut(first);
-                    *i = first.clone();
-                    return;
                 }
                 _ => {}
             },
             _ => {}
         }
-
-        visit_mut::visit_expr_mut(self, i);
-
-        match i {
-            Expr::MethodCall(call) => match &*call.receiver {
-                Expr::Field(field) => match &*field.base {
-                    Expr::Path(path)
-                        if path
-                            .path
-                            .get_ident()
-                            .map(|name| name.to_string())
-                            .as_deref()
-                            == Some("math") =>
-                    {
-                        match &field.member {
-                            syn::Member::Named(ident) if &*ident.to_string() == "re" => {
-                                let method = &call.method;
-                                let span = method.span();
-                                let ctx = &syn::Ident::new("ctx", span);
-                                let receiver = Expr::MethodCall(ExprMethodCall {
-                                    attrs: vec![],
-                                    receiver: Box::new(ident_expr(ctx)),
-                                    dot_token: Default::default(),
-                                    method: Ident::new("real_ctx", span),
-                                    turbofish: None,
-                                    paren_token: Default::default(),
-                                    args: Punctuated::new(),
-                                });
-
-                                *i = math_expr(receiver, method, call.args.iter());
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                },
-
-                Expr::Path(path)
-                    if path
-                        .path
-                        .get_ident()
-                        .map(|name| name.to_string())
-                        .as_deref()
-                        == Some("math") =>
-                {
-                    let method = &call.method;
-                    let span = method.span();
-                    let receiver = &syn::Ident::new("ctx", span);
-
-                    *i = math_expr(ident_expr(receiver), method, call.args.iter());
-                }
-                _ => {}
-            },
-            _ => {}
-        };
     }
 }
 
@@ -384,7 +218,7 @@ pub fn math(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_m
     let Ok(mut item) = syn::parse::<syn::ItemFn>(item.clone()) else {
         return item;
     };
-    let mut rust_ctx = RustCtx;
+    let mut rust_ctx = MathCtx;
     rust_ctx.visit_item_fn_mut(&mut item);
     let item = quote! { #item };
     item.into()
@@ -420,7 +254,7 @@ pub fn migrate(
         .collect(),
     );
     rust_ctx.visit_item_fn_mut(&mut item);
-    let mut rust_ctx = RustCtx;
+    let mut rust_ctx = MathCtx;
     rust_ctx.visit_item_fn_mut(&mut item);
 
     let item = quote! { #item };

@@ -46,29 +46,29 @@ pub struct UnitaryMat<Dim: Shape> {
     pub dim: Dim,
 }
 
-impl<C: Container, T, Rows: Shape, Cols: Shape, D: Distribution<C::Of<T>>>
-    Distribution<Mat<C, T, Rows, Cols>> for CwiseMatDistribution<Rows, Cols, D>
+impl<T, Rows: Shape, Cols: Shape, D: Distribution<T>> Distribution<Mat<T, Rows, Cols>>
+    for CwiseMatDistribution<Rows, Cols, D>
 {
     #[inline]
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Mat<C, T, Rows, Cols> {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Mat<T, Rows, Cols> {
         Mat::from_fn(self.nrows, self.ncols, |_, _| self.dist.sample(rng))
     }
 }
 
-impl<C: Container, T, Rows: Shape, D: Distribution<C::Of<T>>> Distribution<Col<C, T, Rows>>
+impl<T, Rows: Shape, D: Distribution<T>> Distribution<Col<T, Rows>>
     for CwiseColDistribution<Rows, D>
 {
     #[inline]
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Col<C, T, Rows> {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Col<T, Rows> {
         Col::from_fn(self.nrows, |_| self.dist.sample(rng))
     }
 }
 
-impl<C: Container, T, Cols: Shape, D: Distribution<C::Of<T>>> Distribution<Row<C, T, Cols>>
+impl<T, Cols: Shape, D: Distribution<T>> Distribution<Row<T, Cols>>
     for CwiseRowDistribution<Cols, D>
 {
     #[inline]
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Row<C, T, Cols> {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Row<T, Cols> {
         Row::from_fn(self.ncols, |_| self.dist.sample(rng))
     }
 }

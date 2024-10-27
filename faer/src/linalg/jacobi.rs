@@ -2,87 +2,86 @@ use crate::internal_prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-pub struct JacobiRotation<C: Container, T> {
-    pub c: C::Of<T>,
-    pub s: C::Of<T>,
+pub struct JacobiRotation<T> {
+    pub c: T,
+    pub s: T,
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
+impl<T: ComplexField> JacobiRotation<T> {
     #[math]
-    pub fn make_givens(ctx: &Ctx<C, T>, p: C::Of<T>, q: C::Of<T>) -> Self
+    pub fn make_givens(p: T, q: T) -> Self
     where
-        C: RealContainer,
-        T: RealField<C>,
+        T: RealField,
     {
-        math({
-            let p = cx.real(p);
-            let q = cx.real(q);
+        {
+            let p = real(p);
+            let q = real(q);
 
-            if is_zero(q) {
-                let c = if lt_zero(p) { -one() } else { one() };
+            if q == zero() {
+                let c = if p < zero() { -one() } else { one() };
                 let s = zero();
-                let c = cx.from_real(c);
-                let s = cx.from_real(s);
+                let c = from_real(c);
+                let s = from_real(s);
 
                 Self { c, s }
-            } else if is_zero(p) {
+            } else if p == zero() {
                 let c = zero();
-                let s = if lt_zero(q) { -one() } else { one() };
-                let c = cx.from_real(c);
-                let s = cx.from_real(s);
+                let s = if q < zero() { -one() } else { one() };
+                let c = from_real(c);
+                let s = from_real(s);
 
                 Self { c, s }
             } else if abs(p) > abs(q) {
                 let t = q / p;
                 let mut u = hypot(one(), t);
-                if lt_zero(p) {
+                if p < zero() {
                     u = -u;
                 }
                 let c = recip(u);
                 let s = -t * c;
 
-                let c = cx.from_real(c);
-                let s = cx.from_real(s);
+                let c = from_real(c);
+                let s = from_real(s);
 
                 Self { c, s }
             } else {
                 let t = p / q;
                 let mut u = hypot(one(), t);
-                if lt_zero(q) {
+                if q < zero() {
                     u = -u;
                 }
                 let s = -recip(u);
                 let c = -t * s;
 
-                let c = cx.from_real(c);
-                let s = cx.from_real(s);
+                let c = from_real(c);
+                let s = from_real(s);
 
                 Self { c, s }
             }
-        })
+        }
     }
 
     #[math]
-    pub fn rotg(ctx: &Ctx<C, T>, p: C::Of<T>, q: C::Of<T>) -> (Self, C::Of<T>) {
+    pub fn rotg(p: T, q: T) -> (Self, T) {
         if const { T::IS_REAL } {
-            math.re({
-                let p = cx.real(p);
-                let q = cx.real(q);
+            {
+                let p = real(p);
+                let q = real(q);
 
-                if is_zero(q) {
+                if q == zero() {
                     let c = one();
                     let s = zero();
-                    let c = cx.from_real(c);
-                    let s = cx.from_real(s);
+                    let c = from_real(c);
+                    let s = from_real(s);
 
-                    (Self { c, s }, cx.from_real(p))
-                } else if is_zero(p) {
+                    (Self { c, s }, from_real(p))
+                } else if p == zero() {
                     let c = zero();
                     let s = one();
-                    let c = cx.from_real(c);
-                    let s = cx.from_real(s);
+                    let c = from_real(c);
+                    let s = from_real(s);
 
-                    (Self { c, s }, cx.from_real(q))
+                    (Self { c, s }, from_real(q))
                 } else {
                     let safmin = min_positive();
                     let safmax = recip(safmin);
@@ -104,23 +103,23 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
                             -r
                         }
                     };
-                    let c = cx.from_real(a / r);
-                    let s = cx.from_real(b / r);
-                    let r = cx.from_real(r);
+                    let c = from_real(a / r);
+                    let s = from_real(b / r);
+                    let r = from_real(r);
 
                     (Self { c, s }, r)
                 }
-            })
+            }
         } else {
-            math({
+            {
                 let a = p;
                 let b = q;
 
                 let eps = eps();
                 let sml = min_positive();
                 let big = max_positive();
-                let rtmin = re.sqrt(re.div(sml, eps));
-                let rtmax = re.recip(rtmin);
+                let rtmin = sqrt(div(sml, eps));
+                let rtmax = recip(rtmin);
 
                 if b == zero() {
                     return (
@@ -136,140 +135,123 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
 
                 if a == zero() {
                     c = zero();
-                    let g1 = max(re.abs(real(b)), re.abs(imag(b)));
+                    let g1 = max(abs(real(b)), abs(imag(b)));
                     if g1 > rtmin && g1 < rtmax {
                         // Use unscaled algorithm
                         let g2 = abs2(b);
 
-                        let d = re.sqrt(g2);
-                        s = mul_real(conj(b), re.recip(d));
+                        let d = sqrt(g2);
+                        s = mul_real(conj(b), recip(d));
                         r = from_real(d);
                     } else {
                         // Use scaled algorithm
                         let u = min(big, max(sml, g1));
-                        let uu = re.recip(u);
+                        let uu = recip(u);
                         let gs = mul_real(b, uu);
                         let g2 = abs2(gs);
-                        let d = re.sqrt(g2);
-                        s = mul_real(conj(gs), re.recip(d));
-                        r = from_real(re.mul(d, u));
+                        let d = sqrt(g2);
+                        s = mul_real(conj(gs), recip(d));
+                        r = from_real(mul(d, u));
                     }
                 } else {
-                    let f1 = max(re.abs(real(a)), re.abs(imag(a)));
-                    let g1 = max(re.abs(real(b)), re.abs(imag(b)));
+                    let f1 = max(abs(real(a)), abs(imag(a)));
+                    let g1 = max(abs(real(b)), abs(imag(b)));
                     if f1 > rtmin && f1 < rtmax && g1 > rtmin && g1 < rtmax {
                         // Use unscaled algorithm
                         let f2 = abs2(a);
                         let g2 = abs2(b);
-                        let h2 = re.add(f2, g2);
+                        let h2 = add(f2, g2);
                         let d = if f2 > rtmin && h2 < rtmax {
-                            re.sqrt(re.mul(f2, h2))
+                            sqrt(mul(f2, h2))
                         } else {
-                            re.mul(re.sqrt(f2), re.sqrt(h2))
+                            mul(sqrt(f2), sqrt(h2))
                         };
-                        let p = re.recip(d);
-                        c = from_real(re.mul(f2, p));
+                        let p = recip(d);
+                        c = from_real(mul(f2, p));
                         s = conj(b) * mul_real(a, p);
 
-                        r = mul_real(a, re.mul(h2, p));
+                        r = mul_real(a, mul(h2, p));
                     } else {
                         // Use scaled algorithm
                         let u = min(big, max(sml, max(f1, g1)));
-                        let uu = re.recip(u);
+                        let uu = recip(u);
                         let gs = mul_real(b, uu);
                         let g2 = abs2(gs);
                         let (f2, h2, w);
                         let fs;
-                        if re.mul(f1, uu) < rtmin {
+                        if mul(f1, uu) < rtmin {
                             // a is not well-scaled when scaled by g1.
                             let v = min(big, max(sml, f1));
-                            let vv = re.recip(v);
-                            w = re.mul(v, uu);
+                            let vv = recip(v);
+                            w = mul(v, uu);
                             fs = mul_real(a, vv);
                             f2 = abs2(fs);
-                            h2 = re.add(re.mul(re.mul(f2, w), w), g2);
+                            h2 = add(mul(mul(f2, w), w), g2);
                         } else {
                             // Otherwise use the same scaling for a and b.
-                            w = re.one();
+                            w = one();
                             fs = mul_real(a, uu);
                             f2 = abs2(fs);
-                            h2 = re.add(f2, g2);
+                            h2 = add(f2, g2);
                         }
                         let d = if f2 > rtmin && h2 < rtmax {
-                            re.sqrt(re.mul(f2, h2))
+                            sqrt(mul(f2, h2))
                         } else {
-                            re.mul(re.sqrt(f2), re.sqrt(h2))
+                            mul(sqrt(f2), sqrt(h2))
                         };
-                        let p = re.recip(d);
-                        c = from_real(re.mul(re.mul(f2, p), w));
+                        let p = recip(d);
+                        c = from_real(mul(mul(f2, p), w));
                         s = conj(gs) * mul_real(fs, p);
-                        r = mul_real(mul_real(fs, re.mul(h2, p)), u);
+                        r = mul_real(mul_real(fs, mul(h2, p)), u);
                     }
                 }
 
                 (Self { c, s }, r)
-            })
+            }
         }
     }
 
     #[inline]
     #[math]
-    pub fn apply_on_the_left_2x2(
-        &self,
-        ctx: &Ctx<C, T>,
-        m00: C::Of<T>,
-        m01: C::Of<T>,
-        m10: C::Of<T>,
-        m11: C::Of<T>,
-    ) -> (C::Of<T>, C::Of<T>, C::Of<T>, C::Of<T>) {
+    pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
         let Self { c, s } = self;
 
-        math((
+        (
             m00 * c + m10 * s,
             m01 * c + m11 * s,
             c * m10 - conj(s) * m00,
             c * m11 - conj(s) * m01,
-        ))
+        )
     }
 
     #[inline]
-    pub fn apply_on_the_right_2x2(
-        &self,
-        ctx: &Ctx<C, T>,
-        m00: C::Of<T>,
-        m01: C::Of<T>,
-        m10: C::Of<T>,
-        m11: C::Of<T>,
-    ) -> (C::Of<T>, C::Of<T>, C::Of<T>, C::Of<T>) {
-        let (r00, r01, r10, r11) = self
-            .adjoint(ctx)
-            .apply_on_the_left_2x2(ctx, m00, m10, m01, m11);
+    pub fn apply_on_the_right_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
+        let (r00, r01, r10, r11) = self.adjoint().apply_on_the_left_2x2(m00, m10, m01, m11);
         (r00, r10, r01, r11)
     }
 
     #[inline]
     fn apply_on_the_left_in_place_impl<'N>(
         &self,
-        ctx: &Ctx<C, T>,
-        (x, y): (RowMut<'_, C, T, Dim<'N>>, RowMut<'_, C, T, Dim<'N>>),
+
+        (x, y): (RowMut<'_, T, Dim<'N>>, RowMut<'_, T, Dim<'N>>),
     ) {
         let mut x = x;
         let mut y = y;
         if const { T::SIMD_CAPABILITIES.is_simd() } {
-            struct Impl<'a, 'N, C: ComplexContainer, T: ComplexField<C>> {
-                this: &'a JacobiRotation<C, T>,
-                ctx: &'a Ctx<C, T>,
-                x: RowMut<'a, C, T, Dim<'N>, ContiguousFwd>,
-                y: RowMut<'a, C, T, Dim<'N>, ContiguousFwd>,
+            struct Impl<'a, 'N, T: ComplexField> {
+                this: &'a JacobiRotation<T>,
+                x: RowMut<'a, T, Dim<'N>, ContiguousFwd>,
+                y: RowMut<'a, T, Dim<'N>, ContiguousFwd>,
             }
-            impl<C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd for Impl<'_, '_, C, T> {
+            impl<T: ComplexField> pulp::WithSimd for Impl<'_, '_, T> {
                 type Output = ();
 
                 #[inline(always)]
                 fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                    let Self { this, ctx, x, y } = self;
-                    let simd = SimdCtx::new(T::simd_ctx(ctx, simd), x.ncols());
-                    this.apply_on_the_left_in_place_with_simd(simd, ctx, x, y);
+                    let Self { this, x, y } = self;
+                    let simd = SimdCtx::new(T::simd_ctx(simd), x.ncols());
+                    this.apply_on_the_left_in_place_with_simd(simd, x, y);
                 }
             }
 
@@ -282,72 +264,65 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
                 x.rb_mut().try_as_row_major_mut(),
                 y.rb_mut().try_as_row_major_mut(),
             ) {
-                T::Arch::default().dispatch(Impl {
-                    this: self,
-                    ctx,
-                    x,
-                    y,
-                });
+                T::Arch::default().dispatch(Impl { this: self, x, y });
                 return;
             }
         }
-        self.apply_on_the_left_in_place_fallback(ctx, x, y);
+        self.apply_on_the_left_in_place_fallback(x, y);
     }
 
     #[inline]
     pub fn apply_on_the_left_in_place<N: Shape>(
         &self,
-        ctx: &Ctx<C, T>,
-        (x, y): (RowMut<'_, C, T, N>, RowMut<'_, C, T, N>),
+
+        (x, y): (RowMut<'_, T, N>, RowMut<'_, T, N>),
     ) {
         with_dim!(N, x.ncols().unbound());
-        self.apply_on_the_left_in_place_impl(ctx, (x.as_col_shape_mut(N), y.as_col_shape_mut(N)));
+        self.apply_on_the_left_in_place_impl((x.as_col_shape_mut(N), y.as_col_shape_mut(N)));
     }
 
     #[inline]
     pub fn apply_on_the_right_in_place<N: Shape>(
         &self,
-        ctx: &Ctx<C, T>,
-        (x, y): (ColMut<'_, C, T, N>, ColMut<'_, C, T, N>),
+
+        (x, y): (ColMut<'_, T, N>, ColMut<'_, T, N>),
     ) {
         with_dim!(N, x.nrows().unbound());
 
         let x = x.as_row_shape_mut(N);
         let y = y.as_row_shape_mut(N);
 
-        self.transpose(ctx)
-            .apply_on_the_left_in_place(ctx, (x.transpose_mut(), y.transpose_mut()));
+        self.transpose()
+            .apply_on_the_left_in_place((x.transpose_mut(), y.transpose_mut()));
     }
 
     #[inline(never)]
     #[math]
     fn apply_on_the_left_in_place_fallback<'N>(
         &self,
-        ctx: &Ctx<C, T>,
-        x: RowMut<'_, C, T, Dim<'N>>,
-        y: RowMut<'_, C, T, Dim<'N>>,
+
+        x: RowMut<'_, T, Dim<'N>>,
+        y: RowMut<'_, T, Dim<'N>>,
     ) {
-        help!(C);
         let Self { c, s } = self;
-        math(zipped!(x, y).for_each(move |unzipped!(mut x, mut y)| {
-            let x_ = c * x - conj(s) * y;
-            let y_ = c * y + s * x;
-            write1!(x, x_);
-            write1!(y, y_);
-        }));
+        zipped!(x, y).for_each(move |unzipped!(x, y)| {
+            let x_ = *c * *x - conj(*s) * *y;
+            let y_ = *c * *y + *s * *x;
+            *x = x_;
+            *y = y_;
+        });
     }
 
     #[inline(always)]
     pub fn apply_on_the_right_in_place_with_simd<'N, S: pulp::Simd>(
         &self,
-        simd: SimdCtx<'N, C, T, S>,
-        ctx: &Ctx<C, T>,
-        x: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
-        y: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: SimdCtx<'N, T, S>,
+
+        x: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+        y: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
     ) {
-        self.transpose(ctx).apply_on_the_left_in_place_with_simd(
+        self.transpose().apply_on_the_left_in_place_with_simd(
             simd,
-            ctx,
             x.transpose_mut(),
             y.transpose_mut(),
         );
@@ -357,24 +332,22 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
     #[inline(always)]
     pub fn apply_on_the_left_in_place_with_simd<'N, S: pulp::Simd>(
         &self,
-        simd: SimdCtx<'N, C, T, S>,
-        ctx: &Ctx<C, T>,
-        x: RowMut<'_, C, T, Dim<'N>, ContiguousFwd>,
-        y: RowMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: SimdCtx<'N, T, S>,
+
+        x: RowMut<'_, T, Dim<'N>, ContiguousFwd>,
+        y: RowMut<'_, T, Dim<'N>, ContiguousFwd>,
     ) {
         let Self { c, s } = self;
-        help!(C);
-        help2!(C::Real);
 
-        math(if c == one() && s == zero() {
+        if *c == one() && *s == zero() {
             return;
-        });
+        };
 
         let mut x = x.transpose_mut();
         let mut y = y.transpose_mut();
 
-        let c = simd.splat_real(as_ref2!(math.real(c)));
-        let s = simd.splat(as_ref!(s));
+        let c = simd.splat_real(&real(*c));
+        let s = simd.splat(&s);
 
         let (head, body, tail) = simd.indices();
 
@@ -418,28 +391,28 @@ impl<C: ComplexContainer, T: ComplexField<C>> JacobiRotation<C, T> {
 
     #[inline]
     #[math]
-    pub fn adjoint(&self, ctx: &Ctx<C, T>) -> Self {
-        math(Self {
+    pub fn adjoint(&self) -> Self {
+        Self {
             c: copy(self.c),
             s: -conj(self.s),
-        })
+        }
     }
 
     #[inline]
     #[math]
-    pub fn conjugate(&self, ctx: &Ctx<C, T>) -> Self {
-        math(Self {
+    pub fn conjugate(&self) -> Self {
+        Self {
             c: copy(self.c),
             s: conj(self.s),
-        })
+        }
     }
 
     #[inline]
     #[math]
-    pub fn transpose(&self, ctx: &Ctx<C, T>) -> Self {
-        math(Self {
+    pub fn transpose(&self) -> Self {
+        Self {
             c: copy(self.c),
             s: -self.s,
-        })
+        }
     }
 }

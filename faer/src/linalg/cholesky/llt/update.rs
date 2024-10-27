@@ -4,33 +4,28 @@ use pulp::Simd;
 use super::factor::LltError;
 
 #[math]
-fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    L: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
-    W: MatMut<'_, C, T, Dim<'N>, Dim<'R>, ContiguousFwd>,
-    p: ColRef<'_, C, T, Dim<'R>>,
-    beta: ColRef<'_, C, T, Dim<'R>>,
-    gamma: ColRef<'_, C, T, Dim<'R>>,
+fn rank_update_step_simd<'N, 'R, T: ComplexField>(
+    L: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+    W: MatMut<'_, T, Dim<'N>, Dim<'R>, ContiguousFwd>,
+    p: ColRef<'_, T, Dim<'R>>,
+    beta: ColRef<'_, T, Dim<'R>>,
+    gamma: ColRef<'_, T, Dim<'R>>,
     align_offset: usize,
 ) {
-    struct Impl<'a, 'N, 'R, C: ComplexContainer, T: ComplexField<C>> {
-        ctx: &'a Ctx<C, T>,
-        L: ColMut<'a, C, T, Dim<'N>, ContiguousFwd>,
-        W: MatMut<'a, C, T, Dim<'N>, Dim<'R>, ContiguousFwd>,
-        p: ColRef<'a, C, T, Dim<'R>>,
-        beta: ColRef<'a, C, T, Dim<'R>>,
-        gamma: ColRef<'a, C, T, Dim<'R>>,
+    struct Impl<'a, 'N, 'R, T: ComplexField> {
+        L: ColMut<'a, T, Dim<'N>, ContiguousFwd>,
+        W: MatMut<'a, T, Dim<'N>, Dim<'R>, ContiguousFwd>,
+        p: ColRef<'a, T, Dim<'R>>,
+        beta: ColRef<'a, T, Dim<'R>>,
+        gamma: ColRef<'a, T, Dim<'R>>,
         align_offset: usize,
     }
 
-    impl<'a, 'N, 'R, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd
-        for Impl<'a, 'N, 'R, C, T>
-    {
+    impl<'a, 'N, 'R, T: ComplexField> pulp::WithSimd for Impl<'a, 'N, 'R, T> {
         type Output = ();
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) {
             let Self {
-                ctx,
                 L,
                 W,
                 p,
@@ -44,7 +39,7 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
             let N = W.nrows();
             let R = W.ncols();
 
-            let simd = SimdCtx::<C, T, S>::new_align(T::simd_ctx(ctx, simd), N, align_offset);
+            let simd = SimdCtx::<T, S>::new_align(T::simd_ctx(simd), N, align_offset);
             let (head, body, tail) = simd.indices();
 
             let mut iter = R.indices();
@@ -52,9 +47,9 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
 
             match (i0, i1, i2, i3) {
                 (Some(i0), None, None, None) => {
-                    let p0 = math(simd.splat(p[i0]));
-                    let beta0 = math(simd.splat(beta[i0]));
-                    let gamma0 = math(simd.splat_real(real(gamma[i0])));
+                    let p0 = (simd.splat(&p[i0]));
+                    let beta0 = (simd.splat(&beta[i0]));
+                    let gamma0 = (simd.splat_real(&real(gamma[i0])));
 
                     macro_rules! simd {
                         ($i: expr) => {{
@@ -81,11 +76,11 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
                     }
                 }
                 (Some(i0), Some(i1), None, None) => {
-                    let (p0, p1) = math((simd.splat(p[i0]), simd.splat(p[i1])));
-                    let (beta0, beta1) = math((simd.splat(beta[i0]), simd.splat(beta[i1])));
-                    let (gamma0, gamma1) = math((
-                        simd.splat_real(real(gamma[i0])),
-                        simd.splat_real(real(gamma[i1])),
+                    let (p0, p1) = ((simd.splat(&p[i0]), simd.splat(&p[i1])));
+                    let (beta0, beta1) = ((simd.splat(&beta[i0]), simd.splat(&beta[i1])));
+                    let (gamma0, gamma1) = ((
+                        simd.splat_real(&real(gamma[i0])),
+                        simd.splat_real(&real(gamma[i1])),
                     ));
 
                     macro_rules! simd {
@@ -118,16 +113,16 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
                 }
                 (Some(i0), Some(i1), Some(i2), None) => {
                     let (p0, p1, p2) =
-                        math((simd.splat(p[i0]), simd.splat(p[i1]), simd.splat(p[i2])));
-                    let (beta0, beta1, beta2) = math((
-                        simd.splat(beta[i0]),
-                        simd.splat(beta[i1]),
-                        simd.splat(beta[i2]),
+                        ((simd.splat(&p[i0]), simd.splat(&p[i1]), simd.splat(&p[i2])));
+                    let (beta0, beta1, beta2) = ((
+                        simd.splat(&beta[i0]),
+                        simd.splat(&beta[i1]),
+                        simd.splat(&beta[i2]),
                     ));
-                    let (gamma0, gamma1, gamma2) = math((
-                        simd.splat_real(real(gamma[i0])),
-                        simd.splat_real(real(gamma[i1])),
-                        simd.splat_real(real(gamma[i2])),
+                    let (gamma0, gamma1, gamma2) = ((
+                        simd.splat_real(&real(gamma[i0])),
+                        simd.splat_real(&real(gamma[i1])),
+                        simd.splat_real(&real(gamma[i2])),
                     ));
 
                     macro_rules! simd {
@@ -163,23 +158,23 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
                     }
                 }
                 (Some(i0), Some(i1), Some(i2), Some(i3)) => {
-                    let (p0, p1, p2, p3) = math((
-                        simd.splat(p[i0]),
-                        simd.splat(p[i1]),
-                        simd.splat(p[i2]),
-                        simd.splat(p[i3]),
+                    let (p0, p1, p2, p3) = ((
+                        simd.splat(&p[i0]),
+                        simd.splat(&p[i1]),
+                        simd.splat(&p[i2]),
+                        simd.splat(&p[i3]),
                     ));
-                    let (beta0, beta1, beta2, beta3) = math((
-                        simd.splat(beta[i0]),
-                        simd.splat(beta[i1]),
-                        simd.splat(beta[i2]),
-                        simd.splat(beta[i3]),
+                    let (beta0, beta1, beta2, beta3) = ((
+                        simd.splat(&beta[i0]),
+                        simd.splat(&beta[i1]),
+                        simd.splat(&beta[i2]),
+                        simd.splat(&beta[i3]),
                     ));
-                    let (gamma0, gamma1, gamma2, gamma3) = math((
-                        simd.splat_real(real(gamma[i0])),
-                        simd.splat_real(real(gamma[i1])),
-                        simd.splat_real(real(gamma[i2])),
-                        simd.splat_real(real(gamma[i3])),
+                    let (gamma0, gamma1, gamma2, gamma3) = ((
+                        simd.splat_real(&real(gamma[i0])),
+                        simd.splat_real(&real(gamma[i1])),
+                        simd.splat_real(&real(gamma[i2])),
+                        simd.splat_real(&real(gamma[i3])),
                     ));
 
                     macro_rules! simd {
@@ -224,7 +219,6 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
     }
 
     T::Arch::default().dispatch(Impl {
-        ctx,
         L,
         W,
         p,
@@ -235,13 +229,12 @@ fn rank_update_step_simd<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-fn rank_update_step_fallback<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    L: ColMut<'_, C, T, Dim<'N>>,
-    W: MatMut<'_, C, T, Dim<'N>, Dim<'R>>,
-    p: ColRef<'_, C, T, Dim<'R>>,
-    beta: ColRef<'_, C, T, Dim<'R>>,
-    gamma: ColRef<'_, C, T, Dim<'R>>,
+fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
+    L: ColMut<'_, T, Dim<'N>>,
+    W: MatMut<'_, T, Dim<'N>, Dim<'R>>,
+    p: ColRef<'_, T, Dim<'R>>,
+    beta: ColRef<'_, T, Dim<'R>>,
+    gamma: ColRef<'_, T, Dim<'R>>,
 ) {
     let mut L = L;
     let mut W = W;
@@ -252,103 +245,102 @@ fn rank_update_step_fallback<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
 
     let mut iter = R.indices();
     let (i0, i1, i2, i3) = (iter.next(), iter.next(), iter.next(), iter.next());
-    help!(C);
 
     match (i0, i1, i2, i3) {
         (Some(i0), None, None, None) => {
-            let p0 = math(p[i0]);
-            let beta0 = math(beta[i0]);
-            let gamma0 = math(gamma[i0]);
+            let p0 = (&p[i0]);
+            let beta0 = (&beta[i0]);
+            let gamma0 = (&gamma[i0]);
 
             for i in body {
                 {
-                    let mut l = math(copy(L[i]));
-                    let mut w0 = math(copy(W[(i, i0)]));
+                    let mut l = (copy(L[i]));
+                    let mut w0 = (copy(W[(i, i0)]));
 
-                    w0 = math(p0 * l + w0);
-                    l = math(beta0 * w0 + l * gamma0);
+                    w0 = (p0 * l + w0);
+                    l = (beta0 * w0 + l * gamma0);
 
-                    write1!(L[i] = l);
-                    write1!(W[(i, i0,)] = w0);
+                    L[i] = l;
+                    W[(i, i0)] = w0;
                 }
             }
         }
         (Some(i0), Some(i1), None, None) => {
-            let (p0, p1) = math((p[i0], p[i1]));
-            let (beta0, beta1) = math((beta[i0], beta[i1]));
-            let (gamma0, gamma1) = math((gamma[i0], gamma[i1]));
+            let (p0, p1) = ((&p[i0], &p[i1]));
+            let (beta0, beta1) = ((&beta[i0], &beta[i1]));
+            let (gamma0, gamma1) = ((&gamma[i0], &gamma[i1]));
 
             for i in body {
                 {
-                    let mut l = math(copy(L[i]));
-                    let mut w0 = math(copy(W[(i, i0)]));
-                    let mut w1 = math(copy(W[(i, i1)]));
+                    let mut l = (copy(L[i]));
+                    let mut w0 = (copy(W[(i, i0)]));
+                    let mut w1 = (copy(W[(i, i1)]));
 
-                    w0 = math(p0 * l + w0);
-                    l = math(beta0 * w0 + l * gamma0);
-                    w1 = math(p1 * l + w1);
-                    l = math(beta1 * w1 + l * gamma1);
+                    w0 = (p0 * l + w0);
+                    l = (beta0 * w0 + l * gamma0);
+                    w1 = (p1 * l + w1);
+                    l = (beta1 * w1 + l * gamma1);
 
-                    write1!(L[i] = l);
-                    write1!(W[(i, i0,)] = w0);
-                    write1!(W[(i, i1,)] = w1);
+                    L[i] = l;
+                    W[(i, i0)] = w0;
+                    W[(i, i1)] = w1;
                 }
             }
         }
         (Some(i0), Some(i1), Some(i2), None) => {
-            let (p0, p1, p2) = math((p[i0], p[i1], p[i2]));
-            let (beta0, beta1, beta2) = math((beta[i0], beta[i1], beta[i2]));
-            let (gamma0, gamma1, gamma2) = math((gamma[i0], gamma[i1], gamma[i2]));
+            let (p0, p1, p2) = ((&p[i0], &p[i1], &p[i2]));
+            let (beta0, beta1, beta2) = ((&beta[i0], &beta[i1], &beta[i2]));
+            let (gamma0, gamma1, gamma2) = ((&gamma[i0], &gamma[i1], &gamma[i2]));
 
             for i in body {
                 {
-                    let mut l = math(copy(L[i]));
-                    let mut w0 = math(copy(W[(i, i0)]));
-                    let mut w1 = math(copy(W[(i, i1)]));
-                    let mut w2 = math(copy(W[(i, i2)]));
+                    let mut l = (copy(L[i]));
+                    let mut w0 = (copy(W[(i, i0)]));
+                    let mut w1 = (copy(W[(i, i1)]));
+                    let mut w2 = (copy(W[(i, i2)]));
 
-                    w0 = math(p0 * l + w0);
-                    l = math(beta0 * w0 + l * gamma0);
-                    w1 = math(p1 * l + w1);
-                    l = math(beta1 * w1 + l * gamma1);
-                    w2 = math(p2 * l + w2);
-                    l = math(beta2 * w2 + l * gamma2);
+                    w0 = (p0 * l + w0);
+                    l = (beta0 * w0 + l * gamma0);
+                    w1 = (p1 * l + w1);
+                    l = (beta1 * w1 + l * gamma1);
+                    w2 = (p2 * l + w2);
+                    l = (beta2 * w2 + l * gamma2);
 
-                    write1!(L[i] = l);
-                    write1!(W[(i, i0,)] = w0);
-                    write1!(W[(i, i1,)] = w1);
-                    write1!(W[(i, i2,)] = w2);
+                    L[i] = l;
+                    W[(i, i0)] = w0;
+                    W[(i, i1)] = w1;
+                    W[(i, i2)] = w2;
                 }
             }
         }
         (Some(i0), Some(i1), Some(i2), Some(i3)) => {
-            let (p0, p1, p2, p3) = math((p[i0], p[i1], p[i2], p[i3]));
-            let (beta0, beta1, beta2, beta3) = math((beta[i0], beta[i1], beta[i2], beta[i3]));
+            let (p0, p1, p2, p3) = ((&p[i0], &p[i1], &p[i2], &p[i3]));
+            let (beta0, beta1, beta2, beta3) = ((&beta[i0], &beta[i1], &beta[i2], &beta[i3]));
             let (gamma0, gamma1, gamma2, gamma3) =
-                math((gamma[i0], gamma[i1], gamma[i2], gamma[i3]));
+                ((&gamma[i0], &gamma[i1], &gamma[i2], &gamma[i3]));
 
             for i in body {
                 {
-                    let mut l = math(copy(L[i]));
-                    let mut w0 = math(copy(W[(i, i0)]));
-                    let mut w1 = math(copy(W[(i, i1)]));
-                    let mut w2 = math(copy(W[(i, i2)]));
-                    let mut w3 = math(copy(W[(i, i3)]));
+                    let mut l = (copy(L[i]));
+                    let mut w0 = (copy(W[(i, i0)]));
+                    let mut w1 = (copy(W[(i, i1)]));
+                    let mut w2 = (copy(W[(i, i2)]));
+                    let mut w3 = (copy(W[(i, i3)]));
 
-                    w0 = math(p0 * l + w0);
-                    l = math(beta0 * w0 + l * gamma0);
-                    w1 = math(p1 * l + w1);
-                    l = math(beta1 * w1 + l * gamma1);
-                    w2 = math(p2 * l + w2);
-                    l = math(beta2 * w2 + l * gamma2);
-                    w3 = math(p3 * l + w3);
-                    l = math(beta3 * w3 + l * gamma3);
+                    w0 = (p0 * l + w0);
+                    l = (beta0 * w0 + l * gamma0);
+                    w1 = (p1 * l + w1);
+                    l = (beta1 * w1 + l * gamma1);
+                    w2 = (p2 * l + w2);
+                    l = (beta2 * w2 + l * gamma2);
+                    w3 = (p3 * l + w3);
+                    l = (beta3 * w3 + l * gamma3);
 
-                    write1!(L[i] = l);
-                    write1!(W[(i, i0,)] = w0);
-                    write1!(W[(i, i1,)] = w1);
-                    write1!(W[(i, i2,)] = w2);
-                    write1!(W[(i, i3,)] = w3);
+                    L[i] = l;
+                    W[(i, i0)] = w0;
+                    W[(i, i1)] = w1;
+                    W[(i, i2)] = w2;
+                    W[(i, i3)] = w3;
                 }
             }
         }
@@ -356,15 +348,14 @@ fn rank_update_step_fallback<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
     }
 }
 
-struct RankRUpdate<'a, 'N, 'R, C: ComplexContainer, T: ComplexField<C>> {
-    ctx: &'a Ctx<C, T>,
-    ld: MatMut<'a, C, T, Dim<'N>, Dim<'N>>,
-    w: MatMut<'a, C, T, Dim<'N>, Dim<'R>>,
-    alpha: ColMut<'a, C, T, Dim<'R>>,
+struct RankRUpdate<'a, 'N, 'R, T: ComplexField> {
+    ld: MatMut<'a, T, Dim<'N>, Dim<'N>>,
+    w: MatMut<'a, T, Dim<'N>, Dim<'R>>,
+    alpha: ColMut<'a, T, Dim<'R>>,
     r: &'a mut dyn FnMut() -> IdxInc<'R>,
 }
 
-impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C, T> {
+impl<'N, 'R, T: ComplexField> RankRUpdate<'_, 'N, 'R, T> {
     // On the Modification of LDLT Factorizations
     // By R. Fletcher and M. J. D. Powell
     // https://www.ams.org/journals/mcom/1974-28-128/S0025-5718-1974-0359297-1/S0025-5718-1974-0359297-1.pdf
@@ -372,7 +363,6 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
     #[math]
     fn run(self) -> Result<(), LltError> {
         let Self {
-            ctx,
             mut ld,
             mut w,
             mut alpha,
@@ -381,7 +371,6 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
 
         let N = w.nrows();
         let K = w.ncols();
-        help!(C);
 
         for j in N.indices() {
             ghost_tree!(FULL(J, TAIL), {
@@ -397,16 +386,16 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
 
                     const BLOCKSIZE: usize = 4;
 
-                    let mut r_next = zero();
+                    let mut r_next = IdxInc::ZERO;
                     while let Some(r) = R.try_check(*r_next) {
                         r_next = R.advance(r, BLOCKSIZE);
 
                         ghost_tree!(W_FULL(R0), {
                             let (l![r0], _) = R.split(l![r.into()..r_next], W_FULL);
 
-                            stack_mat!(ctx, p, r0.len(), 1, BLOCKSIZE, 1, C, T);
-                            stack_mat!(ctx, beta, r0.len(), 1, BLOCKSIZE, 1, C, T);
-                            stack_mat!(ctx, gamma, r0.len(), 1, BLOCKSIZE, 1, C, T);
+                            stack_mat!(p, r0.len(), 1, BLOCKSIZE, 1, T);
+                            stack_mat!(beta, r0.len(), 1, BLOCKSIZE, 1, T);
+                            stack_mat!(gamma, r0.len(), 1, BLOCKSIZE, 1, T);
 
                             let mut p = p.rb_mut().col_mut(0);
                             let mut beta = beta.rb_mut().col_mut(0);
@@ -422,29 +411,25 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
 
                                 let w = W.rb().col(k.local());
 
-                                write1!(p, math(copy(w[j])));
+                                *p = copy(w[j]);
 
-                                let alpha_conj_p = math(alpha * conj(p));
-                                let new_d =
-                                    math.re(abs2(cx.real(d)) + cx.real(cx.mul(alpha_conj_p, p)));
+                                let alpha_conj_p = *alpha * conj(*p);
+                                let new_d = abs2(real(*d)) + real(mul(alpha_conj_p, *p));
 
-                                if math.le_zero(new_d) {
+                                if new_d <= zero() {
                                     return Err(LltError::NonPositivePivot { index: *j });
                                 }
 
-                                let new_d = math.re.sqrt(new_d);
-                                let d_inv = math.re(recip(cx.real(d)));
-                                let new_d_inv = math.re.recip(new_d);
+                                let new_d = sqrt(new_d);
+                                let d_inv = recip(real(*d));
+                                let new_d_inv = recip(new_d);
 
-                                write1!(gamma, math.from_real(math.re(new_d * d_inv)));
-                                write1!(beta, math(mul_real(alpha_conj_p, new_d_inv)));
-                                write1!(p, math(mul_real(-p, d_inv)));
+                                *gamma = from_real(new_d * d_inv);
+                                *beta = mul_real(alpha_conj_p, new_d_inv);
+                                *p = mul_real(-p, d_inv);
 
-                                write1!(
-                                    alpha,
-                                    math.re(cx.from_real(cx.real(alpha) - cx.abs2(beta)))
-                                );
-                                write1!(d, math.from_real(new_d));
+                                *alpha = from_real(real(*alpha) - abs2(*beta));
+                                *d = from_real(new_d);
                             }
 
                             let mut L_col = L_col.rb_mut().row_segment_mut(tail);
@@ -456,7 +441,6 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                                     W_col.rb_mut().try_as_col_major_mut(),
                                 ) {
                                     rank_update_step_simd(
-                                        ctx,
                                         L_col,
                                         W_col,
                                         p.rb(),
@@ -466,7 +450,6 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                                     );
                                 } else {
                                     rank_update_step_fallback(
-                                        ctx,
                                         L_col,
                                         W_col,
                                         p.rb(),
@@ -476,7 +459,6 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
                                 }
                             } else {
                                 rank_update_step_fallback(
-                                    ctx,
                                     L_col,
                                     W_col,
                                     p.rb(),
@@ -494,11 +476,10 @@ impl<'N, 'R, C: ComplexContainer, T: ComplexField<C>> RankRUpdate<'_, 'N, 'R, C,
 }
 
 #[track_caller]
-pub fn rank_r_update_clobber<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    cholesky_factors: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
-    w: MatMut<'_, C, T, Dim<'N>, Dim<'R>>,
-    alpha: DiagMut<'_, C, T, Dim<'R>>,
+pub fn rank_r_update_clobber<'N, 'R, T: ComplexField>(
+    cholesky_factors: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+    w: MatMut<'_, T, Dim<'N>, Dim<'R>>,
+    alpha: DiagMut<'_, T, Dim<'R>>,
 ) -> Result<(), LltError> {
     let N = cholesky_factors.nrows();
     let R = w.ncols();
@@ -508,7 +489,6 @@ pub fn rank_r_update_clobber<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
     }
 
     RankRUpdate {
-        ctx,
         ld: cholesky_factors,
         w,
         alpha: alpha.column_vector_mut(),
@@ -520,7 +500,6 @@ pub fn rank_r_update_clobber<'N, 'R, C: ComplexContainer, T: ComplexField<C>>(
 #[cfg(test)]
 mod tests {
     use dyn_stack::GlobalMemBuffer;
-    use faer_traits::Unit;
     use num_complex::ComplexFloat;
 
     use super::*;
@@ -531,7 +510,6 @@ mod tests {
         let rng = &mut StdRng::seed_from_u64(0);
 
         let approx_eq = CwiseMat(ApproxEq {
-            ctx: ctx::<Ctx<Unit, c64>>(),
             abs_tol: 1e-12,
             rel_tol: 1e-12,
         });
@@ -575,12 +553,11 @@ mod tests {
                 let mut L = L.as_mut();
 
                 linalg::cholesky::llt::factor::cholesky_in_place(
-                    &ctx(),
                     L.rb_mut(),
                     default(),
                     Par::Seq,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        linalg::cholesky::llt::factor::cholesky_in_place_scratch::<Unit, c64>(
+                        linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(
                             *N,
                             Par::Seq,
                             Default::default(),
@@ -592,7 +569,6 @@ mod tests {
                 .unwrap();
 
                 linalg::cholesky::llt::update::rank_r_update_clobber(
-                    &ctx(),
                     L.rb_mut(),
                     W.as_mut(),
                     alpha.as_mut(),
@@ -600,7 +576,7 @@ mod tests {
                 .unwrap();
 
                 for j in N.indices() {
-                    for i in zero().to(j.excl()) {
+                    for i in IdxInc::ZERO.to(j.excl()) {
                         L[(i, j)] = c64::ZERO;
                     }
                 }

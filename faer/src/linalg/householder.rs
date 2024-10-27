@@ -51,59 +51,51 @@ use crate::internal_prelude::*;
 /// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
 #[math]
 #[inline]
-pub fn make_householder_in_place<M: Shape, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    head: C::Of<&mut T>,
-    tail: ColMut<'_, C, T, M>,
-) -> (C::Of<T>, Option<C::Of<T>>) {
+pub fn make_householder_in_place<M: Shape, T: ComplexField>(
+    head: &mut T,
+    tail: ColMut<'_, T, M>,
+) -> (T, Option<T>) {
     #[inline]
-    pub fn imp<'M, C: ComplexContainer, T: ComplexField<C>>(
-        ctx: &Ctx<C, T>,
-        head: C::Of<&mut T>,
-        tail: ColMut<'_, C, T, Dim<'M>>,
-    ) -> (C::Of<T>, Option<C::Of<T>>) {
-        let tail_norm = tail.norm_l2_with(ctx);
+    pub fn imp<'M, T: ComplexField>(head: &mut T, tail: ColMut<'_, T, Dim<'M>>) -> (T, Option<T>) {
+        let tail_norm = tail.norm_l2();
 
-        if math.re.is_zero(tail_norm) {
-            return math((infinity(), None));
+        if tail_norm == zero() {
+            return (infinity(), None);
         }
 
-        let one_half = math.re.from_f64(0.5);
+        let one_half = from_f64(0.5);
 
-        let head_norm = math.abs(head);
-        let norm = math(hypot(head_norm, tail_norm));
+        let head_norm = abs(*head);
+        let norm = hypot(head_norm, tail_norm);
 
-        let sign = if !math.re.is_zero(head_norm) {
-            math(mul_real(head, re.recip(head_norm)))
+        let sign = if head_norm != zero() {
+            mul_real(*head, recip(head_norm))
         } else {
-            math.one()
+            one()
         };
 
-        let signed_norm = math(sign * from_real(norm));
-        let head_with_beta = math(head + signed_norm);
-        let head_with_beta_inv = math.recip(head_with_beta);
+        let signed_norm = sign * from_real(norm);
+        let head_with_beta = *head + signed_norm;
+        let head_with_beta_inv = recip(head_with_beta);
 
-        help!(C);
-        zipped!(tail).for_each(|unzipped!(mut e)| {
-            write1!(e, math(e * head_with_beta_inv));
+        zipped!(tail).for_each(|unzipped!(e)| {
+            *e = e * head_with_beta_inv;
         });
-        let mut head = head;
 
-        write1!(head, math(-signed_norm));
+        *head = -signed_norm;
 
-        let tau = math.re(one_half * (one() + abs2(tail_norm * cx.abs(head_with_beta_inv))));
-        math((from_real(tau), head_with_beta_inv.into()))
+        let tau = one_half * (one() + abs2(tail_norm * abs(head_with_beta_inv)));
+        (from_real(tau), head_with_beta_inv.into())
     }
 
-    imp(ctx, head, tail.bind_r(unique!()))
+    imp(head, tail.bind_r(unique!()))
 }
 
 #[doc(hidden)]
 #[math]
-pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut householder_factor: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
-    essentials: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
+pub fn upgrade_householder_factor<'M, 'N, T: ComplexField>(
+    mut householder_factor: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+    essentials: MatRef<'_, T, Dim<'M>, Dim<'N>>,
     blocksize: usize,
     prev_blocksize: usize,
     par: Par,
@@ -139,7 +131,6 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
         join_raw(
             |parallelism| {
                 upgrade_householder_factor(
-                    ctx,
                     tau_tl,
                     basis_left,
                     blocksize,
@@ -149,7 +140,6 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
             },
             |parallelism| {
                 upgrade_householder_factor(
-                    ctx,
                     tau_br,
                     basis_right,
                     blocksize,
@@ -171,9 +161,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
         let (basis_top, basis_bot) = essentials.split_rows_with(midpoint);
         let acc_structure = BlockStructure::UnitTriangularUpper;
 
-        help!(C);
         triangular::matmul(
-            ctx,
             householder_factor.rb_mut(),
             acc_structure,
             Accum::Replace,
@@ -181,11 +169,10 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
             BlockStructure::UnitTriangularUpper,
             basis_top,
             BlockStructure::UnitTriangularLower,
-            as_ref!(math.one()),
+            one(),
             par,
         );
         triangular::matmul(
-            ctx,
             householder_factor.rb_mut(),
             acc_structure,
             Accum::Add,
@@ -193,7 +180,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
             BlockStructure::Rectangular,
             basis_bot,
             BlockStructure::Rectangular,
-            as_ref!(math.one()),
+            one(),
             par,
         );
     } else {
@@ -219,7 +206,6 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
                 join_raw(
                     |parallelism| {
                         upgrade_householder_factor(
-                            ctx,
                             tau_tl,
                             basis_left,
                             blocksize,
@@ -229,7 +215,6 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
                     },
                     |parallelism| {
                         upgrade_householder_factor(
-                            ctx,
                             tau_br,
                             basis_right,
                             blocksize,
@@ -248,9 +233,7 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
                 let (basis_left_top, basis_left_bot) = basis_left.split_rows_with(M_idx);
                 let (basis_right_top, basis_right_bot) = basis_right.split_rows_with(M_idx);
 
-                help!(C);
                 triangular::matmul(
-                    ctx,
                     tau_tr.rb_mut(),
                     BlockStructure::Rectangular,
                     Accum::Replace,
@@ -258,16 +241,15 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
                     BlockStructure::Rectangular,
                     basis_right_top,
                     BlockStructure::UnitTriangularLower,
-                    as_ref!(math.one()),
+                    one(),
                     parallelism,
                 );
                 matmul(
-                    ctx,
                     tau_tr.rb_mut(),
                     Accum::Add,
                     basis_left_bot.adjoint(),
                     basis_right_bot,
-                    as_ref!(math.one()),
+                    one(),
                     parallelism,
                 );
             },
@@ -278,130 +260,99 @@ pub fn upgrade_householder_factor<'M, 'N, C: ComplexContainer, T: ComplexField<C
 
 /// Computes the size and alignment of required workspace for applying a block Householder
 /// transformation to a right-hand-side matrix in place.
-pub fn apply_block_householder_on_the_left_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, rhs_ncols)
+    temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a block
 /// Householder transformation to a right-hand-side matrix in place.
-pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, rhs_ncols)
+    temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying a block Householder
 /// transformation to a left-hand-side matrix in place.
-pub fn apply_block_householder_on_the_right_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, lhs_nrows)
+    temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a block
 /// Householder transformation to a left-hand-side matrix in place.
-pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, lhs_nrows)
+    temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a sequence
 /// of block Householder transformations to a right-hand-side matrix in place.
-pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, rhs_ncols)
+    temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying a sequence of block
 /// Householder transformations to a right-hand-side matrix in place.
-pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, rhs_ncols)
+    temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a sequence
 /// of block Householder transformations to a left-hand-side matrix in place.
-pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, lhs_nrows)
+    temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
 /// Computes the size and alignment of required workspace for applying a sequence of block
 /// Householder transformations to a left-hand-side matrix in place.
-pub fn apply_block_householder_sequence_on_the_right_in_place_scratch<
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
+pub fn apply_block_householder_sequence_on_the_right_in_place_scratch<T: ComplexField>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_scratch::<C, T>(blocksize, lhs_nrows)
+    temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
 #[track_caller]
 #[math]
-fn apply_block_householder_on_the_left_in_place_generic<
-    'M,
-    'N,
-    'K,
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-    householder_factor: MatRef<'_, C, T, Dim<'N>, Dim<'N>>,
+fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexField>(
+    householder_basis: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+    householder_factor: MatRef<'_, T, Dim<'N>, Dim<'N>>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
+    matrix: MatMut<'_, T, Dim<'M>, Dim<'K>>,
     forward: bool,
     par: Par,
     stack: &mut DynStack,
@@ -428,23 +379,21 @@ fn apply_block_householder_on_the_left_in_place_generic<
     ) {
         let arch = T::Arch::default();
 
-        struct ApplyOnLeft<'a, 'TAIL, 'K, C: ComplexContainer, T: ComplexField<C>, const CONJ: bool> {
-            ctx: &'a Ctx<C, T>,
-            tau_inv: C::Of<&'a T>,
-            essential: ColRef<'a, C, T, Dim<'TAIL>, ContiguousFwd>,
-            rhs0: RowMut<'a, C, T, Dim<'K>>,
-            rhs: MatMut<'a, C, T, Dim<'TAIL>, Dim<'K>, ContiguousFwd>,
+        struct ApplyOnLeft<'a, 'TAIL, 'K, T: ComplexField, const CONJ: bool> {
+            tau_inv: &'a T,
+            essential: ColRef<'a, T, Dim<'TAIL>, ContiguousFwd>,
+            rhs0: RowMut<'a, T, Dim<'K>>,
+            rhs: MatMut<'a, T, Dim<'TAIL>, Dim<'K>, ContiguousFwd>,
         }
 
-        impl<'TAIL, 'K, C: ComplexContainer, T: ComplexField<C>, const CONJ: bool> pulp::WithSimd
-            for ApplyOnLeft<'_, 'TAIL, 'K, C, T, CONJ>
+        impl<'TAIL, 'K, T: ComplexField, const CONJ: bool> pulp::WithSimd
+            for ApplyOnLeft<'_, 'TAIL, 'K, T, CONJ>
         {
             type Output = ();
 
             #[inline(always)]
             fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
                 let Self {
-                    ctx,
                     tau_inv,
                     essential,
                     mut rhs,
@@ -457,25 +406,25 @@ fn apply_block_householder_on_the_left_in_place_generic<
 
                 let N = rhs.nrows();
                 let K = rhs.ncols();
-                let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), N);
+                let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), N);
+
                 let (head, indices, tail) = simd.indices();
 
-                help!(C);
                 for idx in K.indices() {
-                    let mut col0 = rhs0.rb_mut().at_mut(idx);
+                    let col0 = rhs0.rb_mut().at_mut(idx);
                     let mut col = rhs.rb_mut().col_mut(idx);
                     let essential = essential;
 
                     let dot = if const { CONJ } {
-                        math(col0 + dot::inner_prod_no_conj_simd(simd, essential.rb(), col.rb()))
+                        *col0 + dot::inner_prod_no_conj_simd(simd, essential.rb(), col.rb())
                     } else {
-                        math(col0 + dot::inner_prod_conj_lhs_simd(simd, essential.rb(), col.rb()))
+                        *col0 + dot::inner_prod_conj_lhs_simd(simd, essential.rb(), col.rb())
                     };
 
-                    let k = math(-dot * tau_inv);
-                    write1!(col0, math(col0 + k));
+                    let k = -dot * tau_inv;
+                    *col0 = col0 + k;
 
-                    let k = simd.splat(as_ref!(k));
+                    let k = simd.splat(&k);
                     macro_rules! simd {
                         ($i: expr) => {{
                             let i = $i;
@@ -511,20 +460,18 @@ fn apply_block_householder_on_the_left_in_place_generic<
         let (rhs0, rhs) = matrix.split_rows_with_mut(midpoint);
         let rhs0 = rhs0.row_mut(N0);
 
-        let tau_inv = math(from_real(re.recip(real(householder_factor[(N0, N0)]))));
+        let tau_inv: T = from_real(recip(real(householder_factor[(N0, N0)])));
 
         if const { T::IS_REAL } || matches!(conj_lhs, Conj::No) {
-            arch.dispatch(ApplyOnLeft::<_, _, false> {
-                ctx,
-                tau_inv: math.id(tau_inv),
+            arch.dispatch(ApplyOnLeft::<_, false> {
+                tau_inv: &tau_inv,
                 essential,
                 rhs,
                 rhs0,
             });
         } else {
-            arch.dispatch(ApplyOnLeft::<_, _, true> {
-                ctx,
-                tau_inv: math.id(tau_inv),
+            arch.dispatch(ApplyOnLeft::<_, true> {
+                tau_inv: &tau_inv,
                 essential,
                 rhs,
                 rhs0,
@@ -536,7 +483,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
         let K = matrix.ncols();
 
         // essentials* × mat
-        let (mut tmp, _) = unsafe { temp_mat_uninit::<C, T, _, _>(ctx, N, K, stack) };
+        let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(N, K, stack) };
         let mut tmp = tmp.as_mat_mut();
 
         let mut n_tasks = Ord::min(
@@ -563,84 +510,76 @@ fn apply_block_householder_on_the_left_in_place_generic<
             }
         };
 
-        let func =
-            |(mut tmp, mut matrix): (MatMut<'_, C, T, Dim<'N>>, MatMut<'_, C, T, Dim<'M>>)| {
-                let (mut top, mut bot) = matrix.rb_mut().split_rows_with_mut(midpoint);
-                help!(C);
+        let func = |(mut tmp, mut matrix): (MatMut<'_, T, Dim<'N>>, MatMut<'_, T, Dim<'M>>)| {
+            let (mut top, mut bot) = matrix.rb_mut().split_rows_with_mut(midpoint);
 
-                triangular::matmul_with_conj(
-                    ctx,
-                    tmp.rb_mut(),
-                    BlockStructure::Rectangular,
-                    Accum::Replace,
-                    essentials_top.transpose(),
-                    BlockStructure::UnitTriangularUpper,
+            triangular::matmul_with_conj(
+                tmp.rb_mut(),
+                BlockStructure::Rectangular,
+                Accum::Replace,
+                essentials_top.transpose(),
+                BlockStructure::UnitTriangularUpper,
+                Conj::Yes.compose(conj_lhs),
+                top.rb(),
+                BlockStructure::Rectangular,
+                Conj::No,
+                one(),
+                inner_parallelism,
+            );
+
+            matmul_with_conj(
+                tmp.rb_mut(),
+                Accum::Add,
+                essentials_bot.transpose(),
+                Conj::Yes.compose(conj_lhs),
+                bot.rb(),
+                Conj::No,
+                one(),
+                inner_parallelism,
+            );
+
+            // [T^-1|T^-*] × essentials* × tmp
+            if forward {
+                solve::solve_lower_triangular_in_place_with_conj(
+                    householder_factor.transpose(),
                     Conj::Yes.compose(conj_lhs),
-                    top.rb(),
-                    BlockStructure::Rectangular,
-                    Conj::No,
-                    as_ref!(math.one()),
-                    inner_parallelism,
-                );
-
-                matmul_with_conj(
-                    ctx,
                     tmp.rb_mut(),
-                    Accum::Add,
-                    essentials_bot.transpose(),
-                    Conj::Yes.compose(conj_lhs),
-                    bot.rb(),
-                    Conj::No,
-                    as_ref!(math.one()),
                     inner_parallelism,
                 );
-
-                // [T^-1|T^-*] × essentials* × tmp
-                if forward {
-                    solve::solve_lower_triangular_in_place_with_conj(
-                        ctx,
-                        householder_factor.transpose(),
-                        Conj::Yes.compose(conj_lhs),
-                        tmp.rb_mut(),
-                        inner_parallelism,
-                    );
-                } else {
-                    solve::solve_upper_triangular_in_place_with_conj(
-                        ctx,
-                        householder_factor,
-                        Conj::No.compose(conj_lhs),
-                        tmp.rb_mut(),
-                        inner_parallelism,
-                    );
-                }
-
-                // essentials × [T^-1|T^-*] × essentials* × tmp
-                triangular::matmul_with_conj(
-                    ctx,
-                    top.rb_mut(),
-                    BlockStructure::Rectangular,
-                    Accum::Add,
-                    essentials_top,
-                    BlockStructure::UnitTriangularLower,
+            } else {
+                solve::solve_upper_triangular_in_place_with_conj(
+                    householder_factor,
                     Conj::No.compose(conj_lhs),
-                    tmp.rb(),
-                    BlockStructure::Rectangular,
-                    Conj::No,
-                    math(id(-one())),
+                    tmp.rb_mut(),
                     inner_parallelism,
                 );
-                matmul_with_conj(
-                    ctx,
-                    bot.rb_mut(),
-                    Accum::Add,
-                    essentials_bot,
-                    Conj::No.compose(conj_lhs),
-                    tmp.rb(),
-                    Conj::No,
-                    math(id(-one())),
-                    inner_parallelism,
-                );
-            };
+            }
+
+            // essentials × [T^-1|T^-*] × essentials* × tmp
+            triangular::matmul_with_conj(
+                top.rb_mut(),
+                BlockStructure::Rectangular,
+                Accum::Add,
+                essentials_top,
+                BlockStructure::UnitTriangularLower,
+                Conj::No.compose(conj_lhs),
+                tmp.rb(),
+                BlockStructure::Rectangular,
+                Conj::No,
+                -one(),
+                inner_parallelism,
+            );
+            matmul_with_conj(
+                bot.rb_mut(),
+                Accum::Add,
+                essentials_bot,
+                Conj::No.compose(conj_lhs),
+                tmp.rb(),
+                Conj::No,
+                -one(),
+                inner_parallelism,
+            );
+        };
 
         if n_tasks <= 1 {
             func((tmp.as_dyn_cols_mut(), matrix.as_dyn_cols_mut()));
@@ -662,22 +601,19 @@ fn apply_block_householder_on_the_left_in_place_generic<
 /// and stores the result in `matrix`.
 #[track_caller]
 pub fn apply_block_householder_on_the_right_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_transpose_on_the_left_in_place_with_conj(
-        ctx,
         householder_basis,
         householder_factor,
         conj_rhs,
@@ -694,19 +630,16 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<
     M: Shape,
     N: Shape,
     K: Shape,
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_on_the_left_in_place_with_conj(
-        ctx,
         householder_basis,
         householder_factor,
         conj_rhs,
@@ -720,17 +653,15 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<
 /// stores the result in `matrix`.
 #[track_caller]
 pub fn apply_block_householder_on_the_left_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -742,7 +673,6 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<
     let K = matrix.ncols().bind(K);
 
     apply_block_householder_on_the_left_in_place_generic(
-        ctx,
         householder_basis.as_shape(M, N).as_dyn_stride(),
         householder_factor.as_shape(N, N).as_dyn_stride(),
         conj_lhs,
@@ -757,17 +687,15 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<
 /// by `matrix`, and stores the result in `matrix`.
 #[track_caller]
 pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, N, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -779,7 +707,6 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<
     let K = matrix.ncols().bind(K);
 
     apply_block_householder_on_the_left_in_place_generic(
-        ctx,
         householder_basis.as_shape(M, N).as_dyn_stride(),
         householder_factor.as_shape(N, N).as_dyn_stride(),
         conj_lhs.compose(Conj::Yes),
@@ -795,28 +722,25 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<
 /// `matrix`.
 #[track_caller]
 pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
     B: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, B, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, B, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'B, C: ComplexContainer, T: ComplexField<C>>(
-        ctx: &Ctx<C, T>,
-        householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'N>>,
+    pub fn imp<'M, 'N, 'K, 'B, T: ComplexField>(
+        householder_basis: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+        householder_factor: MatRef<'_, T, Dim<'B>, Dim<'N>>,
         conj_lhs: Conj,
-        matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
+        matrix: MatMut<'_, T, Dim<'M>, Dim<'K>>,
         par: Par,
         stack: &mut DynStack,
     ) {
@@ -849,7 +773,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
 
                 let householder = householder_factor
                     .subcols_range((j_prev, j))
-                    .subrows(zero(), *j - *j_prev);
+                    .subrows(IdxInc::ZERO, *j - *j_prev);
 
                 let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
                 make_guard!(M);
@@ -858,7 +782,6 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
                 let N = essentials.ncols().bind(N);
 
                 apply_block_householder_on_the_left_in_place_with_conj(
-                    ctx,
                     essentials.as_shape(M, N),
                     householder.as_shape(N, N),
                     conj_lhs,
@@ -880,7 +803,6 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
     let B = householder_factor.nrows().bind(B);
     let K = matrix.ncols().bind(K);
     imp(
-        ctx,
         householder_basis.as_dyn_stride().as_shape(M, N),
         householder_factor.as_dyn_stride().as_shape(B, N),
         conj_lhs,
@@ -895,28 +817,25 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
 /// `matrix`.
 #[track_caller]
 pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
     B: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, B, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, B, N, impl Stride, impl Stride>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, C, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'B, C: ComplexContainer, T: ComplexField<C>>(
-        ctx: &Ctx<C, T>,
-        householder_basis: MatRef<'_, C, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, C, T, Dim<'B>, Dim<'N>>,
+    pub fn imp<'M, 'N, 'K, 'B, T: ComplexField>(
+        householder_basis: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+        householder_factor: MatRef<'_, T, Dim<'B>, Dim<'N>>,
         conj_lhs: Conj,
-        matrix: MatMut<'_, C, T, Dim<'M>, Dim<'K>>,
+        matrix: MatMut<'_, T, Dim<'M>, Dim<'K>>,
         par: Par,
         stack: &mut DynStack,
     ) {
@@ -944,7 +863,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
                 let essentials = householder_basis.submatrix_range((jm, M.end()), (jn, jn_next));
                 let householder = householder_factor
                     .subcols_range((j, j_next))
-                    .subrows(zero(), *j_next - *jn);
+                    .subrows(IdxInc::ZERO, *j_next - *jn);
 
                 let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
                 make_guard!(M);
@@ -953,7 +872,6 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
                 let N = essentials.ncols().bind(N);
 
                 apply_block_householder_transpose_on_the_left_in_place_with_conj(
-                    ctx,
                     essentials.as_shape(M, N),
                     householder.as_shape(N, N),
                     conj_lhs,
@@ -975,7 +893,6 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     let B = householder_factor.nrows().bind(B);
     let K = matrix.ncols().bind(K);
     imp(
-        ctx,
         householder_basis.as_dyn_stride().as_shape(M, N),
         householder_factor.as_dyn_stride().as_shape(B, N),
         conj_lhs,
@@ -989,23 +906,20 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 /// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`.
 #[track_caller]
 pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
     H: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, H, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, H, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
-        ctx,
         householder_basis,
         householder_factor,
         conj_rhs,
@@ -1020,23 +934,20 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<
 /// `matrix`.
 #[track_caller]
 pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj<
-    C: ComplexContainer,
-    T: ComplexField<C>,
+    T: ComplexField,
     M: Shape,
     N: Shape,
     K: Shape,
     H: Shape,
 >(
-    ctx: &Ctx<C, T>,
-    householder_basis: MatRef<'_, C, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, C, T, H, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
+    householder_factor: MatRef<'_, T, H, N, impl Stride, impl Stride>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, C, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
     par: Par,
     stack: &mut DynStack,
 ) {
     apply_block_householder_sequence_on_the_left_in_place_with_conj(
-        ctx,
         householder_basis,
         householder_factor,
         conj_rhs,

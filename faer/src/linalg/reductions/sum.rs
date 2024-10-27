@@ -1,4 +1,3 @@
-use faer_traits::Unit;
 use num_complex::Complex;
 
 use super::LINEAR_IMPL_THRESHOLD;
@@ -6,25 +5,20 @@ use crate::internal_prelude::*;
 
 #[inline(always)]
 #[math]
-fn sum_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
-) -> C::Of<T> {
-    struct Impl<'a, 'N, C: ComplexContainer, T: ComplexField<C>> {
-        ctx: &'a Ctx<C, T>,
-        data: ColRef<'a, C, T, Dim<'N>, ContiguousFwd>,
+fn sum_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) -> T {
+    struct Impl<'a, 'N, T: ComplexField> {
+        data: ColRef<'a, T, Dim<'N>, ContiguousFwd>,
     }
 
-    impl<'N, C: ComplexContainer, T: ComplexField<C>> pulp::WithSimd for Impl<'_, 'N, C, T> {
-        type Output = C::Of<T>;
+    impl<'N, T: ComplexField> pulp::WithSimd for Impl<'_, 'N, T> {
+        type Output = T;
         #[inline(always)]
         #[math]
         fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-            let Self { ctx, data } = self;
-            let simd = SimdCtx::<C, T, S>::new(T::simd_ctx(ctx, simd), data.nrows());
+            let Self { data } = self;
+            let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), data.nrows());
 
-            help!(C);
-            let zero = simd.splat(as_ref!(math.zero()));
+            let zero = simd.splat(&zero());
 
             let mut acc0 = zero;
             let mut acc1 = zero;
@@ -63,50 +57,41 @@ fn sum_simd<'N, C: ComplexContainer, T: ComplexField<C>>(
         }
     }
 
-    T::Arch::default().dispatch(Impl { ctx, data })
+    T::Arch::default().dispatch(Impl { data })
 }
 
 #[math]
-fn sum_simd_pairwise_rows<C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: ColRef<'_, C, T, usize, ContiguousFwd>,
-) -> C::Of<T> {
+fn sum_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, ContiguousFwd>) -> T {
     if data.nrows() <= LINEAR_IMPL_THRESHOLD {
         with_dim!(N, data.nrows());
 
-        sum_simd(ctx, data.as_row_shape(N))
+        sum_simd(data.as_row_shape(N))
     } else {
         let split_point = ((data.nrows() + 1) / 2).next_power_of_two();
         let (head, tail) = data.split_at_row(split_point);
-        let acc0 = sum_simd_pairwise_rows(ctx, head);
-        let acc1 = sum_simd_pairwise_rows(ctx, tail);
+        let acc0 = sum_simd_pairwise_rows(head);
+        let acc1 = sum_simd_pairwise_rows(tail);
 
-        math(acc0 + acc1)
+        acc0 + acc1
     }
 }
 
 #[math]
-fn sum_simd_pairwise_cols<C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    data: MatRef<'_, C, T, usize, usize, ContiguousFwd>,
-) -> C::Of<T> {
+fn sum_simd_pairwise_cols<T: ComplexField>(data: MatRef<'_, T, usize, usize, ContiguousFwd>) -> T {
     if data.ncols() == 1 {
-        sum_simd_pairwise_rows(ctx, data.col(0))
+        sum_simd_pairwise_rows(data.col(0))
     } else {
         let split_point = ((data.ncols() + 1) / 2).next_power_of_two();
         let (head, tail) = data.split_at_col(split_point);
-        let acc0 = sum_simd_pairwise_cols(ctx, head);
-        let acc1 = sum_simd_pairwise_cols(ctx, tail);
+        let acc0 = sum_simd_pairwise_cols(head);
+        let acc1 = sum_simd_pairwise_cols(tail);
 
-        math(acc0 + acc1)
+        acc0 + acc1
     }
 }
 
 #[math]
-pub fn sum<C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut mat: MatRef<'_, C, T>,
-) -> C::Of<T> {
+pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
     if mat.ncols() > 1 && mat.col_stride().unsigned_abs() == 1 {
         mat = mat.transpose();
     }
@@ -115,7 +100,7 @@ pub fn sum<C: ComplexContainer, T: ComplexField<C>>(
     }
 
     if mat.nrows() == 0 || mat.ncols() == 0 {
-        math.zero()
+        zero()
     } else {
         let m = mat.nrows();
         let n = mat.ncols();
@@ -123,10 +108,10 @@ pub fn sum<C: ComplexContainer, T: ComplexField<C>>(
         if const { T::SIMD_CAPABILITIES.is_simd() } {
             if let Some(mat) = mat.try_as_col_major() {
                 if const { T::IS_NATIVE_C32 } {
-                    let mat: MatRef<'_, Unit, Complex<f32>, usize, usize, ContiguousFwd> =
+                    let mat: MatRef<'_, Complex<f32>, usize, usize, ContiguousFwd> =
                         unsafe { crate::hacks::coerce(mat) };
                     let mat = unsafe {
-                        MatRef::<'_, Unit, f32, usize, usize, ContiguousFwd>::from_raw_parts(
+                        MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(
                             mat.as_ptr() as *const f32,
                             2 * mat.nrows(),
                             mat.ncols(),
@@ -134,14 +119,12 @@ pub fn sum<C: ComplexContainer, T: ComplexField<C>>(
                             mat.col_stride().wrapping_mul(2),
                         )
                     };
-                    return unsafe {
-                        crate::hacks::coerce(sum_simd_pairwise_cols::<Unit, f32>(&Ctx(Unit), mat))
-                    };
+                    return unsafe { crate::hacks::coerce(sum_simd_pairwise_cols::<f32>(mat)) };
                 } else if const { T::IS_NATIVE_C64 } {
-                    let mat: MatRef<'_, Unit, Complex<f64>, usize, usize, ContiguousFwd> =
+                    let mat: MatRef<'_, Complex<f64>, usize, usize, ContiguousFwd> =
                         unsafe { crate::hacks::coerce(mat) };
                     let mat = unsafe {
-                        MatRef::<'_, Unit, f64, usize, usize, ContiguousFwd>::from_raw_parts(
+                        MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(
                             mat.as_ptr() as *const f64,
                             2 * mat.nrows(),
                             mat.ncols(),
@@ -149,44 +132,17 @@ pub fn sum<C: ComplexContainer, T: ComplexField<C>>(
                             mat.col_stride().wrapping_mul(2),
                         )
                     };
-                    return unsafe {
-                        crate::hacks::coerce(sum_simd_pairwise_cols::<Unit, f64>(&Ctx(Unit), mat))
-                    };
-                } else if const { C::IS_COMPLEX } {
-                    let mat: MatRef<
-                        num_complex::Complex<C::Real>,
-                        T::RealUnit,
-                        usize,
-                        usize,
-                        ContiguousFwd,
-                    > = unsafe { crate::hacks::coerce(mat) };
-                    let (re, im) = super::real_imag(mat);
-                    return unsafe {
-                        crate::hacks::coerce(core::mem::ManuallyDrop::new(
-                            num_complex::Complex::new(
-                                sum_simd_pairwise_cols::<C::Real, T::RealUnit>(
-                                    Ctx::new(&**ctx),
-                                    re,
-                                ),
-                                sum_simd_pairwise_cols::<C::Real, T::RealUnit>(
-                                    Ctx::new(&**ctx),
-                                    im,
-                                ),
-                            ),
-                        ))
-                    };
+                    return unsafe { crate::hacks::coerce(sum_simd_pairwise_cols::<f64>(mat)) };
                 } else {
-                    return sum_simd_pairwise_cols(ctx, mat);
+                    return sum_simd_pairwise_cols(mat);
                 }
             }
         }
 
-        let mut acc = math.zero();
+        let mut acc = zero();
         for j in 0..n {
             for i in 0..m {
-                let val = mat.at(i, j);
-
-                acc = math(acc + val);
+                acc = acc + mat[(i, j)];
             }
         }
         acc
@@ -211,15 +167,15 @@ mod tests {
                 });
 
                 if factor == 0.0 {
-                    assert!(sum(&default(), mat.as_ref()) == target);
+                    assert!(sum(mat.as_ref()) == target);
                 } else {
-                    assert!(relative_err(sum(&default(), mat.as_ref()), target) < 1e-14);
+                    assert!(relative_err(sum(mat.as_ref()), target) < 1e-14);
                 }
             }
         }
 
         let mat = Col::from_fn(10000000, |_| 0.3);
         let target = 0.3 * 10000000.0f64;
-        assert!(relative_err(sum(&default(), mat.as_ref().as_mat()), target) < 1e-14);
+        assert!(relative_err(sum(mat.as_ref().as_mat()), target) < 1e-14);
     }
 }

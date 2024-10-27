@@ -26,31 +26,22 @@ pub struct BunchKaufmanParams {
 /// Dynamic Bunch-Kaufman regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
-pub struct BunchKaufmanRegularization<'a, C: ComplexContainer, T: ComplexField<C>> {
+pub struct BunchKaufmanRegularization<'a, T: ComplexField> {
     /// Expected signs for the diagonal at each step of the decomposition.
     pub dynamic_regularization_signs: Option<&'a mut [i8]>,
     /// Regularized value.
-    pub dynamic_regularization_delta: <C::Real as Container>::Of<T::RealUnit>,
+    pub dynamic_regularization_delta: T::Real,
     /// Regularization threshold.
-    pub dynamic_regularization_epsilon: <C::Real as Container>::Of<T::RealUnit>,
+    pub dynamic_regularization_epsilon: T::Real,
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>> BunchKaufmanRegularization<'_, C, T> {
-    #[math]
-    fn default_with(ctx: &Ctx<C, T>) -> Self {
+impl<T: ComplexField> Default for BunchKaufmanRegularization<'_, T> {
+    fn default() -> Self {
         Self {
             dynamic_regularization_signs: None,
-            dynamic_regularization_delta: math.re.zero(),
-            dynamic_regularization_epsilon: math.re.zero(),
+            dynamic_regularization_delta: zero(),
+            dynamic_regularization_epsilon: zero(),
         }
-    }
-}
-
-impl<C: ComplexContainer, T: ComplexField<C, MathCtx: Default>> Default
-    for BunchKaufmanRegularization<'_, C, T>
-{
-    fn default() -> Self {
-        Self::default_with(&default())
     }
 }
 
@@ -64,25 +55,22 @@ impl Default for BunchKaufmanParams {
 }
 
 #[math]
-fn best_score_idx_skip<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: ColRef<'_, C, T, Dim<'N>>,
+fn best_score_idx_skip<'N, T: ComplexField>(
+    a: ColRef<'_, T, Dim<'N>>,
     skip: IdxInc<'N>,
-) -> (Option<Idx<'N>>, <C::Real as Container>::Of<T::RealUnit>) {
-    help!(C);
-    help2!(C::Real);
+) -> (Option<Idx<'N>>, T::Real) {
     let M = a.nrows();
 
     if *M <= *skip {
-        return (None, math.re.zero());
+        return (None, zero());
     }
 
     let mut best_row = M.check(*skip);
-    let mut best_score = math.re.zero();
+    let mut best_score = zero();
 
     for i in best_row.to_incl().to(M.end()) {
-        let score = math(abs(a[i]));
-        if math(score > best_score) {
+        let score = abs(a[i]);
+        if score > best_score {
             best_row = i;
             best_score = score;
         }
@@ -91,30 +79,22 @@ fn best_score_idx_skip<'N, C: ComplexContainer, T: ComplexField<C>>(
     (Some(best_row), best_score)
 }
 
-fn assign_col<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
-    i: Idx<'N>,
-    j: Idx<'N>,
-) {
+fn assign_col<'M, 'N, T: ComplexField>(a: MatMut<'_, T, Dim<'M>, Dim<'N>>, i: Idx<'N>, j: Idx<'N>) {
     if i != j {
         let (ai, aj) = a.two_cols_mut(i, j);
-        { ai }.copy_from_with(ctx, aj);
+        { ai }.copy_from_with(aj);
     }
 }
 
 #[math]
-fn best_score<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: ColRef<'_, C, T, Dim<'N>>,
-) -> <C::Real as Container>::Of<T::RealUnit> {
+fn best_score<'N, T: ComplexField>(a: ColRef<'_, T, Dim<'N>>) -> T::Real {
     let M = a.nrows();
 
-    let mut best_score = math.re.zero();
+    let mut best_score = zero();
 
     for i in M.indices() {
-        let score = math(abs(a[i]));
-        if math(score > best_score) {
+        let score = abs(a[i]);
+        if score > best_score {
             best_score = score;
         }
     }
@@ -123,58 +103,45 @@ fn best_score<'N, C: ComplexContainer, T: ComplexField<C>>(
 }
 
 #[math]
-fn swap_elems_conj<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+fn swap_elems_conj<'N, T: ComplexField>(
+    a: MatMut<'_, T, Dim<'N>, Dim<'N>>,
     (i0, j0): (Idx<'N>, Idx<'N>),
     (i1, j1): (Idx<'N>, Idx<'N>),
 ) {
     let mut a = a;
-    let (x, y) = math((conj(a[(i0, j0)]), conj(a[(i1, j1)])));
+    let (x, y) = (conj(a[(i0, j0)]), conj(a[(i1, j1)]));
 
-    help!(C);
-    write1!(a[(i0, j0)] = y);
-    write1!(a[(i1, j1)] = x);
+    a[(i0, j0)] = y;
+    a[(i1, j1)] = x;
 }
 #[math]
-fn swap_elems<'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    a: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+fn swap_elems<'N, T: ComplexField>(
+    a: MatMut<'_, T, Dim<'N>, Dim<'N>>,
     (i0, j0): (Idx<'N>, Idx<'N>),
     (i1, j1): (Idx<'N>, Idx<'N>),
 ) {
     let mut a = a;
-    let (x, y) = math((copy(a[(i0, j0)]), copy(a[(i1, j1)])));
+    let (x, y) = (copy(a[(i0, j0)]), copy(a[(i1, j1)]));
 
-    help!(C);
-    write1!(a[(i0, j0)] = y);
-    write1!(a[(i1, j1)] = x);
+    a[(i0, j0)] = y;
+    a[(i1, j1)] = x;
 }
 
 #[math]
-fn make_real<'M, 'N, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut a: MatMut<'_, C, T, Dim<'M>, Dim<'N>>,
+fn make_real<'M, 'N, T: ComplexField>(
+    mut a: MatMut<'_, T, Dim<'M>, Dim<'N>>,
     (i0, j0): (Idx<'M>, Idx<'N>),
 ) {
-    help!(C);
-    write1!(a[(i0, j0)] = math(from_real(real(a[(i0, j0)]))));
+    a[(i0, j0)] = from_real(real(a[(i0, j0)]));
 }
 
 #[math]
-fn cholesky_diagonal_pivoting_blocked_step<
-    'N,
-    'NB,
-    I: Index,
-    C: ComplexContainer,
-    T: ComplexField<C>,
->(
-    ctx: &Ctx<C, T>,
-    mut a: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
-    regularization: BunchKaufmanRegularization<'_, C, T>,
-    mut w: MatMut<'_, C, T, Dim<'N>, Dim<'NB>>,
+fn cholesky_diagonal_pivoting_blocked_step<'N, 'NB, I: Index, T: ComplexField>(
+    mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+    regularization: BunchKaufmanRegularization<'_, T>,
+    mut w: MatMut<'_, T, Dim<'N>, Dim<'NB>>,
     pivots: &mut Array<'N, I>,
-    alpha: <C::Real as Container>::Of<T::RealUnit>,
+    alpha: T::Real,
     par: Par,
 ) -> (usize, usize, usize) {
     let N = a.nrows();
@@ -186,14 +153,13 @@ fn cholesky_diagonal_pivoting_blocked_step<
     if n == 0 {
         return (0, 0, 0);
     }
-    help!(C);
 
-    let eps = math.re.abs(regularization.dynamic_regularization_epsilon);
-    let delta = math.re.abs(regularization.dynamic_regularization_delta);
+    let eps = abs(regularization.dynamic_regularization_epsilon);
+    let delta = abs(regularization.dynamic_regularization_delta);
     let mut signs = regularization
         .dynamic_regularization_signs
         .map(|signs| Array::from_mut(signs, N));
-    let has_eps = math.gt_zero(delta);
+    let has_eps = delta > zero();
     let mut dynamic_regularization_count = 0usize;
     let mut pivot_count = 0usize;
 
@@ -208,7 +174,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
         w.rb_mut()
             .subrows_range_mut((k0, N))
             .col_mut(j0)
-            .copy_from_with(ctx, a.rb().subrows_range((k0, N)).col(k0));
+            .copy_from_with(a.rb().subrows_range((k0, N)).col(k0));
 
         let (w_left, w_right) = w
             .rb_mut()
@@ -218,41 +184,40 @@ fn cholesky_diagonal_pivoting_blocked_step<
         let w_row = w_left.rb().row(0);
         let w_col = w_right.col_mut(0);
         crate::linalg::matmul::matmul(
-            ctx,
             w_col.as_mat_mut(),
             Accum::Add,
-            a.rb().submatrix_range((k0, N), (zero(), k0)),
+            a.rb().submatrix_range((k0, N), (IdxInc::ZERO, k0)),
             w_row.rb().transpose().as_mat(),
-            as_ref!(math(-one())),
+            -one(),
             par,
         );
-        make_real(ctx, w.rb_mut(), (k0, j0));
+        make_real(w.rb_mut(), (k0, j0));
 
         let mut k_step = 1;
 
-        let abs_akk = math(re.abs(real(w[(k0, j0)])));
+        let abs_akk = abs(real(w[(k0, j0)]));
 
-        let (imax, colmax) = best_score_idx_skip(ctx, w.rb().col(j0), k0.next());
+        let (imax, colmax) = best_score_idx_skip(w.rb().col(j0), k0.next());
 
         let kp;
-        if math.re(is_zero(max(abs_akk, colmax))) {
+        if max(abs_akk, colmax) == zero() {
             kp = k0;
 
-            let mut d11 = math(real(w[(k0, j0)]));
+            let mut d11 = real(w[(k0, j0)]);
             if has_eps {
                 if let Some(signs) = signs.rb_mut() {
-                    if signs[k0] > 0 && math.re(d11 <= eps) {
-                        d11 = math.re.copy(delta);
+                    if signs[k0] > 0 && d11 <= eps {
+                        d11 = copy(delta);
                         dynamic_regularization_count += 1;
-                    } else if signs[k0] < 0 && math.re(d11 >= -eps) {
-                        d11 = math.re.neg(delta);
+                    } else if signs[k0] < 0 && d11 >= -eps {
+                        d11 = neg(delta);
                         dynamic_regularization_count += 1;
                     }
                 }
             }
-            write1!(a[(k0, k0)] = math.from_real(d11));
+            a[(k0, k0)] = from_real(d11);
         } else {
-            if math.re(abs_akk >= colmax * alpha) {
+            if abs_akk >= colmax * alpha {
                 kp = k0;
             } else {
                 let imax = imax.unwrap();
@@ -260,12 +225,12 @@ fn cholesky_diagonal_pivoting_blocked_step<
                     w.rb_mut().subrows_range_mut((k0, imax)).col_mut(j1),
                     a.rb().row(imax).subcols_range((k0, imax)).transpose(),
                 )
-                .for_each(|unzipped!(mut dst, src)| write1!(dst, math(conj(src))));
+                .for_each(|unzipped!(dst, src)| *dst = conj(src));
 
                 w.rb_mut()
                     .subrows_range_mut((imax, N))
                     .col_mut(j1)
-                    .copy_from_with(ctx, a.rb().subrows_range((imax, N)).col(imax));
+                    .copy_from_with(a.rb().subrows_range((imax, N)).col(imax));
 
                 let (w_left, w_right) = w
                     .rb_mut()
@@ -276,23 +241,18 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 let w_col = w_right.col_mut(0);
 
                 crate::linalg::matmul::matmul(
-                    ctx,
                     w_col.as_mat_mut(),
                     Accum::Add,
-                    a.rb().submatrix_range((k0, N), (zero(), k0)),
+                    a.rb().submatrix_range((k0, N), (IdxInc::ZERO, k0)),
                     w_row.rb().transpose().as_mat(),
-                    as_ref!(math(-one())),
+                    -one(),
                     par,
                 );
-                make_real(ctx, w.rb_mut(), (imax, j1));
+                make_real(w.rb_mut(), (imax, j1));
 
-                let rowmax = math.max(
+                let rowmax = max(
+                    best_score(w.rb().subrows_range((k0, imax)).col(j1).bind_r(unique!())),
                     best_score(
-                        ctx,
-                        w.rb().subrows_range((k0, imax)).col(j1).bind_r(unique!()),
-                    ),
-                    best_score(
-                        ctx,
                         w.rb()
                             .subrows_range((imax.next(), N))
                             .col(j1)
@@ -300,12 +260,11 @@ fn cholesky_diagonal_pivoting_blocked_step<
                     ),
                 );
 
-                if math.re(abs_akk >= (alpha * colmax) * (colmax / rowmax)) {
+                if abs_akk >= (alpha * colmax) * (colmax / rowmax) {
                     kp = k0;
-                } else if math.re(abs(cx.real(w[(imax, j1)])) >= alpha * rowmax) {
+                } else if abs(real(w[(imax, j1)])) >= alpha * rowmax {
                     kp = imax;
                     assign_col(
-                        ctx,
                         w.rb_mut().subrows_range_mut((k0, N)).bind_r(unique!()),
                         j0,
                         j1,
@@ -324,12 +283,11 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 if let Some(signs) = signs.rb_mut() {
                     signs.as_mut().swap(*kp, *kk);
                 }
-                write1!(a[(kp, kp)] = math(copy(a[(kk, kk)])));
+                a[(kp, kp)] = copy(a[(kk, kk)]);
                 for j in kk.next().to(kp.into()) {
-                    write1!(a[(kp, j)] = math(conj(a[(j, kk)])));
+                    a[(kp, j)] = conj(a[(j, kk)]);
                 }
                 assign_col(
-                    ctx,
                     a.rb_mut()
                         .subrows_range_mut((kp.next(), N))
                         .bind_r(unique!()),
@@ -353,48 +311,48 @@ fn cholesky_diagonal_pivoting_blocked_step<
                 a.rb_mut()
                     .subrows_range_mut((k0, N))
                     .col_mut(k0)
-                    .copy_from_with(ctx, w.rb().subrows_range((k0, N)).col(j0));
+                    .copy_from_with(w.rb().subrows_range((k0, N)).col(j0));
 
-                let mut d11 = math(real(w[(k0, j0)]));
+                let mut d11 = real(w[(k0, j0)]);
                 if has_eps {
                     if let Some(signs) = signs.rb_mut() {
-                        if signs[k0] > 0 && math.re(d11 <= eps) {
-                            d11 = math.re.copy(delta);
+                        if signs[k0] > 0 && d11 <= eps {
+                            d11 = copy(delta);
                             dynamic_regularization_count += 1;
-                        } else if signs[k0] < 0 && math.re(d11 >= -eps) {
-                            d11 = math.re.neg(delta);
+                        } else if signs[k0] < 0 && d11 >= -eps {
+                            d11 = neg(delta);
                             dynamic_regularization_count += 1;
                         }
-                    } else if math.re(abs(d11) <= eps) {
-                        if math.lt_zero(d11) {
-                            d11 = math.re.neg(delta);
+                    } else if abs(d11) <= eps {
+                        if d11 < zero() {
+                            d11 = neg(delta);
                         } else {
-                            d11 = math.re.copy(delta);
+                            d11 = copy(delta);
                         }
                         dynamic_regularization_count += 1;
                     }
                 }
-                write1!(a[(k0, k0)] = math.from_real(d11));
-                let d11 = math.re.recip(d11);
+                a[(k0, k0)] = from_real(d11);
+                let d11 = recip(d11);
 
                 let x = a.rb_mut().subrows_range_mut((k0.next(), N)).col_mut(k0);
-                zipped!(x).for_each(|unzipped!(mut x)| write1!(x, math(mul_real(x, d11))));
+                zipped!(x).for_each(|unzipped!(x)| *x = mul_real(x, d11));
                 zipped!(w.rb_mut().subrows_range_mut((k0.next(), N)).col_mut(j0))
-                    .for_each(|unzipped!(mut x)| write1!(x, math(conj(x))));
+                    .for_each(|unzipped!(x)| *x = conj(x));
             } else {
                 let k1 = N.check(k + 1);
 
-                let dd = math(abs(w[(k1, j0)]));
-                let dd_inv = math.re.recip(dd);
-                let mut d11 = math.re(dd_inv * cx.real(w[(k1, j1)]));
-                let mut d22 = math.re(dd_inv * cx.real(w[(k0, j0)]));
+                let dd = abs(w[(k1, j0)]);
+                let dd_inv = recip(dd);
+                let mut d11 = dd_inv * real(w[(k1, j1)]);
+                let mut d22 = dd_inv * real(w[(k0, j0)]);
 
-                let eps = math.re(eps * dd_inv);
-                let delta = math.re(delta * dd_inv);
+                let eps = eps * dd_inv;
+                let delta = delta * dd_inv;
                 if has_eps {
                     if let Some(signs) = signs.rb_mut() {
                         if signs[k0] > 0 && signs[k1] > 0 {
-                            math.re({
+                            {
                                 if d11 <= eps {
                                     d11 = copy(delta);
                                     dynamic_regularization_count += 1;
@@ -403,9 +361,9 @@ fn cholesky_diagonal_pivoting_blocked_step<
                                     d22 = copy(delta);
                                     dynamic_regularization_count += 1;
                                 }
-                            })
+                            }
                         } else if signs[k0] < 0 && signs[k1] < 0 {
-                            math.re({
+                            {
                                 if d11 >= -eps {
                                     d11 = -delta;
                                     dynamic_regularization_count += 1;
@@ -414,59 +372,59 @@ fn cholesky_diagonal_pivoting_blocked_step<
                                     d22 = -delta;
                                     dynamic_regularization_count += 1;
                                 }
-                            })
+                            }
                         }
                     }
                 }
 
                 // t = (d11/|d21| * d22/|d21| - 1.0)
-                let mut t = math.re(d11 * d22 - one());
+                let mut t = d11 * d22 - one();
                 if has_eps {
                     if let Some(signs) = signs.rb_mut() {
                         if ((signs[k0] > 0 && signs[k1] > 0) || (signs[k0] < 0 && signs[k1] < 0))
-                            && math.re(t <= eps)
+                            && t <= eps
                         {
-                            t = math.re.copy(delta);
+                            t = copy(delta);
                         } else if ((signs[k0] > 0 && signs[k1] < 0)
                             || (signs[k0] < 0 && signs[k1] > 0))
-                            && math.re(t >= -eps)
+                            && t >= -eps
                         {
-                            t = math.re(-delta);
+                            t = -delta;
                         }
                     }
                 }
 
-                let t = math.re.recip(t);
-                let d21 = math(mul_real(w[(k1, j0)], dd_inv));
-                let d = math.re(t * dd_inv);
+                let t = recip(t);
+                let d21 = mul_real(w[(k1, j0)], dd_inv);
+                let d = t * dd_inv;
 
-                write1!(a[(k0, k0)] = math(copy(w[(k0, j0)])));
-                write1!(a[(k1, k0)] = math(copy(w[(k1, j0)])));
-                write1!(a[(k1, k1)] = math(copy(w[(k1, j1)])));
-                make_real(ctx, a.rb_mut(), (k0, k0));
-                make_real(ctx, a.rb_mut(), (k1, k1));
+                a[(k0, k0)] = copy(w[(k0, j0)]);
+                a[(k1, k0)] = copy(w[(k1, j0)]);
+                a[(k1, k1)] = copy(w[(k1, j1)]);
+                make_real(a.rb_mut(), (k0, k0));
+                make_real(a.rb_mut(), (k1, k1));
 
                 for j in k1.next().to(N.end()) {
-                    let wk = math(mul_real(
+                    let wk = mul_real(
                         //
                         mul_real(w[(j, j0)], d11) - (w[(j, j1)] * d21),
                         d,
-                    ));
-                    let wkp1 = math(mul_real(
+                    );
+                    let wkp1 = mul_real(
                         //
                         mul_real(w[(j, j1)], d22) - (w[(j, j0)] * conj(d21)),
                         d,
-                    ));
+                    );
 
-                    write1!(a[(j, k0)] = wk);
-                    write1!(a[(j, k1)] = wkp1);
+                    a[(j, k0)] = wk;
+                    a[(j, k1)] = wkp1;
                 }
 
                 zipped!(w.rb_mut().subrows_range_mut((k1, N)).col_mut(j0))
-                    .for_each(|unzipped!(mut x)| write1!(x, math.conj(x)));
+                    .for_each(|unzipped!(x)| *x = conj(x));
 
                 zipped!(w.rb_mut().subrows_range_mut((k1.next(), N)).col_mut(j1))
-                    .for_each(|unzipped!(mut x)| write1!(x, math.conj(x)));
+                    .for_each(|unzipped!(x)| *x = conj(x));
             }
         }
 
@@ -486,20 +444,21 @@ fn cholesky_diagonal_pivoting_blocked_step<
 
     let (a_left, mut a_right) = a.rb_mut().subrows_range_mut((k0, N)).split_at_col_mut(k0);
     triangular::matmul(
-        ctx,
         a_right.rb_mut(),
         BlockStructure::TriangularLower,
         Accum::Add,
         a_left.rb(),
         BlockStructure::Rectangular,
-        w.rb().submatrix_range((k0, N), (zero(), j0)).transpose(),
+        w.rb()
+            .submatrix_range((k0, N), (IdxInc::ZERO, j0))
+            .transpose(),
         BlockStructure::Rectangular,
-        as_ref!(math(-one())),
+        -one(),
         par,
     );
 
     zipped!(a_right.diagonal_mut().column_vector_mut())
-        .for_each(|unzipped!(mut x)| write1!(x, math(from_real(real(x)))));
+        .for_each(|unzipped!(x)| *x = from_real(real(*x)));
 
     let mut j = N.check(k - 1);
     loop {
@@ -520,7 +479,7 @@ fn cholesky_diagonal_pivoting_blocked_step<
         if jp != jj {
             swap_rows_idx(
                 a.rb_mut()
-                    .subcols_range_mut((zero(), j.next()))
+                    .subcols_range_mut((IdxInc::ZERO, j.next()))
                     .bind_c(unique!()),
                 jp,
                 jj,
@@ -533,15 +492,12 @@ fn cholesky_diagonal_pivoting_blocked_step<
 }
 
 #[math]
-fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut a: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
-    regularization: BunchKaufmanRegularization<'_, C, T>,
+fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, T: ComplexField>(
+    mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+    regularization: BunchKaufmanRegularization<'_, T>,
     pivots: &mut Array<'N, I>,
-    alpha: <C::Real as Container>::Of<T::RealUnit>,
+    alpha: T::Real,
 ) -> (usize, usize) {
-    help!(C);
-    help2!(C::Real);
     let truncate = <I::Signed as SignedIndex>::truncate;
 
     assert!(a.nrows() == a.ncols());
@@ -552,12 +508,12 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
         return (0, 0);
     }
 
-    let eps = math.re.abs(regularization.dynamic_regularization_epsilon);
-    let delta = math.re.abs(regularization.dynamic_regularization_delta);
+    let eps = abs(regularization.dynamic_regularization_epsilon);
+    let delta = abs(regularization.dynamic_regularization_delta);
     let mut signs = regularization
         .dynamic_regularization_signs
         .map(|signs| Array::from_mut(signs, N));
-    let has_eps = math.gt_zero(delta);
+    let has_eps = delta > zero();
     let mut dynamic_regularization_count = 0usize;
     let mut pivot_count = 0usize;
 
@@ -568,9 +524,8 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
             let k0_ = after_k.idx(*k0);
 
             let mut k_step = 1;
-            let abs_akk = math(abs(a[(k0, k0)]));
+            let abs_akk = abs(a[(k0, k0)]);
             let (imax, colmax) = best_score_idx_skip(
-                ctx,
                 a.rb().col(k0).row_segment(after_k),
                 after_k.local(k0_).next(),
             );
@@ -578,26 +533,26 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
             let imax = imax.map(|imax| after_k.from_local(imax));
 
             let kp;
-            if math(re.is_zero(max(abs_akk, colmax))) {
+            if max(abs_akk, colmax) == zero() {
                 kp = k0_;
 
-                let mut d11 = math(real(a[(k0, k0)]));
+                let mut d11 = real(a[(k0, k0)]);
                 if has_eps {
                     if let Some(signs) = signs.rb_mut() {
-                        if signs[k0] > 0 && math.re(d11 <= eps) {
-                            d11 = math.re.copy(delta);
+                        if signs[k0] > 0 && d11 <= eps {
+                            d11 = copy(delta);
                             dynamic_regularization_count += 1;
-                        } else if signs[k0] < 0 && math.re(d11 >= -eps) {
-                            d11 = math.re.neg(delta);
+                        } else if signs[k0] < 0 && d11 >= -eps {
+                            d11 = neg(delta);
                             dynamic_regularization_count += 1;
                         }
                     }
                 }
-                write1!(a[(k0, k0)] = math.from_real(d11));
+                a[(k0, k0)] = from_real(d11);
             } else {
                 ghost_tree!(AFTER_K0(K_IMAX), AFTER_K1(IMAX_P1_END), {
                     {
-                        if math.re(abs_akk >= colmax * alpha) {
+                        if abs_akk >= colmax * alpha {
                             kp = k0_;
                         } else {
                             let imax_global = imax.unwrap();
@@ -607,14 +562,14 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                                 N.split(l![k0.to_incl()..imax.to_incl()], AFTER_K0);
                             let (l![imax_end], _) = N.split(l![imax.next()..], AFTER_K1);
 
-                            let rowmax = math.max(
-                                best_score(ctx, a.rb().row(imax).col_segment(k_imax).transpose()),
-                                best_score(ctx, a.rb().col(imax).row_segment(imax_end)),
+                            let rowmax = max(
+                                best_score(a.rb().row(imax).col_segment(k_imax).transpose()),
+                                best_score(a.rb().col(imax).row_segment(imax_end)),
                             );
 
-                            if math.re(abs_akk >= (alpha * colmax) * (colmax / rowmax)) {
+                            if abs_akk >= (alpha * colmax) * (colmax / rowmax) {
                                 kp = k0_;
-                            } else if math.re(abs(cx.real(a[(imax, imax)])) >= alpha * rowmax) {
+                            } else if abs(real(a[(imax, imax)])) >= alpha * rowmax {
                                 kp = imax_global;
                             } else {
                                 kp = imax_global;
@@ -639,63 +594,63 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                         kp,
                     );
                     for j in kk.next().to(kp.into()) {
-                        swap_elems_conj(ctx, a.rb_mut(), (j, kk), (kp, j));
+                        swap_elems_conj(a.rb_mut(), (j, kk), (kp, j));
                     }
 
-                    write1!(a[(kp, kk)] = math(conj(a[(kp, kk)])));
-                    swap_elems(ctx, a.rb_mut(), (kk, kk), (kp, kp));
+                    a[(kp, kk)] = conj(a[(kp, kk)]);
+                    swap_elems(a.rb_mut(), (kk, kk), (kp, kp));
 
                     if k_step == 2 {
-                        swap_elems(ctx, a.rb_mut(), (k1, k0), (kp, k0));
+                        swap_elems(a.rb_mut(), (k1, k0), (kp, k0));
                     }
                 }
 
                 if k_step == 1 {
-                    let mut d11 = math(real(a[(k0, k0)]));
+                    let mut d11 = real(a[(k0, k0)]);
                     if has_eps {
                         if let Some(signs) = signs.rb_mut() {
-                            if signs[k0] > 0 && math.re(d11 <= eps) {
-                                d11 = math.re.copy(delta);
+                            if signs[k0] > 0 && d11 <= eps {
+                                d11 = copy(delta);
                                 dynamic_regularization_count += 1;
-                            } else if signs[k0] < 0 && math.re(d11 >= -eps) {
-                                d11 = math.re.neg(delta);
+                            } else if signs[k0] < 0 && d11 >= -eps {
+                                d11 = neg(delta);
                                 dynamic_regularization_count += 1;
                             }
-                        } else if math.re(abs(d11) <= eps) {
-                            if math.lt_zero(d11) {
-                                d11 = math.re.neg(delta);
+                        } else if abs(d11) <= eps {
+                            if d11 < zero() {
+                                d11 = neg(delta);
                             } else {
-                                d11 = math.re.copy(delta);
+                                d11 = copy(delta);
                             }
                             dynamic_regularization_count += 1;
                         }
                     }
-                    write1!(a[(k0, k0)] = math.from_real(d11));
-                    let d11 = math.re.recip(d11);
+                    a[(k0, k0)] = from_real(d11);
+                    let d11 = recip(d11);
 
                     for j in k0.next().to(N.end()) {
-                        let d11xj = math(mul_real(conj(a[(j, k0)]), d11));
+                        let d11xj = mul_real(conj(a[(j, k0)]), d11);
                         for i in j.to_incl().to(N.end()) {
-                            let xi = math(copy(a[(i, k0)]));
-                            write1!(a[(i, j)] = math(a[(i, j)] - d11xj * xi));
+                            let xi = copy(a[(i, k0)]);
+                            a[(i, j)] = a[(i, j)] - d11xj * xi;
                         }
-                        make_real(ctx, a.rb_mut(), (j, j));
+                        make_real(a.rb_mut(), (j, j));
                     }
                     zipped!(a.rb_mut().col_mut(k0).subrows_range_mut((k0.next(), N)))
-                        .for_each(|unzipped!(mut x)| write1!(x, math(mul_real(x, d11))));
+                        .for_each(|unzipped!(x)| *x = mul_real(x, d11));
                 } else {
                     let k1 = N.check(k + 1);
-                    let d21 = math(abs(a[(k1, k0)]));
-                    let d21_inv = math.re.recip(d21);
-                    let mut d11 = math.re(d21_inv * cx.real(a[(k1, k1)]));
-                    let mut d22 = math.re(d21_inv * cx.real(a[(k0, k0)]));
+                    let d21 = abs(a[(k1, k0)]);
+                    let d21_inv = recip(d21);
+                    let mut d11 = d21_inv * real(a[(k1, k1)]);
+                    let mut d22 = d21_inv * real(a[(k0, k0)]);
 
-                    let eps = math.re(eps * d21_inv);
-                    let delta = math.re(delta * d21_inv);
+                    let eps = eps * d21_inv;
+                    let delta = delta * d21_inv;
                     if has_eps {
                         if let Some(signs) = signs.rb_mut() {
                             if signs[k0] > 0 && signs[k1] > 0 {
-                                math.re({
+                                {
                                     if d11 <= eps {
                                         d11 = copy(delta);
                                         dynamic_regularization_count += 1;
@@ -704,9 +659,9 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                                         d22 = copy(delta);
                                         dynamic_regularization_count += 1;
                                     }
-                                })
+                                }
                             } else if signs[k0] < 0 && signs[k1] < 0 {
-                                math.re({
+                                {
                                     if d11 >= -eps {
                                         d11 = -delta;
                                         dynamic_regularization_count += 1;
@@ -715,56 +670,52 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
                                         d22 = -delta;
                                         dynamic_regularization_count += 1;
                                     }
-                                })
+                                }
                             }
                         }
                     }
 
                     // t = (d11/|d21| * d22/|d21| - 1.0)
-                    let mut t = math.re(d11 * d22 - one());
+                    let mut t = d11 * d22 - one();
                     if has_eps {
                         if let Some(signs) = signs.rb_mut() {
                             if ((signs[k0] > 0 && signs[k1] > 0)
                                 || (signs[k0] < 0 && signs[k1] < 0))
-                                && math.re(t <= eps)
+                                && t <= eps
                             {
-                                t = math.re.copy(delta);
+                                t = copy(delta);
                             } else if ((signs[k0] > 0 && signs[k1] < 0)
                                 || (signs[k0] < 0 && signs[k1] > 0))
-                                && math.re(t >= -eps)
+                                && t >= -eps
                             {
-                                t = math.re.neg(delta);
+                                t = neg(delta);
                             }
                         }
                     }
 
-                    let t = math.re.recip(t);
-                    let d21 = math(mul_real(a[(k1, k0)], d21_inv));
-                    let d = math.re(t * d21_inv);
+                    let t = recip(t);
+                    let d21 = mul_real(a[(k1, k0)], d21_inv);
+                    let d = t * d21_inv;
 
                     for j in k1.next().to(N.end()) {
-                        let wk = math(mul_real(
+                        let wk = mul_real(
                             //
                             mul_real(a[(j, k0)], d11) - (a[(j, k1)] * d21),
                             d,
-                        ));
-                        let wkp1 = math(mul_real(
+                        );
+                        let wkp1 = mul_real(
                             //
                             mul_real(a[(j, k1)], d22) - (a[(j, k0)] * conj(d21)),
                             d,
-                        ));
+                        );
 
                         for i in j.to_incl().to(N.end()) {
-                            write1!(
-                                a[(i, j)] = math(
-                                    a[(i, j)] - a[(i, k0)] * conj(wk) - a[(i, k1)] * conj(wkp1)
-                                )
-                            );
+                            a[(i, j)] = a[(i, j)] - a[(i, k0)] * conj(wk) - a[(i, k1)] * conj(wkp1);
                         }
-                        make_real(ctx, a.rb_mut(), (j, j));
+                        make_real(a.rb_mut(), (j, j));
 
-                        write1!(a[(j, k0)] = wk);
-                        write1!(a[(j, k1)] = wkp1);
+                        a[(j, k0)] = wk;
+                        a[(j, k1)] = wkp1;
                     }
                 }
             }
@@ -784,14 +735,11 @@ fn cholesky_diagonal_pivoting_unblocked<'N, I: Index, C: ComplexContainer, T: Co
 }
 
 #[math]
-fn convert<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    mut a: MatMut<'_, C, T, Dim<'N>, Dim<'N>>,
+fn convert<'N, I: Index, T: ComplexField>(
+    mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>,
     pivots: &Array<'N, I>,
-    mut subdiag: ColMut<'_, C, T, Dim<'N>>,
+    mut subdiag: ColMut<'_, T, Dim<'N>>,
 ) {
-    help!(C);
-
     assert!(a.nrows() == a.ncols());
     let N = a.nrows();
 
@@ -800,12 +748,12 @@ fn convert<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
         if (pivots[i0].to_signed().sx() as isize) < 0 {
             let i1 = N.check(i + 1);
 
-            write1!(subdiag[i0] = math(copy(a[(i1, i0)])));
-            write1!(subdiag[i1] = math.zero());
-            write1!(a[(i1, i0)] = math.zero());
+            subdiag[i0] = copy(a[(i1, i0)]);
+            subdiag[i1] = zero();
+            a[(i1, i0)] = zero();
             i += 2;
         } else {
-            write1!(subdiag[i0] = math.zero());
+            subdiag[i0] = zero();
             i += 1;
         }
     }
@@ -813,7 +761,10 @@ fn convert<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
     let mut i = 0;
     while let Some(i0) = N.try_check(i) {
         guards!(head);
-        let a = a.rb_mut().subcols_range_mut((zero(), i0)).bind_c(head);
+        let a = a
+            .rb_mut()
+            .subcols_range_mut((IdxInc::ZERO, i0))
+            .bind_c(head);
 
         let p = pivots[i0].to_signed().sx();
         if (p as isize) < 0 {
@@ -833,7 +784,7 @@ fn convert<'N, I: Index, C: ComplexContainer, T: ComplexField<C>>(
 
 /// Computes the size and alignment of required workspace for performing a Cholesky
 /// decomposition with Bunch-Kaufman pivoting.
-pub fn cholesky_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<C>>(
+pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(
     dim: usize,
     par: Par,
     params: BunchKaufmanParams,
@@ -843,7 +794,7 @@ pub fn cholesky_in_place_scratch<I: Index, C: ComplexContainer, T: ComplexField<
     if bs < 2 || dim <= bs {
         bs = 0;
     }
-    StackReq::try_new::<I>(dim)?.try_and(temp_mat_scratch::<C, T>(dim, bs)?)
+    StackReq::try_new::<I>(dim)?.try_and(temp_mat_scratch::<T>(dim, bs)?)
 }
 
 /// Info about the result of the Bunch-Kaufman factorization.
@@ -863,18 +814,17 @@ pub struct BunchKaufmanInfo {
 ///
 /// # Panics
 ///
-/// Panics if the input matrix is not square.
+/// Panics if the input matrix is not squa
 ///
 /// This can also panic if the provided memory in `stack` is insufficient (see
 /// [`cholesky_in_place_scratch`]).
 
 #[track_caller]
 #[math]
-pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>>(
-    ctx: &Ctx<C, T>,
-    matrix: MatMut<'_, C, T>,
-    subdiag: ColMut<'_, C, T>,
-    regularization: BunchKaufmanRegularization<'_, C, T>,
+pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
+    matrix: MatMut<'_, T>,
+    subdiag: ColMut<'_, T>,
+    regularization: BunchKaufmanRegularization<'_, T>,
     perm: &'out mut [I],
     perm_inv: &'out mut [I],
     par: Par,
@@ -906,7 +856,7 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
     let _ = par;
     let mut matrix = matrix;
 
-    let alpha = math.re(mul_pow2(one() + sqrt(from_f64(17.0)), from_f64(0.125)));
+    let alpha = mul_pow2(one() + sqrt(from_f64(17.0)), from_f64(0.125));
 
     let (mut pivots, stack) = stack.make_with::<I>(n, |_| I::truncate(0));
     let pivots = &mut *pivots;
@@ -915,7 +865,7 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
     if bs < 2 || n <= bs {
         bs = 0;
     }
-    let mut work = unsafe { temp_mat_uninit(ctx, n, bs, stack) }.0;
+    let mut work = unsafe { temp_mat_uninit(n, bs, stack) }.0;
     let mut work = work.as_mat_mut();
 
     let mut k = 0;
@@ -927,10 +877,8 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
                 .dynamic_regularization_signs
                 .rb_mut()
                 .map(|signs| &mut signs[k..]),
-            dynamic_regularization_delta: math.re.copy(regularization.dynamic_regularization_delta),
-            dynamic_regularization_epsilon: math
-                .re
-                .copy(regularization.dynamic_regularization_epsilon),
+            dynamic_regularization_delta: copy(regularization.dynamic_regularization_delta),
+            dynamic_regularization_epsilon: copy(regularization.dynamic_regularization_epsilon),
         };
 
         let kb;
@@ -939,10 +887,9 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
 
         with_dim!(REM, n - k);
 
-        let alpha = math.re.copy(alpha);
+        let alpha = copy(alpha);
         if bs >= 2 && bs < n - k {
             (kb, piv_count, reg_count) = cholesky_diagonal_pivoting_blocked_step(
-                ctx,
                 matrix.rb_mut().submatrix_mut(k, k, REM, REM),
                 regularization,
                 work.rb_mut().subrows_mut(k, REM).bind_c(unique!()),
@@ -952,7 +899,6 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
             );
         } else {
             (piv_count, reg_count) = cholesky_diagonal_pivoting_unblocked(
-                ctx,
                 matrix.rb_mut().submatrix_mut(k, k, REM, REM),
                 regularization,
                 Array::from_mut(&mut pivots[k..], REM),
@@ -977,7 +923,6 @@ pub fn cholesky_in_place<'out, I: Index, C: ComplexContainer, T: ComplexField<C>
 
     with_dim!(N, n);
     convert(
-        ctx,
         matrix.rb_mut().as_shape_mut(N, N),
         Array::from_mut(pivots, N),
         subdiag.as_row_shape_mut(N),

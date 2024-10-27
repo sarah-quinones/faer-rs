@@ -5,7 +5,7 @@ use pulp::Simd;
 
 use super::bound::{Dim, Idx};
 
-pub struct SimdCtx<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> {
+pub struct SimdCtx<'N, T: ComplexField, S: Simd> {
     pub ctx: T::SimdCtx<S>,
     pub len: Dim<'N>,
     offset: usize,
@@ -16,9 +16,7 @@ pub struct SimdCtx<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> {
     tail_mask: T::SimdMask<S>,
 }
 
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> core::fmt::Debug
-    for SimdCtx<'N, C, T, S>
-{
+impl<'N, T: ComplexField, S: Simd> core::fmt::Debug for SimdCtx<'N, T, S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SimdCtx")
             .field("len", &self.len)
@@ -32,16 +30,16 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> core::fmt::Debug
     }
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> Copy for SimdCtx<'_, C, T, S> {}
-impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> Clone for SimdCtx<'_, C, T, S> {
+impl<T: ComplexField, S: Simd> Copy for SimdCtx<'_, T, S> {}
+impl<T: ComplexField, S: Simd> Clone for SimdCtx<'_, T, S> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> core::ops::Deref for SimdCtx<'_, C, T, S> {
-    type Target = faer_traits::SimdCtxCopy<C, T, S>;
+impl<T: ComplexField, S: Simd> core::ops::Deref for SimdCtx<'_, T, S> {
+    type Target = faer_traits::SimdCtx<T, S>;
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
@@ -49,150 +47,114 @@ impl<C: ComplexContainer, T: ComplexField<C>, S: Simd> core::ops::Deref for Simd
     }
 }
 
-pub trait SimdIndex<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> {
+pub trait SimdIndex<'N, T: ComplexField, S: Simd> {
     fn read(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-    ) -> C::OfSimd<T::SimdVec<S>>;
+    ) -> T::SimdVec<S>;
 
     fn write(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-        value: C::OfSimd<T::SimdVec<S>>,
+        value: T::SimdVec<S>,
     );
 }
 
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdIndex<'N, C, T, S>
-    for SimdBody<'N, C, T, S>
-{
+impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdBody<'N, T, S> {
     #[inline(always)]
     fn read(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-    ) -> <C>::OfSimd<T::SimdVec<S>> {
-        help!(C);
+    ) -> T::SimdVec<S> {
         unsafe {
-            simd.load(map!(
-                slice.as_ptr(),
-                slice,
-                &*(slice.wrapping_offset(index.start) as *const T::SimdVec<S>)
-            ))
+            simd.load(&*(slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>))
         }
     }
 
     #[inline(always)]
     fn write(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-        value: <C>::OfSimd<T::SimdVec<S>>,
+        value: T::SimdVec<S>,
     ) {
-        help!(C);
         unsafe {
             simd.store(
-                map!(
-                    slice.as_ptr_mut(),
-                    slice,
-                    &mut *(slice.wrapping_offset(index.start) as *mut T::SimdVec<S>)
-                ),
+                &mut *(slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>),
                 value,
             );
         }
     }
 }
 
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdIndex<'N, C, T, S>
-    for SimdHead<'N, C, T, S>
-{
+impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdHead<'N, T, S> {
     #[inline(always)]
     fn read(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-    ) -> <C>::OfSimd<T::SimdVec<S>> {
-        help!(C);
+    ) -> T::SimdVec<S> {
         unsafe {
             simd.mask_load(
                 simd.head_mask,
-                map!(
-                    slice.as_ptr(),
-                    slice,
-                    (slice.wrapping_offset(index.start) as *const T::SimdVec<S>)
-                ),
+                slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>,
             )
         }
     }
 
     #[inline(always)]
     fn write(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-        value: <C>::OfSimd<T::SimdVec<S>>,
+        value: T::SimdVec<S>,
     ) {
-        help!(C);
         unsafe {
             simd.mask_store(
                 simd.head_mask,
-                map!(
-                    slice.as_ptr_mut(),
-                    slice,
-                    slice.wrapping_offset(index.start) as *mut T::SimdVec<S>
-                ),
+                slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
                 value,
             );
         }
     }
 }
 
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdIndex<'N, C, T, S>
-    for SimdTail<'N, C, T, S>
-{
+impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
     #[inline(always)]
     fn read(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-    ) -> <C>::OfSimd<T::SimdVec<S>> {
-        help!(C);
+    ) -> T::SimdVec<S> {
         unsafe {
             simd.mask_load(
                 simd.tail_mask,
-                map!(
-                    slice.as_ptr(),
-                    slice,
-                    (slice.wrapping_offset(index.start) as *const T::SimdVec<S>)
-                ),
+                slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>,
             )
         }
     }
 
     #[inline(always)]
     fn write(
-        simd: &SimdCtx<'N, C, T, S>,
-        slice: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        simd: &SimdCtx<'N, T, S>,
+        slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
         index: Self,
-        value: <C>::OfSimd<T::SimdVec<S>>,
+        value: T::SimdVec<S>,
     ) {
-        help!(C);
         unsafe {
             simd.mask_store(
                 simd.tail_mask,
-                map!(
-                    slice.as_ptr_mut(),
-                    slice,
-                    slice.wrapping_offset(index.start) as *mut T::SimdVec<S>
-                ),
+                slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
                 value,
             );
         }
     }
 }
 
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> {
+impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
     #[inline]
     pub fn new(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
         core::assert!(
@@ -301,20 +263,20 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
     }
 
     #[inline(always)]
-    pub fn read<I: SimdIndex<'N, C, T, S>>(
+    pub fn read<I: SimdIndex<'N, T, S>>(
         &self,
-        slice: ColRef<'_, C, T, Dim<'N>, ContiguousFwd>,
+        slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
         index: I,
-    ) -> C::OfSimd<T::SimdVec<S>> {
+    ) -> T::SimdVec<S> {
         I::read(self, slice, index)
     }
 
     #[inline(always)]
-    pub fn write<I: SimdIndex<'N, C, T, S>>(
+    pub fn write<I: SimdIndex<'N, T, S>>(
         &self,
-        slice: ColMut<'_, C, T, Dim<'N>, ContiguousFwd>,
+        slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
         index: I,
-        value: C::OfSimd<T::SimdVec<S>>,
+        value: T::SimdVec<S>,
     ) {
         I::write(self, slice, index, value)
     }
@@ -323,9 +285,9 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
     pub fn indices(
         &self,
     ) -> (
-        Option<SimdHead<'N, C, T, S>>,
-        impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, C, T, S>>,
-        Option<SimdTail<'N, C, T, S>>,
+        Option<SimdHead<'N, T, S>>,
+        impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, T, S>>,
+        Option<SimdTail<'N, T, S>>,
     ) {
         macro_rules! stride {
             () => {
@@ -365,10 +327,10 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
     pub fn batch_indices<const BATCH: usize>(
         &self,
     ) -> (
-        Option<SimdHead<'N, C, T, S>>,
-        impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = [SimdBody<'N, C, T, S>; BATCH]>,
-        impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, C, T, S>>,
-        Option<SimdTail<'N, C, T, S>>,
+        Option<SimdHead<'N, T, S>>,
+        impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = [SimdBody<'N, T, S>; BATCH]>,
+        impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, T, S>>,
+        Option<SimdTail<'N, T, S>>,
     ) {
         macro_rules! stride {
             () => {
@@ -421,39 +383,39 @@ impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> SimdCtx<'N, C, T, S> 
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SimdBody<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> {
+pub struct SimdBody<'N, T: ComplexField, S: Simd> {
     start: isize,
     mask: PhantomData<(Idx<'N>, T::SimdMask<S>)>,
 }
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SimdHead<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> {
+pub struct SimdHead<'N, T: ComplexField, S: Simd> {
     start: isize,
     mask: PhantomData<(Idx<'N>, T::SimdMask<S>)>,
 }
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SimdTail<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> {
+pub struct SimdTail<'N, T: ComplexField, S: Simd> {
     start: isize,
     mask: PhantomData<(Idx<'N>, T::SimdMask<S>)>,
 }
 
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> Copy for SimdBody<'N, C, T, S> {}
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> Clone for SimdBody<'N, C, T, S> {
+impl<'N, T: ComplexField, S: Simd> Copy for SimdBody<'N, T, S> {}
+impl<'N, T: ComplexField, S: Simd> Clone for SimdBody<'N, T, S> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> Copy for SimdHead<'N, C, T, S> {}
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> Clone for SimdHead<'N, C, T, S> {
+impl<'N, T: ComplexField, S: Simd> Copy for SimdHead<'N, T, S> {}
+impl<'N, T: ComplexField, S: Simd> Clone for SimdHead<'N, T, S> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> Copy for SimdTail<'N, C, T, S> {}
-impl<'N, C: ComplexContainer, T: ComplexField<C>, S: Simd> Clone for SimdTail<'N, C, T, S> {
+impl<'N, T: ComplexField, S: Simd> Copy for SimdTail<'N, T, S> {}
+impl<'N, T: ComplexField, S: Simd> Clone for SimdTail<'N, T, S> {
     #[inline]
     fn clone(&self) -> Self {
         *self

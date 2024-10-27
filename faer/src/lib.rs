@@ -5,21 +5,21 @@ use equator::{assert, debug_assert};
 use faer_traits::*;
 
 macro_rules! stack_mat {
-    ($ctx: expr, $name: ident, $m: expr, $n: expr, $M: expr, $N: expr, $C: ty, $T: ty $(,)?) => {
+    ($name: ident, $m: expr, $n: expr, $M: expr, $N: expr, $T: ty $(,)?) => {
         let mut __tmp = {
             #[repr(align(64))]
             struct __Col<T, const M: usize>([T; M]);
             struct __Mat<T, const M: usize, const N: usize>([__Col<T, M>; N]);
 
-            core::mem::MaybeUninit::<C::Of<__Mat<T, $M, $N>>>::uninit()
+            core::mem::MaybeUninit::<__Mat<$T, $M, $N>>::uninit()
         };
         let __stack = DynStack::new_any(core::slice::from_mut(&mut __tmp));
-        let mut $name = $crate::linalg::temp_mat_zeroed($ctx, $m, $n, __stack).0;
+        let mut $name = $crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
         let mut $name = $name.as_mat_mut();
     };
 
-    ($ctx: expr, $name: ident, $m: expr, $n: expr, $C: ty, $T: ty $(,)?) => {
-        stack_mat!($ctx, $name, $m, $n, $m, $n, $C, $T)
+    ($name: ident, $m: expr, $n: expr,  $T: ty $(,)?) => {
+        stack_mat!($name, $m, $n, $m, $n, $T)
     };
 }
 
@@ -384,14 +384,6 @@ impl Stride for ContiguousBwd {
     }
 }
 
-#[inline]
-fn slice_len<C: Container>(slice: C::Of<&[impl Sized]>) -> usize {
-    help!(C);
-    let mut len = usize::MAX;
-    map!(slice, slice, len = Ord::min(len, slice.len()));
-    len
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TryReserveError {
     CapacityOverflow,
@@ -427,8 +419,8 @@ impl Conj {
     }
 
     #[inline]
-    pub const fn get<C: Container, T: ConjUnit>() -> Self {
-        if T::IS_CANONICAL && C::IS_CANONICAL {
+    pub const fn get<T: Conjugate>() -> Self {
+        if T::IS_CANONICAL {
             Self::No
         } else {
             Self::Yes
@@ -436,20 +428,13 @@ impl Conj {
     }
 
     #[inline]
-    pub(crate) fn apply<
-        C: Container<Canonical: ComplexContainer>,
-        T: ConjUnit<Canonical: ComplexField<C::Canonical>>,
-    >(
-        ctx: &Ctx<C::Canonical, T::Canonical>,
-        value: C::Of<&T>,
-    ) -> <C::Canonical as Container>::Of<T::Canonical> {
-        let value: <C::Canonical as Container>::Of<&T::Canonical> =
-            unsafe { core::mem::transmute_copy(&value) };
+    pub(crate) fn apply<T: Conjugate>(value: &T) -> T::Canonical {
+        let value = unsafe { &*(value as *const T as *const T::Canonical) };
 
-        if const { matches!(Self::get::<C, T>(), Conj::Yes) } {
-            T::Canonical::conj_impl(ctx, value)
+        if const { matches!(Self::get::<T>(), Conj::Yes) } {
+            T::Canonical::conj_impl(value)
         } else {
-            T::Canonical::copy_impl(ctx, value)
+            T::Canonical::copy_impl(value)
         }
     }
 }
@@ -483,16 +468,18 @@ pub type c32 = num_complex::Complex32;
 #[allow(non_camel_case_types)]
 pub type c64 = num_complex::Complex64;
 
-pub use col::{Col, ColGeneric, ColMut, ColMutGeneric, ColRef, ColRefGeneric};
-pub use mat::{Mat, MatGeneric, MatMut, MatMutGeneric, MatRef, MatRefGeneric};
-pub use row::{Row, RowGeneric, RowMut, RowMutGeneric, RowRef, RowRefGeneric};
+pub use col::{Col, ColMut, ColRef};
+pub use mat::{Mat, MatMut, MatRef};
+pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
     pub use crate::{
-        prelude::{ctx, default},
+        prelude::default,
         variadics::{l, L},
     };
+
+    pub use faer_traits::math_utils::*;
 
     #[inline]
     pub fn simd_align(i: usize) -> usize {
@@ -500,17 +487,11 @@ mod internal_prelude {
     }
 
     pub use crate::{
-        col::{
-            AsColMut, AsColRef, ColGeneric as Col, ColMutGeneric as ColMut, ColRefGeneric as ColRef,
-        },
-        diag::{DiagGeneric as Diag, DiagMutGeneric as DiagMut, DiagRefGeneric as DiagRef},
-        mat::{
-            AsMatMut, AsMatRef, MatGeneric as Mat, MatMutGeneric as MatMut, MatRefGeneric as MatRef,
-        },
+        col::{AsColMut, AsColRef, Col, ColMut, ColRef},
+        diag::{Diag, DiagMut, DiagRef},
+        mat::{AsMatMut, AsMatRef, Mat, MatMut, MatRef},
         perm::{Perm, PermRef},
-        row::{
-            AsRowMut, AsRowRef, RowGeneric as Row, RowMutGeneric as RowMut, RowRefGeneric as RowRef,
-        },
+        row::{AsRowMut, AsRowRef, Row, RowMut, RowRef},
     };
 
     pub use crate::{
@@ -521,7 +502,7 @@ mod internal_prelude {
     pub use zipped as z;
 
     pub use crate::utils::{
-        bound::{zero, Array, Dim, Idx, IdxInc, MaybeIdx},
+        bound::{Array, Dim, Idx, IdxInc, MaybeIdx},
         simd::SimdCtx,
     };
 
@@ -529,10 +510,7 @@ mod internal_prelude {
 
     pub use faer_macros::{ghost_tree, math};
 
-    pub use faer_traits::{
-        help, help2, ComplexContainer, ComplexField, ConjUnit, Container, Ctx, Index,
-        RealContainer, RealField, SignedIndex, SimdArch,
-    };
+    pub use faer_traits::{ComplexField, Conjugate, Index, RealField, SignedIndex, SimdArch};
 
     pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
 
@@ -546,19 +524,15 @@ mod internal_prelude {
 pub mod prelude {
     use super::*;
 
-    pub use faer_traits::Unit;
-
     pub use super::Par;
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};
 
     #[inline]
-    pub fn default<Ctx: Default>() -> Ctx {
+    pub fn default<T: Default>() -> T {
         Default::default()
     }
-
-    pub use default as ctx;
 }
 
 pub struct Scale<T>(pub T);

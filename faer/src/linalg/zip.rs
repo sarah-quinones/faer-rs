@@ -1,13 +1,12 @@
 use std::marker::PhantomData;
 
 use crate::{
-    col::{ColGeneric, ColMutGeneric, ColRefGeneric},
-    mat::{MatGeneric, MatMutGeneric, MatRefGeneric},
-    row::{RowGeneric, RowMutGeneric, RowRefGeneric},
+    col::{Col, ColMut, ColRef},
+    mat::{Mat, MatMut, MatRef},
+    row::{Row, RowMut, RowRef},
     ContiguousFwd, Idx, Shape, Stride, Unbind,
 };
 use equator::{assert, debug_assert};
-use faer_traits::{help, Container, Unit};
 use reborrow::*;
 
 pub trait IntoView {
@@ -16,55 +15,53 @@ pub trait IntoView {
     fn into_view(self) -> Self::Target;
 }
 
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape> IntoView
-    for &'a mut MatGeneric<C, T, Rows, Cols>
-{
-    type Target = MatMutGeneric<'a, C, T, Rows, Cols, ContiguousFwd>;
+impl<'a, T, Rows: Shape, Cols: Shape> IntoView for &'a mut Mat<T, Rows, Cols> {
+    type Target = MatMut<'a, T, Rows, Cols, ContiguousFwd>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.as_mut().try_as_col_major_mut().unwrap()
     }
 }
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape> IntoView for &'a MatGeneric<C, T, Rows, Cols> {
-    type Target = MatRefGeneric<'a, C, T, Rows, Cols, ContiguousFwd>;
+impl<'a, T, Rows: Shape, Cols: Shape> IntoView for &'a Mat<T, Rows, Cols> {
+    type Target = MatRef<'a, T, Rows, Cols, ContiguousFwd>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.as_ref().try_as_col_major().unwrap()
     }
 }
 
-impl<'a, C: Container, T, Len: Shape> IntoView for &'a mut ColGeneric<C, T, Len> {
-    type Target = ColMutGeneric<'a, C, T, Len, ContiguousFwd>;
+impl<'a, T, Len: Shape> IntoView for &'a mut Col<T, Len> {
+    type Target = ColMut<'a, T, Len, ContiguousFwd>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.as_mut().try_as_col_major_mut().unwrap()
     }
 }
-impl<'a, C: Container, T, Len: Shape> IntoView for &'a ColGeneric<C, T, Len> {
-    type Target = ColRefGeneric<'a, C, T, Len, ContiguousFwd>;
+impl<'a, T, Len: Shape> IntoView for &'a Col<T, Len> {
+    type Target = ColRef<'a, T, Len, ContiguousFwd>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.as_ref().try_as_col_major().unwrap()
     }
 }
 
-impl<'a, C: Container, T, Len: Shape> IntoView for &'a mut RowGeneric<C, T, Len> {
-    type Target = RowMutGeneric<'a, C, T, Len, ContiguousFwd>;
+impl<'a, T, Len: Shape> IntoView for &'a mut Row<T, Len> {
+    type Target = RowMut<'a, T, Len, ContiguousFwd>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.as_mut().try_as_row_major_mut().unwrap()
     }
 }
-impl<'a, C: Container, T, Len: Shape> IntoView for &'a RowGeneric<C, T, Len> {
-    type Target = RowRefGeneric<'a, C, T, Len, ContiguousFwd>;
+impl<'a, T, Len: Shape> IntoView for &'a Row<T, Len> {
+    type Target = RowRef<'a, T, Len, ContiguousFwd>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.as_ref().try_as_row_major().unwrap()
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
-    for MatMutGeneric<'a, C, T, Rows, Cols, RStride, CStride>
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
+    for MatMut<'a, T, Rows, Cols, RStride, CStride>
 {
     type Target = Self;
     #[inline]
@@ -72,8 +69,8 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         self
     }
 }
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
-    for MatRefGeneric<'a, C, T, Rows, Cols, RStride, CStride>
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
+    for MatRef<'a, T, Rows, Cols, RStride, CStride>
 {
     type Target = Self;
     #[inline]
@@ -82,56 +79,52 @@ impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
-    for &'a MatMutGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
+    for &'a MatMut<'_, T, Rows, Cols, RStride, CStride>
 {
-    type Target = MatRefGeneric<'a, C, T, Rows, Cols, RStride, CStride>;
+    type Target = MatRef<'a, T, Rows, Cols, RStride, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.rb()
     }
 }
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
-    for &'a MatRefGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
+    for &'a MatRef<'_, T, Rows, Cols, RStride, CStride>
 {
-    type Target = MatRefGeneric<'a, C, T, Rows, Cols, RStride, CStride>;
+    type Target = MatRef<'a, T, Rows, Cols, RStride, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         *self
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
-    for &'a mut MatMutGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
+    for &'a mut MatMut<'_, T, Rows, Cols, RStride, CStride>
 {
-    type Target = MatMutGeneric<'a, C, T, Rows, Cols, RStride, CStride>;
+    type Target = MatMut<'a, T, Rows, Cols, RStride, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.rb_mut()
     }
 }
-impl<'a, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
-    for &'a mut MatRefGeneric<'_, C, T, Rows, Cols, RStride, CStride>
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IntoView
+    for &'a mut MatRef<'_, T, Rows, Cols, RStride, CStride>
 {
-    type Target = MatRefGeneric<'a, C, T, Rows, Cols, RStride, CStride>;
+    type Target = MatRef<'a, T, Rows, Cols, RStride, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         *self
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
-    for ColMutGeneric<'a, C, T, Rows, RStride>
-{
+impl<'a, T, Rows: Shape, RStride: Stride> IntoView for ColMut<'a, T, Rows, RStride> {
     type Target = Self;
     #[inline]
     fn into_view(self) -> Self::Target {
         self
     }
 }
-impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
-    for ColRefGeneric<'a, C, T, Rows, RStride>
-{
+impl<'a, T, Rows: Shape, RStride: Stride> IntoView for ColRef<'a, T, Rows, RStride> {
     type Target = Self;
     #[inline]
     fn into_view(self) -> Self::Target {
@@ -139,56 +132,44 @@ impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
-    for &'a ColMutGeneric<'_, C, T, Rows, RStride>
-{
-    type Target = ColRefGeneric<'a, C, T, Rows, RStride>;
+impl<'a, T, Rows: Shape, RStride: Stride> IntoView for &'a ColMut<'_, T, Rows, RStride> {
+    type Target = ColRef<'a, T, Rows, RStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.rb()
     }
 }
-impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
-    for &'a ColRefGeneric<'_, C, T, Rows, RStride>
-{
-    type Target = ColRefGeneric<'a, C, T, Rows, RStride>;
+impl<'a, T, Rows: Shape, RStride: Stride> IntoView for &'a ColRef<'_, T, Rows, RStride> {
+    type Target = ColRef<'a, T, Rows, RStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         *self
     }
 }
 
-impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
-    for &'a mut ColMutGeneric<'_, C, T, Rows, RStride>
-{
-    type Target = ColMutGeneric<'a, C, T, Rows, RStride>;
+impl<'a, T, Rows: Shape, RStride: Stride> IntoView for &'a mut ColMut<'_, T, Rows, RStride> {
+    type Target = ColMut<'a, T, Rows, RStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.rb_mut()
     }
 }
-impl<'a, C: Container, T, Rows: Shape, RStride: Stride> IntoView
-    for &'a mut ColRefGeneric<'_, C, T, Rows, RStride>
-{
-    type Target = ColRefGeneric<'a, C, T, Rows, RStride>;
+impl<'a, T, Rows: Shape, RStride: Stride> IntoView for &'a mut ColRef<'_, T, Rows, RStride> {
+    type Target = ColRef<'a, T, Rows, RStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         *self
     }
 }
 
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
-    for RowMutGeneric<'a, C, T, Cols, CStride>
-{
+impl<'a, T, Cols: Shape, CStride: Stride> IntoView for RowMut<'a, T, Cols, CStride> {
     type Target = Self;
     #[inline]
     fn into_view(self) -> Self::Target {
         self
     }
 }
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
-    for RowRefGeneric<'a, C, T, Cols, CStride>
-{
+impl<'a, T, Cols: Shape, CStride: Stride> IntoView for RowRef<'a, T, Cols, CStride> {
     type Target = Self;
     #[inline]
     fn into_view(self) -> Self::Target {
@@ -196,38 +177,30 @@ impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
     }
 }
 
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
-    for &'a RowMutGeneric<'_, C, T, Cols, CStride>
-{
-    type Target = RowRefGeneric<'a, C, T, Cols, CStride>;
+impl<'a, T, Cols: Shape, CStride: Stride> IntoView for &'a RowMut<'_, T, Cols, CStride> {
+    type Target = RowRef<'a, T, Cols, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.rb()
     }
 }
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
-    for &'a RowRefGeneric<'_, C, T, Cols, CStride>
-{
-    type Target = RowRefGeneric<'a, C, T, Cols, CStride>;
+impl<'a, T, Cols: Shape, CStride: Stride> IntoView for &'a RowRef<'_, T, Cols, CStride> {
+    type Target = RowRef<'a, T, Cols, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         *self
     }
 }
 
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
-    for &'a mut RowMutGeneric<'_, C, T, Cols, CStride>
-{
-    type Target = RowMutGeneric<'a, C, T, Cols, CStride>;
+impl<'a, T, Cols: Shape, CStride: Stride> IntoView for &'a mut RowMut<'_, T, Cols, CStride> {
+    type Target = RowMut<'a, T, Cols, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         self.rb_mut()
     }
 }
-impl<'a, C: Container, T, Cols: Shape, CStride: Stride> IntoView
-    for &'a mut RowRefGeneric<'_, C, T, Cols, CStride>
-{
-    type Target = RowRefGeneric<'a, C, T, Cols, CStride>;
+impl<'a, T, Cols: Shape, CStride: Stride> IntoView for &'a mut RowRef<'_, T, Cols, CStride> {
+    type Target = RowRef<'a, T, Cols, CStride>;
     #[inline]
     fn into_view(self) -> Self::Target {
         *self
@@ -319,18 +292,18 @@ pub trait MatIndex {
 pub trait SliceFamily<'a, T, Outlives = &'a Self> {
     type Slice;
 }
-pub struct Slice<C: Container, T>(C::Of<T>);
-pub struct SliceRef<'b, C: Container, T>(C::Of<&'b T>);
-pub struct SliceMut<'b, C: Container, T>(C::Of<&'b mut T>);
+pub struct Slice<T>(T);
+pub struct SliceRef<'b, T>(&'b T);
+pub struct SliceMut<'b, T>(&'b mut T);
 
-impl<'a, C: Container, T> SliceFamily<'a, C::Of<T>> for Slice<C, T> {
-    type Slice = C::Of<&'a [T]>;
+impl<'a, T> SliceFamily<'a, T> for Slice<T> {
+    type Slice = &'a [T];
 }
-impl<'a, 'b, C: Container, T> SliceFamily<'a, C::Of<&'b T>> for SliceRef<'b, C, T> {
-    type Slice = C::Of<&'b [T]>;
+impl<'a, 'b, T> SliceFamily<'a, &'b T> for SliceRef<'b, T> {
+    type Slice = &'b [T];
 }
-impl<'a, 'b, C: Container, T> SliceFamily<'a, C::Of<&'b mut T>> for SliceMut<'b, C, T> {
-    type Slice = C::Of<&'b mut [T]>;
+impl<'a, 'b, T> SliceFamily<'a, &'b mut T> for SliceMut<'b, T> {
+    type Slice = &'b mut [T];
 }
 impl<'a, T, F: SliceFamily<'a, T>> SliceFamily<'a, Last<T>> for Last<F> {
     type Slice = Last<F::Slice>;
@@ -531,8 +504,8 @@ impl<
     }
 }
 
-impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatIndex
-    for MatMutGeneric<'b, C, T, Rows, Cols, RStride, CStride>
+impl<'b, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatIndex
+    for MatMut<'b, T, Rows, Cols, RStride, CStride>
 {
     type Rows = Rows;
     type Cols = Cols;
@@ -548,9 +521,9 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         this.ncols()
     }
 
-    type Item = C::Of<&'b mut T>;
-    type Dyn = MatMutGeneric<'b, C, T, usize, usize, isize, isize>;
-    type Slice = SliceMut<'b, C, T>;
+    type Item = &'b mut T;
+    type Dyn = MatMut<'b, T, usize, usize, isize, isize>;
+    type Slice = SliceMut<'b, T>;
 
     #[inline]
     unsafe fn get_slice_unchecked<'a>(
@@ -558,12 +531,8 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         idx: Self::Index,
         n_elems: usize,
     ) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
-        help!(C);
-        map!(
-            this.ptr_inbounds_at_mut(idx.0, idx.1),
-            ptr,
-            core::slice::from_raw_parts_mut(ptr, n_elems)
-        )
+        let ptr = this.ptr_inbounds_at_mut(idx.0, idx.1);
+        core::slice::from_raw_parts_mut(ptr, n_elems)
     }
 
     #[inline]
@@ -575,20 +544,15 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
     #[inline]
     unsafe fn get_unchecked(this: &mut Self, (i, j): Self::Index) -> Self::Item {
-        help!(C);
-        map!(this.rb().ptr_inbounds_at_mut(i, j), ptr, &mut *ptr)
+        let ptr = this.rb().ptr_inbounds_at_mut(i, j);
+        &mut *ptr
     }
 
     #[inline(always)]
     unsafe fn next_unchecked<'a>(
         slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice,
     ) -> Self::Item {
-        help!(C);
-        let (head, tail) = unzip!(map!(
-            as_mut!(*slice),
-            slice,
-            core::mem::take(slice).split_first_mut().unwrap_unchecked()
-        ));
+        let (head, tail) = core::mem::take(slice).split_first_mut().unwrap_unchecked();
         *slice = tail;
         head
     }
@@ -629,8 +593,8 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 }
 
-impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatIndex
-    for MatRefGeneric<'b, C, T, Rows, Cols, RStride, CStride>
+impl<'b, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatIndex
+    for MatRef<'b, T, Rows, Cols, RStride, CStride>
 {
     type Rows = Rows;
     type Cols = Cols;
@@ -646,9 +610,9 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         this.ncols()
     }
 
-    type Item = C::Of<&'b T>;
-    type Dyn = MatRefGeneric<'b, C, T, usize, usize, isize, isize>;
-    type Slice = SliceRef<'b, C, T>;
+    type Item = &'b T;
+    type Dyn = MatRef<'b, T, usize, usize, isize, isize>;
+    type Slice = SliceRef<'b, T>;
 
     #[inline]
     unsafe fn get_slice_unchecked<'a>(
@@ -656,12 +620,8 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
         idx: Self::Index,
         n_elems: usize,
     ) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
-        help!(C);
-        map!(
-            this.ptr_inbounds_at(idx.0, idx.1),
-            ptr,
-            core::slice::from_raw_parts(ptr, n_elems)
-        )
+        let ptr = this.ptr_inbounds_at(idx.0, idx.1);
+        core::slice::from_raw_parts(ptr, n_elems)
     }
 
     #[inline]
@@ -673,20 +633,15 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
     #[inline]
     unsafe fn get_unchecked(this: &mut Self, (i, j): Self::Index) -> Self::Item {
-        help!(C);
-        map!(this.rb().ptr_inbounds_at(i, j), ptr, &*ptr)
+        let ptr = this.rb().ptr_inbounds_at(i, j);
+        &*ptr
     }
 
     #[inline(always)]
     unsafe fn next_unchecked<'a>(
         slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice,
     ) -> Self::Item {
-        help!(C);
-        let (head, tail) = unzip!(map!(
-            as_mut!(*slice),
-            slice,
-            core::mem::take(slice).split_first().unwrap_unchecked()
-        ));
+        let (head, tail) = core::mem::take(slice).split_first().unwrap_unchecked();
         *slice = tail;
         head
     }
@@ -727,11 +682,9 @@ impl<'b, C: Container, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: St
     }
 }
 
-impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
-    for ColMutGeneric<'b, C, T, Len, Strd>
-{
+impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColMut<'b, T, Len, Strd> {
     type Rows = Len;
-    type Cols = Unit;
+    type Cols = ();
     type Index = Idx<Len>;
     type LayoutTransform = VecLayoutTransform;
 
@@ -741,12 +694,12 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
     #[inline]
     fn ncols(_: &Self) -> Self::Cols {
-        Unit
+        ()
     }
 
-    type Item = C::Of<&'b mut T>;
-    type Dyn = ColMutGeneric<'b, C, T, usize, isize>;
-    type Slice = SliceMut<'b, C, T>;
+    type Item = &'b mut T;
+    type Dyn = ColMut<'b, T, usize, isize>;
+    type Slice = SliceMut<'b, T>;
 
     #[inline]
     unsafe fn get_slice_unchecked<'a>(
@@ -754,12 +707,8 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
         idx: Self::Index,
         n_elems: usize,
     ) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
-        help!(C);
-        map!(
-            this.ptr_inbounds_at_mut(idx),
-            ptr,
-            core::slice::from_raw_parts_mut(ptr, n_elems)
-        )
+        let ptr = this.ptr_inbounds_at_mut(idx);
+        core::slice::from_raw_parts_mut(ptr, n_elems)
     }
 
     #[inline]
@@ -768,20 +717,15 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
     #[inline]
     unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
-        help!(C);
-        map!(this.rb().ptr_inbounds_at_mut(i), ptr, &mut *ptr)
+        let ptr = this.rb().ptr_inbounds_at_mut(i);
+        &mut *ptr
     }
 
     #[inline(always)]
     unsafe fn next_unchecked<'a>(
         slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice,
     ) -> Self::Item {
-        help!(C);
-        let (head, tail) = unzip!(map!(
-            as_mut!(*slice),
-            slice,
-            core::mem::take(slice).split_first_mut().unwrap_unchecked()
-        ));
+        let (head, tail) = core::mem::take(slice).split_first_mut().unwrap_unchecked();
         *slice = tail;
         head
     }
@@ -814,26 +758,24 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
 }
 
-impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
-    for RowMutGeneric<'b, C, T, Len, Strd>
-{
-    type Rows = Unit;
+impl<'b, T, Len: Shape, Strd: Stride> MatIndex for RowMut<'b, T, Len, Strd> {
+    type Rows = ();
     type Cols = Len;
     type Index = Idx<Len>;
     type LayoutTransform = VecLayoutTransform;
 
     #[inline]
     fn nrows(_: &Self) -> Self::Rows {
-        Unit
+        ()
     }
     #[inline]
     fn ncols(this: &Self) -> Self::Cols {
         this.ncols()
     }
 
-    type Item = C::Of<&'b mut T>;
-    type Dyn = RowMutGeneric<'b, C, T, usize, isize>;
-    type Slice = SliceMut<'b, C, T>;
+    type Item = &'b mut T;
+    type Dyn = RowMut<'b, T, usize, isize>;
+    type Slice = SliceMut<'b, T>;
 
     #[inline]
     unsafe fn get_slice_unchecked<'a>(
@@ -841,12 +783,8 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
         idx: Self::Index,
         n_elems: usize,
     ) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
-        help!(C);
-        map!(
-            this.ptr_inbounds_at_mut(idx),
-            ptr,
-            core::slice::from_raw_parts_mut(ptr, n_elems)
-        )
+        let ptr = this.ptr_inbounds_at_mut(idx);
+        core::slice::from_raw_parts_mut(ptr, n_elems)
     }
 
     #[inline]
@@ -855,20 +793,15 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
     #[inline]
     unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
-        help!(C);
-        map!(this.rb().ptr_inbounds_at_mut(i), ptr, &mut *ptr)
+        let ptr = this.rb().ptr_inbounds_at_mut(i);
+        &mut *ptr
     }
 
     #[inline(always)]
     unsafe fn next_unchecked<'a>(
         slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice,
     ) -> Self::Item {
-        help!(C);
-        let (head, tail) = unzip!(map!(
-            as_mut!(*slice),
-            slice,
-            core::mem::take(slice).split_first_mut().unwrap_unchecked()
-        ));
+        let (head, tail) = core::mem::take(slice).split_first_mut().unwrap_unchecked();
         *slice = tail;
         head
     }
@@ -901,11 +834,9 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
 }
 
-impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
-    for ColRefGeneric<'b, C, T, Len, Strd>
-{
+impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColRef<'b, T, Len, Strd> {
     type Rows = Len;
-    type Cols = Unit;
+    type Cols = ();
     type Index = Idx<Len>;
     type LayoutTransform = VecLayoutTransform;
 
@@ -915,12 +846,12 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
     #[inline]
     fn ncols(_: &Self) -> Self::Cols {
-        Unit
+        ()
     }
 
-    type Item = C::Of<&'b T>;
-    type Dyn = ColRefGeneric<'b, C, T, usize, isize>;
-    type Slice = SliceRef<'b, C, T>;
+    type Item = &'b T;
+    type Dyn = ColRef<'b, T, usize, isize>;
+    type Slice = SliceRef<'b, T>;
 
     #[inline]
     unsafe fn get_slice_unchecked<'a>(
@@ -928,12 +859,8 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
         idx: Self::Index,
         n_elems: usize,
     ) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
-        help!(C);
-        map!(
-            this.ptr_inbounds_at(idx),
-            ptr,
-            core::slice::from_raw_parts(ptr, n_elems)
-        )
+        let ptr = this.ptr_inbounds_at(idx);
+        core::slice::from_raw_parts(ptr, n_elems)
     }
 
     #[inline]
@@ -942,20 +869,15 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
     #[inline]
     unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
-        help!(C);
-        map!(this.rb().ptr_inbounds_at(i), ptr, &*ptr)
+        let ptr = this.rb().ptr_inbounds_at(i);
+        &*ptr
     }
 
     #[inline(always)]
     unsafe fn next_unchecked<'a>(
         slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice,
     ) -> Self::Item {
-        help!(C);
-        let (head, tail) = unzip!(map!(
-            as_mut!(*slice),
-            slice,
-            core::mem::take(slice).split_first().unwrap_unchecked()
-        ));
+        let (head, tail) = core::mem::take(slice).split_first().unwrap_unchecked();
         *slice = tail;
         head
     }
@@ -988,26 +910,24 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
 }
 
-impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
-    for RowRefGeneric<'b, C, T, Len, Strd>
-{
-    type Rows = Unit;
+impl<'b, T, Len: Shape, Strd: Stride> MatIndex for RowRef<'b, T, Len, Strd> {
+    type Rows = ();
     type Cols = Len;
     type Index = Idx<Len>;
     type LayoutTransform = VecLayoutTransform;
 
     #[inline]
     fn nrows(_: &Self) -> Self::Rows {
-        Unit
+        ()
     }
     #[inline]
     fn ncols(this: &Self) -> Self::Cols {
         this.ncols()
     }
 
-    type Item = C::Of<&'b T>;
-    type Dyn = RowRefGeneric<'b, C, T, usize, isize>;
-    type Slice = SliceRef<'b, C, T>;
+    type Item = &'b T;
+    type Dyn = RowRef<'b, T, usize, isize>;
+    type Slice = SliceRef<'b, T>;
 
     #[inline]
     unsafe fn get_slice_unchecked<'a>(
@@ -1015,12 +935,8 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
         idx: Self::Index,
         n_elems: usize,
     ) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
-        help!(C);
-        map!(
-            this.ptr_inbounds_at(idx),
-            ptr,
-            core::slice::from_raw_parts(ptr, n_elems)
-        )
+        let ptr = this.ptr_inbounds_at(idx);
+        core::slice::from_raw_parts(ptr, n_elems)
     }
 
     #[inline]
@@ -1029,20 +945,15 @@ impl<'b, C: Container, T, Len: Shape, Strd: Stride> MatIndex
     }
     #[inline]
     unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
-        help!(C);
-        map!(this.rb().ptr_inbounds_at(i), ptr, &*ptr)
+        let ptr = this.rb().ptr_inbounds_at(i);
+        &*ptr
     }
 
     #[inline(always)]
     unsafe fn next_unchecked<'a>(
         slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice,
     ) -> Self::Item {
-        help!(C);
-        let (head, tail) = unzip!(map!(
-            as_mut!(*slice),
-            slice,
-            core::mem::take(slice).split_first().unwrap_unchecked()
-        ));
+        let (head, tail) = core::mem::take(slice).split_first().unwrap_unchecked();
         *slice = tail;
         head
     }
@@ -1771,7 +1682,7 @@ fn for_each_mat_triangular_lower<
 #[inline(always)]
 fn for_each_col<
     Z: MatIndex<
-        Dyn: MatIndex<Rows = usize, Cols = Unit, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+        Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
     >,
 >(
     z: Z,
@@ -1802,7 +1713,7 @@ fn for_each_col_with_index<
     Z: MatIndex<
         LayoutTransform = VecLayoutTransform,
         Index = Idx,
-        Dyn: MatIndex<Rows = usize, Cols = Unit, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+        Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
     >,
 >(
     z: Z,
@@ -1858,7 +1769,7 @@ fn for_each_row_with_index<
     Z: MatIndex<
         LayoutTransform = VecLayoutTransform,
         Index = Idx,
-        Dyn: MatIndex<Rows = Unit, Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+        Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
     >,
 >(
     z: Z,
@@ -1910,7 +1821,7 @@ fn for_each_row_with_index<
 #[inline(always)]
 fn for_each_row<
     Z: MatIndex<
-        Dyn: MatIndex<Rows = Unit, Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+        Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
     >,
 >(
     z: Z,
@@ -2007,31 +1918,11 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> T,
-    ) -> MatGeneric<Unit, T, Rows, Cols> {
+    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Mat<T, Rows, Cols> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
-        MatGeneric::from_fn(
-            m,
-            n,
-            #[inline(always)]
-            |i, j| f(unsafe { Self::get_unchecked(&mut this, (i, j)) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_in<C: Container, T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> MatGeneric<C, T, Rows, Cols> {
-        let (m, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-        MatGeneric::from_fn(
+        Mat::from_fn(
             m,
             n,
             #[inline(always)]
@@ -2044,30 +1935,12 @@ impl<
     pub fn map_with_index<T>(
         self,
         f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> T,
-    ) -> MatGeneric<Unit, T, Rows, Cols> {
+    ) -> Mat<T, Rows, Cols> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
 
-        MatGeneric::from_fn(
-            m,
-            n,
-            #[inline(always)]
-            |i, j| f(i, j, unsafe { Self::get_unchecked(&mut this, (i, j)) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_with_index_in<C: Container, T>(
-        self,
-        f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> MatGeneric<C, T, Rows, Cols> {
-        let (m, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-
-        MatGeneric::from_fn(
+        Mat::from_fn(
             m,
             n,
             #[inline(always)]
@@ -2155,14 +2028,11 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> T,
-    ) -> MatGeneric<Unit, T, Rows, Cols> {
+    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Mat<T, Rows, Cols> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
-        MatGeneric::from_fn(
+        Mat::from_fn(
             m,
             n,
             #[inline(always)]
@@ -2175,47 +2045,12 @@ impl<
     pub fn map_with_index<T>(
         self,
         f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> T,
-    ) -> MatGeneric<Unit, T, Rows, Cols> {
+    ) -> Mat<T, Rows, Cols> {
         let (m, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
 
-        MatGeneric::from_fn(
-            m,
-            n,
-            #[inline(always)]
-            |i, j| f(i, j, unsafe { Self::get_unchecked(&mut this, (i, j)) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_in<C: Container, T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> MatGeneric<C, T, Rows, Cols> {
-        let (m, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-        MatGeneric::from_fn(
-            m,
-            n,
-            #[inline(always)]
-            |i, j| f(unsafe { Self::get_unchecked(&mut this, (i, j)) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_with_index_in<C: Container, T>(
-        self,
-        f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> MatGeneric<C, T, Rows, Cols> {
-        let (m, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-
-        MatGeneric::from_fn(
+        Mat::from_fn(
             m,
             n,
             #[inline(always)]
@@ -2229,11 +2064,11 @@ impl<
         M: MatIndex<
             LayoutTransform = VecLayoutTransform,
             Rows = Rows,
-            Cols = Unit,
+            Cols = (),
             Index = Idx<Rows>,
-            Dyn: MatIndex<Rows = usize, Cols = Unit, Index = usize>,
+            Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
         >,
-    > LastEq<Rows, Unit, M>
+    > LastEq<Rows, (), M>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
@@ -2250,11 +2085,11 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> ColGeneric<Unit, T, Rows> {
+    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Col<T, Rows> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
-        ColGeneric::from_fn(
+        Col::from_fn(
             m,
             #[inline(always)]
             |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2266,45 +2101,12 @@ impl<
     pub fn map_with_index<T>(
         self,
         f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> T,
-    ) -> ColGeneric<Unit, T, Rows> {
+    ) -> Col<T, Rows> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
 
-        ColGeneric::from_fn(
-            m,
-            #[inline(always)]
-            |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_in<C: Container, T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> ColGeneric<C, T, Rows> {
-        let (m, _) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-        ColGeneric::from_fn(
-            m,
-            #[inline(always)]
-            |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_with_index_in<C: Container, T>(
-        self,
-        f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> ColGeneric<C, T, Rows> {
-        let (m, _) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-
-        ColGeneric::from_fn(
+        Col::from_fn(
             m,
             #[inline(always)]
             |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2317,18 +2119,18 @@ impl<
         L: MatIndex<
             LayoutTransform = VecLayoutTransform,
             Rows = Rows,
-            Cols = Unit,
+            Cols = (),
             Index = Idx<Rows>,
-            Dyn: MatIndex<Rows = usize, Cols = Unit, Index = usize>,
+            Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
         >,
         R: MatIndex<
             LayoutTransform = VecLayoutTransform,
             Rows = Rows,
-            Cols = Unit,
+            Cols = (),
             Index = Idx<Rows>,
-            Dyn: MatIndex<Rows = usize, Cols = Unit, Index = usize>,
+            Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
         >,
-    > ZipEq<Rows, Unit, L, R>
+    > ZipEq<Rows, (), L, R>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
@@ -2345,11 +2147,11 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> ColGeneric<Unit, T, Rows> {
+    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Col<T, Rows> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
-        ColGeneric::from_fn(
+        Col::from_fn(
             m,
             #[inline(always)]
             |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2361,45 +2163,12 @@ impl<
     pub fn map_with_index<T>(
         self,
         f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> T,
-    ) -> ColGeneric<Unit, T, Rows> {
+    ) -> Col<T, Rows> {
         let (m, _) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
 
-        ColGeneric::from_fn(
-            m,
-            #[inline(always)]
-            |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_in<C: Container, T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> ColGeneric<C, T, Rows> {
-        let (m, _) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-        ColGeneric::from_fn(
-            m,
-            #[inline(always)]
-            |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_with_index_in<C: Container, T>(
-        self,
-        f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> ColGeneric<C, T, Rows> {
-        let (m, _) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-
-        ColGeneric::from_fn(
+        Col::from_fn(
             m,
             #[inline(always)]
             |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2411,12 +2180,12 @@ impl<
         Cols: Shape,
         M: MatIndex<
             LayoutTransform = VecLayoutTransform,
-            Rows = Unit,
+            Rows = (),
             Cols = Cols,
             Index = Idx<Cols>,
-            Dyn: MatIndex<Rows = Unit, Cols = usize, Index = usize>,
+            Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
         >,
-    > LastEq<Unit, Cols, M>
+    > LastEq<(), Cols, M>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
@@ -2433,11 +2202,11 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> RowGeneric<Unit, T, Cols> {
+    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Row<T, Cols> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
-        RowGeneric::from_fn(
+        Row::from_fn(
             n,
             #[inline(always)]
             |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2449,45 +2218,12 @@ impl<
     pub fn map_with_index<T>(
         self,
         f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> T,
-    ) -> RowGeneric<Unit, T, Cols> {
+    ) -> Row<T, Cols> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
 
-        RowGeneric::from_fn(
-            n,
-            #[inline(always)]
-            |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_in<C: Container, T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> RowGeneric<C, T, Cols> {
-        let (_, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-        RowGeneric::from_fn(
-            n,
-            #[inline(always)]
-            |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_with_index_in<C: Container, T>(
-        self,
-        f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> RowGeneric<C, T, Cols> {
-        let (_, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-
-        RowGeneric::from_fn(
+        Row::from_fn(
             n,
             #[inline(always)]
             |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2499,19 +2235,19 @@ impl<
         Cols: Shape,
         L: MatIndex<
             LayoutTransform = VecLayoutTransform,
-            Rows = Unit,
+            Rows = (),
             Cols = Cols,
             Index = Idx<Cols>,
-            Dyn: MatIndex<Rows = Unit, Cols = usize, Index = usize>,
+            Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
         >,
         R: MatIndex<
             LayoutTransform = VecLayoutTransform,
-            Rows = Unit,
+            Rows = (),
             Cols = Cols,
             Index = Idx<Cols>,
-            Dyn: MatIndex<Rows = Unit, Cols = usize, Index = usize>,
+            Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
         >,
-    > ZipEq<Unit, Cols, L, R>
+    > ZipEq<(), Cols, L, R>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
@@ -2528,11 +2264,11 @@ impl<
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> RowGeneric<Unit, T, Cols> {
+    pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Row<T, Cols> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
-        RowGeneric::from_fn(
+        Row::from_fn(
             n,
             #[inline(always)]
             |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
@@ -2544,45 +2280,12 @@ impl<
     pub fn map_with_index<T>(
         self,
         f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> T,
-    ) -> RowGeneric<Unit, T, Cols> {
+    ) -> Row<T, Cols> {
         let (_, n) = (Self::nrows(&self), Self::ncols(&self));
         let mut f = f;
         let mut this = self;
 
-        RowGeneric::from_fn(
-            n,
-            #[inline(always)]
-            |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_in<C: Container, T>(
-        self,
-        f: impl FnMut(<Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> RowGeneric<C, T, Cols> {
-        let (_, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-        RowGeneric::from_fn(
-            n,
-            #[inline(always)]
-            |i| f(unsafe { Self::get_unchecked(&mut this, i) }),
-        )
-    }
-
-    /// Applies `f` to each element of `self` and collect its result into a new matrix.
-    #[inline(always)]
-    pub fn map_with_index_in<C: Container, T>(
-        self,
-        f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> C::Of<T>,
-    ) -> RowGeneric<C, T, Cols> {
-        let (_, n) = (Self::nrows(&self), Self::ncols(&self));
-        let mut f = f;
-        let mut this = self;
-
-        RowGeneric::from_fn(
+        Row::from_fn(
             n,
             #[inline(always)]
             |i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),

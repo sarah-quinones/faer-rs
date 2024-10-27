@@ -7,7 +7,6 @@ mod tests {
     use crate::{assert, c64, internal_prelude::*, stats::prelude::*, Col, Mat};
     use dyn_stack::GlobalMemBuffer;
     use factor::BunchKaufmanParams;
-    use faer_traits::Unit;
     use num_complex::ComplexFloat;
 
     #[test]
@@ -31,17 +30,16 @@ mod tests {
             .rand::<Mat<f64>>(rng);
 
             let mut ldl = a.clone();
-            let mut subdiag = Col::<f64>::zeros_with(&default(), n);
+            let mut subdiag = Col::<f64>::zeros(n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
 
             let params = Default::default();
             let mut mem = GlobalMemBuffer::new(
-                factor::cholesky_in_place_scratch::<usize, Unit, f64>(n, Par::Seq, params).unwrap(),
+                factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params).unwrap(),
             );
             let (_, perm) = factor::cholesky_in_place(
-                &default(),
                 ldl.as_mut(),
                 subdiag.as_mut(),
                 Default::default(),
@@ -53,12 +51,10 @@ mod tests {
             );
 
             let mut mem = GlobalMemBuffer::new(
-                solve::solve_in_place_scratch::<usize, Unit, f64>(n, rhs.ncols(), Par::Seq)
-                    .unwrap(),
+                solve::solve_in_place_scratch::<usize, f64>(n, rhs.ncols(), Par::Seq).unwrap(),
             );
             let mut x = rhs.clone();
             solve::solve_in_place_with_conj(
-                &default(),
                 ldl.as_ref(),
                 subdiag.as_ref(),
                 Conj::No,
@@ -102,7 +98,7 @@ mod tests {
             .rand::<Mat<c64>>(rng);
 
             let mut ldl = a.clone();
-            let mut subdiag = Col::<c64>::zeros_with(&default(), n);
+            let mut subdiag = Col::<c64>::zeros(n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
@@ -112,10 +108,9 @@ mod tests {
                 blocksize: 32,
             };
             let mut mem = GlobalMemBuffer::new(
-                factor::cholesky_in_place_scratch::<usize, Unit, c64>(n, Par::Seq, params).unwrap(),
+                factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params).unwrap(),
             );
             let (_, perm) = factor::cholesky_in_place(
-                &default(),
                 ldl.as_mut(),
                 subdiag.as_mut(),
                 Default::default(),
@@ -128,11 +123,9 @@ mod tests {
 
             let mut x = rhs.clone();
             let mut mem = GlobalMemBuffer::new(
-                solve::solve_in_place_scratch::<usize, Unit, c64>(n, rhs.ncols(), Par::Seq)
-                    .unwrap(),
+                solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq).unwrap(),
             );
             solve::solve_in_place_with_conj(
-                &default(),
                 ldl.as_ref(),
                 subdiag.as_ref(),
                 Conj::Yes,

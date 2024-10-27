@@ -393,7 +393,7 @@ impl<'n> Dim<'n> {
     {
         (
             Segment {
-                start: zero(),
+                start: IdxInc::ZERO,
                 end: IdxInc {
                     unbound: self.unbound,
                     __marker: PhantomData,
@@ -410,7 +410,7 @@ impl<'n> Dim<'n> {
         segments: Seg,
         node: Node,
     ) -> (Seg::Output, Seg::Metadata) {
-        Seg::in_dim(segments, &mut zero(), self, node)
+        Seg::in_dim(segments, &mut { IdxInc::ZERO }, self, node)
     }
 }
 
@@ -694,14 +694,6 @@ impl<'n, I: Index> Idx<'n, I> {
 
 impl<'n> IdxInc<'n> {
     pub const ZERO: Self = unsafe { Self::new_unbound(0) };
-}
-
-#[inline(always)]
-pub const fn zero<'n>() -> IdxInc<'n> {
-    IdxInc {
-        unbound: 0,
-        __marker: PhantomData,
-    }
 }
 
 impl<'n, I: Index> IdxInc<'n, I> {

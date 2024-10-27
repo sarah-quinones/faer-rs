@@ -2,31 +2,21 @@ use faer_traits::RealValue;
 
 use crate::internal_prelude::*;
 
-pub struct ApproxEq<C: ComplexContainer, T: ComplexField<C>> {
-    pub ctx: Ctx<C, T>,
-    pub abs_tol: RealValue<C, T>,
-    pub rel_tol: RealValue<C, T>,
+pub struct ApproxEq<T: ComplexField> {
+    pub abs_tol: RealValue<T>,
+    pub rel_tol: RealValue<T>,
 }
 
 pub struct CwiseMat<Cmp>(pub Cmp);
 
-impl<C: ComplexContainer, T: ComplexField<C>> ApproxEq<C, T> {
+impl<T: ComplexField> ApproxEq<T> {
     #[math]
     #[inline]
-    pub fn eps_with(ctx: Ctx<C, T>) -> Self {
+    pub fn eps() -> Self {
         Self {
-            abs_tol: math.re(eps() * from_f64(128.0)),
-            rel_tol: math.re(eps() * from_f64(128.0)),
-            ctx,
+            abs_tol: eps() * from_f64(128.0),
+            rel_tol: eps() * from_f64(128.0),
         }
-    }
-
-    #[inline]
-    pub fn eps() -> Self
-    where
-        T::MathCtx: Default,
-    {
-        Self::eps_with(ctx())
     }
 }
 
@@ -41,50 +31,36 @@ pub enum CwiseMatError<Rows: Shape, Cols: Shape, Error> {
 }
 
 impl<
-        C: ComplexContainer,
-        T: ComplexField<C>,
+        T: ComplexField,
         Rows: Shape,
         Cols: Shape,
-        L: AsMatRef<C = C, T = T, Rows = Rows, Cols = Cols>,
-        R: AsMatRef<C = C, T = T, Rows = Rows, Cols = Cols>,
-        Error: equator::CmpDisplay<Cmp, C::Of<T>, C::Of<T>>,
-        Cmp: equator::Cmp<C::Of<T>, C::Of<T>, Error = Error>,
+        L: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
+        R: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
     > equator::CmpError<CwiseMat<Cmp>, L, R> for CwiseMat<Cmp>
 {
     type Error = CwiseMatError<Rows, Cols, Error>;
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>> equator::CmpError<ApproxEq<C, T>, C::Of<T>, C::Of<T>>
-    for ApproxEq<C, T>
-{
+impl<T: ComplexField> equator::CmpError<ApproxEq<T>, T, T> for ApproxEq<T> {
     type Error = ApproxEqError;
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>>
-    equator::CmpDisplay<ApproxEq<C, T>, C::Of<T>, C::Of<T>> for ApproxEqError
-{
+impl<T: ComplexField> equator::CmpDisplay<ApproxEq<T>, T, T> for ApproxEqError {
     #[math]
     fn fmt(
         &self,
-        cmp: &ApproxEq<C, T>,
-        lhs: &C::Of<T>,
+        cmp: &ApproxEq<T>,
+        lhs: &T,
         mut lhs_source: &str,
         lhs_debug: &dyn core::fmt::Debug,
-        rhs: &C::Of<T>,
+        rhs: &T,
         rhs_source: &str,
         rhs_debug: &dyn core::fmt::Debug,
         f: &mut core::fmt::Formatter,
     ) -> core::fmt::Result {
-        let ApproxEq {
-            abs_tol,
-            rel_tol,
-            ctx,
-        } = cmp;
-        help!(C::Real);
-        help2!(C);
-
-        let abs_tol = wrap!(as_ref!(abs_tol));
-        let rel_tol = wrap!(as_ref!(rel_tol));
+        let ApproxEq { abs_tol, rel_tol } = cmp;
 
         if let Some(source) = lhs_source.strip_prefix("__skip_prologue") {
             lhs_source = source;
@@ -95,9 +71,7 @@ impl<C: ComplexContainer, T: ComplexField<C>>
             )?;
         }
 
-        let lhs = wrap2!(as_ref2!(*lhs));
-        let rhs = wrap2!(as_ref2!(*rhs));
-        let distance = wrap!(math(abs(lhs.0 - rhs.0)));
+        let distance = abs(*lhs - *rhs);
 
         write!(f, "- {lhs_source} = {lhs_debug:?}\n")?;
         write!(f, "- {rhs_source} = {rhs_debug:?}\n")?;
@@ -105,22 +79,15 @@ impl<C: ComplexContainer, T: ComplexField<C>>
     }
 }
 
-impl<C: ComplexContainer, T: ComplexField<C>> equator::Cmp<C::Of<T>, C::Of<T>> for ApproxEq<C, T> {
+impl<T: ComplexField> equator::Cmp<T, T> for ApproxEq<T> {
     #[math]
-    fn test(&self, lhs: &C::Of<T>, rhs: &C::Of<T>) -> Result<(), Self::Error> {
-        let Self {
-            ctx,
-            abs_tol,
-            rel_tol,
-        } = self;
+    fn test(&self, lhs: &T, rhs: &T) -> Result<(), Self::Error> {
+        let Self { abs_tol, rel_tol } = self;
 
-        let diff = math(abs(lhs - rhs));
-        let lhs = math.abs(lhs);
-        let rhs = math.abs(rhs);
-        let max = if math(lhs > rhs) { lhs } else { rhs };
+        let diff = abs(*lhs - *rhs);
+        let max = max(abs(*lhs), abs(*rhs));
 
-        if math.re((is_zero(max) && diff <= abs_tol) || (diff <= abs_tol || diff <= rel_tol * max))
-        {
+        if (max == zero() && diff <= *abs_tol) || (diff <= *abs_tol || diff <= *rel_tol * max) {
             Ok(())
         } else {
             Err(ApproxEqError)
@@ -129,14 +96,13 @@ impl<C: ComplexContainer, T: ComplexField<C>> equator::Cmp<C::Of<T>, C::Of<T>> f
 }
 
 impl<
-        C: ComplexContainer,
-        T: ComplexField<C>,
+        T: ComplexField,
         Rows: Shape,
         Cols: Shape,
-        L: AsMatRef<C = C, T = T, Rows = Rows, Cols = Cols>,
-        R: AsMatRef<C = C, T = T, Rows = Rows, Cols = Cols>,
-        Error: equator::CmpDisplay<Cmp, C::Of<T>, C::Of<T>>,
-        Cmp: equator::Cmp<C::Of<T>, C::Of<T>, Error = Error>,
+        L: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
+        R: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
     > equator::CmpDisplay<CwiseMat<Cmp>, L, R> for CwiseMatError<Rows, Cols, Error>
 {
     #[math]
@@ -171,21 +137,16 @@ impl<
                 for (i, j, e) in indices {
                     let i = *i;
                     let j = *j;
-                    help!(C);
-                    let lhs = map!(lhs.at(i, j), ptr, ptr.clone());
-                    let rhs = map!(rhs.at(i, j), ptr, ptr.clone());
+                    let lhs = lhs.at(i, j).clone();
+                    let rhs = rhs.at(i, j).clone();
                     e.fmt(
                         &cmp.0,
                         &lhs,
                         &alloc::format!("{prefix}{lhs_source} at ({i:?}, {j:?})"),
-                        crate::hacks::hijack_debug(unsafe {
-                            crate::hacks::coerce::<&C::Of<T>, &C::OfDebug<T>>(&lhs)
-                        }),
+                        crate::hacks::hijack_debug(&lhs),
                         &rhs,
                         &alloc::format!("{rhs_source} at ({i:?}, {j:?})"),
-                        crate::hacks::hijack_debug(unsafe {
-                            crate::hacks::coerce::<&C::Of<T>, &C::OfDebug<T>>(&rhs)
-                        }),
+                        crate::hacks::hijack_debug(&rhs),
                         f,
                     )?;
                     write!(f, "\n\n")?;
@@ -198,14 +159,13 @@ impl<
 }
 
 impl<
-        C: ComplexContainer,
-        T: ComplexField<C>,
+        T: ComplexField,
         Rows: Shape,
         Cols: Shape,
-        L: AsMatRef<C = C, T = T, Rows = Rows, Cols = Cols>,
-        R: AsMatRef<C = C, T = T, Rows = Rows, Cols = Cols>,
-        Error: equator::CmpDisplay<Cmp, C::Of<T>, C::Of<T>>,
-        Cmp: equator::Cmp<C::Of<T>, C::Of<T>, Error = Error>,
+        L: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
+        R: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
     > equator::Cmp<L, R> for CwiseMat<Cmp>
 {
     fn test(&self, lhs: &L, rhs: &R) -> Result<(), Self::Error> {
@@ -222,11 +182,7 @@ impl<
             for i in 0..lhs.nrows().unbound() {
                 let i = lhs.nrows().checked_idx(i);
 
-                help!(C);
-                if let Err(err) = self.0.test(
-                    &map!(lhs.at(i, j), ptr, ptr.clone()),
-                    &map!(rhs.at(i, j), ptr, ptr.clone()),
-                ) {
+                if let Err(err) = self.0.test(&lhs.at(i, j).clone(), &rhs.at(i, j).clone()) {
                     indices.push((i, j, err));
                 }
             }
