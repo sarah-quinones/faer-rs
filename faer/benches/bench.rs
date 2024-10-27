@@ -18,23 +18,22 @@ fn bench_new(bencher: Bencher, n: usize) {
 
     let mut l = a.clone();
     let mut l = l.as_mut();
-    let mut d = Row::<f64>::zeros_with_ctx(&default(), n);
+    let mut d = Row::<f64>::zeros(n);
     let mut d = d.as_mut();
 
     bencher.bench(|| {
-        l.copy_from_with_ctx(&default(), a.as_ref());
+        l.copy_from_with(a.as_ref());
 
         with_dim!(N, n);
         let mut full_l = l.rb_mut().as_shape_mut(N, N);
         let mut d = d.rb_mut().as_col_shape_mut(N);
         _ = faer::linalg::cholesky::ldlt::factor::simd_cholesky(
-            &default(),
             full_l.as_mut(),
             d.as_mut(),
             false,
             false,
-            &0.0,
-            &0.0,
+            0.0,
+            0.0,
             None,
         );
     });
@@ -55,7 +54,7 @@ fn bench_copy(bencher: Bencher, n: usize) {
     let mut l = l.try_as_col_major_mut().unwrap();
 
     bencher.bench(|| {
-        l.copy_from_with_ctx(&default(), a.as_ref());
+        l.copy_from_with(a.as_ref());
     });
 }
 fn main() -> std::io::Result<()> {

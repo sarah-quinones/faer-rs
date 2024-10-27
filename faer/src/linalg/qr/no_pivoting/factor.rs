@@ -28,7 +28,7 @@ fn qr_in_place_unblocked<'M, 'N, 'H, T: ComplexField>(
             let l![A00, A01] = A0.col_segments_mut(cols, disjoint_cols);
             let l![A10, mut A11] = A1.col_segments_mut(cols, disjoint_cols);
 
-            let mut A00 = A00.at_mut(top.local(ki), left.local(kj));
+            let A00 = A00.at_mut(top.local(ki), left.local(kj));
             let mut A01 = A01.row_mut(top.local(ki));
             let mut A10 = A10.col_mut(left.local(kj));
 
@@ -38,7 +38,7 @@ fn qr_in_place_unblocked<'M, 'N, 'H, T: ComplexField>(
             H[k] = tau;
 
             for j in right {
-                let mut head = A01.rb_mut().at_mut(right.local(j));
+                let head = A01.rb_mut().at_mut(right.local(j));
                 let tail = A11.rb_mut().col_mut(right.local(j));
 
                 let dot = *head
@@ -50,7 +50,7 @@ fn qr_in_place_unblocked<'M, 'N, 'H, T: ComplexField>(
                     );
                 let k = -mul_real(dot, tau_inv);
                 *head = head + k;
-                zipped!(tail, A10.rb()).for_each(|unzipped!(mut dst, src)| {
+                zipped!(tail, A10.rb()).for_each(|unzipped!(dst, src)| {
                     *dst = dst + k * src;
                 });
             }

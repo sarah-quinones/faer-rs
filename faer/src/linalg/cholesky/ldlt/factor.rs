@@ -146,7 +146,7 @@ fn simd_cholesky_row_batch<'N, T: ComplexField, S: Simd>(
                     }
                 }
 
-                let mut D = D.rb_mut().at_mut(j);
+                let D = D.rb_mut().at_mut(j);
 
                 if let Some(j_row) = tail.try_idx(*j) {
                     let mut diag = real(Aj[tail.from_global(j_row)]);
@@ -367,7 +367,7 @@ fn cholesky_fallback<'N, T: ComplexField>(
             A[(i, j)] = A[(i, j)] - sum;
         }
 
-        let mut D = D.rb_mut().at_mut(j);
+        let D = D.rb_mut().at_mut(j);
         let mut diag = real(A[(j, j)]);
 
         if regularize {

@@ -482,10 +482,10 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
         ) {
             match conj_ {
                 Conj::No => {
-                    zipped!(this, other).for_each(|unzipped!(mut dst, src)| *dst = copy(&src));
+                    zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = copy(&src));
                 }
                 Conj::Yes => {
-                    zipped!(this, other).for_each(|unzipped!(mut dst, src)| *dst = conj(&src));
+                    zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = conj(&src));
                 }
             }
         }

@@ -1158,13 +1158,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
                 Conj::No => {
                     zipped!(this, other).for_each_triangular_lower(
                         crate::linalg::zip::Diag::Include,
-                        |unzipped!(mut dst, src)| *dst = copy(&src),
+                        |unzipped!(dst, src)| *dst = copy(&src),
                     );
                 }
                 Conj::Yes => {
                     zipped!(this, other).for_each_triangular_lower(
                         crate::linalg::zip::Diag::Include,
-                        |unzipped!(mut dst, src)| *dst = conj(&src),
+                        |unzipped!(dst, src)| *dst = conj(&src),
                     );
                 }
             }
@@ -1203,10 +1203,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
         ) {
             match conj_ {
                 Conj::No => {
-                    zipped!(this, other).for_each(|unzipped!(mut dst, src)| *dst = copy(&src));
+                    zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = copy(&src));
                 }
                 Conj::Yes => {
-                    zipped!(this, other).for_each(|unzipped!(mut dst, src)| *dst = conj(&src));
+                    zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = conj(&src));
                 }
             }
         }
@@ -1246,13 +1246,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
                 Conj::No => {
                     zipped!(this, other).for_each_triangular_lower(
                         crate::linalg::zip::Diag::Skip,
-                        |unzipped!(mut dst, src)| *dst = copy(&src),
+                        |unzipped!(dst, src)| *dst = copy(&src),
                     );
                 }
                 Conj::Yes => {
                     zipped!(this, other).for_each_triangular_lower(
                         crate::linalg::zip::Diag::Skip,
-                        |unzipped!(mut dst, src)| *dst = conj(&src),
+                        |unzipped!(dst, src)| *dst = conj(&src),
                     );
                 }
             }

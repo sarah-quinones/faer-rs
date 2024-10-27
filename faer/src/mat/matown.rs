@@ -21,14 +21,14 @@ pub fn align_for(size: usize, align: usize, needs_drop: bool) -> usize {
 // CURSED: currently avoiding inlining to get noalias annotations in llvm
 #[inline(never)]
 unsafe fn noalias_annotate<T, Rows: Shape, Cols: Shape>(
-    mut iter: &mut [core::mem::MaybeUninit<T>],
+    iter: &mut [core::mem::MaybeUninit<T>],
     new_nrows: IdxInc<Rows>,
     old_nrows: IdxInc<Rows>,
     f: &mut impl FnMut(Idx<Rows>, Idx<Cols>) -> T,
     j: Idx<Cols>,
 ) {
     let ptr = iter.as_mut_ptr();
-    let mut iter = core::slice::from_raw_parts_mut(ptr, new_nrows.unbound() - old_nrows.unbound());
+    let iter = core::slice::from_raw_parts_mut(ptr, new_nrows.unbound() - old_nrows.unbound());
 
     let mut guard = DropCol {
         ptr: ptr as *mut T,
@@ -319,7 +319,7 @@ impl<T, Rows: Shape, Cols: Shape> Drop for Mat<T, Rows, Cols> {
         if const { core::mem::needs_drop::<T>() } {
             if self.nrows.unbound() > 0 && self.ncols.unbound() > 0 {
                 unsafe {
-                    let mut size = size_of::<T>();
+                    let size = size_of::<T>();
                     let ptr = self.raw.ptr.as_ptr();
                     let row_capacity = self.raw.row_capacity;
                     let stride = row_capacity * size;

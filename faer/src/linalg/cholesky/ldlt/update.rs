@@ -372,10 +372,10 @@ impl<'N, 'R, T: ComplexField> RankRUpdate<'_, 'N, 'R, T> {
                             let mut beta = beta.rb_mut().col_mut(0);
 
                             for k in r0 {
-                                let mut p = p.rb_mut().at_mut(r0.from_global(k));
-                                let mut beta = beta.rb_mut().at_mut(r0.from_global(k));
-                                let mut alpha = alpha.rb_mut().at_mut(k.local());
-                                let mut d = L_col.rb_mut().at_mut(j);
+                                let p = p.rb_mut().at_mut(r0.from_global(k));
+                                let beta = beta.rb_mut().at_mut(r0.from_global(k));
+                                let alpha = alpha.rb_mut().at_mut(k.local());
+                                let d = L_col.rb_mut().at_mut(j);
 
                                 let w = W.rb().col(k.local());
 

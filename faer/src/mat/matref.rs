@@ -8,7 +8,7 @@ use crate::{
 };
 use core::ops::Index;
 use equator::{assert, debug_assert};
-use faer_traits::{ComplexField, RealValue};
+use faer_traits::RealValue;
 use generativity::Guard;
 use matmut::MatMut;
 use matown::Mat;

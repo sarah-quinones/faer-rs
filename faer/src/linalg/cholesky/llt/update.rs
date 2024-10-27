@@ -47,9 +47,9 @@ fn rank_update_step_simd<'N, 'R, T: ComplexField>(
 
             match (i0, i1, i2, i3) {
                 (Some(i0), None, None, None) => {
-                    let p0 = (simd.splat(&p[i0]));
-                    let beta0 = (simd.splat(&beta[i0]));
-                    let gamma0 = (simd.splat_real(&real(gamma[i0])));
+                    let p0 = simd.splat(&p[i0]);
+                    let beta0 = simd.splat(&beta[i0]);
+                    let gamma0 = simd.splat_real(&real(gamma[i0]));
 
                     macro_rules! simd {
                         ($i: expr) => {{
@@ -76,12 +76,12 @@ fn rank_update_step_simd<'N, 'R, T: ComplexField>(
                     }
                 }
                 (Some(i0), Some(i1), None, None) => {
-                    let (p0, p1) = ((simd.splat(&p[i0]), simd.splat(&p[i1])));
-                    let (beta0, beta1) = ((simd.splat(&beta[i0]), simd.splat(&beta[i1])));
-                    let (gamma0, gamma1) = ((
+                    let (p0, p1) = (simd.splat(&p[i0]), simd.splat(&p[i1]));
+                    let (beta0, beta1) = (simd.splat(&beta[i0]), simd.splat(&beta[i1]));
+                    let (gamma0, gamma1) = (
                         simd.splat_real(&real(gamma[i0])),
                         simd.splat_real(&real(gamma[i1])),
-                    ));
+                    );
 
                     macro_rules! simd {
                         ($i: expr) => {{
@@ -113,17 +113,17 @@ fn rank_update_step_simd<'N, 'R, T: ComplexField>(
                 }
                 (Some(i0), Some(i1), Some(i2), None) => {
                     let (p0, p1, p2) =
-                        ((simd.splat(&p[i0]), simd.splat(&p[i1]), simd.splat(&p[i2])));
-                    let (beta0, beta1, beta2) = ((
+                        (simd.splat(&p[i0]), simd.splat(&p[i1]), simd.splat(&p[i2]));
+                    let (beta0, beta1, beta2) = (
                         simd.splat(&beta[i0]),
                         simd.splat(&beta[i1]),
                         simd.splat(&beta[i2]),
-                    ));
-                    let (gamma0, gamma1, gamma2) = ((
+                    );
+                    let (gamma0, gamma1, gamma2) = (
                         simd.splat_real(&real(gamma[i0])),
                         simd.splat_real(&real(gamma[i1])),
                         simd.splat_real(&real(gamma[i2])),
-                    ));
+                    );
 
                     macro_rules! simd {
                         ($i: expr) => {{
@@ -158,24 +158,24 @@ fn rank_update_step_simd<'N, 'R, T: ComplexField>(
                     }
                 }
                 (Some(i0), Some(i1), Some(i2), Some(i3)) => {
-                    let (p0, p1, p2, p3) = ((
+                    let (p0, p1, p2, p3) = (
                         simd.splat(&p[i0]),
                         simd.splat(&p[i1]),
                         simd.splat(&p[i2]),
                         simd.splat(&p[i3]),
-                    ));
-                    let (beta0, beta1, beta2, beta3) = ((
+                    );
+                    let (beta0, beta1, beta2, beta3) = (
                         simd.splat(&beta[i0]),
                         simd.splat(&beta[i1]),
                         simd.splat(&beta[i2]),
                         simd.splat(&beta[i3]),
-                    ));
-                    let (gamma0, gamma1, gamma2, gamma3) = ((
+                    );
+                    let (gamma0, gamma1, gamma2, gamma3) = (
                         simd.splat_real(&real(gamma[i0])),
                         simd.splat_real(&real(gamma[i1])),
                         simd.splat_real(&real(gamma[i2])),
                         simd.splat_real(&real(gamma[i3])),
-                    ));
+                    );
 
                     macro_rules! simd {
                         ($i: expr) => {{
@@ -248,14 +248,14 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
 
     match (i0, i1, i2, i3) {
         (Some(i0), None, None, None) => {
-            let p0 = (&p[i0]);
-            let beta0 = (&beta[i0]);
-            let gamma0 = (&gamma[i0]);
+            let p0 = &p[i0];
+            let beta0 = &beta[i0];
+            let gamma0 = &gamma[i0];
 
             for i in body {
                 {
-                    let mut l = (copy(L[i]));
-                    let mut w0 = (copy(W[(i, i0)]));
+                    let mut l = copy(L[i]);
+                    let mut w0 = copy(W[(i, i0)]);
 
                     w0 = (p0 * l + w0);
                     l = (beta0 * w0 + l * gamma0);
@@ -266,15 +266,15 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             }
         }
         (Some(i0), Some(i1), None, None) => {
-            let (p0, p1) = ((&p[i0], &p[i1]));
-            let (beta0, beta1) = ((&beta[i0], &beta[i1]));
-            let (gamma0, gamma1) = ((&gamma[i0], &gamma[i1]));
+            let (p0, p1) = (&p[i0], &p[i1]);
+            let (beta0, beta1) = (&beta[i0], &beta[i1]);
+            let (gamma0, gamma1) = (&gamma[i0], &gamma[i1]);
 
             for i in body {
                 {
-                    let mut l = (copy(L[i]));
-                    let mut w0 = (copy(W[(i, i0)]));
-                    let mut w1 = (copy(W[(i, i1)]));
+                    let mut l = copy(L[i]);
+                    let mut w0 = copy(W[(i, i0)]);
+                    let mut w1 = copy(W[(i, i1)]);
 
                     w0 = (p0 * l + w0);
                     l = (beta0 * w0 + l * gamma0);
@@ -288,16 +288,16 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             }
         }
         (Some(i0), Some(i1), Some(i2), None) => {
-            let (p0, p1, p2) = ((&p[i0], &p[i1], &p[i2]));
-            let (beta0, beta1, beta2) = ((&beta[i0], &beta[i1], &beta[i2]));
-            let (gamma0, gamma1, gamma2) = ((&gamma[i0], &gamma[i1], &gamma[i2]));
+            let (p0, p1, p2) = (&p[i0], &p[i1], &p[i2]);
+            let (beta0, beta1, beta2) = (&beta[i0], &beta[i1], &beta[i2]);
+            let (gamma0, gamma1, gamma2) = (&gamma[i0], &gamma[i1], &gamma[i2]);
 
             for i in body {
                 {
-                    let mut l = (copy(L[i]));
-                    let mut w0 = (copy(W[(i, i0)]));
-                    let mut w1 = (copy(W[(i, i1)]));
-                    let mut w2 = (copy(W[(i, i2)]));
+                    let mut l = copy(L[i]);
+                    let mut w0 = copy(W[(i, i0)]);
+                    let mut w1 = copy(W[(i, i1)]);
+                    let mut w2 = copy(W[(i, i2)]);
 
                     w0 = (p0 * l + w0);
                     l = (beta0 * w0 + l * gamma0);
@@ -314,18 +314,18 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             }
         }
         (Some(i0), Some(i1), Some(i2), Some(i3)) => {
-            let (p0, p1, p2, p3) = ((&p[i0], &p[i1], &p[i2], &p[i3]));
-            let (beta0, beta1, beta2, beta3) = ((&beta[i0], &beta[i1], &beta[i2], &beta[i3]));
+            let (p0, p1, p2, p3) = (&p[i0], &p[i1], &p[i2], &p[i3]);
+            let (beta0, beta1, beta2, beta3) = (&beta[i0], &beta[i1], &beta[i2], &beta[i3]);
             let (gamma0, gamma1, gamma2, gamma3) =
-                ((&gamma[i0], &gamma[i1], &gamma[i2], &gamma[i3]));
+                (&gamma[i0], &gamma[i1], &gamma[i2], &gamma[i3]);
 
             for i in body {
                 {
-                    let mut l = (copy(L[i]));
-                    let mut w0 = (copy(W[(i, i0)]));
-                    let mut w1 = (copy(W[(i, i1)]));
-                    let mut w2 = (copy(W[(i, i2)]));
-                    let mut w3 = (copy(W[(i, i3)]));
+                    let mut l = copy(L[i]);
+                    let mut w0 = copy(W[(i, i0)]);
+                    let mut w1 = copy(W[(i, i1)]);
+                    let mut w2 = copy(W[(i, i2)]);
+                    let mut w3 = copy(W[(i, i3)]);
 
                     w0 = (p0 * l + w0);
                     l = (beta0 * w0 + l * gamma0);
@@ -402,12 +402,12 @@ impl<'N, 'R, T: ComplexField> RankRUpdate<'_, 'N, 'R, T> {
                             let mut gamma = gamma.rb_mut().col_mut(0);
 
                             for k in r0 {
-                                let mut p = p.rb_mut().at_mut(r0.from_global(k));
-                                let mut beta = beta.rb_mut().at_mut(r0.from_global(k));
-                                let mut gamma = gamma.rb_mut().at_mut(r0.from_global(k));
+                                let p = p.rb_mut().at_mut(r0.from_global(k));
+                                let beta = beta.rb_mut().at_mut(r0.from_global(k));
+                                let gamma = gamma.rb_mut().at_mut(r0.from_global(k));
 
-                                let mut alpha = alpha.rb_mut().at_mut(k.local());
-                                let mut d = L_col.rb_mut().at_mut(j);
+                                let alpha = alpha.rb_mut().at_mut(k.local());
+                                let d = L_col.rb_mut().at_mut(j);
 
                                 let w = W.rb().col(k.local());
 
