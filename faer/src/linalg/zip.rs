@@ -292,9 +292,9 @@ pub trait MatIndex {
 pub trait SliceFamily<'a, T, Outlives = &'a Self> {
     type Slice;
 }
-pub struct Slice<T>(T);
-pub struct SliceRef<'b, T>(&'b T);
-pub struct SliceMut<'b, T>(&'b mut T);
+pub struct Slice<T>(pub T);
+pub struct SliceRef<'b, T>(pub &'b T);
+pub struct SliceMut<'b, T>(pub &'b mut T);
 
 impl<'a, T> SliceFamily<'a, T> for Slice<T> {
     type Slice = &'a [T];

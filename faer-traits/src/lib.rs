@@ -194,6 +194,7 @@ pub trait DivByRef<Rhs = Self> {
 trait ByRefOptIn: Copy {}
 
 impl ByRefOptIn for usize {}
+impl ByRefOptIn for isize {}
 impl ByRefOptIn for i8 {}
 impl ByRefOptIn for f64 {}
 impl ByRefOptIn for f32 {}

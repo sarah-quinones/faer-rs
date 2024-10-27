@@ -6,7 +6,7 @@ use syn::{
     punctuated::Punctuated,
     token::Comma,
     visit_mut::{self, VisitMut},
-    Expr, ExprCall, ExprMethodCall, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
+    Expr, ExprCall, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
 };
 
 struct MigrationCtx(HashMap<&'static str, &'static str>);
@@ -34,20 +34,8 @@ impl visit_mut::VisitMut for MigrationCtx {
             Expr::MethodCall(call) if call.method.to_string().starts_with("faer_") => {
                 if let Some(new_method) = self.0.get(&*call.method.to_string()).map(|x| &**x) {
                     *i = math_expr(
-                        ident_expr(&Ident::new("ctx", call.method.span())),
                         &Ident::new(new_method, call.method.span()),
-                        std::iter::once(&*call.receiver)
-                            .chain(call.args.iter())
-                            .map(|x| {
-                                Expr::Reference(ExprReference {
-                                    attrs: vec![],
-                                    and_token: Default::default(),
-                                    mutability: None,
-                                    expr: Box::new(x.clone()),
-                                })
-                            })
-                            .collect::<Vec<_>>()
-                            .iter(),
+                        std::iter::once(&*call.receiver).chain(call.args.iter()),
                     )
                 }
             }
@@ -191,25 +179,13 @@ impl visit_mut::VisitMut for MathCtx {
     }
 }
 
-fn math_expr<'a>(receiver: Expr, method: &Ident, args: impl Iterator<Item = &'a Expr>) -> Expr {
-    Expr::MethodCall(ExprMethodCall {
+fn math_expr<'a>(method: &Ident, args: impl Iterator<Item = &'a Expr>) -> Expr {
+    Expr::Call(ExprCall {
         attrs: vec![],
-        receiver: Box::new(receiver),
-        dot_token: Default::default(),
-        method: method.clone(),
-        turbofish: None,
+
         paren_token: Default::default(),
-        args: args
-            .cloned()
-            .map(|expr| {
-                Expr::Reference(ExprReference {
-                    attrs: vec![],
-                    and_token: Default::default(),
-                    mutability: None,
-                    expr: Box::new(expr),
-                })
-            })
-            .collect(),
+        args: args.cloned().collect(),
+        func: Box::new(ident_expr(method)),
     })
 }
 

@@ -164,8 +164,8 @@ impl<T> RawMat<T> {
             return Err(err);
         }
 
-        let mut layout = StackReq::empty();
-        let mut row_capacity = row_capacity;
+        let layout;
+        let row_capacity;
         let ptr = {
             let (ptr, new_row_capacity, _, unit_layout) = alloc.unwrap().into_raw_parts();
             row_capacity = new_row_capacity;
@@ -318,19 +318,17 @@ impl<T, Rows: Shape, Cols: Shape> Drop for Mat<T, Rows, Cols> {
     fn drop(&mut self) {
         if const { core::mem::needs_drop::<T>() } {
             if self.nrows.unbound() > 0 && self.ncols.unbound() > 0 {
-                unsafe {
-                    let size = size_of::<T>();
-                    let ptr = self.raw.ptr.as_ptr();
-                    let row_capacity = self.raw.row_capacity;
-                    let stride = row_capacity * size;
+                let size = size_of::<T>();
+                let ptr = self.raw.ptr.as_ptr();
+                let row_capacity = self.raw.row_capacity;
+                let stride = row_capacity * size;
 
-                    drop(DropMat {
-                        ptr,
-                        nrows: self.nrows.unbound(),
-                        ncols: self.ncols.unbound(),
-                        byte_col_stride: stride,
-                    })
-                }
+                drop(DropMat {
+                    ptr,
+                    nrows: self.nrows.unbound(),
+                    ncols: self.ncols.unbound(),
+                    byte_col_stride: stride,
+                })
             }
         }
     }

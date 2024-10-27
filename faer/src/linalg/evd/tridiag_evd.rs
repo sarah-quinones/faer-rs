@@ -23,22 +23,20 @@ pub enum EvdError {
 
 #[math]
 #[allow(dead_code)]
-fn tridiag_to_mat<C: RealContainer, T: RealField<C, MathCtx: Default>>(
-    diag: ColRef<'_, C, T, usize, ContiguousFwd>,
-    offdiag: ColRef<'_, C, T, usize, ContiguousFwd>,
-) -> Mat<C, T, usize, usize> {
+fn tridiag_to_mat<T: RealField>(
+    diag: ColRef<'_, T, usize, ContiguousFwd>,
+    offdiag: ColRef<'_, T, usize, ContiguousFwd>,
+) -> Mat<T, usize, usize> {
     let n = diag.nrows();
-    let ctx: &Ctx<C, T> = &ctx();
-    let mut m = Mat::zeros_with(ctx, n, n);
+    let mut m = Mat::zeros(n, n);
 
-    help!(C);
     {
         let mut m = m.as_mut();
         for i in 0..n {
-            write1!(m[(i, i)] = math(copy(diag[i])));
+            (m[(i, i)] = copy(diag[i]));
             if i + 1 < n {
-                write1!(m[(i + 1, i)] = math(copy(offdiag[i])));
-                write1!(m[(i, i + 1)] = math(copy(offdiag[i])));
+                (m[(i + 1, i)] = copy(offdiag[i]));
+                (m[(i, i + 1)] = copy(offdiag[i]));
             }
         }
     }
@@ -46,13 +44,11 @@ fn tridiag_to_mat<C: RealContainer, T: RealField<C, MathCtx: Default>>(
 }
 
 #[math]
-fn qr_algorithm<C: RealContainer, T: RealField<C>>(
-    ctx: &Ctx<C, T>,
-    diag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    offdiag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    u: Option<MatMut<'_, C, T, usize, usize>>,
+fn qr_algorithm<T: RealField>(
+    diag: ColMut<'_, T, usize, ContiguousFwd>,
+    offdiag: ColMut<'_, T, usize, ContiguousFwd>,
+    u: Option<MatMut<'_, T, usize, usize>>,
 ) -> Result<(), EvdError> {
-    help!(C);
     let n = diag.nrows();
 
     let mut u = u;
@@ -60,112 +56,112 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
     let mut offdiag = offdiag;
 
     if let Some(mut u) = u.rb_mut() {
-        u.fill(math(zero()));
-        u.diagonal_mut().fill(math(one()));
+        u.fill(zero());
+        u.diagonal_mut().fill(one());
     }
 
     if n <= 1 {
         return Ok(());
     }
 
-    let eps = math.eps();
-    let sml = math.min_positive();
+    let eps = eps();
+    let sml = min_positive();
 
     if n == 2 {
-        let a = math(copy(diag[0]));
-        let d = math(copy(diag[1]));
-        let b = math(copy(offdiag[0]));
+        let a = copy(diag[0]);
+        let d = copy(diag[1]);
+        let b = copy(offdiag[0]);
 
-        let half = math.from_f64(0.5);
+        let half = from_f64(0.5);
 
-        let t0 = math(hypot(a - d, b * from_f64(2.0)) * half);
-        let t1 = math((a + d) * half);
-        let r0 = math(t1 - t0);
-        let r1 = math(t1 + t0);
+        let t0 = hypot(a - d, b * from_f64(2.0)) * half;
+        let t1 = (a + d) * half;
+        let r0 = t1 - t0;
+        let r1 = t1 + t0;
 
-        let tol = math(max(abs(r0), abs(r1)) * eps);
+        let tol = max(abs(r0), abs(r1)) * eps;
 
         if let Some(mut u) = u.rb_mut() {
-            if math(r1 - r0 <= tol) {
-                write1!(u[(0, 0)] = math(one()));
-                write1!(u[(1, 0)] = math(zero()));
-                write1!(u[(0, 1)] = math(zero()));
-                write1!(u[(1, 1)] = math(one()));
-            } else if math(abs(b) <= tol) {
-                if math(diag[0] < diag[1]) {
-                    write1!(u[(0, 0)] = math(one()));
-                    write1!(u[(1, 0)] = math(zero()));
-                    write1!(u[(0, 1)] = math(zero()));
-                    write1!(u[(1, 1)] = math(one()));
+            if r1 - r0 <= tol {
+                u[(0, 0)] = one();
+                u[(1, 0)] = zero();
+                u[(0, 1)] = zero();
+                u[(1, 1)] = one();
+            } else if abs(b) <= tol {
+                if diag[0] < diag[1] {
+                    u[(0, 0)] = one();
+                    u[(1, 0)] = zero();
+                    u[(0, 1)] = zero();
+                    u[(1, 1)] = one();
                 } else {
-                    write1!(u[(0, 0)] = math(zero()));
-                    write1!(u[(1, 0)] = math(one()));
-                    write1!(u[(0, 1)] = math(one()));
-                    write1!(u[(1, 1)] = math(zero()));
+                    u[(0, 0)] = zero();
+                    u[(1, 0)] = one();
+                    u[(0, 1)] = one();
+                    u[(1, 1)] = zero();
                 }
             } else {
-                let tau = math(((d - a) / b) * half);
-                let mut t = math(recip(abs(tau) + hypot(one(), tau)));
-                if math(lt_zero(tau)) {
-                    t = math(-t);
+                let tau = ((d - a) / b) * half;
+                let mut t = recip(abs(tau) + hypot(one(), tau));
+                if tau < zero() {
+                    t = -t;
                 }
 
-                let c = math(hypot(one(), t));
-                let s = math(c * t);
+                let c = hypot(one(), t);
+                let s = c * t;
 
-                let r = math(hypot(c, s));
-                let c = math(c / r);
-                let s = math(s / r);
+                let r = hypot(c, s);
+                let c = c / r;
+                let s = s / r;
 
-                let r0_r = math((c * a - s * b) / c);
-                if math(abs(r0 - r0_r) < r1 - r0_r) {
-                    write1!(u[(0, 0)] = math(copy(c)));
-                    write1!(u[(1, 0)] = math(-(s)));
-                    write1!(u[(0, 1)] = math(copy(s)));
-                    write1!(u[(1, 1)] = math(copy(c)));
+                let r0_r = (c * a - s * b) / c;
+                if abs(r0 - r0_r) < r1 - r0_r {
+                    u[(0, 0)] = copy(c);
+                    u[(1, 0)] = -(s);
+                    u[(0, 1)] = copy(s);
+                    u[(1, 1)] = copy(c);
                 } else {
-                    write1!(u[(0, 1)] = math(copy(c)));
-                    write1!(u[(1, 1)] = math(-(s)));
-                    write1!(u[(0, 0)] = math(copy(s)));
-                    write1!(u[(1, 0)] = math(copy(c)));
+                    u[(0, 1)] = copy(c);
+                    u[(1, 1)] = -(s);
+                    u[(0, 0)] = copy(s);
+                    u[(1, 0)] = copy(c);
                 }
             }
         }
 
-        write1!(diag[0] = r0);
-        write1!(diag[1] = r1);
+        (diag[0] = r0);
+        (diag[1] = r1);
 
         return Ok(());
     }
 
-    let max = math.max(diag.norm_max_with(ctx), offdiag.norm_max_with(ctx));
-    if math.is_zero(max) {
+    let max = max(diag.norm_max(), offdiag.norm_max());
+    if max == zero() {
         return Ok(());
     }
-    let max_inv = math(recip(max));
+    let max_inv = recip(max);
 
-    for mut x in diag.rb_mut().iter_mut() {
-        write1!(x, math(x * max_inv));
+    for x in diag.rb_mut().iter_mut() {
+        (*x = x * max_inv);
     }
-    for mut x in offdiag.rb_mut().iter_mut() {
-        write1!(x, math(x * max_inv));
+    for x in offdiag.rb_mut().iter_mut() {
+        *x = x * max_inv;
     }
 
     let mut end = n - 1;
     let mut start = 0;
 
-    let max_iters = Ord::max(30, ctx.nbits() / 2)
+    let max_iters = Ord::max(30, nbits::<T>() / 2)
         .saturating_mul(n)
         .saturating_mul(n);
 
     for iter in 0..max_iters {
         for i in start..end {
-            if math(abs(offdiag[i]) < sml || abs(offdiag[i]) < eps * hypot(diag[i], diag[i + 1])) {
-                write1!(offdiag[i] = math.zero());
+            if abs(offdiag[i]) < sml || abs(offdiag[i]) < eps * hypot(diag[i], diag[i + 1]) {
+                (offdiag[i] = zero());
             }
         }
 
-        while end > 0 && math(is_zero(offdiag[end - 1])) {
+        while end > 0 && (offdiag[end - 1] == zero()) {
             end -= 1;
         }
 
@@ -174,73 +170,69 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
         }
 
         if iter + 1 == max_iters {
-            for mut x in diag.rb_mut().iter_mut() {
-                write1!(x, math(x * max));
+            for x in diag.rb_mut().iter_mut() {
+                *x = x * max;
             }
-            for mut x in offdiag.rb_mut().iter_mut() {
-                write1!(x, math(x * max));
+            for x in offdiag.rb_mut().iter_mut() {
+                *x = x * max;
             }
 
             return Err(EvdError::NoConvergence);
         }
 
         start = end - 1;
-        while start > 0 && math(!is_zero(offdiag[start - 1])) {
+        while start > 0 && !(offdiag[start - 1] == zero()) {
             start -= 1;
         }
 
         {
             // Wilkinson shift
-            let td = math((diag[end - 1] - diag[end]) * from_f64(0.5));
-            let e = math(copy(offdiag[end - 1]));
-            let mut mu = math(copy(diag[end]));
+            let td = (diag[end - 1] - diag[end]) * from_f64(0.5);
+            let e = copy(offdiag[end - 1]);
+            let mut mu = copy(diag[end]);
 
-            if math(is_zero(td)) {
-                mu = math(mu - abs(e));
-            } else if math(!is_zero(e)) {
-                let e2 = math(abs2(e));
-                let h = math(hypot(td, e));
-                let h = math(if gt_zero(td) { copy(h) } else { -h });
-                math(if is_zero(e2) {
+            if td == zero() {
+                mu = mu - abs(e);
+            } else if !(e == zero()) {
+                let e2 = abs2(e);
+                let h = hypot(td, e);
+                let h = if td > zero() { copy(h) } else { -h };
+                if e2 == zero() {
                     mu = mu - e / ((td + h) / e)
                 } else {
                     mu = mu - e2 / (td + h)
-                });
+                };
             }
 
-            let mut x = math(diag[start] - mu);
-            let mut z = math(copy(offdiag[start]));
+            let mut x = diag[start] - mu;
+            let mut z = copy(offdiag[start]);
 
             let mut k = start;
-            while k < end && math(!is_zero(z)) {
-                let rot = JacobiRotation::make_givens(ctx, math.copy(x), math.copy(z));
+            while k < end && !(z == zero()) {
+                let rot = JacobiRotation::make_givens(copy(x), copy(z));
 
                 // T = G' T G
-                let sdk = math(rot.s * diag[k] + rot.c * offdiag[k]);
-                let dkp1 = math(rot.s * offdiag[k] + rot.c * diag[k + 1]);
+                let sdk = rot.s * diag[k] + rot.c * offdiag[k];
+                let dkp1 = rot.s * offdiag[k] + rot.c * diag[k + 1];
 
-                write1!(
-                    diag[k] = math(
-                        rot.c * (rot.c * diag[k] - rot.s * offdiag[k])
-                            - rot.s * (rot.c * offdiag[k] - rot.s * diag[k + 1])
-                    )
-                );
-                write1!(diag[k + 1] = math(rot.s * sdk + rot.c * dkp1));
-                write1!(offdiag[k] = math(rot.c * sdk - rot.s * dkp1));
+                (diag[k] = rot.c * (rot.c * diag[k] - rot.s * offdiag[k])
+                    - rot.s * (rot.c * offdiag[k] - rot.s * diag[k + 1]));
+                (diag[k + 1] = rot.s * sdk + rot.c * dkp1);
+                (offdiag[k] = rot.c * sdk - rot.s * dkp1);
 
                 if k > start {
-                    write1!(offdiag[k - 1] = math(rot.c * offdiag[k - 1] - rot.s * z));
+                    (offdiag[k - 1] = rot.c * offdiag[k - 1] - rot.s * z);
                 }
 
-                x = math(copy(offdiag[k]));
+                x = copy(offdiag[k]);
 
                 if k < end - 1 {
-                    z = math(-rot.s * offdiag[k + 1]);
-                    write1!(offdiag[k + 1] = math(rot.c * offdiag[k + 1]));
+                    z = -rot.s * offdiag[k + 1];
+                    (offdiag[k + 1] = rot.c * offdiag[k + 1]);
                 }
 
                 if let Some(u) = u.rb_mut() {
-                    rot.apply_on_the_right_in_place(ctx, u.two_cols_mut(k + 1, k));
+                    rot.apply_on_the_right_in_place(u.two_cols_mut(k + 1, k));
                 }
                 k += 1;
             }
@@ -249,41 +241,40 @@ fn qr_algorithm<C: RealContainer, T: RealField<C>>(
 
     for i in 0..n - 1 {
         let mut idx = i;
-        let mut min = math(copy(diag[i]));
+        let mut min = copy(diag[i]);
 
         for k in i + 1..n {
-            if math(diag[k] < min) {
+            if diag[k] < min {
                 idx = k;
-                min = math(copy(diag[k]));
+                min = copy(diag[k]);
             }
         }
 
         if idx != i {
-            let (a, b) = math((copy(diag[i]), copy(diag[idx])));
-            write1!(diag[i] = b);
-            write1!(diag[idx] = a);
+            let (a, b) = (copy(diag[i]), copy(diag[idx]));
+            (diag[i] = b);
+            (diag[idx] = a);
             if let Some(mut u) = u.rb_mut() {
                 swap_cols_idx(u.rb_mut(), i, idx);
             }
         }
     }
 
-    for mut x in diag.rb_mut().iter_mut() {
-        write1!(x, math(x * max));
+    for x in diag.rb_mut().iter_mut() {
+        (*x = x * max);
     }
 
     Ok(())
 }
 
 #[math]
-fn secular_eq<C: RealContainer, T: RealField<C>>(
-    ctx: &Ctx<C, T>,
-    shift: C::Of<T>,
-    mu: C::Of<T>,
-    d: ColRef<'_, C, T, usize, ContiguousFwd>,
-    z: ColRef<'_, C, T, usize, ContiguousFwd>,
-    rho_recip: C::Of<T>,
-) -> C::Of<T> {
+fn secular_eq<T: RealField>(
+    shift: T,
+    mu: T,
+    d: ColRef<'_, T, usize, ContiguousFwd>,
+    z: ColRef<'_, T, usize, ContiguousFwd>,
+    rho_recip: T,
+) -> T {
     with_dim!(n, d.nrows());
     let d = d.as_row_shape(n);
     let z = z.as_row_shape(n);
@@ -291,94 +282,88 @@ fn secular_eq<C: RealContainer, T: RealField<C>>(
     let mut res = rho_recip;
 
     for i in n.indices() {
-        let d = math(d[i]);
-        let z = math(z[i]);
+        let d = copy(d[i]);
+        let z = copy(z[i]);
 
-        res = math(res + z * (z / ((d - shift) - mu)));
+        res = res + z * (z / ((d - shift) - mu));
     }
 
     res
 }
 
 #[math]
-fn batch_secular_eq<const N: usize, C: RealContainer, T: RealField<C>>(
-    ctx: &Ctx<C, T>,
-    shift: &[C::Of<T>; N],
-    mu: &[C::Of<T>; N],
-    d: ColRef<'_, C, T, usize, ContiguousFwd>,
-    z: ColRef<'_, C, T, usize, ContiguousFwd>,
-    rho_recip: C::Of<T>,
-) -> [C::Of<T>; N] {
+fn batch_secular_eq<const N: usize, T: RealField>(
+    shift: &[T; N],
+    mu: &[T; N],
+    d: ColRef<'_, T, usize, ContiguousFwd>,
+    z: ColRef<'_, T, usize, ContiguousFwd>,
+    rho_recip: T,
+) -> [T; N] {
     with_dim!(n, d.nrows());
     let d = d.as_row_shape(n);
     let z = z.as_row_shape(n);
 
-    let mut res = [(); N].map(|_| math(copy(rho_recip)));
+    let mut res = [(); N].map(|_| copy(rho_recip));
     for i in n.indices() {
-        let d = math(d[i]);
-        let z = math(z[i]);
+        let d = copy(d[i]);
+        let z = copy(z[i]);
 
         for ((res, mu), shift) in res.iter_mut().zip(mu.iter()).zip(shift.iter()) {
-            *res = math(res + z * (z / ((d - *shift) - *mu)));
+            *res = res + z * (z / ((d - *shift) - *mu));
         }
     }
     res
 }
 
 #[math]
-fn compute_eigenvalues<C: RealContainer, T: RealField<C>>(
-    ctx: &Ctx<C, T>,
-    mut mus: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut shifts: ColMut<'_, C, T, usize, ContiguousFwd>,
-    d: ColRef<'_, C, T, usize, ContiguousFwd>,
-    z: ColRef<'_, C, T, usize, ContiguousFwd>,
-    rho: C::Of<T>,
+fn compute_eigenvalues<T: RealField>(
+    mut mus: ColMut<'_, T, usize, ContiguousFwd>,
+    mut shifts: ColMut<'_, T, usize, ContiguousFwd>,
+    d: ColRef<'_, T, usize, ContiguousFwd>,
+    z: ColRef<'_, T, usize, ContiguousFwd>,
+    rho: T,
     non_deflated: usize,
 ) {
     let n = non_deflated;
     let full_n = d.nrows();
 
-    let rho_recip = math.recip(rho);
-
-    help!(C);
+    let rho_recip = recip(rho);
 
     for i in 0..n {
-        let left = math(copy(d[i]));
+        let left = copy(d[i]);
         let last = i == n - 1;
 
         let right = if last {
-            math(d[i] + rho * z.norm_l2_squared_with(ctx))
+            d[i] + rho * z.norm_l2_squared()
         } else {
-            math(copy(d[i + 1]))
+            copy(d[i + 1])
         };
 
         let d = d.subrows(0, n);
         let z = z.subrows(0, n);
 
         let (shift, mu) = secular_eq_root_finder(
-            ctx,
-            &|ctx, shift, mu| secular_eq(ctx, shift, mu, d, z, math(copy(rho_recip))),
-            &|ctx, shift, mu| batch_secular_eq(ctx, shift, mu, d, z, math(copy(rho_recip))),
+            &|shift, mu| secular_eq(shift, mu, d, z, copy(rho_recip)),
+            &|shift, mu| batch_secular_eq(shift, mu, d, z, copy(rho_recip)),
             left,
             right,
             last,
         );
 
-        write1!(shifts[i] = shift);
-        write1!(mus[i] = mu);
+        (shifts[i] = shift);
+        (mus[i] = mu);
     }
     for i in n..full_n {
-        write1!(shifts[i] = math.zero());
-        write1!(mus[i] = math(copy(d[i])));
+        (shifts[i] = zero());
+        (mus[i] = copy(d[i]));
     }
 }
 
 #[math]
-fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
-    ctx: &Ctx<C, T>,
-    mut diag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut offdiag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut u: MatMut<'_, C, T, usize, usize>,
+fn divide_and_conquer_recurse<T: RealField>(
+    mut diag: ColMut<'_, T, usize, ContiguousFwd>,
+    mut offdiag: ColMut<'_, T, usize, ContiguousFwd>,
+    mut u: MatMut<'_, T, usize, usize>,
 
     par: Par,
 
@@ -387,33 +372,31 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     pr: &mut [usize],
     run_info: &mut [usize],
 
-    mut z: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut permuted_diag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut permuted_z: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut householder: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut mus: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut shifts: ColMut<'_, C, T, usize, ContiguousFwd>,
-    mut repaired_u: MatMut<'_, C, T, usize, usize, ContiguousFwd>,
-    mut tmp: MatMut<'_, C, T, usize, usize, ContiguousFwd>,
+    mut z: ColMut<'_, T, usize, ContiguousFwd>,
+    mut permuted_diag: ColMut<'_, T, usize, ContiguousFwd>,
+    mut permuted_z: ColMut<'_, T, usize, ContiguousFwd>,
+    mut householder: ColMut<'_, T, usize, ContiguousFwd>,
+    mut mus: ColMut<'_, T, usize, ContiguousFwd>,
+    mut shifts: ColMut<'_, T, usize, ContiguousFwd>,
+    mut repaired_u: MatMut<'_, T, usize, usize, ContiguousFwd>,
+    mut tmp: MatMut<'_, T, usize, usize, ContiguousFwd>,
     qr_fallback_threshold: usize,
 ) -> Result<(), EvdError> {
-    help!(C);
-
     let n = diag.nrows();
     let qr_fallback_threshold = Ord::max(qr_fallback_threshold, 4);
 
     if n <= qr_fallback_threshold {
-        return qr_algorithm(ctx, diag, offdiag, Some(u));
+        return qr_algorithm(diag, offdiag, Some(u));
     }
 
     let n1 = n / 2;
-    let mut rho = math(copy(offdiag[n1 - 1]));
+    let mut rho = copy(offdiag[n1 - 1]);
     let (mut diag0, mut diag1) = diag.rb_mut().split_at_row_mut(n1);
     let (offdiag0, offdiag1) = offdiag.rb_mut().split_at_row_mut(n1 - 1);
     let offdiag1 = offdiag1.split_at_row_mut(1).1;
 
-    write1!(diag0[n1 - 1] = math(diag0[n1 - 1] - abs(rho)));
-    write1!(diag1[0] = math(diag1[0] - abs(rho)));
+    (diag0[n1 - 1] = diag0[n1 - 1] - abs(rho));
+    (diag1[0] = diag1[0] - abs(rho));
 
     let (mut u0, _, _, mut u1) = u.rb_mut().split_at_mut(n1, n1);
     {
@@ -436,7 +419,6 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
         join_raw(
             |par| {
                 r0 = divide_and_conquer_recurse(
-                    ctx,
                     diag0,
                     offdiag0,
                     u0.rb_mut(),
@@ -458,7 +440,6 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
             },
             |par| {
                 r1 = divide_and_conquer_recurse(
-                    ctx,
                     diag1,
                     offdiag1,
                     u1.rb_mut(),
@@ -505,19 +486,18 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     // diag([D0 D1]) + rho×z×z.T = Pl_before^-1×H^-1×Pl_after^-1×Q×Pr × E × ...
 
     let (mut z0, mut z1) = z.rb_mut().split_at_row_mut(n1);
-    let zero = math.zero();
 
-    z0.copy_from_with(ctx, u0.rb().row(n1 - 1).transpose());
-    if math(rho < zero) {
-        z!(z1.rb_mut(), u1.rb().row(0).transpose()).for_each(|uz!(mut z, u)| write1!(z, math(-u)));
+    z0.copy_from_with(u0.rb().row(n1 - 1).transpose());
+    if rho < zero() {
+        z!(z1.rb_mut(), u1.rb().row(0).transpose()).for_each(|uz!(z, u)| *z = -u);
     } else {
-        z1.copy_from_with(ctx, u1.rb().row(0).transpose());
+        z1.copy_from_with(u1.rb().row(0).transpose());
     }
 
-    let inv_sqrt2 = math(sqrt(from_f64(0.5)));
-    z!(z.rb_mut()).for_each(|uz!(mut x)| write1!(x, math(x * inv_sqrt2)));
+    let inv_sqrt2 = sqrt(from_f64(0.5));
+    z!(z.rb_mut()).for_each(|uz!(x)| *x = *x * inv_sqrt2);
 
-    rho = math(abs(rho * from_f64(2.0)));
+    rho = abs(rho * from_f64(2.0));
 
     // merge two sorted diagonals
     {
@@ -527,7 +507,7 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
             if i == n1 {
                 *p = n1 + j;
                 j += 1;
-            } else if (j == n - n1) || math(diag[i] < diag[n1 + j]) {
+            } else if (j == n - n1) || diag[i] < diag[n1 + j] {
                 *p = i;
                 i += 1;
             } else {
@@ -540,47 +520,47 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     // permuted_diag = Pl * diag * Pl.T
     // permuted_z = Pl * diag
     for (i, &pl_before) in pl_before.iter().enumerate() {
-        write1!(permuted_diag[i] = math(copy(diag[pl_before])));
+        (permuted_diag[i] = copy(diag[pl_before]));
     }
     for (i, &pl_before) in pl_before.iter().enumerate() {
-        write1!(permuted_z[i] = math(copy(z[pl_before])));
+        (permuted_z[i] = copy(z[pl_before]));
     }
 
-    let dmax = permuted_diag.norm_max_with(ctx);
-    let zmax = permuted_z.norm_max_with(ctx);
+    let dmax = permuted_diag.norm_max();
+    let zmax = permuted_z.norm_max();
 
-    let eps = math.eps();
-    let tol = math(from_f64(8.0) * eps * max(dmax, zmax));
+    let eps = eps();
+    let tol = from_f64(8.0) * eps * max(dmax, zmax);
 
-    if math(rho * zmax <= tol) {
+    if rho * zmax <= tol {
         // fill uninitialized values of u with zeros
         // apply Pl to u on the right
         // copy permuted_diag to diag
         // return
 
         let (mut tmp_tl, mut tmp_tr, mut tmp_bl, mut tmp_br) = tmp.rb_mut().split_at_mut(n1, n1);
-        tmp_tl.copy_from_with(ctx, u0.rb());
-        tmp_br.copy_from_with(ctx, u1.rb());
-        tmp_tr.fill(math.zero());
-        tmp_bl.fill(math.zero());
+        tmp_tl.copy_from_with(u0.rb());
+        tmp_br.copy_from_with(u1.rb());
+        tmp_tr.fill(zero());
+        tmp_bl.fill(zero());
 
         for (j, &pl_before) in pl_before.iter().enumerate() {
             u.rb_mut()
                 .col_mut(j)
-                .copy_from_with(ctx, tmp.rb().col(pl_before));
+                .copy_from_with(tmp.rb().col(pl_before));
         }
 
-        for (j, mut diag) in diag.iter_mut().enumerate() {
-            write1!(diag, math(copy(permuted_diag[j])));
+        for (j, diag) in diag.iter_mut().enumerate() {
+            (*diag = copy(permuted_diag[j]));
         }
 
         return Ok(());
     }
 
     for i in 0..n {
-        let zi = math(copy(permuted_z[i]));
-        if math(abs(rho * zi) <= tol) {
-            write1!(permuted_z[i] = math.zero());
+        let zi = copy(permuted_z[i]);
+        if abs(rho * zi) <= tol {
+            permuted_z[i] = zero();
         }
     }
 
@@ -589,10 +569,10 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     while idx < n {
         let mut run_len = 1;
 
-        let d_prev = math(copy(permuted_diag[idx]));
+        let d_prev = copy(permuted_diag[idx]);
         while idx + run_len < n {
-            if math(permuted_diag[idx + run_len] - d_prev <= tol) {
-                write1!(permuted_diag[idx + run_len] = math.copy(d_prev));
+            if permuted_diag[idx + run_len] - d_prev <= tol {
+                permuted_diag[idx + run_len] = copy(d_prev);
                 run_len += 1;
             } else {
                 break;
@@ -606,18 +586,17 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
             let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
             let mut permuted_z = permuted_z.rb_mut().subrows_mut(idx, run_len);
 
-            householder.copy_from_with(ctx, permuted_z.rb());
+            householder.copy_from_with(permuted_z.rb());
 
             let (tail, head) = householder.rb_mut().split_at_row_mut(run_len - 1);
-            let mut head = head.at_mut(0);
+            let head = head.at_mut(0);
             let (tau, _) = householder::make_householder_in_place(
-                ctx,
-                rb_mut!(head),
+                head,
                 tail.as_dyn_stride_mut().reverse_rows_mut(),
             );
-            permuted_z.fill(math.zero());
-            write1!(permuted_z[run_len - 1] = math.copy(head));
-            write1!(head, tau);
+            permuted_z.fill(zero());
+            (permuted_z[run_len - 1] = copy(head));
+            *head = tau;
         }
 
         idx += run_len;
@@ -627,17 +606,17 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     let mut writer_deflated = 0;
     let mut writer_non_deflated = 0;
     for reader in 0..n {
-        let z = math(copy(permuted_z[reader]));
-        let d = math(copy(permuted_diag[reader]));
+        let z = copy(permuted_z[reader]);
+        let d = copy(permuted_diag[reader]);
 
-        if math(z == zero) {
+        if z == zero() {
             // deflated value, store in diag
-            write1!(diag[writer_deflated] = d);
+            (diag[writer_deflated] = d);
             pr[writer_deflated] = reader;
             writer_deflated += 1;
         } else {
-            write1!(permuted_z[writer_non_deflated] = z);
-            write1!(permuted_diag[writer_non_deflated] = d);
+            (permuted_z[writer_non_deflated] = z);
+            (permuted_diag[writer_non_deflated] = d);
             pl_after[writer_non_deflated] = reader;
             writer_non_deflated += 1;
         }
@@ -647,17 +626,16 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     let deflated = writer_deflated;
 
     for i in 0..deflated {
-        write1!(permuted_diag[non_deflated + i] = math(copy(diag[i])));
+        (permuted_diag[non_deflated + i] = copy(diag[i]));
         pl_after[non_deflated + i] = pr[i];
     }
 
     compute_eigenvalues(
-        ctx,
         mus.rb_mut(),
         shifts.rb_mut(),
         permuted_diag.rb(),
         permuted_z.rb(),
-        math.copy(rho),
+        copy(rho),
         non_deflated,
     );
 
@@ -666,52 +644,54 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
 
     // new_zi^2 = prod(wk - di) / prod_{k != i} (dk - di)
     for i in 0..non_deflated {
-        let di = math(permuted_diag[i]);
-        let mu_i = math(mus[i]);
-        let shift_i = math(shifts[i]);
+        let di = copy(permuted_diag[i]);
+        let mu_i = copy(mus[i]);
+        let shift_i = copy(shifts[i]);
 
         // NOTE: order of operations is crucial here
-        let mut prod = math(mu_i + (shift_i - di));
+        let mut prod = mu_i + (shift_i - di);
 
         (0..i).chain(i + 1..non_deflated).for_each(|k| {
-            let dk = math(permuted_diag[k]);
-            let mu_k = math(mus[k]);
-            let shift_k = math(shifts[k]);
+            let dk = copy(permuted_diag[k]);
+            let mu_k = copy(mus[k]);
+            let shift_k = copy(shifts[k]);
 
-            let numerator = math(mu_k + (shift_k - di));
-            let denominator = math(dk - di);
-            prod = math(prod * (numerator / denominator));
+            let numerator = mu_k + (shift_k - di);
+            let denominator = dk - di;
+            prod = prod * (numerator / denominator);
         });
 
-        let prod = math(sqrt(abs(prod)));
-        let mut zi = permuted_z.rb_mut().at_mut(i);
-        let new_zi = if math(zi < zero) { math(-prod) } else { prod };
+        let prod = sqrt(abs(prod));
+        let zi = permuted_z.rb_mut().at_mut(i);
+        let new_zi = if *zi < zero() { -prod } else { prod };
 
-        write1!(zi, new_zi);
+        *zi = new_zi;
     }
 
     // reuse z to store computed eigenvalues, since it's not used anymore
     let mut eigenvals = z;
     for i in 0..n {
-        write1!(eigenvals[i] = math(mus[i] + shifts[i]));
+        (eigenvals[i] = mus[i] + shifts[i]);
     }
 
     for (i, p) in pr.iter_mut().enumerate() {
         *p = i;
     }
 
-    pr.sort_unstable_by(|&i, &j| match math(cmp(eigenvals[i], eigenvals[j])) {
-        Some(ord) => ord,
-        None => {
-            if math(is_nan(eigenvals[i]) && is_nan(eigenvals[j])) {
-                core::cmp::Ordering::Equal
-            } else if math(is_nan(eigenvals[i])) {
-                core::cmp::Ordering::Greater
-            } else {
-                core::cmp::Ordering::Less
+    pr.sort_unstable_by(
+        |&i, &j| match PartialOrd::partial_cmp(&eigenvals[i], &eigenvals[j]) {
+            Some(ord) => ord,
+            None => {
+                if is_nan(eigenvals[i]) && is_nan(eigenvals[j]) {
+                    core::cmp::Ordering::Equal
+                } else if is_nan(eigenvals[i]) {
+                    core::cmp::Ordering::Greater
+                } else {
+                    core::cmp::Ordering::Less
+                }
             }
-        }
-    });
+        },
+    );
 
     if !applied_householder {
         for p in pl_after.iter_mut() {
@@ -722,25 +702,24 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     // compute singular vectors
     for (j, &pj) in pr.iter().enumerate() {
         if pj >= non_deflated {
-            repaired_u.rb_mut().col_mut(j).fill(math.zero());
-            write1!(repaired_u[(pl_after[pj], j)] = math.one());
+            repaired_u.rb_mut().col_mut(j).fill(zero());
+            (repaired_u[(pl_after[pj], j)] = one());
         } else {
-            let mu_j = math(mus[pj]);
-            let shift_j = math(shifts[pj]);
+            let mu_j = copy(mus[pj]);
+            let shift_j = copy(shifts[pj]);
 
             for (i, &pl_after) in pl_after[..non_deflated].iter().enumerate() {
-                let zi = math(permuted_z[i]);
-                let di = math(permuted_diag[i]);
+                let zi = copy(permuted_z[i]);
+                let di = copy(permuted_diag[i]);
 
-                write1!(repaired_u[(pl_after, j)] = math(zi / ((di - shift_j) - mu_j)));
+                (repaired_u[(pl_after, j)] = zi / ((di - shift_j) - mu_j));
             }
             for &pl_after in &pl_after[non_deflated..non_deflated + deflated] {
-                write1!(repaired_u[(pl_after, j)] = math.zero());
+                (repaired_u[(pl_after, j)] = zero());
             }
 
-            let inv_norm = math.recip(repaired_u.rb().col(j).norm_l2_with(ctx));
-            z!(repaired_u.rb_mut().col_mut(j))
-                .for_each(|unzipped!(mut x)| write1!(x, math(x * inv_norm)));
+            let inv_norm = recip(repaired_u.rb().col(j).norm_l2());
+            z!(repaired_u.rb_mut().col_mut(j)).for_each(|unzipped!(x)| *x = *x * inv_norm);
         }
     }
 
@@ -751,28 +730,24 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
 
             if run_len > 1 {
                 let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
-                let tau = math(copy(householder[run_len - 1]));
-                write1!(householder[run_len - 1] = math.one());
+                let tau = copy(householder[run_len - 1]);
+                (householder[run_len - 1] = one());
                 let householder = householder.rb();
 
                 let mut repaired_u = repaired_u.rb_mut().subrows_mut(idx, run_len);
 
-                let tau_inv = math.recip(tau);
+                let tau_inv = recip(tau);
 
                 for j in 0..n {
                     let mut col = repaired_u.rb_mut().col_mut(j);
-                    let dot = math(
-                        tau_inv
-                            * dot::inner_prod(
-                                ctx,
-                                householder.as_dyn_stride().transpose(),
-                                Conj::No,
-                                col.rb().as_dyn_stride(),
-                                Conj::No,
-                            ),
-                    );
-                    z!(col.rb_mut(), householder)
-                        .for_each(|uz!(mut u, h)| write1!(u, math(u - dot * h)));
+                    let dot = tau_inv
+                        * dot::inner_prod(
+                            householder.as_dyn_stride().transpose(),
+                            Conj::No,
+                            col.rb().as_dyn_stride(),
+                            Conj::No,
+                        );
+                    z!(col.rb_mut(), householder).for_each(|uz!(u, h)| *u = *u - dot * h);
                 }
             }
             idx += run_len;
@@ -780,7 +755,7 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
 
         for j in 0..n {
             for (i, &pl_before) in pl_before.iter().enumerate() {
-                write1!(tmp[(pl_before, j)] = math(copy(repaired_u[(i, j)])));
+                (tmp[(pl_before, j)] = copy(repaired_u[(i, j)]));
             }
         }
 
@@ -804,45 +779,24 @@ fn divide_and_conquer_recurse<C: RealContainer, T: RealField<C>>(
     let (tmp_top, tmp_bot) = tmp.rb_mut().split_at_row_mut(n1);
 
     crate::utils::thread::join_raw(
-        |par| {
-            matmul(
-                ctx,
-                tmp_top,
-                Accum::Replace,
-                u0.rb(),
-                repaired_u_top,
-                math.one(),
-                par,
-            )
-        },
-        |par| {
-            matmul(
-                ctx,
-                tmp_bot,
-                Accum::Replace,
-                u1.rb(),
-                repaired_u_bot,
-                math.one(),
-                par,
-            )
-        },
+        |par| matmul(tmp_top, Accum::Replace, u0.rb(), repaired_u_top, one(), par),
+        |par| matmul(tmp_bot, Accum::Replace, u1.rb(), repaired_u_bot, one(), par),
         par,
     );
 
-    u.copy_from_with(ctx, tmp.rb());
+    u.copy_from_with(tmp.rb());
     for i in 0..n {
-        write1!(diag[i] = math(mus[pr[i]] + shifts[pr[i]]));
+        (diag[i] = mus[pr[i]] + shifts[pr[i]]);
     }
 
     Ok(())
 }
 
 #[math]
-fn divide_and_conquer<C: RealContainer, T: RealField<C>>(
-    ctx: &Ctx<C, T>,
-    diag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    offdiag: ColMut<'_, C, T, usize, ContiguousFwd>,
-    u: MatMut<'_, C, T, usize, usize>,
+fn divide_and_conquer<T: RealField>(
+    diag: ColMut<'_, T, usize, ContiguousFwd>,
+    offdiag: ColMut<'_, T, usize, ContiguousFwd>,
+    u: MatMut<'_, T, usize, usize>,
 
     par: Par,
     stack: &mut DynStack,
@@ -853,17 +807,16 @@ fn divide_and_conquer<C: RealContainer, T: RealField<C>>(
     let (mut pl_after, stack) = stack.make_with(n, |_| 0usize);
     let (mut pr, stack) = stack.make_with(n, |_| 0usize);
     let (mut run_info, stack) = stack.make_with(n, |_| 0usize);
-    let (mut z, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut permuted_diag, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut permuted_z, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut householder, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut mus, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut shifts, stack) = unsafe { temp_mat_uninit(ctx, n, 1, stack) };
-    let (mut repaired_u, stack) = unsafe { temp_mat_uninit(ctx, n, n, stack) };
-    let (mut tmp, _) = unsafe { temp_mat_uninit(ctx, n, n, stack) };
+    let (mut z, stack) = unsafe { temp_mat_uninit(n, 1, stack) };
+    let (mut permuted_diag, stack) = unsafe { temp_mat_uninit(n, 1, stack) };
+    let (mut permuted_z, stack) = unsafe { temp_mat_uninit(n, 1, stack) };
+    let (mut householder, stack) = unsafe { temp_mat_uninit(n, 1, stack) };
+    let (mut mus, stack) = unsafe { temp_mat_uninit(n, 1, stack) };
+    let (mut shifts, stack) = unsafe { temp_mat_uninit(n, 1, stack) };
+    let (mut repaired_u, stack) = unsafe { temp_mat_uninit(n, n, stack) };
+    let (mut tmp, _) = unsafe { temp_mat_uninit(n, n, stack) };
 
     divide_and_conquer_recurse(
-        ctx,
         diag,
         offdiag,
         u,
@@ -900,22 +853,21 @@ fn divide_and_conquer<C: RealContainer, T: RealField<C>>(
     )
 }
 
-fn divide_and_conquer_scratch<C: ComplexContainer, T: ComplexField<C>>(
+fn divide_and_conquer_scratch<T: ComplexField>(
     n: usize,
     par: Par,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = par;
     StackReq::try_all_of([
         StackReq::try_new::<usize>(n)?.try_array(4)?,
-        temp_mat_scratch::<C, T>(n, 1)?.try_array(6)?,
-        temp_mat_scratch::<C, T>(n, n)?.try_array(2)?,
+        temp_mat_scratch::<T>(n, 1)?.try_array(6)?,
+        temp_mat_scratch::<T>(n, n)?.try_array(2)?,
     ])
 }
 
 #[cfg(test)]
 mod evd_qr_tests {
     use dyn_stack::GlobalMemBuffer;
-    use faer_traits::Unit;
 
     use super::*;
     use crate::{assert, utils::approx::*, ColMut, Mat};
@@ -930,7 +882,6 @@ mod evd_qr_tests {
             let mut offdiag = offdiag.to_vec();
 
             qr_algorithm(
-                &ctx(),
                 ColMut::from_slice_mut(&mut diag)
                     .try_as_col_major_mut()
                     .unwrap(),
@@ -957,7 +908,7 @@ mod evd_qr_tests {
                     0.0
                 };
 
-                let approx_eq = ApproxEq::<Unit, f64>::eps();
+                let approx_eq = ApproxEq::<f64>::eps();
                 assert!(reconstructed[(i, j)] ~ target);
             }
         }
@@ -973,7 +924,6 @@ mod evd_qr_tests {
             let mut offdiag = offdiag.to_vec();
 
             divide_and_conquer(
-                &ctx(),
                 ColMut::from_slice_mut(&mut diag)
                     .try_as_col_major_mut()
                     .unwrap(),
@@ -983,7 +933,7 @@ mod evd_qr_tests {
                 u.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    divide_and_conquer_scratch::<Unit, f64>(n, Par::Seq).unwrap(),
+                    divide_and_conquer_scratch::<f64>(n, Par::Seq).unwrap(),
                 )),
                 4,
             )
@@ -1005,7 +955,7 @@ mod evd_qr_tests {
                     0.0
                 };
 
-                let approx_eq = ApproxEq::<Unit, f64>::eps();
+                let approx_eq = ApproxEq::<f64>::eps();
                 assert!(reconstructed[(i, j)] ~ target);
             }
         }

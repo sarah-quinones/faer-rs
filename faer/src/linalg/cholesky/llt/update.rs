@@ -112,8 +112,7 @@ fn rank_update_step_simd<'N, 'R, T: ComplexField>(
                     }
                 }
                 (Some(i0), Some(i1), Some(i2), None) => {
-                    let (p0, p1, p2) =
-                        (simd.splat(&p[i0]), simd.splat(&p[i1]), simd.splat(&p[i2]));
+                    let (p0, p1, p2) = (simd.splat(&p[i0]), simd.splat(&p[i1]), simd.splat(&p[i2]));
                     let (beta0, beta1, beta2) = (
                         simd.splat(&beta[i0]),
                         simd.splat(&beta[i1]),
@@ -257,8 +256,8 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
                     let mut l = copy(L[i]);
                     let mut w0 = copy(W[(i, i0)]);
 
-                    w0 = (p0 * l + w0);
-                    l = (beta0 * w0 + l * gamma0);
+                    w0 = p0 * l + w0;
+                    l = beta0 * w0 + l * gamma0;
 
                     L[i] = l;
                     W[(i, i0)] = w0;
@@ -276,10 +275,10 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
                     let mut w0 = copy(W[(i, i0)]);
                     let mut w1 = copy(W[(i, i1)]);
 
-                    w0 = (p0 * l + w0);
-                    l = (beta0 * w0 + l * gamma0);
-                    w1 = (p1 * l + w1);
-                    l = (beta1 * w1 + l * gamma1);
+                    w0 = p0 * l + w0;
+                    l = beta0 * w0 + l * gamma0;
+                    w1 = p1 * l + w1;
+                    l = beta1 * w1 + l * gamma1;
 
                     L[i] = l;
                     W[(i, i0)] = w0;
@@ -299,12 +298,12 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
                     let mut w1 = copy(W[(i, i1)]);
                     let mut w2 = copy(W[(i, i2)]);
 
-                    w0 = (p0 * l + w0);
-                    l = (beta0 * w0 + l * gamma0);
-                    w1 = (p1 * l + w1);
-                    l = (beta1 * w1 + l * gamma1);
-                    w2 = (p2 * l + w2);
-                    l = (beta2 * w2 + l * gamma2);
+                    w0 = p0 * l + w0;
+                    l = beta0 * w0 + l * gamma0;
+                    w1 = p1 * l + w1;
+                    l = beta1 * w1 + l * gamma1;
+                    w2 = p2 * l + w2;
+                    l = beta2 * w2 + l * gamma2;
 
                     L[i] = l;
                     W[(i, i0)] = w0;
@@ -316,8 +315,7 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
         (Some(i0), Some(i1), Some(i2), Some(i3)) => {
             let (p0, p1, p2, p3) = (&p[i0], &p[i1], &p[i2], &p[i3]);
             let (beta0, beta1, beta2, beta3) = (&beta[i0], &beta[i1], &beta[i2], &beta[i3]);
-            let (gamma0, gamma1, gamma2, gamma3) =
-                (&gamma[i0], &gamma[i1], &gamma[i2], &gamma[i3]);
+            let (gamma0, gamma1, gamma2, gamma3) = (&gamma[i0], &gamma[i1], &gamma[i2], &gamma[i3]);
 
             for i in body {
                 {
@@ -327,14 +325,14 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
                     let mut w2 = copy(W[(i, i2)]);
                     let mut w3 = copy(W[(i, i3)]);
 
-                    w0 = (p0 * l + w0);
-                    l = (beta0 * w0 + l * gamma0);
-                    w1 = (p1 * l + w1);
-                    l = (beta1 * w1 + l * gamma1);
-                    w2 = (p2 * l + w2);
-                    l = (beta2 * w2 + l * gamma2);
-                    w3 = (p3 * l + w3);
-                    l = (beta3 * w3 + l * gamma3);
+                    w0 = p0 * l + w0;
+                    l = beta0 * w0 + l * gamma0;
+                    w1 = p1 * l + w1;
+                    l = beta1 * w1 + l * gamma1;
+                    w2 = p2 * l + w2;
+                    l = beta2 * w2 + l * gamma2;
+                    w3 = p3 * l + w3;
+                    l = beta3 * w3 + l * gamma3;
 
                     L[i] = l;
                     W[(i, i0)] = w0;

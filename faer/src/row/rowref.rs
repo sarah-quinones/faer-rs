@@ -338,7 +338,7 @@ impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug
                 .entries(
                     this.ncols()
                         .indices()
-                        .map(|j| unsafe { crate::hacks::hijack_debug(this.at(j)) }),
+                        .map(|j| crate::hacks::hijack_debug(this.at(j))),
                 )
                 .finish()
         }

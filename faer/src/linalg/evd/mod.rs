@@ -72,7 +72,7 @@ pub fn default_nibble_threshold() -> usize {
     50
 }
 
-pub fn multishift_qr_scratch<C: ComplexContainer, T: ComplexField<C>>(
+pub fn multishift_qr_scratch<T: ComplexField>(
     n: usize,
     nh: usize,
     want_t: bool,
@@ -94,14 +94,14 @@ pub fn multishift_qr_scratch<C: ComplexContainer, T: ComplexField<C>>(
     let nw_max = (n - 3) / 3;
 
     StackReq::try_any_of([
-        hessenberg::hessenberg_in_place_scratch::<C, T>(nw_max, 1, parallelism, Default::default())?,
-        linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<C, T>(
+        hessenberg::hessenberg_in_place_scratch::<T>(nw_max, 1, parallelism, Default::default())?,
+        linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(
             nw_max, nw_max, nw_max,
         )?,
-        linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<C, T>(
+        linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(
             nw_max, nw_max, nw_max,
         )?,
-        temp_mat_scratch::<C, T>(3, nsr)?,
+        temp_mat_scratch::<T>(3, nsr)?,
     ])
 }
 

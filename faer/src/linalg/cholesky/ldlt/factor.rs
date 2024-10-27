@@ -410,7 +410,6 @@ fn cholesky_fallback<'N, T: ComplexField>(
             copy(diag)
         };
         *D = from_real(diag);
-        drop(D);
 
         if diag == zero() || !is_finite(diag) {
             return Err(*j);
@@ -701,8 +700,6 @@ mod tests {
     #[test]
     fn test_cholesky() {
         let rng = &mut StdRng::seed_from_u64(0);
-
-        type T = c64;
 
         for n in [2, 4, 8, 31, 127, 240] {
             with_dim!(N, n);
