@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use diol::prelude::*;
-use faer::{prelude::*, stats::prelude::*, with_dim, Mat, Row};
+use faer::{stats::prelude::*, with_dim, Mat, Row};
 use reborrow::*;
 
 fn bench_new(bencher: Bencher, n: usize) {

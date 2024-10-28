@@ -99,8 +99,8 @@ fn lasy2<T: RealField>(
         let mut xmax = zero();
         for ip in i..4 {
             for jp in i..4 {
-                if abs1(t16.read(ip, jp)) >= xmax {
-                    xmax = abs1(t16.read(ip, jp));
+                if abs1(t16[(ip, jp)]) >= xmax {
+                    xmax = abs1(t16[(ip, jp)]);
                     ipsv = ip;
                     jpsv = jp;
                 }
@@ -109,28 +109,28 @@ fn lasy2<T: RealField>(
         if ipsv != i {
             crate::perm::swap_rows_idx(t16.rb_mut(), ipsv, i);
 
-            let temp = btmp.read(i, 0);
-            btmp.write(i, 0, btmp.read(ipsv, 0));
+            let temp = copy(btmp[(i, 0)]);
+            btmp.write(i, 0, copy(btmp[(ipsv, 0)]));
             btmp.write(ipsv, 0, temp);
         }
         if jpsv != i {
             crate::perm::swap_cols_idx(t16.rb_mut(), jpsv, i);
         }
         jpiv[i] = jpsv;
-        if abs1(t16.read(i, i)) < smin {
+        if abs1(t16[(i, i)]) < smin {
             info = 1;
             t16.write(i, i, copy(smin));
         }
         for j in i + 1..4 {
-            t16.write(j, i, t16.read(j, i) / t16.read(i, i));
-            btmp.write(j, 0, btmp.read(j, 0) - t16.read(j, i) * btmp.read(i, 0));
+            t16.write(j, i, t16[(j, i)] / t16[(i, i)]);
+            btmp.write(j, 0, btmp[(j, 0)] - t16[(j, i)] * btmp[(i, 0)]);
             for k in i + 1..4 {
-                t16.write(j, k, t16.read(j, k) - t16.read(j, i) * t16.read(i, k));
+                t16.write(j, k, t16[(j, k)] - t16[(j, i)] * t16[(i, k)]);
             }
         }
     }
 
-    if abs1(t16.read(3, 3)) < smin {
+    if abs1(t16[(3, 3)]) < smin {
         info = 1;
         t16.write(3, 3, copy(smin));
     }
@@ -147,35 +147,31 @@ fn lasy2<T: RealField>(
                 max(abs1(btmp[(0, 0)]), abs1(btmp[(1, 0)])),
                 max(abs1(btmp[(2, 0)]), abs1(btmp[(3, 0)])),
             );
-        btmp.write(0, 0, btmp.read(0, 0) * scale);
-        btmp.write(1, 0, btmp.read(1, 0) * scale);
-        btmp.write(2, 0, btmp.read(2, 0) * scale);
-        btmp.write(3, 0, btmp.read(3, 0) * scale);
+        btmp.write(0, 0, btmp[(0, 0)] * scale);
+        btmp.write(1, 0, btmp[(1, 0)] * scale);
+        btmp.write(2, 0, btmp[(2, 0)] * scale);
+        btmp.write(3, 0, btmp[(3, 0)] * scale);
     }
 
     for i in 0..4 {
         let k = 3 - i;
-        let temp = recip(t16.read(k, k));
-        tmp.write(k, 0, btmp.read(k, 0) * temp);
+        let temp = recip(t16[(k, k)]);
+        tmp.write(k, 0, btmp[(k, 0)] * temp);
         for j in k + 1..4 {
-            tmp.write(
-                k,
-                0,
-                tmp.read(k, 0) - temp * t16.read(k, j) * tmp.read(j, 0),
-            );
+            tmp.write(k, 0, tmp[(k, 0)] - temp * t16[(k, j)] * tmp[(j, 0)]);
         }
     }
     for i in 0..3 {
         if jpiv[2 - i] != 2 - i {
-            let temp = tmp.read(2 - i, 0);
-            tmp.write(2 - i, 0, tmp.read(jpiv[2 - i], 0));
+            let temp = copy(tmp[(2 - i, 0)]);
+            tmp.write(2 - i, 0, copy(tmp[(jpiv[2 - i], 0)]));
             tmp.write(jpiv[2 - i], 0, temp);
         }
     }
-    x.write(0, 0, tmp.read(0, 0));
-    x.write(1, 0, tmp.read(1, 0));
-    x.write(0, 1, tmp.read(2, 0));
-    x.write(1, 1, tmp.read(3, 0));
+    x.write(0, 0, copy(tmp[(0, 0)]));
+    x.write(1, 0, copy(tmp[(1, 0)]));
+    x.write(0, 1, copy(tmp[(2, 0)]));
+    x.write(1, 1, copy(tmp[(3, 0)]));
 
     let _ = info;
     scale
@@ -219,77 +215,73 @@ fn lahqr_schur22<T: RealField>(
             bcmin = -bcmin;
         }
         let mut scale = max(abs(p), bcmax);
-        let mut z = (((p / scale) * p) + ((bcmax / scale) * bcmin));
+        let mut z = ((p / scale) * p) + ((bcmax / scale) * bcmin);
         if z >= (multpl * eps) {
-            let mut __tmp = (sqrt(scale) * sqrt(z));
+            let mut __tmp = sqrt(scale) * sqrt(z);
             if p < zero() {
                 __tmp = -__tmp;
             }
-            z = (p + __tmp);
-            a = (d + z);
-            d = (d - ((bcmax / z) * bcmin));
-            let tau = sqrt((abs2(c) + abs2(z)));
-            cs = (z / tau);
-            sn = (c / tau);
-            b = (b - c);
+            z = p + __tmp;
+            a = d + z;
+            d = d - ((bcmax / z) * bcmin);
+            let tau = sqrt(abs2(c) + abs2(z));
+            cs = z / tau;
+            sn = c / tau;
+            b = b - c;
             c = zero();
         } else {
-            let mut sigma = (b + c);
+            let mut sigma = b + c;
             for _ in 0..20 {
                 scale = max(abs(temp), abs(sigma));
                 if scale >= safmx2 {
-                    sigma = (sigma * safmn2);
-                    temp = (temp * safmn2);
+                    sigma = sigma * safmn2;
+                    temp = temp * safmn2;
                     continue;
                 }
                 if scale <= safmn2 {
-                    sigma = (sigma * safmx2);
-                    temp = (temp * safmx2);
+                    sigma = sigma * safmx2;
+                    temp = temp * safmx2;
                     continue;
                 }
                 break;
             }
             p = mul_pow2(temp, half);
-            let mut tau = sqrt((abs2(sigma) + abs2(temp)));
-            cs = sqrt((mul_pow2((one + (abs(sigma) / tau)), half)));
-            sn = (-(p / (tau * cs)));
+            let mut tau = sqrt(abs2(sigma) + abs2(temp));
+            cs = sqrt(mul_pow2(one + abs(sigma) / tau, half));
+            sn = -p / (tau * cs);
             if sigma < zero() {
                 sn = -sn;
             }
-            let aa = ((a * cs) + (b * sn));
-            let bb = (((-a) * sn) + (b * cs));
-            let cc = ((c * cs) + (d * sn));
-            let dd = (((-c) * sn) + (d * cs));
-            a = ((aa * cs) + (cc * sn));
-            b = ((bb * cs) + (dd * sn));
-            c = (((-aa) * sn) + (cc * cs));
-            d = (((-bb) * sn) + (dd * cs));
+            let aa = a * cs + b * sn;
+            let bb = -a * sn + b * cs;
+            let cc = c * cs + d * sn;
+            let dd = -c * sn + d * cs;
+            a = aa * cs + cc * sn;
+            b = bb * cs + dd * sn;
+            c = -aa * sn + cc * cs;
+            d = -bb * sn + dd * cs;
             temp = mul_pow2((a + d), half);
             a = copy(temp);
             d = copy(temp);
             if c != zero() && b != zero() && (b > zero()) == (c > zero()) {
                 let sab = sqrt(abs(b));
                 let sac = sqrt(abs(c));
-                p = if c > zero() {
-                    (sab * sac)
-                } else {
-                    ((-sab) * sac)
-                };
-                tau = recip(sqrt(abs((b + c))));
-                a = (temp + p);
-                d = (temp - p);
-                b = (b - c);
+                p = if c > zero() { sab * sac } else { -sab * sac };
+                tau = recip(sqrt(abs(b + c)));
+                a = temp + p;
+                d = temp - p;
+                b = b - c;
                 c = zero();
-                let cs1 = (sab * tau);
-                let sn1 = (sac * tau);
-                temp = ((cs * cs1) - (sn * sn1));
-                sn = ((cs * sn1) + (sn * cs1));
+                let cs1 = sab * tau;
+                let sn1 = sac * tau;
+                temp = cs * cs1 - sn * sn1;
+                sn = cs * sn1 + sn * cs1;
                 cs = temp;
             }
         }
     }
     let (s1, s2) = if c != zero() {
-        let temp = (sqrt(abs(b)) * sqrt(abs(c)));
+        let temp = sqrt(abs(b)) * sqrt(abs(c));
         ((copy(a), copy(temp)), (copy(d), (-temp)))
     } else {
         ((copy(a), zero()), (copy(d), zero()))
@@ -302,37 +294,32 @@ fn lahqr_shiftcolumn<T: RealField>(h: MatRef<'_, T>, mut v: ColMut<'_, T>, s1: (
     let n = h.nrows();
     debug_assert!(v.nrows() == n);
     if n == 2 {
-        let s = ((abs((h.read(0, 0) - s2.0)) + abs(s2.1)) + abs(h.read(1, 0)));
+        let s = abs(h[(0, 0)] - s2.0) + abs(s2.1) + abs(h[(1, 0)]);
         if s == zero() {
             v.write(0, zero());
             v.write(1, zero());
         } else {
-            let h10s = (h.read(1, 0) / s);
-            let v0 = (((h10s * h.read(0, 1))
-                + ((h.read(0, 0) - s1.0) * ((h.read(0, 0) - s2.0) / s)))
-                - (s1.1 * (s2.1 / s)));
-            let v1 = (h10s * (((h.read(0, 0) + h.read(1, 1)) - s1.0) - s2.0));
+            let h10s = h[(1, 0)] / s;
+            let v0 = h10s * h[(0, 1)] + (h[(0, 0)] - s1.0) * ((h[(0, 0)] - s2.0) / s)
+                - s1.1 * (s2.1 / s);
+            let v1 = h10s * (h[(0, 0)] + h[(1, 1)] - s1.0 - s2.0);
             v.write(0, v0);
             v.write(1, v1);
         }
     } else {
-        let s =
-            (((abs((h.read(0, 0) - s2.0)) + abs(s2.1)) + abs(h.read(1, 0))) + abs(h.read(2, 0)));
+        let s = abs(h[(0, 0)] - s2.0) + abs(s2.1) + abs(h[(1, 0)]) + abs(h[(2, 0)]);
         if s == zero() {
             v.write(0, zero());
             v.write(1, zero());
             v.write(2, zero());
         } else {
-            let h10s = (h.read(1, 0) / s);
-            let h20s = (h.read(2, 0) / s);
-            let v0 = (((((h.read(0, 0) - s1.0) * ((h.read(0, 0) - s2.0) / s))
-                - (s1.1 * (s2.1 / s)))
-                + (h.read(0, 1) * h10s))
-                + (h.read(0, 2) * h20s));
-            let v1 =
-                ((h10s * (((h.read(0, 0) + h.read(1, 1)) - s1.0) - s2.0)) + (h.read(1, 2) * h20s));
-            let v2 =
-                ((h20s * (((h.read(0, 0) + h.read(2, 2)) - s1.0) - s2.0)) + (h10s * h.read(2, 1)));
+            let h10s = h[(1, 0)] / s;
+            let h20s = h[(2, 0)] / s;
+            let v0 = (h[(0, 0)] - s1.0) * ((h[(0, 0)] - s2.0) / s) - s1.1 * (s2.1 / s)
+                + h[(0, 1)] * h10s
+                + h[(0, 2)] * h20s;
+            let v1 = h10s * ((h[(0, 0)] + h[(1, 1)]) - s1.0 - s2.0) + h[(1, 2)] * h20s;
+            let v2 = h20s * ((h[(0, 0)] + h[(2, 2)]) - s1.0 - s2.0) + h[(2, 1)] * h10s;
             v.write(0, v0);
             v.write(1, v1);
             v.write(2, v2);
@@ -416,7 +403,7 @@ pub fn schur_swap<T: RealField>(
     let j1 = j0 + 1;
     let j2 = j0 + 2;
     let j3 = j0 + 3;
-    if n1 == 2 && (a.read(j1, j0) == zero()) {
+    if n1 == 2 && (a[(j1, j0)] == zero()) {
         schur_swap(a.rb_mut(), q.rb_mut(), j1, 1, n2);
         schur_swap(a.rb_mut(), q.rb_mut(), j0, 1, n2);
         return 0;
@@ -427,10 +414,10 @@ pub fn schur_swap<T: RealField>(
         return 0;
     }
     if n1 == 1 && n2 == 1 {
-        let t00 = a.read(j0, j0);
-        let t11 = a.read(j1, j1);
-        let temp = a.read(j0, j1);
-        let temp2 = (t11 - t00);
+        let t00 = copy(a[(j0, j0)]);
+        let t11 = copy(a[(j1, j1)]);
+        let temp = copy(a[(j0, j1)]);
+        let temp2 = t11 - t00;
         let (rot, _) = JacobiRotation::rotg(temp, temp2);
         a.write(j1, j1, t00);
         a.write(j0, j0, t11);
@@ -452,54 +439,54 @@ pub fn schur_swap<T: RealField>(
     }
     if n1 == 1 && n2 == 2 {
         stack_mat!(b, 3, 2, T);
-        b.write(0, 0, a.read(j0, j1));
-        b.write(1, 0, (a.read(j1, j1) - a.read(j0, j0)));
-        b.write(2, 0, a.read(j2, j1));
-        b.write(0, 1, a.read(j0, j2));
-        b.write(1, 1, a.read(j1, j2));
-        b.write(2, 1, (a.read(j2, j2) - a.read(j0, j0)));
+        b.write(0, 0, copy(a[(j0, j1)]));
+        b.write(1, 0, a[(j1, j1)] - a[(j0, j0)]);
+        b.write(2, 0, copy(a[(j2, j1)]));
+        b.write(0, 1, copy(a[(j0, j2)]));
+        b.write(1, 1, copy(a[(j1, j2)]));
+        b.write(2, 1, a[(j2, j2)] - a[(j0, j0)]);
         let mut v1 = b.rb_mut().col_mut(0);
         let (head, tail) = v1.rb_mut().split_at_row_mut(1);
         let (tau1, _) = make_householder_in_place(head.at_mut(0), tail);
         let tau1 = recip(tau1);
-        let v11 = b.read(1, 0);
-        let v12 = b.read(2, 0);
-        let sum = ((b.read(0, 1) + (v11 * b.read(1, 1))) + (v12 * b.read(2, 1)));
-        b.write(0, 1, (b.read(0, 1) - (sum * tau1)));
-        b.write(1, 1, (b.read(1, 1) - ((sum * tau1) * v11)));
-        b.write(2, 1, (b.read(2, 1) - ((sum * tau1) * v12)));
+        let v11 = copy(b[(1, 0)]);
+        let v12 = copy(b[(2, 0)]);
+        let sum = b[(0, 1)] + v11 * b[(1, 1)] + v12 * b[(2, 1)];
+        b.write(0, 1, b[(0, 1)] - (sum * tau1));
+        b.write(1, 1, b[(1, 1)] - ((sum * tau1) * v11));
+        b.write(2, 1, b[(2, 1)] - ((sum * tau1) * v12));
         let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2);
         let (head, tail) = v2.rb_mut().split_at_row_mut(1);
         let (tau2, _) = make_householder_in_place(head.at_mut(0), tail);
         let tau2 = recip(tau2);
-        let v21 = v2.read(1);
+        let v21 = copy(v2[1]);
         for j in j0..n {
-            let sum = ((a.read(j0, j) + (v11 * a.read(j1, j))) + (v12 * a.read(j2, j)));
-            a.write(j0, j, (a.read(j0, j) - (sum * tau1)));
-            a.write(j1, j, (a.read(j1, j) - ((sum * tau1) * v11)));
-            a.write(j2, j, (a.read(j2, j) - ((sum * tau1) * v12)));
-            let sum = (a.read(j1, j) + (v21 * a.read(j2, j)));
-            a.write(j1, j, (a.read(j1, j) - (sum * tau2)));
-            a.write(j2, j, (a.read(j2, j) - ((sum * tau2) * v21)));
+            let sum = a[(j0, j)] + v11 * a[(j1, j)] + v12 * a[(j2, j)];
+            a.write(j0, j, a[(j0, j)] - sum * tau1);
+            a.write(j1, j, a[(j1, j)] - sum * tau1 * v11);
+            a.write(j2, j, a[(j2, j)] - sum * tau1 * v12);
+            let sum = a[(j1, j)] + v21 * a[(j2, j)];
+            a.write(j1, j, a[(j1, j)] - sum * tau2);
+            a.write(j2, j, a[(j2, j)] - sum * tau2 * v21);
         }
         for j in 0..j3 {
-            let sum = ((a.read(j, j0) + (v11 * a.read(j, j1))) + (v12 * a.read(j, j2)));
-            a.write(j, j0, (a.read(j, j0) - (sum * tau1)));
-            a.write(j, j1, (a.read(j, j1) - ((sum * tau1) * v11)));
-            a.write(j, j2, (a.read(j, j2) - ((sum * tau1) * v12)));
-            let sum = (a.read(j, j1) + (v21 * a.read(j, j2)));
-            a.write(j, j1, (a.read(j, j1) - (sum * tau2)));
-            a.write(j, j2, (a.read(j, j2) - ((sum * tau2) * v21)));
+            let sum = a[(j, j0)] + v11 * a[(j, j1)] + v12 * a[(j, j2)];
+            a.write(j, j0, a[(j, j0)] - sum * tau1);
+            a.write(j, j1, a[(j, j1)] - sum * tau1 * v11);
+            a.write(j, j2, a[(j, j2)] - sum * tau1 * v12);
+            let sum = a[(j, j1)] + v21 * a[(j, j2)];
+            a.write(j, j1, a[(j, j1)] - sum * tau2);
+            a.write(j, j2, a[(j, j2)] - sum * tau2 * v21);
         }
         if let Some(mut q) = q.rb_mut() {
             for j in 0..n {
-                let sum = ((q.read(j, j0) + (v11 * q.read(j, j1))) + (v12 * q.read(j, j2)));
-                q.write(j, j0, (q.read(j, j0) - (sum * tau1)));
-                q.write(j, j1, (q.read(j, j1) - ((sum * tau1) * v11)));
-                q.write(j, j2, (q.read(j, j2) - ((sum * tau1) * v12)));
-                let sum = (q.read(j, j1) + (v21 * q.read(j, j2)));
-                q.write(j, j1, (q.read(j, j1) - (sum * tau2)));
-                q.write(j, j2, (q.read(j, j2) - ((sum * tau2) * v21)));
+                let sum = q[(j, j0)] + v11 * q[(j, j1)] + v12 * q[(j, j2)];
+                q.write(j, j0, q[(j, j0)] - sum * tau1);
+                q.write(j, j1, q[(j, j1)] - sum * tau1 * v11);
+                q.write(j, j2, q[(j, j2)] - sum * tau1 * v12);
+                let sum = q[(j, j1)] + v21 * q[(j, j2)];
+                q.write(j, j1, q[(j, j1)] - sum * tau2);
+                q.write(j, j2, q[(j, j2)] - sum * tau2 * v21);
             }
         }
         a.write(j2, j0, zero());
@@ -507,54 +494,54 @@ pub fn schur_swap<T: RealField>(
     }
     if n1 == 2 && n2 == 1 {
         stack_mat!(b, 3, 2, T);
-        b.write(0, 0, a.read(j1, j2));
-        b.write(1, 0, (a.read(j1, j1) - a.read(j2, j2)));
-        b.write(2, 0, a.read(j1, j0));
-        b.write(0, 1, a.read(j0, j2));
-        b.write(1, 1, a.read(j0, j1));
-        b.write(2, 1, (a.read(j0, j0) - a.read(j2, j2)));
+        b.write(0, 0, copy(a[(j1, j2)]));
+        b.write(1, 0, a[(j1, j1)] - a[(j2, j2)]);
+        b.write(2, 0, copy(a[(j1, j0)]));
+        b.write(0, 1, copy(a[(j0, j2)]));
+        b.write(1, 1, copy(a[(j0, j1)]));
+        b.write(2, 1, a[(j0, j0)] - a[(j2, j2)]);
         let mut v1 = b.rb_mut().col_mut(0);
         let (head, tail) = v1.rb_mut().split_at_row_mut(1);
         let (tau1, _) = make_householder_in_place(head.at_mut(0), tail);
         let tau1 = recip(tau1);
-        let v11 = v1.read(1);
-        let v12 = v1.read(2);
-        let sum = ((b.read(0, 1) + (v11 * b.read(1, 1))) + (v12 * b.read(2, 1)));
-        b.write(0, 1, (b.read(0, 1) - (sum * tau1)));
-        b.write(1, 1, (b.read(1, 1) - ((sum * tau1) * v11)));
-        b.write(2, 1, (b.read(2, 1) - ((sum * tau1) * v12)));
+        let v11 = copy(v1[1]);
+        let v12 = copy(v1[2]);
+        let sum = b[(0, 1)] + v11 * b[(1, 1)] + v12 * b[(2, 1)];
+        b.write(0, 1, b[(0, 1)] - sum * tau1);
+        b.write(1, 1, b[(1, 1)] - sum * tau1 * v11);
+        b.write(2, 1, b[(2, 1)] - sum * tau1 * v12);
         let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2);
         let (head, tail) = v2.rb_mut().split_at_row_mut(1);
         let (tau2, _) = make_householder_in_place(head.at_mut(0), tail);
         let tau2 = recip(tau2);
-        let v21 = v2.read(1);
+        let v21 = copy(v2[1]);
         for j in j0..n {
-            let sum = ((a.read(j2, j) + (v11 * a.read(j1, j))) + (v12 * a.read(j0, j)));
-            a.write(j2, j, (a.read(j2, j) - (sum * tau1)));
-            a.write(j1, j, (a.read(j1, j) - ((sum * tau1) * v11)));
-            a.write(j0, j, (a.read(j0, j) - ((sum * tau1) * v12)));
-            let sum = (a.read(j1, j) + (v21 * a.read(j0, j)));
-            a.write(j1, j, (a.read(j1, j) - (sum * tau2)));
-            a.write(j0, j, (a.read(j0, j) - ((sum * tau2) * v21)));
+            let sum = a[(j2, j)] + v11 * a[(j1, j)] + v12 * a[(j0, j)];
+            a.write(j2, j, a[(j2, j)] - sum * tau1);
+            a.write(j1, j, a[(j1, j)] - sum * tau1 * v11);
+            a.write(j0, j, a[(j0, j)] - sum * tau1 * v12);
+            let sum = a[(j1, j)] + v21 * a[(j0, j)];
+            a.write(j1, j, a[(j1, j)] - sum * tau2);
+            a.write(j0, j, a[(j0, j)] - sum * tau2 * v21);
         }
         for j in 0..j3 {
-            let sum = ((a.read(j, j2) + (v11 * a.read(j, j1))) + (v12 * a.read(j, j0)));
-            a.write(j, j2, (a.read(j, j2) - (sum * tau1)));
-            a.write(j, j1, (a.read(j, j1) - ((sum * tau1) * v11)));
-            a.write(j, j0, (a.read(j, j0) - ((sum * tau1) * v12)));
-            let sum = (a.read(j, j1) + (v21 * a.read(j, j0)));
-            a.write(j, j1, (a.read(j, j1) - (sum * tau2)));
-            a.write(j, j0, (a.read(j, j0) - ((sum * tau2) * v21)));
+            let sum = a[(j, j2)] + v11 * a[(j, j1)] + v12 * a[(j, j0)];
+            a.write(j, j2, a[(j, j2)] - sum * tau1);
+            a.write(j, j1, a[(j, j1)] - sum * tau1 * v11);
+            a.write(j, j0, a[(j, j0)] - sum * tau1 * v12);
+            let sum = a[(j, j1)] + v21 * a[(j, j0)];
+            a.write(j, j1, a[(j, j1)] - sum * tau2);
+            a.write(j, j0, a[(j, j0)] - sum * tau2 * v21);
         }
         if let Some(mut q) = q.rb_mut() {
             for j in 0..n {
-                let sum = ((q.read(j, j2) + (v11 * q.read(j, j1))) + (v12 * q.read(j, j0)));
-                q.write(j, j2, (q.read(j, j2) - (sum * tau1)));
-                q.write(j, j1, (q.read(j, j1) - ((sum * tau1) * v11)));
-                q.write(j, j0, (q.read(j, j0) - ((sum * tau1) * v12)));
-                let sum = (q.read(j, j1) + (v21 * q.read(j, j0)));
-                q.write(j, j1, (q.read(j, j1) - (sum * tau2)));
-                q.write(j, j0, (q.read(j, j0) - ((sum * tau2) * v21)));
+                let sum = q[(j, j2)] + v11 * q[(j, j1)] + v12 * q[(j, j0)];
+                q.write(j, j2, q[(j, j2)] - sum * tau1);
+                q.write(j, j1, q[(j, j1)] - sum * tau1 * v11);
+                q.write(j, j0, q[(j, j0)] - sum * tau1 * v12);
+                let sum = q[(j, j1)] + v21 * q[(j, j0)];
+                q.write(j, j1, q[(j, j1)] - sum * tau2);
+                q.write(j, j0, q[(j, j0)] - sum * tau2 * v21);
             }
         }
         a.write(j1, j0, zero());
@@ -567,102 +554,96 @@ pub fn schur_swap<T: RealField>(
         let mut dnorm = zero();
         z!(d.rb()).for_each(|unzipped!(d)| dnorm = max(dnorm, abs((*d))));
         let eps = epsilon;
-        let small_num = (zero_threshold / eps);
+        let small_num = zero_threshold / eps;
         let thresh = max(((from_f64(10.0) * eps) * dnorm), small_num);
         stack_mat!(v, 4, 2, T);
         let mut x = v.rb_mut().submatrix_mut(0, 0, 2, 2);
         let (tl, b, _, tr) = d.rb().split_at(2, 2);
         let scale = lasy2(tl, tr, b, x.rb_mut());
-        v.write(2, 0, (-scale));
+        v.write(2, 0, -scale);
         v.write(2, 1, zero());
         v.write(3, 0, zero());
-        v.write(3, 1, (-scale));
+        v.write(3, 1, -scale);
         let mut v1 = v.rb_mut().col_mut(0);
         let (head, tail) = v1.rb_mut().split_at_row_mut(1);
         let (tau1, _) = make_householder_in_place(head.at_mut(0), tail);
         let tau1 = recip(tau1);
-        let v11 = v1.read(1);
-        let v12 = v1.read(2);
-        let v13 = v1.read(3);
-        let sum =
-            (((v.read(0, 1) + (v11 * v.read(1, 1))) + (v12 * v.read(2, 1))) + (v13 * v.read(3, 1)));
-        v.write(0, 1, (v.read(0, 1) - (sum * tau1)));
-        v.write(1, 1, (v.read(1, 1) - ((sum * tau1) * v11)));
-        v.write(2, 1, (v.read(2, 1) - ((sum * tau1) * v12)));
-        v.write(3, 1, (v.read(3, 1) - ((sum * tau1) * v13)));
+        let v11 = copy(v1[1]);
+        let v12 = copy(v1[2]);
+        let v13 = copy(v1[3]);
+        let sum = v[(0, 1)] + v11 * v[(1, 1)] + v12 * v[(2, 1)] + v13 * v[(3, 1)];
+        v.write(0, 1, v[(0, 1)] - sum * tau1);
+        v.write(1, 1, v[(1, 1)] - sum * tau1 * v11);
+        v.write(2, 1, v[(2, 1)] - sum * tau1 * v12);
+        v.write(3, 1, v[(3, 1)] - sum * tau1 * v13);
         let mut v2 = v.rb_mut().col_mut(1).subrows_mut(1, 3);
         let (head, tail) = v2.rb_mut().split_at_row_mut(1);
         let (tau2, _) = make_householder_in_place(head.at_mut(0), tail);
         let tau2 = recip(tau2);
-        let v21 = v2.read(1);
-        let v22 = v2.read(2);
+        let v21 = copy(v2[1]);
+        let v22 = copy(v2[2]);
         for j in 0..4 {
-            let sum = (((d.read(0, j) + (v11 * d.read(1, j))) + (v12 * d.read(2, j)))
-                + (v13 * d.read(3, j)));
-            d.write(0, j, (d.read(0, j) - (sum * tau1)));
-            d.write(1, j, (d.read(1, j) - ((sum * tau1) * v11)));
-            d.write(2, j, (d.read(2, j) - ((sum * tau1) * v12)));
-            d.write(3, j, (d.read(3, j) - ((sum * tau1) * v13)));
-            let sum = ((d.read(1, j) + (v21 * d.read(2, j))) + (v22 * d.read(3, j)));
-            d.write(1, j, (d.read(1, j) - (sum * tau2)));
-            d.write(2, j, (d.read(2, j) - ((sum * tau2) * v21)));
-            d.write(3, j, (d.read(3, j) - ((sum * tau2) * v22)));
+            let sum = d[(0, j)] + v11 * d[(1, j)] + v12 * d[(2, j)] + v13 * d[(3, j)];
+            d.write(0, j, d[(0, j)] - sum * tau1);
+            d.write(1, j, d[(1, j)] - sum * tau1 * v11);
+            d.write(2, j, d[(2, j)] - sum * tau1 * v12);
+            d.write(3, j, d[(3, j)] - sum * tau1 * v13);
+            let sum = d[(1, j)] + v21 * d[(2, j)] + v22 * d[(3, j)];
+            d.write(1, j, d[(1, j)] - sum * tau2);
+            d.write(2, j, d[(2, j)] - sum * tau2 * v21);
+            d.write(3, j, d[(3, j)] - sum * tau2 * v22);
         }
         for j in 0..4 {
-            let sum = (((d.read(j, 0) + (v11 * d.read(j, 1))) + (v12 * d.read(j, 2)))
-                + (v13 * d.read(j, 3)));
-            d.write(j, 0, (d.read(j, 0) - (sum * tau1)));
-            d.write(j, 1, (d.read(j, 1) - ((sum * tau1) * v11)));
-            d.write(j, 2, (d.read(j, 2) - ((sum * tau1) * v12)));
-            d.write(j, 3, (d.read(j, 3) - ((sum * tau1) * v13)));
-            let sum = ((d.read(j, 1) + (v21 * d.read(j, 2))) + (v22 * d.read(j, 3)));
-            d.write(j, 1, (d.read(j, 1) - (sum * tau2)));
-            d.write(j, 2, (d.read(j, 2) - ((sum * tau2) * v21)));
-            d.write(j, 3, (d.read(j, 3) - ((sum * tau2) * v22)));
+            let sum = d[(j, 0)] + v11 * d[(j, 1)] + v12 * d[(j, 2)] + v13 * d[(j, 3)];
+            d.write(j, 0, d[(j, 0)] - sum * tau1);
+            d.write(j, 1, d[(j, 1)] - sum * tau1 * v11);
+            d.write(j, 2, d[(j, 2)] - sum * tau1 * v12);
+            d.write(j, 3, d[(j, 3)] - sum * tau1 * v13);
+            let sum = d[(j, 1)] + v21 * d[(j, 2)] + v22 * d[(j, 3)];
+            d.write(j, 1, d[(j, 1)] - sum * tau2);
+            d.write(j, 2, d[(j, 2)] - sum * tau2 * v21);
+            d.write(j, 3, d[(j, 3)] - sum * tau2 * v22);
         }
         if max(
-            max(abs(d.read(2, 0)), abs(d.read(2, 1))),
-            max(abs(d.read(3, 0)), abs(d.read(3, 1))),
+            max(abs(d[(2, 0)]), abs(d[(2, 1)])),
+            max(abs(d[(3, 0)]), abs(d[(3, 1)])),
         ) > thresh
         {
             return 1;
         }
         for j in j0..n {
-            let sum = (((a.read(j0, j) + (v11 * a.read(j1, j))) + (v12 * a.read(j2, j)))
-                + (v13 * a.read(j3, j)));
-            a.write(j0, j, (a.read(j0, j) - (sum * tau1)));
-            a.write(j1, j, (a.read(j1, j) - ((sum * tau1) * v11)));
-            a.write(j2, j, (a.read(j2, j) - ((sum * tau1) * v12)));
-            a.write(j3, j, (a.read(j3, j) - ((sum * tau1) * v13)));
-            let sum = ((a.read(j1, j) + (v21 * a.read(j2, j))) + (v22 * a.read(j3, j)));
-            a.write(j1, j, (a.read(j1, j) - (sum * tau2)));
-            a.write(j2, j, (a.read(j2, j) - ((sum * tau2) * v21)));
-            a.write(j3, j, (a.read(j3, j) - ((sum * tau2) * v22)));
+            let sum = a[(j0, j)] + v11 * a[(j1, j)] + v12 * a[(j2, j)] + v13 * a[(j3, j)];
+            a.write(j0, j, a[(j0, j)] - sum * tau1);
+            a.write(j1, j, a[(j1, j)] - sum * tau1 * v11);
+            a.write(j2, j, a[(j2, j)] - sum * tau1 * v12);
+            a.write(j3, j, a[(j3, j)] - sum * tau1 * v13);
+            let sum = a[(j1, j)] + v21 * a[(j2, j)] + v22 * a[(j3, j)];
+            a.write(j1, j, a[(j1, j)] - sum * tau2);
+            a.write(j2, j, a[(j2, j)] - sum * tau2 * v21);
+            a.write(j3, j, a[(j3, j)] - sum * tau2 * v22);
         }
         for j in 0..j0 + 4 {
-            let sum = (((a.read(j, j0) + (v11 * a.read(j, j1))) + (v12 * a.read(j, j2)))
-                + (v13 * a.read(j, j3)));
-            a.write(j, j0, (a.read(j, j0) - (sum * tau1)));
-            a.write(j, j1, (a.read(j, j1) - ((sum * tau1) * v11)));
-            a.write(j, j2, (a.read(j, j2) - ((sum * tau1) * v12)));
-            a.write(j, j3, (a.read(j, j3) - ((sum * tau1) * v13)));
-            let sum = ((a.read(j, j1) + (v21 * a.read(j, j2))) + (v22 * a.read(j, j3)));
-            a.write(j, j1, (a.read(j, j1) - (sum * tau2)));
-            a.write(j, j2, (a.read(j, j2) - ((sum * tau2) * v21)));
-            a.write(j, j3, (a.read(j, j3) - ((sum * tau2) * v22)));
+            let sum = a[(j, j0)] + v11 * a[(j, j1)] + v12 * a[(j, j2)] + v13 * a[(j, j3)];
+            a.write(j, j0, a[(j, j0)] - sum * tau1);
+            a.write(j, j1, a[(j, j1)] - sum * tau1 * v11);
+            a.write(j, j2, a[(j, j2)] - sum * tau1 * v12);
+            a.write(j, j3, a[(j, j3)] - sum * tau1 * v13);
+            let sum = a[(j, j1)] + v21 * a[(j, j2)] + v22 * a[(j, j3)];
+            a.write(j, j1, a[(j, j1)] - sum * tau2);
+            a.write(j, j2, a[(j, j2)] - sum * tau2 * v21);
+            a.write(j, j3, a[(j, j3)] - sum * tau2 * v22);
         }
         if let Some(mut q) = q.rb_mut() {
             for j in 0..n {
-                let sum = (((q.read(j, j0) + (v11 * q.read(j, j1))) + (v12 * q.read(j, j2)))
-                    + (v13 * q.read(j, j3)));
-                q.write(j, j0, (q.read(j, j0) - (sum * tau1)));
-                q.write(j, j1, (q.read(j, j1) - ((sum * tau1) * v11)));
-                q.write(j, j2, (q.read(j, j2) - ((sum * tau1) * v12)));
-                q.write(j, j3, (q.read(j, j3) - ((sum * tau1) * v13)));
-                let sum = ((q.read(j, j1) + (v21 * q.read(j, j2))) + (v22 * q.read(j, j3)));
-                q.write(j, j1, (q.read(j, j1) - (sum * tau2)));
-                q.write(j, j2, (q.read(j, j2) - ((sum * tau2) * v21)));
-                q.write(j, j3, (q.read(j, j3) - ((sum * tau2) * v22)));
+                let sum = q[(j, j0)] + v11 * q[(j, j1)] + v12 * q[(j, j2)] + v13 * q[(j, j3)];
+                q.write(j, j0, q[(j, j0)] - sum * tau1);
+                q.write(j, j1, q[(j, j1)] - sum * tau1 * v11);
+                q.write(j, j2, q[(j, j2)] - sum * tau1 * v12);
+                q.write(j, j3, q[(j, j3)] - sum * tau1 * v13);
+                let sum = q[(j, j1)] + v21 * q[(j, j2)] + v22 * q[(j, j3)];
+                q.write(j, j1, q[(j, j1)] - sum * tau2);
+                q.write(j, j2, q[(j, j2)] - sum * tau2 * v21);
+                q.write(j, j3, q[(j, j3)] - sum * tau2 * v22);
             }
         }
         a.write(j2, j0, zero());
@@ -672,10 +653,10 @@ pub fn schur_swap<T: RealField>(
     }
     if n2 == 2 {
         let ((a00, a01, a10, a11), _, _, (cs, sn)) = lahqr_schur22(
-            a.read(j0, j0),
-            a.read(j0, j1),
-            a.read(j1, j0),
-            a.read(j1, j1),
+            copy(a[(j0, j0)]),
+            copy(a[(j0, j1)]),
+            copy(a[(j1, j0)]),
+            copy(a[(j1, j1)]),
         );
         let rot = JacobiRotation { c: cs, s: sn };
         a.write(j0, j0, a00);
@@ -703,10 +684,10 @@ pub fn schur_swap<T: RealField>(
         let j1 = j1 + n2;
         let j2 = j2 + n2;
         let ((a00, a01, a10, a11), _, _, (cs, sn)) = lahqr_schur22(
-            a.read(j0, j0),
-            a.read(j0, j1),
-            a.read(j1, j0),
-            a.read(j1, j1),
+            copy(a[(j0, j0)]),
+            copy(a[(j0, j1)]),
+            copy(a[(j1, j0)]),
+            copy(a[(j1, j1)]),
         );
         let rot = JacobiRotation { c: cs, s: sn };
         a.write(j0, j0, a00);
@@ -751,20 +732,20 @@ fn aggressive_early_deflation<T: RealField>(
     let zero_threshold = min_positive();
     let nw_max = (n - 3) / 3;
     let eps = epsilon;
-    let small_num = ((zero_threshold / eps) * from_f64(n as f64));
+    let small_num = zero_threshold / eps * from_f64(n as f64);
     let jw = Ord::min(Ord::min(nw, ihi - ilo), nw_max);
     let kwtop = ihi - jw;
     let mut s_spike = if kwtop == ilo {
         zero()
     } else {
-        a.read(kwtop, kwtop - 1)
+        copy(a[(kwtop, kwtop - 1)])
     };
     if kwtop + 1 == ihi {
-        s_re.write(kwtop, a.read(kwtop, kwtop));
+        s_re.write(kwtop, copy(a[(kwtop, kwtop)]));
         s_im.write(kwtop, zero());
         let mut ns = 1;
         let mut nd = 0;
-        if abs(s_spike) <= max(small_num, (eps * abs(a.read(kwtop, kwtop)))) {
+        if abs(s_spike) <= max(small_num, (eps * abs(a[(kwtop, kwtop)]))) {
             ns = 0;
             nd = 1;
             if kwtop > ilo {
@@ -786,10 +767,10 @@ fn aggressive_early_deflation<T: RealField>(
     let mut s_re_window = unsafe { s_re.rb().subrows(kwtop, ihi - kwtop).const_cast() };
     let mut s_im_window = unsafe { s_im.rb().subrows(kwtop, ihi - kwtop).const_cast() };
     z!(tw.rb_mut())
-        .for_each_triangular_lower(linalg::zip::Diag::Include, |unzipped!(mut x)| *x = zero());
+        .for_each_triangular_lower(linalg::zip::Diag::Include, |unzipped!(x)| *x = zero());
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
-            tw.write(i, j, a_window.read(i, j));
+            tw.write(i, j, copy(a_window[(i, j)]));
         }
     }
     v.fill(zero());
@@ -841,11 +822,11 @@ fn aggressive_early_deflation<T: RealField>(
         }
         if !bulge {
             #[allow(clippy::disallowed_names)]
-            let mut foo = abs(tw.read(ns - 1, ns - 1));
+            let mut foo = abs(tw[(ns - 1, ns - 1)]);
             if foo == zero() {
                 foo = abs(s_spike);
             }
-            if (abs(s_spike) * abs(v[(0, ns - 1)])) <= max(small_num, (eps * foo)) {
+            if abs(s_spike) * abs(v[(0, ns - 1)]) <= max(small_num, (eps * foo)) {
                 ns -= 1;
             } else {
                 let ifst = ns - 1;
@@ -854,8 +835,8 @@ fn aggressive_early_deflation<T: RealField>(
             }
         } else {
             #[allow(clippy::disallowed_names)]
-            let mut foo = (abs(tw.read(ns - 1, ns - 1))
-                + (sqrt(abs(tw.read(ns - 1, ns - 2))) * sqrt(abs(tw.read(ns - 2, ns - 1)))));
+            let mut foo = abs(tw[(ns - 1, ns - 1)])
+                + sqrt(abs(tw[(ns - 1, ns - 2)])) * sqrt(abs(tw[(ns - 2, ns - 1)]));
             if foo == zero() {
                 foo = abs(s_spike);
             }
@@ -902,16 +883,14 @@ fn aggressive_early_deflation<T: RealField>(
             }
             let (ev1, ev2);
             if n1 == 1 {
-                ev1 = abs(tw.read(i1, i1));
+                ev1 = abs(tw[(i1, i1)]);
             } else {
-                ev1 = (abs(tw.read(i1, i1))
-                    + ((sqrt(abs(tw.read(i1 + 1, i1)))) * sqrt(abs(tw.read(i1, i1 + 1)))));
+                ev1 = abs(tw[(i1, i1)]) + sqrt(abs(tw[(i1 + 1, i1)])) * sqrt(abs(tw[(i1, i1 + 1)]));
             }
             if n2 == 1 {
-                ev2 = abs(tw.read(i2, i2));
+                ev2 = abs(tw[(i2, i2)]);
             } else {
-                ev2 = (abs(tw.read(i2, i2))
-                    + ((sqrt(abs(tw.read(i2 + 1, i2)))) * sqrt(abs(tw.read(i2, i2 + 1)))));
+                ev2 = abs(tw[(i2, i2)]) + sqrt(abs(tw[(i2 + 1, i2)])) * sqrt(abs(tw[(i2, i2 + 1)]));
             }
             if ev1 >= ev2 {
                 i1 = i2;
@@ -935,14 +914,14 @@ fn aggressive_early_deflation<T: RealField>(
             n1 = 2;
         }
         if n1 == 1 {
-            s_re.write(kwtop + i, tw.read(i, i));
+            s_re.write(kwtop + i, copy(tw[(i, i)]));
             s_im.write(kwtop + i, zero());
         } else {
             let ((s1_re, s1_im), (s2_re, s2_im)) = lahqr_eig22(
-                tw.read(i, i),
-                tw.read(i, i + 1),
-                tw.read(i + 1, i),
-                tw.read(i + 1, i + 1),
+                copy(tw[(i, i)]),
+                copy(tw[(i, i + 1)]),
+                copy(tw[(i + 1, i)]),
+                copy(tw[(i + 1, i + 1)]),
             );
             s_re.write(kwtop + i, s1_re);
             s_im.write(kwtop + i, s1_im);
@@ -955,9 +934,9 @@ fn aggressive_early_deflation<T: RealField>(
         {
             let mut vv = wv.rb_mut().col_mut(0).subrows_mut(0, ns);
             for i in 0..ns {
-                vv.write(i, conj(v.read(0, i)));
+                vv.write(i, conj(v[(0, i)]));
             }
-            let mut head = vv.read(0);
+            let mut head = copy(vv[0]);
             let tail = vv.rb_mut().subrows_mut(1, ns - 1);
             let (tau, _) = make_householder_in_place(&mut head, tail);
             let beta = copy(head);
@@ -980,7 +959,7 @@ fn aggressive_early_deflation<T: RealField>(
                     Accum::Add,
                     vv.rb().as_mat(),
                     tmp.as_ref(),
-                    (-tau),
+                    -tau,
                     par,
                 );
             }
@@ -1001,7 +980,7 @@ fn aggressive_early_deflation<T: RealField>(
                     Accum::Add,
                     tmp.as_ref(),
                     vv.rb().adjoint().as_mat(),
-                    (-tau),
+                    -tau,
                     par,
                 );
             }
@@ -1022,7 +1001,7 @@ fn aggressive_early_deflation<T: RealField>(
                     Accum::Add,
                     tmp.as_ref(),
                     vv.rb().adjoint().as_mat(),
-                    (-tau),
+                    -tau,
                     par,
                 );
             }
@@ -1057,11 +1036,11 @@ fn aggressive_early_deflation<T: RealField>(
         }
     }
     if kwtop > 0 {
-        a.write(kwtop, kwtop - 1, (s_spike * conj(v.read(0, 0))));
+        a.write(kwtop, kwtop - 1, s_spike * conj(v[(0, 0)]));
     }
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
-            a.write(kwtop + i, kwtop + j, tw.read(i, j));
+            a.write(kwtop + i, kwtop + j, copy(tw[(i, j)]));
         }
     }
     nd = jw - ns;
@@ -1139,17 +1118,17 @@ fn aggressive_early_deflation<T: RealField>(
 #[math]
 fn move_bulge<T: RealField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: (T, T), s2: (T, T)) {
     let epsilon = eps();
-    let v0 = real(v.read(0));
-    let v1 = v.read(1);
-    let v2 = v.read(2);
-    let refsum = (mul_real(v2, v0) * h.read(3, 2));
-    h.write(3, 0, (-refsum));
-    h.write(3, 1, ((-refsum) * conj(v1)));
-    h.write(3, 2, (h.read(3, 2) - (refsum * conj(v2))));
-    v.write(0, h.read(1, 0));
-    v.write(1, h.read(2, 0));
-    v.write(2, h.read(3, 0));
-    let mut beta = v.read(0);
+    let v0 = real(v[0]);
+    let v1 = copy(v[1]);
+    let v2 = copy(v[2]);
+    let refsum = mul_real(v2, v0) * h[(3, 2)];
+    h.write(3, 0, -refsum);
+    h.write(3, 1, -refsum * conj(v1));
+    h.write(3, 2, h[(3, 2)] - refsum * conj(v2));
+    v.write(0, copy(h[(1, 0)]));
+    v.write(1, copy(h[(2, 0)]));
+    v.write(2, copy(h[(3, 0)]));
+    let mut beta = copy(v[0]);
     let tail = v.rb_mut().subrows_mut(1, 2);
     let (tau, _) = make_householder_in_place(&mut beta, tail);
     v.write(0, recip(tau));
@@ -1162,14 +1141,14 @@ fn move_bulge<T: RealField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: (T, 
         let mut vt = vt.rb_mut().col_mut(0);
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
-        let mut beta_unused = vt.read(0);
+        let mut beta_unused = copy(vt[0]);
         let tail = vt.rb_mut().subrows_mut(1, 2);
         let (tau, _) = make_householder_in_place(&mut beta_unused, tail);
         vt.write(0, recip(tau));
-        let vt0 = vt.read(0);
-        let vt1 = vt.read(1);
-        let vt2 = vt.read(2);
-        let refsum = ((conj(vt0) * h.read(1, 0)) + (conj(vt1) * h.read(2, 0)));
+        let vt0 = copy(vt[0]);
+        let vt1 = copy(vt[1]);
+        let vt2 = copy(vt[2]);
+        let refsum = conj(vt0) * h[(1, 0)] + conj(vt1) * h[(2, 0)];
         if (abs1((h[(2, 0)] - (refsum * vt1))) + abs1((refsum * vt2)))
             > (epsilon * ((abs1(h[(0, 0)]) + abs1(h[(1, 1)])) + abs1(h[(2, 2)])))
         {
@@ -1177,12 +1156,12 @@ fn move_bulge<T: RealField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: (T, 
             h.write(2, 0, zero());
             h.write(3, 0, zero());
         } else {
-            h.write(1, 0, (h.read(1, 0) - refsum));
+            h.write(1, 0, h[(1, 0)] - refsum);
             h.write(2, 0, zero());
             h.write(3, 0, zero());
-            v.write(0, vt.read(0));
-            v.write(1, vt.read(1));
-            v.write(2, vt.read(2));
+            v.write(0, copy(vt[0]));
+            v.write(1, copy(vt[1]));
+            v.write(2, copy(vt[2]));
         }
     }
 }
@@ -1313,7 +1292,7 @@ fn introduce_bulges<T: RealField>(
 ) {
     let n = a.nrows();
     let eps = eps();
-    let small_num = ((min_positive() / eps) * from_f64(n as f64));
+    let small_num = min_positive() / eps * from_f64(n as f64);
     let n_block = Ord::min(n_block_desired, ihi - ilo);
     let mut istart_m = ilo;
     let mut istop_m = ilo + n_block;
@@ -1327,75 +1306,75 @@ fn introduce_bulges<T: RealField>(
             let mut v = v.rb_mut().col_mut(i_bulge);
             if i_pos == ilo {
                 let h = a.rb().submatrix(ilo, ilo, 3, 3);
-                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
-                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
-                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
-                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
+                let s1_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge]);
+                let s1_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge]);
+                let s2_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge - 1]);
+                let s2_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge - 1]);
                 lahqr_shiftcolumn(h, v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
                 debug_assert!(v.nrows() == 3);
-                let mut head = v.read(0);
+                let mut head = copy(v[0]);
                 let tail = v.rb_mut().subrows_mut(1, 2);
                 let (tau, _) = make_householder_in_place(&mut head, tail);
                 v.write(0, recip(tau));
             } else {
                 let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
-                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
-                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
-                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
+                let s1_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge]);
+                let s1_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge]);
+                let s2_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge - 1]);
+                let s2_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge - 1]);
                 move_bulge(h.rb_mut(), v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
             }
-            let v0 = real(v.read(0));
-            let v1 = v.read(1);
-            let v2 = v.read(2);
+            let v0 = real(v[0]);
+            let v1 = copy(v[1]);
+            let v2 = copy(v[2]);
             for j in istart_m..i_pos + 3 {
-                let sum = ((a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)))
-                    + (v2 * a.read(j, i_pos + 2)));
-                a.write(j, i_pos, (a.read(j, i_pos) - mul_real(sum, v0)));
+                let sum = a[(j, i_pos)] + v1 * a[(j, i_pos + 1)] + v2 * a[(j, i_pos + 2)];
+                a.write(j, i_pos, a[(j, i_pos)] - mul_real(sum, v0));
                 a.write(
                     j,
                     i_pos + 1,
-                    (a.read(j, i_pos + 1) - (mul_real(sum, v0) * conj(v1))),
+                    a[(j, i_pos + 1)] - mul_real(sum, v0) * conj(v1),
                 );
                 a.write(
                     j,
                     i_pos + 2,
-                    (a.read(j, i_pos + 2) - (mul_real(sum, v0) * conj(v2))),
+                    a[(j, i_pos + 2)] - mul_real(sum, v0) * conj(v2),
                 );
             }
-            let sum = ((a.read(i_pos, i_pos) + (conj(v1) * a.read(i_pos + 1, i_pos)))
-                + (conj(v2) * a.read(i_pos + 2, i_pos)));
-            a.write(i_pos, i_pos, (a.read(i_pos, i_pos) - mul_real(sum, v0)));
+            let sum = a[(i_pos, i_pos)]
+                + conj(v1) * a[(i_pos + 1, i_pos)]
+                + conj(v2) * a[(i_pos + 2, i_pos)];
+            a.write(i_pos, i_pos, a[(i_pos, i_pos)] - mul_real(sum, v0));
             a.write(
                 i_pos + 1,
                 i_pos,
-                (a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1)),
+                a[(i_pos + 1, i_pos)] - (mul_real(sum, v0) * v1),
             );
             a.write(
                 i_pos + 2,
                 i_pos,
-                (a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2)),
+                a[(i_pos + 2, i_pos)] - mul_real(sum, v0) * v2,
             );
             if i_pos > ilo && (a[(i_pos, i_pos - 1)] != zero()) {
-                let mut tst1 = (abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]));
+                let mut tst1 = abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]);
                 if tst1 == zero() {
                     if i_pos > ilo + 1 {
-                        tst1 = (tst1 + abs1(a.read(i_pos - 1, i_pos - 2)));
+                        tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 2)]);
                     }
                     if i_pos > ilo + 2 {
-                        tst1 = (tst1 + abs1(a.read(i_pos - 1, i_pos - 3)));
+                        tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 3)]);
                     }
                     if i_pos > ilo + 3 {
-                        tst1 = (tst1 + abs1(a.read(i_pos - 1, i_pos - 4)));
+                        tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 4)]);
                     }
                     if i_pos < ihi - 1 {
-                        tst1 = (tst1 + abs1(a.read(i_pos + 1, i_pos)));
+                        tst1 = tst1 + abs1(a[(i_pos + 1, i_pos)]);
                     }
                     if i_pos < ihi - 2 {
-                        tst1 = (tst1 + abs1(a.read(i_pos + 2, i_pos)));
+                        tst1 = tst1 + abs1(a[(i_pos + 2, i_pos)]);
                     }
                     if i_pos < ihi - 3 {
-                        tst1 = (tst1 + abs1(a.read(i_pos + 3, i_pos)));
+                        tst1 = tst1 + abs1(a[(i_pos + 3, i_pos)]);
                     }
                 }
                 if abs1(a[(i_pos, i_pos - 1)]) < max(small_num, (eps * tst1)) {
@@ -1409,7 +1388,7 @@ fn introduce_bulges<T: RealField>(
                         abs1(a[(i_pos, i_pos)]),
                         abs1((a[(i_pos, i_pos)] - a[(i_pos - 1, i_pos - 1)])),
                     );
-                    let s = (aa + ab);
+                    let s = aa + ab;
                     if (ba * (ab / s)) <= max(small_num, (eps * (bb * (aa / s)))) {
                         a.write(i_pos, i_pos - 1, zero());
                     }
@@ -1419,50 +1398,39 @@ fn introduce_bulges<T: RealField>(
         for i_bulge in 0..n_active_bulges {
             let i_pos = i_pos_last - 2 * i_bulge;
             let v = v.rb_mut().col_mut(i_bulge);
-            let v0 = real(v.read(0));
-            let v1 = v.read(1);
-            let v2 = v.read(2);
+            let v0 = real(v[0]);
+            let v1 = copy(v[1]);
+            let v2 = copy(v[2]);
             for j in i_pos + 1..istop_m {
-                let sum = ((a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)))
-                    + (conj(v2) * a.read(i_pos + 2, j)));
-                a.write(i_pos, j, (a.read(i_pos, j) - mul_real(sum, v0)));
-                a.write(
-                    i_pos + 1,
-                    j,
-                    (a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1)),
-                );
-                a.write(
-                    i_pos + 2,
-                    j,
-                    (a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2)),
-                );
+                let sum =
+                    a[(i_pos, j)] + conj(v1) * a[(i_pos + 1, j)] + conj(v2) * a[(i_pos + 2, j)];
+                a.write(i_pos, j, a[(i_pos, j)] - mul_real(sum, v0));
+                a.write(i_pos + 1, j, a[(i_pos + 1, j)] - mul_real(sum, v0) * v1);
+                a.write(i_pos + 2, j, a[(i_pos + 2, j)] - mul_real(sum, v0) * v2);
             }
         }
         for i_bulge in 0..n_active_bulges {
             let i_pos = i_pos_last - 2 * i_bulge;
             let v = v.rb_mut().col_mut(i_bulge);
-            let v0 = real(v.read(0));
-            let v1 = v.read(1);
-            let v2 = v.read(2);
+            let v0 = real(v[0]);
+            let v1 = copy(v[1]);
+            let v2 = copy(v[2]);
             let i1 = 0;
             let i2 = Ord::min(u2.nrows(), (i_pos_last - ilo) + (i_pos_last - ilo) + 3);
             for j in i1..i2 {
-                let sum = ((u2.read(j, i_pos - ilo) + (v1 * u2.read(j, i_pos - ilo + 1)))
-                    + (v2 * u2.read(j, i_pos - ilo + 2)));
-                u2.write(
-                    j,
-                    i_pos - ilo,
-                    (u2.read(j, i_pos - ilo) - mul_real(sum, v0)),
-                );
+                let sum = u2[(j, i_pos - ilo)]
+                    + v1 * u2[(j, i_pos - ilo + 1)]
+                    + v2 * u2[(j, i_pos - ilo + 2)];
+                u2.write(j, i_pos - ilo, u2[(j, i_pos - ilo)] - mul_real(sum, v0));
                 u2.write(
                     j,
                     i_pos - ilo + 1,
-                    (u2.read(j, i_pos - ilo + 1) - (mul_real(sum, v0) * conj(v1))),
+                    u2[(j, i_pos - ilo + 1)] - mul_real(sum, v0) * conj(v1),
                 );
                 u2.write(
                     j,
                     i_pos - ilo + 2,
-                    (u2.read(j, i_pos - ilo + 2) - (mul_real(sum, v0) * conj(v2))),
+                    u2[(j, i_pos - ilo + 2)] - mul_real(sum, v0) * conj(v2),
                 );
             }
         }
@@ -1558,7 +1526,7 @@ fn move_bulges_down<T: RealField>(
 ) {
     let n = a.nrows();
     let eps = eps();
-    let small_num = ((min_positive() / eps) * from_f64(n as f64));
+    let small_num = min_positive() / eps * from_f64(n as f64);
     while *i_pos_block + n_block_desired < ihi {
         let n_pos = Ord::min(
             n_block_desired - n_shifts,
@@ -1575,62 +1543,62 @@ fn move_bulges_down<T: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let mut v = v.rb_mut().col_mut(i_bulge);
                 let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
-                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
-                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
-                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
+                let s1_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge]);
+                let s1_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge]);
+                let s2_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge - 1]);
+                let s2_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge - 1]);
                 move_bulge(h.rb_mut(), v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
-                let v0 = real(v.read(0));
-                let v1 = v.read(1);
-                let v2 = v.read(2);
+                let v0 = real(v[0]);
+                let v1 = copy(v[1]);
+                let v2 = copy(v[2]);
                 for j in istart_m..i_pos + 3 {
-                    let sum = ((a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)))
-                        + (v2 * a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, (a.read(j, i_pos) - mul_real(sum, v0)));
+                    let sum = a[(j, i_pos)] + (v1 * a[(j, i_pos + 1)]) + v2 * a[(j, i_pos + 2)];
+                    a.write(j, i_pos, a[(j, i_pos)] - mul_real(sum, v0));
                     a.write(
                         j,
                         i_pos + 1,
-                        (a.read(j, i_pos + 1) - (mul_real(sum, v0) * conj(v1))),
+                        a[(j, i_pos + 1)] - mul_real(sum, v0) * conj(v1),
                     );
                     a.write(
                         j,
                         i_pos + 2,
-                        (a.read(j, i_pos + 2) - (mul_real(sum, v0) * conj(v2))),
+                        a[(j, i_pos + 2)] - mul_real(sum, v0) * conj(v2),
                     );
                 }
-                let sum = ((a.read(i_pos, i_pos) + (conj(v1) * a.read(i_pos + 1, i_pos)))
-                    + (conj(v2) * a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, (a.read(i_pos, i_pos) - mul_real(sum, v0)));
+                let sum = a[(i_pos, i_pos)]
+                    + conj(v1) * a[(i_pos + 1, i_pos)]
+                    + conj(v2) * a[(i_pos + 2, i_pos)];
+                a.write(i_pos, i_pos, a[(i_pos, i_pos)] - mul_real(sum, v0));
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    (a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1)),
+                    a[(i_pos + 1, i_pos)] - mul_real(sum, v0) * v1,
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    (a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2)),
+                    a[(i_pos + 2, i_pos)] - mul_real(sum, v0) * v2,
                 );
-                if i_pos > ilo && (a[(i_pos, i_pos - 1)] != zero()) {
-                    let mut tst1 = (abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]));
+                if i_pos > ilo && a[(i_pos, i_pos - 1)] != zero() {
+                    let mut tst1 = abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]);
                     if tst1 == zero() {
                         if i_pos > ilo + 1 {
-                            tst1 = (tst1 + abs1(a[(i_pos - 1, i_pos - 2)]));
+                            tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 2)]);
                         }
                         if i_pos > ilo + 2 {
-                            tst1 = (tst1 + abs1(a[(i_pos - 1, i_pos - 3)]));
+                            tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 3)]);
                         }
                         if i_pos > ilo + 3 {
-                            tst1 = (tst1 + abs1(a[(i_pos - 1, i_pos - 4)]));
+                            tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 4)]);
                         }
                         if i_pos < ihi - 1 {
-                            tst1 = (tst1 + abs1(a[(i_pos + 1, i_pos)]));
+                            tst1 = tst1 + abs1(a[(i_pos + 1, i_pos)]);
                         }
                         if i_pos < ihi - 2 {
-                            tst1 = (tst1 + abs1(a[(i_pos + 2, i_pos)]));
+                            tst1 = tst1 + abs1(a[(i_pos + 2, i_pos)]);
                         }
                         if i_pos < ihi - 3 {
-                            tst1 = (tst1 + abs1(a[(i_pos + 3, i_pos)]));
+                            tst1 = tst1 + abs1(a[(i_pos + 3, i_pos)]);
                         }
                     }
                     if abs1(a[(i_pos, i_pos - 1)]) < max(small_num, (eps * tst1)) {
@@ -1644,7 +1612,7 @@ fn move_bulges_down<T: RealField>(
                             abs1(a[(i_pos, i_pos)]),
                             abs1((a[(i_pos, i_pos)] - a[(i_pos - 1, i_pos - 1)])),
                         );
-                        let s = (aa + ab);
+                        let s = aa + ab;
                         if (ba * (ab / s)) <= max(small_num, (eps * (bb * (aa / s)))) {
                             a.write(i_pos, i_pos - 1, zero());
                         }
@@ -1654,54 +1622,46 @@ fn move_bulges_down<T: RealField>(
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col_mut(i_bulge);
-                let v0 = real(v.read(0));
-                let v1 = v.read(1);
-                let v2 = v.read(2);
+                let v0 = real(v[0]);
+                let v1 = copy(v[1]);
+                let v2 = copy(v[2]);
                 for j in i_pos + 1..istop_m {
-                    let sum = ((a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)))
-                        + (conj(v2) * a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, (a.read(i_pos, j) - mul_real(sum, v0)));
-                    a.write(
-                        i_pos + 1,
-                        j,
-                        (a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1)),
-                    );
-                    a.write(
-                        i_pos + 2,
-                        j,
-                        (a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2)),
-                    );
+                    let sum =
+                        a[(i_pos, j)] + conj(v1) * a[(i_pos + 1, j)] + conj(v2) * a[(i_pos + 2, j)];
+                    a.write(i_pos, j, a[(i_pos, j)] - mul_real(sum, v0));
+                    a.write(i_pos + 1, j, a[(i_pos + 1, j)] - mul_real(sum, v0) * v1);
+                    a.write(i_pos + 2, j, a[(i_pos + 2, j)] - mul_real(sum, v0) * v2);
                 }
             }
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col_mut(i_bulge);
-                let v0 = real(v.read(0));
-                let v1 = v.read(1);
-                let v2 = v.read(2);
+                let v0 = real(v[0]);
+                let v1 = copy(v[1]);
+                let v2 = copy(v[2]);
                 let i1 = (i_pos - *i_pos_block) - (i_pos_last + 2 - *i_pos_block - n_shifts);
                 let i2 = Ord::min(
                     u2.nrows(),
                     (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3,
                 );
                 for j in i1..i2 {
-                    let sum = ((u2.read(j, i_pos - *i_pos_block)
-                        + (v1 * u2.read(j, i_pos - *i_pos_block + 1)))
-                        + (v2 * u2.read(j, i_pos - *i_pos_block + 2)));
+                    let sum = u2[(j, i_pos - *i_pos_block)]
+                        + v1 * u2[(j, i_pos - *i_pos_block + 1)]
+                        + v2 * u2[(j, i_pos - *i_pos_block + 2)];
                     u2.write(
                         j,
                         i_pos - *i_pos_block,
-                        (u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0)),
+                        u2[(j, i_pos - *i_pos_block)] - mul_real(sum, v0),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 1,
-                        (u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1))),
+                        u2[(j, i_pos - *i_pos_block + 1)] - mul_real(sum, v0) * conj(v1),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 2,
-                        (u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2))),
+                        u2[(j, i_pos - *i_pos_block + 2)] - mul_real(sum, v0) * conj(v2),
                     );
                 }
             }
@@ -1797,7 +1757,7 @@ fn remove_bulges<T: RealField>(
 ) {
     let n = a.nrows();
     let eps = eps();
-    let small_num = ((min_positive() / eps) * from_f64(n as f64));
+    let small_num = min_positive() / eps * from_f64(n as f64);
     {
         let n_block = ihi - *i_pos_block;
         let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
@@ -1816,98 +1776,99 @@ fn remove_bulges<T: RealField>(
                 if i_pos == ihi - 2 {
                     let mut v = v.rb_mut().subrows_mut(0, 2).col_mut(i_bulge);
                     let mut h = a.rb_mut().subrows_mut(i_pos, 2).col_mut(i_pos - 1);
-                    let mut beta = h.read(0);
+                    let mut beta = copy(h[0]);
                     let tail = h.rb_mut().subrows_mut(1, 1);
                     let (tau, _) = make_householder_in_place(&mut beta, tail);
                     v.write(0, recip(tau));
-                    v.write(1, h.read(1));
+                    v.write(1, copy(h[1]));
                     h.write(0, beta);
                     h.write(1, zero());
-                    let t0 = conj(v.read(0));
-                    let v1 = v.read(1);
-                    let t1 = (t0 * v1);
+                    let t0 = conj(v[0]);
+                    let v1 = copy(v[1]);
+                    let t1 = t0 * v1;
                     for j in istart_m..i_pos + 2 {
-                        let sum = (a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)));
-                        a.write(j, i_pos, (a.read(j, i_pos) - (sum * conj(t0))));
-                        a.write(j, i_pos + 1, (a.read(j, i_pos + 1) - (sum * conj(t1))));
+                        let sum = a[(j, i_pos)] + v1 * a[(j, i_pos + 1)];
+                        a.write(j, i_pos, a[(j, i_pos)] - sum * conj(t0));
+                        a.write(j, i_pos + 1, a[(j, i_pos + 1)] - sum * conj(t1));
                     }
                     for j in i_pos..istop_m {
-                        let sum = (a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)));
-                        a.write(i_pos, j, (a.read(i_pos, j) - (sum * t0)));
-                        a.write(i_pos + 1, j, (a.read(i_pos + 1, j) - (sum * t1)));
+                        let sum = a[(i_pos, j)] + conj(v1) * a[(i_pos + 1, j)];
+                        a.write(i_pos, j, a[(i_pos, j)] - sum * t0);
+                        a.write(i_pos + 1, j, a[(i_pos + 1, j)] - sum * t1);
                     }
                     for j in 0..u2.nrows() {
-                        let sum = (u2.read(j, i_pos - *i_pos_block)
-                            + (v1 * u2.read(j, i_pos - *i_pos_block + 1)));
+                        let sum =
+                            u2[(j, i_pos - *i_pos_block)] + v1 * u2[(j, i_pos - *i_pos_block + 1)];
                         u2.write(
                             j,
                             i_pos - *i_pos_block,
-                            (u2.read(j, i_pos - *i_pos_block) - (sum * conj(t0))),
+                            u2[(j, i_pos - *i_pos_block)] - sum * conj(t0),
                         );
                         u2.write(
                             j,
                             i_pos - *i_pos_block + 1,
-                            (u2.read(j, i_pos - *i_pos_block + 1) - (sum * conj(t1))),
+                            u2[(j, i_pos - *i_pos_block + 1)] - sum * conj(t1),
                         );
                     }
                 } else {
                     let mut v = v.rb_mut().col_mut(i_bulge);
                     let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
-                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
-                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
-                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
+                    let s1_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge]);
+                    let s1_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge]);
+                    let s2_re = copy(s_re[s_re.nrows() - 1 - 2 * i_bulge - 1]);
+                    let s2_im = copy(s_im[s_im.nrows() - 1 - 2 * i_bulge - 1]);
                     move_bulge(h.rb_mut(), v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
                     {
-                        let t0 = conj(v.read(0));
-                        let v1 = v.read(1);
-                        let t1 = (t0 * v1);
-                        let v2 = v.read(2);
-                        let t2 = (t0 * v2);
+                        let t0 = conj(v[0]);
+                        let v1 = copy(v[1]);
+                        let t1 = t0 * v1;
+                        let v2 = copy(v[2]);
+                        let t2 = t0 * v2;
                         for j in istart_m..i_pos + 3 {
-                            let sum = ((a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)))
-                                + (v2 * a.read(j, i_pos + 2)));
-                            a.write(j, i_pos, (a.read(j, i_pos) - (sum * conj(t0))));
-                            a.write(j, i_pos + 1, (a.read(j, i_pos + 1) - (sum * conj(t1))));
-                            a.write(j, i_pos + 2, (a.read(j, i_pos + 2) - (sum * conj(t2))));
+                            let sum =
+                                a[(j, i_pos)] + v1 * a[(j, i_pos + 1)] + v2 * a[(j, i_pos + 2)];
+                            a.write(j, i_pos, a[(j, i_pos)] - sum * conj(t0));
+                            a.write(j, i_pos + 1, a[(j, i_pos + 1)] - sum * conj(t1));
+                            a.write(j, i_pos + 2, a[(j, i_pos + 2)] - sum * conj(t2));
                         }
                     }
-                    let v0 = real(v.read(0));
-                    let v1 = v.read(1);
-                    let v2 = v.read(2);
-                    let sum = ((a.read(i_pos, i_pos) + (conj(v1) * a.read(i_pos + 1, i_pos)))
-                        + (conj(v2) * a.read(i_pos + 2, i_pos)));
-                    a.write(i_pos, i_pos, (a.read(i_pos, i_pos) - mul_real(sum, v0)));
+                    let v0 = real(v[0]);
+                    let v1 = copy(v[1]);
+                    let v2 = copy(v[2]);
+                    let sum = a[(i_pos, i_pos)]
+                        + conj(v1) * a[(i_pos + 1, i_pos)]
+                        + conj(v2) * a[(i_pos + 2, i_pos)];
+                    a.write(i_pos, i_pos, a[(i_pos, i_pos)] - mul_real(sum, v0));
                     a.write(
                         i_pos + 1,
                         i_pos,
-                        (a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1)),
+                        a[(i_pos + 1, i_pos)] - mul_real(sum, v0) * v1,
                     );
                     a.write(
                         i_pos + 2,
                         i_pos,
-                        (a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2)),
+                        a[(i_pos + 2, i_pos)] - mul_real(sum, v0) * v2,
                     );
                     if i_pos > ilo && (a[(i_pos, i_pos - 1)] != zero()) {
-                        let mut tst1 = (abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]));
+                        let mut tst1 = abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]);
                         if tst1 == zero() {
                             if i_pos > ilo + 1 {
-                                tst1 = (tst1 + abs1(a[(i_pos - 1, i_pos - 2)]));
+                                tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 2)]);
                             }
                             if i_pos > ilo + 2 {
-                                tst1 = (tst1 + abs1(a[(i_pos - 1, i_pos - 3)]));
+                                tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 3)]);
                             }
                             if i_pos > ilo + 3 {
-                                tst1 = (tst1 + abs1(a[(i_pos - 1, i_pos - 4)]));
+                                tst1 = tst1 + abs1(a[(i_pos - 1, i_pos - 4)]);
                             }
                             if i_pos < ihi - 1 {
-                                tst1 = (tst1 + abs1(a[(i_pos + 1, i_pos)]));
+                                tst1 = tst1 + abs1(a[(i_pos + 1, i_pos)]);
                             }
                             if i_pos < ihi - 2 {
-                                tst1 = (tst1 + abs1(a[(i_pos + 2, i_pos)]));
+                                tst1 = tst1 + abs1(a[(i_pos + 2, i_pos)]);
                             }
                             if i_pos < ihi - 3 {
-                                tst1 = (tst1 + abs1(a[(i_pos + 3, i_pos)]));
+                                tst1 = tst1 + abs1(a[(i_pos + 3, i_pos)]);
                             }
                         }
                         if abs1(a[(i_pos, i_pos - 1)]) < max(small_num, (eps * tst1)) {
@@ -1921,7 +1882,7 @@ fn remove_bulges<T: RealField>(
                                 abs1(a[(i_pos, i_pos)]),
                                 abs1((a[(i_pos, i_pos)] - a[(i_pos - 1, i_pos - 1)])),
                             );
-                            let s = (aa + ab);
+                            let s = aa + ab;
                             if (ba * (ab / s)) <= max(small_num, (eps * (bb * (aa / s)))) {
                                 a.write(i_pos, i_pos - 1, zero());
                             }
@@ -1937,54 +1898,46 @@ fn remove_bulges<T: RealField>(
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col_mut(i_bulge);
-                let v0 = real(v.read(0));
-                let v1 = v.read(1);
-                let v2 = v.read(2);
+                let v0 = real(v[0]);
+                let v1 = copy(v[1]);
+                let v2 = copy(v[2]);
                 for j in i_pos + 1..istop_m {
-                    let sum = ((a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)))
-                        + (conj(v2) * a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, (a.read(i_pos, j) - mul_real(sum, v0)));
-                    a.write(
-                        i_pos + 1,
-                        j,
-                        (a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1)),
-                    );
-                    a.write(
-                        i_pos + 2,
-                        j,
-                        (a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2)),
-                    );
+                    let sum =
+                        a[(i_pos, j)] + conj(v1) * a[(i_pos + 1, j)] + conj(v2) * a[(i_pos + 2, j)];
+                    a.write(i_pos, j, a[(i_pos, j)] - mul_real(sum, v0));
+                    a.write(i_pos + 1, j, a[(i_pos + 1, j)] - mul_real(sum, v0) * v1);
+                    a.write(i_pos + 2, j, a[(i_pos + 2, j)] - mul_real(sum, v0) * v2);
                 }
             }
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col_mut(i_bulge);
-                let v0 = real(v.read(0));
-                let v1 = v.read(1);
-                let v2 = v.read(2);
+                let v0 = real(v[0]);
+                let v1 = copy(v[1]);
+                let v2 = copy(v[2]);
                 let i1 = (i_pos - *i_pos_block) - (i_pos_last + 2 - *i_pos_block - n_shifts);
                 let i2 = Ord::min(
                     u2.nrows(),
                     (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3,
                 );
                 for j in i1..i2 {
-                    let sum = ((u2.read(j, i_pos - *i_pos_block)
-                        + (v1 * u2.read(j, i_pos - *i_pos_block + 1)))
-                        + (v2 * u2.read(j, i_pos - *i_pos_block + 2)));
+                    let sum = u2[(j, i_pos - *i_pos_block)]
+                        + v1 * u2[(j, i_pos - *i_pos_block + 1)]
+                        + v2 * u2[(j, i_pos - *i_pos_block + 2)];
                     u2.write(
                         j,
                         i_pos - *i_pos_block,
-                        (u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0)),
+                        u2[(j, i_pos - *i_pos_block)] - mul_real(sum, v0),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 1,
-                        (u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1))),
+                        u2[(j, i_pos - *i_pos_block + 1)] - (mul_real(sum, v0) * conj(v1)),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 2,
-                        (u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2))),
+                        u2[(j, i_pos - *i_pos_block + 2)] - (mul_real(sum, v0) * conj(v2)),
                     );
                 }
             }
@@ -2132,7 +2085,7 @@ pub fn multishift_qr<T: RealField>(
         }
         if ilo + 1 >= istop {
             if ilo + 1 == istop {
-                w_re.write(ilo, a.read(ilo, ilo));
+                w_re.write(ilo, copy(a[(ilo, ilo)]));
                 w_im.write(ilo, zero());
             }
             break;
@@ -2192,8 +2145,8 @@ pub fn multishift_qr<T: RealField>(
         if k_defl % non_convergence_limit_shift == 0 {
             for i in (i_shifts + 1..istop).rev().step_by(2) {
                 if i >= ilo + 2 {
-                    let ss = (abs1(a[(i, i - 1)]) + abs1(a[(i - 1, i - 2)]));
-                    let aa = (from_real((dat1 * ss)) + a.read(i, i));
+                    let ss = abs1(a[(i, i - 1)]) + abs1(a[(i - 1, i - 2)]);
+                    let aa = from_real((dat1 * ss)) + a[(i, i)];
                     let bb = from_real(ss);
                     let cc = from_real((dat2 * ss));
                     let dd = copy(aa);
@@ -2203,8 +2156,8 @@ pub fn multishift_qr<T: RealField>(
                     w_re.write(i, s2.0);
                     w_im.write(i, s2.1);
                 } else {
-                    w_re.write(i, a.read(i, i));
-                    w_re.write(i - 1, a.read(i, i));
+                    w_re.write(i, copy(a[(i, i)]));
+                    w_re.write(i - 1, copy(a[(i, i)]));
                     w_im.write(i, zero());
                     w_im.write(i - 1, zero());
                 }
@@ -2225,10 +2178,10 @@ pub fn multishift_qr<T: RealField>(
                 ) as usize;
                 ns = ns - ierr;
                 if ns < 2 {
-                    let aa = a.read(istop - 2, istop - 2);
-                    let bb = a.read(istop - 2, istop - 1);
-                    let cc = a.read(istop - 1, istop - 2);
-                    let dd = a.read(istop - 1, istop - 1);
+                    let aa = copy(a[(istop - 2, istop - 2)]);
+                    let bb = copy(a[(istop - 2, istop - 1)]);
+                    let cc = copy(a[(istop - 1, istop - 2)]);
+                    let dd = copy(a[(istop - 1, istop - 1)]);
                     let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
                     w_re.write(istop - 2, s1.0);
                     w_im.write(istop - 2, s1.1);
@@ -2245,8 +2198,8 @@ pub fn multishift_qr<T: RealField>(
                 for i in i_shifts..k - 1 {
                     if (abs(w_re[i]) + abs(w_im[i])) < (abs(w_re[i + 1]) + abs(w_im[i + 1])) {
                         sorted = false;
-                        let wi = (w_re.read(i), w_im.read(i));
-                        let wip1 = (w_re.read(i + 1), w_im.read(i + 1));
+                        let wi = (copy(w_re[i]), copy(w_im[i]));
+                        let wip1 = (copy(w_re[i + 1]), copy(w_im[i + 1]));
                         w_re.write(i, wip1.0);
                         w_im.write(i, wip1.1);
                         w_re.write(i + 1, wi.0);
@@ -2257,11 +2210,11 @@ pub fn multishift_qr<T: RealField>(
             }
             for i in (i_shifts + 2..istop).rev().step_by(2) {
                 if w_im[i] != (-w_im[i - 1]) {
-                    let tmp = (w_re.read(i), w_im.read(i));
-                    w_re.write(i, w_re.read(i - 1));
-                    w_im.write(i, w_im.read(i - 1));
-                    w_re.write(i - 1, w_re.read(i - 2));
-                    w_im.write(i - 1, w_im.read(i - 2));
+                    let tmp = (copy(w_re[i]), copy(w_im[i]));
+                    w_re.write(i, copy(w_re[i - 1]));
+                    w_im.write(i, copy(w_im[i - 1]));
+                    w_re.write(i - 1, copy(w_re[i - 2]));
+                    w_im.write(i - 1, copy(w_im[i - 2]));
                     w_re.write(i - 2, tmp.0);
                     w_im.write(i - 2, tmp.1);
                 }
@@ -2275,11 +2228,11 @@ pub fn multishift_qr<T: RealField>(
             if abs((w_re[i_shifts] - a[(istop - 1, istop - 1)]))
                 < abs((w_re[i_shifts + 1] - a[(istop - 1, istop - 1)]))
             {
-                w_re.write(i_shifts + 1, w_re.read(i_shifts));
-                w_im.write(i_shifts + 1, w_im.read(i_shifts));
+                w_re.write(i_shifts + 1, copy(w_re[i_shifts]));
+                w_im.write(i_shifts + 1, copy(w_im[i_shifts]));
             } else {
-                w_re.write(i_shifts, w_re.read(i_shifts + 1));
-                w_im.write(i_shifts, w_im.read(i_shifts + 1));
+                w_re.write(i_shifts, copy(w_re[i_shifts + 1]));
+                w_im.write(i_shifts, copy(w_im[i_shifts + 1]));
             }
         }
         let mut shifts_re = w_re.rb_mut().subrows_mut(i_shifts, ns);
@@ -2329,7 +2282,7 @@ pub fn lahqr<T: RealField>(
     let mut w_im = w_im;
     let one = one();
     let eps = epsilon;
-    let small_num = (zero_threshold / eps);
+    let small_num = zero_threshold / eps;
     let non_convergence_limit = 10;
     let dat1 = from_f64(0.75);
     let dat2 = from_f64(-0.4375);
@@ -2337,7 +2290,7 @@ pub fn lahqr<T: RealField>(
         return 0;
     }
     if nh == 1 {
-        w_re.write(ilo, a.read(ilo, ilo));
+        w_re.write(ilo, copy(a[(ilo, ilo)]));
         w_im.write(ilo, zero());
     }
     let itmax = 30 * Ord::max(10, nh);
@@ -2352,7 +2305,7 @@ pub fn lahqr<T: RealField>(
         }
         if istart + 1 >= istop {
             if istart + 1 == istop {
-                w_re.write(istart, a.read(istart, istart));
+                w_re.write(istart, copy(a[(istart, istart)]));
                 w_im.write(istart, zero());
             }
             break;
@@ -2372,13 +2325,13 @@ pub fn lahqr<T: RealField>(
                 istart = i;
                 break;
             }
-            let mut tst = (abs(a.read(i - 1, i - 1)) + abs(a.read(i, i)));
+            let mut tst = abs(a[(i - 1, i - 1)]) + abs(a[(i, i)]);
             if tst == zero() {
                 if i >= ilo + 2 {
-                    tst = (tst + abs(a.read(i - 1, i - 2)));
+                    tst = tst + abs(a[(i - 1, i - 2)]);
                 }
                 if i + 1 < ihi {
-                    tst = (tst + abs(a.read(i + 1, i)));
+                    tst = tst + abs(a[(i + 1, i)]);
                 }
             }
             if abs(a[(i, i - 1)]) <= (eps * tst) {
@@ -2386,8 +2339,8 @@ pub fn lahqr<T: RealField>(
                 let ba = min(abs(a[(i, i - 1)]), abs(a[(i - 1, i)]));
                 let aa = max(abs(a[(i, i)]), abs((a[(i, i)] - a[(i - 1, i - 1)])));
                 let bb = min(abs(a[(i, i)]), abs((a[(i, i)] - a[(i - 1, i - 1)])));
-                let s = (aa + ab);
-                if (ba * (ab / s)) <= max(small_num, (eps * (bb * (aa / s)))) {
+                let s = aa + ab;
+                if ba * (ab / s) <= max(small_num, eps * (bb * (aa / s))) {
                     a.write(i, i - 1, zero());
                     istart = i;
                     break;
@@ -2397,7 +2350,7 @@ pub fn lahqr<T: RealField>(
         if istart + 2 >= istop {
             if istart + 1 == istop {
                 k_defl = 0;
-                w_re.write(istart, a.read(istart, istart));
+                w_re.write(istart, copy(a[(istart, istart)]));
                 w_im.write(istart, zero());
                 istop = istart;
                 istart = ilo;
@@ -2406,10 +2359,10 @@ pub fn lahqr<T: RealField>(
             if istart + 2 == istop {
                 let ((a00, a01, a10, a11), (s1_re, s1_im), (s2_re, s2_im), (cs, sn)) =
                     lahqr_schur22(
-                        a.read(istart, istart),
-                        a.read(istart, istart + 1),
-                        a.read(istart + 1, istart),
-                        a.read(istart + 1, istart + 1),
+                        copy(a[(istart, istart)]),
+                        copy(a[(istart, istart + 1)]),
+                        copy(a[(istart + 1, istart)]),
+                        copy(a[(istart + 1, istart + 1)]),
                     );
                 let rot = JacobiRotation { c: cs, s: sn };
                 a.write(istart, istart, a00);
@@ -2466,19 +2419,19 @@ pub fn lahqr<T: RealField>(
         let (a00, a01, a10, a11);
         k_defl += 1;
         if k_defl % non_convergence_limit == 0 {
-            let mut s = abs(a.read(istop - 1, istop - 2));
+            let mut s = abs(a[(istop - 1, istop - 2)]);
             if istop > ilo + 2 {
-                s = (s + abs(a.read(istop - 2, istop - 3)));
+                s = s + abs(a[(istop - 2, istop - 3)]);
             };
-            a00 = ((dat1 * s) + a.read(istop - 1, istop - 1));
-            a01 = (dat2 * s);
+            a00 = dat1 * s + a[(istop - 1, istop - 1)];
+            a01 = dat2 * s;
             a10 = s;
             a11 = copy(a00);
         } else {
-            a00 = a.read(istop - 2, istop - 2);
-            a10 = a.read(istop - 1, istop - 2);
-            a01 = a.read(istop - 2, istop - 1);
-            a11 = a.read(istop - 1, istop - 1);
+            a00 = copy(a[(istop - 2, istop - 2)]);
+            a10 = copy(a[(istop - 1, istop - 2)]);
+            a01 = copy(a[(istop - 2, istop - 1)]);
+            a11 = copy(a[(istop - 1, istop - 1)]);
         }
         let (mut s1, mut s2) = lahqr_eig22(a00, a01, a10, a11);
         if s1.1 == zero() && s2.1 == zero() {
@@ -2498,13 +2451,13 @@ pub fn lahqr<T: RealField>(
                     (copy(s1.0), copy(s1.1)),
                     (copy(s2.0), copy(s2.1)),
                 );
-                let mut head = v.read(0);
+                let mut head = copy(v[0]);
                 let (tau, _) = make_householder_in_place(&mut head, v.rb_mut().subrows_mut(1, 2));
                 let tau = recip(tau);
                 let v0 = tau;
-                let v1 = v.read(1);
-                let v2 = v.read(2);
-                let refsum = ((v0 * a.read(i, i - 1)) + (v1 * a.read(i + 1, i - 1)));
+                let v1 = copy(v[1]);
+                let v2 = copy(v[2]);
+                let refsum = v0 * a[(i, i - 1)] + v1 * a[(i + 1, i - 1)];
                 if (abs((a[(i + 1, i - 1)] - (refsum * v1))) + abs((refsum * v2)))
                     <= (eps * ((abs(a[(i, i - 1)]) + abs(a[(i, i + 1)])) + abs(a[(i + 1, i + 2)])))
                 {
@@ -2525,21 +2478,21 @@ pub fn lahqr<T: RealField>(
                     (copy(s1.0), copy(s1.1)),
                     (copy(s2.0), copy(s2.1)),
                 );
-                let mut beta = x.read(0);
+                let mut beta = copy(x[0]);
                 let tail = x.rb_mut().subrows_mut(1, nr - 1);
                 (t1, _) = make_householder_in_place(&mut beta, tail);
                 v.write(0, beta);
                 t1 = recip(t1);
                 if i > istart {
-                    a.write(i, i - 1, (a.read(i, i - 1) * (one - t1)));
+                    a.write(i, i - 1, a[(i, i - 1)] * (one - t1));
                 }
             } else {
-                v.write(0, a.read(i, i - 1));
-                v.write(1, a.read(i + 1, i - 1));
+                v.write(0, copy(a[(i, i - 1)]));
+                v.write(1, copy(a[(i + 1, i - 1)]));
                 if nr == 3 {
-                    v.write(2, a.read(i + 2, i - 1));
+                    v.write(2, copy(a[(i + 2, i - 1)]));
                 }
-                let mut beta = v.read(0);
+                let mut beta = copy(v[0]);
                 let tail = v.rb_mut().subrows_mut(1, nr - 1);
                 (t1, _) = make_householder_in_place(&mut beta, tail);
                 t1 = recip(t1);
@@ -2550,48 +2503,47 @@ pub fn lahqr<T: RealField>(
                     a.write(i + 2, i - 1, zero());
                 }
             }
-            let v2 = v.read(1);
-            let t2 = (t1 * v2);
+            let v2 = copy(v[1]);
+            let t2 = t1 * v2;
             if nr == 3 {
-                let v3 = v.read(2);
-                let t3 = (t1 * v.read(2));
+                let v3 = copy(v[2]);
+                let t3 = t1 * v[2];
                 for j in i..istop_m {
-                    let sum = ((a.read(i, j) + (v2 * a.read(i + 1, j))) + (v3 * a.read(i + 2, j)));
-                    a.write(i, j, (a.read(i, j) - (sum * t1)));
-                    a.write(i + 1, j, (a.read(i + 1, j) - (sum * t2)));
-                    a.write(i + 2, j, (a.read(i + 2, j) - (sum * t3)));
+                    let sum = a[(i, j)] + v2 * a[(i + 1, j)] + v3 * a[(i + 2, j)];
+                    a.write(i, j, a[(i, j)] - (sum * t1));
+                    a.write(i + 1, j, a[(i + 1, j)] - sum * t2);
+                    a.write(i + 2, j, a[(i + 2, j)] - sum * t3);
                 }
                 for j in istart_m..Ord::min(i + 4, istop) {
-                    let sum = ((a.read(j, i) + (v2 * a.read(j, i + 1))) + (v3 * a.read(j, i + 2)));
-                    a.write(j, i, (a.read(j, i) - (sum * t1)));
-                    a.write(j, i + 1, (a.read(j, i + 1) - (sum * t2)));
-                    a.write(j, i + 2, (a.read(j, i + 2) - (sum * t3)));
+                    let sum = a[(j, i)] + v2 * a[(j, i + 1)] + v3 * a[(j, i + 2)];
+                    a.write(j, i, a[(j, i)] - sum * t1);
+                    a.write(j, i + 1, a[(j, i + 1)] - sum * t2);
+                    a.write(j, i + 2, a[(j, i + 2)] - sum * t3);
                 }
                 if let Some(mut z) = z.rb_mut() {
                     for j in 0..n {
-                        let sum =
-                            ((z.read(j, i) + (v2 * z.read(j, i + 1))) + (v3 * z.read(j, i + 2)));
-                        z.write(j, i, (z.read(j, i) - (sum * t1)));
-                        z.write(j, i + 1, (z.read(j, i + 1) - (sum * t2)));
-                        z.write(j, i + 2, (z.read(j, i + 2) - (sum * t3)));
+                        let sum = z[(j, i)] + v2 * z[(j, i + 1)] + v3 * z[(j, i + 2)];
+                        z.write(j, i, z[(j, i)] - sum * t1);
+                        z.write(j, i + 1, z[(j, i + 1)] - sum * t2);
+                        z.write(j, i + 2, z[(j, i + 2)] - sum * t3);
                     }
                 }
             } else {
                 for j in i..istop_m {
-                    let sum = (a.read(i, j) + (v2 * a.read(i + 1, j)));
-                    a.write(i, j, (a.read(i, j) - (sum * t1)));
-                    a.write(i + 1, j, (a.read(i + 1, j) - (sum * t2)));
+                    let sum = a[(i, j)] + v2 * a[(i + 1, j)];
+                    a.write(i, j, a[(i, j)] - sum * t1);
+                    a.write(i + 1, j, a[(i + 1, j)] - sum * t2);
                 }
                 for j in istart_m..Ord::min(i + 3, istop) {
-                    let sum = (a.read(j, i) + (v2 * a.read(j, i + 1)));
-                    a.write(j, i, (a.read(j, i) - (sum * t1)));
-                    a.write(j, i + 1, (a.read(j, i + 1) - (sum * t2)));
+                    let sum = a[(j, i)] + v2 * a[(j, i + 1)];
+                    a.write(j, i, a[(j, i)] - sum * t1);
+                    a.write(j, i + 1, a[(j, i + 1)] - sum * t2);
                 }
                 if let Some(mut z) = z.rb_mut() {
                     for j in 0..n {
-                        let sum = (z.read(j, i) + (v2 * z.read(j, i + 1)));
-                        z.write(j, i, (z.read(j, i) - (sum * t1)));
-                        z.write(j, i + 1, (z.read(j, i + 1) - (sum * t2)));
+                        let sum = z[(j, i)] + v2 * z[(j, i + 1)];
+                        z.write(j, i, z[(j, i)] - sum * t1);
+                        z.write(j, i + 1, z[(j, i + 1)] - sum * t2);
                     }
                 }
             }
