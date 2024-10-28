@@ -6,7 +6,7 @@ use syn::{
     punctuated::Punctuated,
     token::Comma,
     visit_mut::{self, VisitMut},
-    Expr, ExprCall, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
+    Expr, ExprCall, ExprParen, ExprPath, ExprReference, Ident, Macro, Path, PathSegment,
 };
 
 struct MigrationCtx(HashMap<&'static str, &'static str>);
@@ -31,6 +31,71 @@ impl visit_mut::VisitMut for MigrationCtx {
         visit_mut::visit_expr_mut(self, i);
 
         match i {
+            Expr::MethodCall(call) if call.method.to_string() == "faer_add" => {
+                *i = Expr::Binary(syn::ExprBinary {
+                    attrs: vec![],
+                    left: call.receiver.clone(),
+                    op: syn::BinOp::Add(Default::default()),
+                    right: Box::new(call.args[0].clone()),
+                });
+                *i = Expr::Paren(ExprParen {
+                    attrs: vec![],
+                    paren_token: Default::default(),
+                    expr: Box::new(i.clone()),
+                });
+            }
+            Expr::MethodCall(call) if call.method.to_string() == "faer_sub" => {
+                *i = Expr::Binary(syn::ExprBinary {
+                    attrs: vec![],
+                    left: call.receiver.clone(),
+                    op: syn::BinOp::Sub(Default::default()),
+                    right: Box::new(call.args[0].clone()),
+                });
+                *i = Expr::Paren(ExprParen {
+                    attrs: vec![],
+                    paren_token: Default::default(),
+                    expr: Box::new(i.clone()),
+                });
+            }
+            Expr::MethodCall(call) if call.method.to_string() == "faer_mul" => {
+                *i = Expr::Binary(syn::ExprBinary {
+                    attrs: vec![],
+                    left: call.receiver.clone(),
+                    op: syn::BinOp::Mul(Default::default()),
+                    right: Box::new(call.args[0].clone()),
+                });
+                *i = Expr::Paren(ExprParen {
+                    attrs: vec![],
+                    paren_token: Default::default(),
+                    expr: Box::new(i.clone()),
+                });
+            }
+            Expr::MethodCall(call) if call.method.to_string() == "faer_div" => {
+                *i = Expr::Binary(syn::ExprBinary {
+                    attrs: vec![],
+                    left: call.receiver.clone(),
+                    op: syn::BinOp::Div(Default::default()),
+                    right: Box::new(call.args[0].clone()),
+                });
+                *i = Expr::Paren(ExprParen {
+                    attrs: vec![],
+                    paren_token: Default::default(),
+                    expr: Box::new(i.clone()),
+                });
+            }
+            Expr::MethodCall(call) if call.method.to_string() == "faer_neg" => {
+                *i = Expr::Unary(syn::ExprUnary {
+                    attrs: vec![],
+                    op: syn::UnOp::Neg(Default::default()),
+                    expr: call.receiver.clone(),
+                });
+                *i = Expr::Paren(ExprParen {
+                    attrs: vec![],
+                    paren_token: Default::default(),
+                    expr: Box::new(i.clone()),
+                });
+            }
+
             Expr::MethodCall(call) if call.method.to_string().starts_with("faer_") => {
                 if let Some(new_method) = self.0.get(&*call.method.to_string()).map(|x| &**x) {
                     *i = math_expr(
@@ -216,8 +281,8 @@ pub fn migrate(
             ("faer_sub", "sub"),
             ("faer_mul", "mul"),
             ("faer_div", "div"),
-            ("faer_inv", "recip"),
             ("faer_neg", "neg"),
+            ("faer_inv", "recip"),
             ("faer_abs", "abs"),
             ("faer_abs2", "abs2"),
             ("faer_sqrt", "sqrt"),
