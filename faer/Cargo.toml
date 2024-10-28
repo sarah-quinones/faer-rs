@@ -23,6 +23,7 @@ faer-traits = { path = "../faer-traits" }
 faer-macros = { path = "../faer-macros" }
 rand_distr = "0.4.3"
 libm = "0.2.8"
+num-traits = "0.2.19"
 
 [features]
 default = ["std", "rayon"]

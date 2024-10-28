@@ -12,3 +12,4 @@ reborrow = "0.5.5"
 
 faer-macros = { path = "../faer-macros" }
 generativity = "1.1.0"
+num-traits = "0.2.19"

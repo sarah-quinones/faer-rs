@@ -191,53 +191,60 @@ pub trait DivByRef<Rhs = Self> {
     fn div_by_ref(&self, rhs: &Rhs) -> Self::Output;
 }
 
-trait ByRefOptIn: Copy {}
-
-impl ByRefOptIn for usize {}
-impl ByRefOptIn for isize {}
-impl ByRefOptIn for i8 {}
-impl ByRefOptIn for f64 {}
-impl ByRefOptIn for f32 {}
-
-impl<Rhs: ByRefOptIn, Lhs: ByRefOptIn + core::ops::Add<Rhs>> AddByRef<Rhs> for Lhs {
-    type Output = <Self as core::ops::Add<Rhs>>::Output;
+impl<Rhs, Lhs, Output> AddByRef<Rhs> for Lhs
+where
+    for<'a, 'b> &'a Lhs: core::ops::Add<&'b Rhs, Output = Output>,
+{
+    type Output = Output;
 
     #[inline]
     fn add_by_ref(&self, rhs: &Rhs) -> Self::Output {
-        *self + *rhs
+        self + rhs
     }
 }
-impl<T: ByRefOptIn + core::ops::Neg> NegByRef for T {
-    type Output = <Self as core::ops::Neg>::Output;
-
-    #[inline]
-    fn neg_by_ref(&self) -> Self::Output {
-        -*self
-    }
-}
-
-impl<Rhs: ByRefOptIn, Lhs: ByRefOptIn + core::ops::Sub<Rhs>> SubByRef<Rhs> for Lhs {
-    type Output = <Self as core::ops::Sub<Rhs>>::Output;
+impl<Rhs, Lhs, Output> SubByRef<Rhs> for Lhs
+where
+    for<'a, 'b> &'a Lhs: core::ops::Sub<&'b Rhs, Output = Output>,
+{
+    type Output = Output;
 
     #[inline]
     fn sub_by_ref(&self, rhs: &Rhs) -> Self::Output {
-        *self - *rhs
+        self - rhs
     }
 }
-impl<Rhs: ByRefOptIn, Lhs: ByRefOptIn + core::ops::Mul<Rhs>> MulByRef<Rhs> for Lhs {
-    type Output = <Self as core::ops::Mul<Rhs>>::Output;
+impl<Rhs, Lhs, Output> MulByRef<Rhs> for Lhs
+where
+    for<'a, 'b> &'a Lhs: core::ops::Mul<&'b Rhs, Output = Output>,
+{
+    type Output = Output;
 
     #[inline]
     fn mul_by_ref(&self, rhs: &Rhs) -> Self::Output {
-        *self * *rhs
+        self * rhs
     }
 }
-impl<Rhs: ByRefOptIn, Lhs: ByRefOptIn + core::ops::Div<Rhs>> DivByRef<Rhs> for Lhs {
-    type Output = <Self as core::ops::Div<Rhs>>::Output;
+impl<Rhs, Lhs, Output> DivByRef<Rhs> for Lhs
+where
+    for<'a, 'b> &'a Lhs: core::ops::Div<&'b Rhs, Output = Output>,
+{
+    type Output = Output;
 
     #[inline]
     fn div_by_ref(&self, rhs: &Rhs) -> Self::Output {
-        *self / *rhs
+        self / rhs
+    }
+}
+
+impl<T, Output> NegByRef for T
+where
+    for<'a> &'a T: core::ops::Neg<Output = Output>,
+{
+    type Output = Output;
+
+    #[inline]
+    fn neg_by_ref(&self) -> Self::Output {
+        -self
     }
 }
 
@@ -1248,7 +1255,12 @@ pub trait ComplexField:
 }
 
 pub trait RealField:
-    ComplexField<Real = Self, Conj = Self> + DivByRef<Output = Self> + PartialOrd
+    ComplexField<Real = Self, Conj = Self>
+    + DivByRef<Output = Self>
+    + PartialOrd
+    + num_traits::NumOps
+    + num_traits::Num
+    + core::ops::Neg<Output = Self>
 {
     fn epsilon_impl() -> Self;
     fn nbits_impl() -> usize;
@@ -2018,56 +2030,6 @@ impl RealField for f64 {
     #[inline(always)]
     fn nbits_impl() -> usize {
         Self::MANTISSA_DIGITS as usize
-    }
-}
-
-impl<T: AddByRef<Output = T>> AddByRef for Complex<T> {
-    type Output = Self;
-
-    #[inline]
-    fn add_by_ref(&self, rhs: &Self) -> Self::Output {
-        Complex {
-            re: self.re.add_by_ref(&rhs.re),
-            im: self.im.add_by_ref(&rhs.im),
-        }
-    }
-}
-impl<T: SubByRef<Output = T>> SubByRef for Complex<T> {
-    type Output = Self;
-
-    #[inline]
-    fn sub_by_ref(&self, rhs: &Self) -> Self::Output {
-        Complex {
-            re: self.re.sub_by_ref(&rhs.re),
-            im: self.im.sub_by_ref(&rhs.im),
-        }
-    }
-}
-impl<T: AddByRef<Output = T> + SubByRef<Output = T> + MulByRef<Output = T>> MulByRef
-    for Complex<T>
-{
-    type Output = Self;
-
-    #[inline]
-    #[faer_macros::math]
-    fn mul_by_ref(&self, rhs: &Self) -> Self::Output {
-        Complex {
-            re: self.re * rhs.re - self.im * rhs.im,
-            im: self.re * rhs.im + self.im * rhs.re,
-        }
-    }
-}
-
-impl<T: NegByRef<Output = T>> NegByRef for Complex<T> {
-    type Output = Self;
-
-    #[inline]
-    #[faer_macros::math]
-    fn neg_by_ref(&self) -> Self::Output {
-        Complex {
-            re: self.re.neg_by_ref(),
-            im: self.im.neg_by_ref(),
-        }
     }
 }
 

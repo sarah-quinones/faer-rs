@@ -251,34 +251,33 @@ fn lahqr_shiftcolumn<T: ComplexField>(h: MatRef<'_, T>, v: ColMut<'_, T>, s1: T,
             let h10s = mul_real(h.read(1, 0), s_inv);
             v.write(
                 0,
-                ((h10s * h.read(0, 1))
-                    + ((h.read(0, 0) - s1) * mul_real((h.read(0, 0) - s2), s_inv))),
+                h10s * h[(0, 1)] + (h[(0, 0)] - s1) * mul_real(h[(0, 0)] - s2, s_inv),
             );
-            v.write(1, (h10s * (((h.read(0, 0) + h.read(1, 1)) - s1) - s2)));
+            v.write(1, h10s * (h[(0, 0)] + h[(1, 1)] - s1 - s2));
         }
     } else {
-        let s = abs1((h.read(0, 0) - s2)) + abs1(h.read(1, 0)) + abs1(h.read(2, 0));
+        let s = abs1((h[(0, 0)] - s2)) + abs1(h[(1, 0)]) + abs1(h[(2, 0)]);
         if s == zero() {
             v.write(0, zero());
             v.write(1, zero());
             v.write(2, zero());
         } else {
             let s_inv = recip(s);
-            let h10s = mul_real(h.read(1, 0), s_inv);
-            let h20s = mul_real(h.read(2, 0), s_inv);
+            let h10s = mul_real(h[(1, 0)], s_inv);
+            let h20s = mul_real(h[(2, 0)], s_inv);
             v.write(
                 0,
-                ((((h.read(0, 0) - s1) * mul_real((h.read(0, 0) - s2), s_inv))
-                    + (h.read(0, 1) * h10s))
-                    + (h.read(0, 2) * h20s)),
+                (h[(0, 0)] - s1) * mul_real(h[(0, 0)] - s2, s_inv)
+                    + h[(0, 1)] * h10s
+                    + h[(0, 2)] * h20s,
             );
             v.write(
                 1,
-                ((h10s * (h.read(0, 0) + ((h.read(1, 1) - s1) - s2))) + (h.read(1, 2) * h20s)),
+                h10s * (h[(0, 0)] + h[(1, 1)] - s1 - s2) + h[(1, 2)] * h20s,
             );
             v.write(
                 2,
-                ((h20s * (h.read(0, 0) + ((h.read(2, 2) - s1) - s2))) + (h10s * h.read(2, 1))),
+                h20s * (h[(0, 0)] + h[(2, 2)] - s1 - s2) + h10s * h[(2, 1)],
             );
         }
     }
@@ -460,7 +459,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                     Accum::Add,
                     vv.rb().as_mat(),
                     tmp.as_ref(),
-                    (-tau),
+                    -tau,
                     par,
                 );
             }
@@ -481,7 +480,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                     Accum::Add,
                     tmp.as_ref(),
                     vv.rb().adjoint().as_mat(),
-                    (-tau),
+                    -tau,
                     par,
                 );
             }
@@ -502,7 +501,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                     Accum::Add,
                     tmp.as_ref(),
                     vv.rb().adjoint().as_mat(),
-                    (-tau),
+                    -tau,
                     par,
                 );
             }
@@ -537,7 +536,7 @@ fn aggressive_early_deflation<T: ComplexField>(
         }
     }
     if kwtop > 0 {
-        a.write(kwtop, kwtop - 1, (s_spike * conj(v.read(0, 0))));
+        a.write(kwtop, kwtop - 1, s_spike * conj(v.read(0, 0)));
     }
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
@@ -665,7 +664,7 @@ fn schur_swap<T: ComplexField>(mut a: MatMut<'_, T>, q: Option<MatMut<'_, T>>, j
     let j2 = j0 + 2;
     let t00 = a.read(j0, j0);
     let t11 = a.read(j1, j1);
-    let (rot, _) = JacobiRotation::<T>::rotg(a.read(j0, j1), (t11 - t00));
+    let (rot, _) = JacobiRotation::<T>::rotg(a.read(j0, j1), t11 - t00);
     a.write(j1, j1, t00);
     a.write(j0, j0, t11);
     if j2 < n {
@@ -817,9 +816,9 @@ pub fn multishift_qr<T: ComplexField>(
             for i in (i_shifts + 1..istop).rev().step_by(2) {
                 if i >= ilo + 2 {
                     let ss = abs1(a[(i, i - 1)]) + abs1(a[(i - 1, i - 2)]);
-                    let aa = (from_real((dat1 * ss)) + a.read(i, i));
+                    let aa = from_real(dat1 * ss) + a.read(i, i);
                     let bb = from_real(ss);
-                    let cc = from_real((dat2 * ss));
+                    let cc = from_real(dat2 * ss);
                     let dd = copy(aa);
                     let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
                     w.write(i - 1, s1);
@@ -895,11 +894,11 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
     let v0 = real(v.read(0));
     let v1 = v.read(1);
     let v2 = v.read(2);
-    let refsum = (mul_real(v2, v0) * h.read(3, 2));
+    let refsum = mul_real(v2, v0) * h.read(3, 2);
     let epsilon = eps();
-    h.write(3, 0, (-refsum));
-    h.write(3, 1, ((-refsum) * conj(v1)));
-    h.write(3, 2, (h.read(3, 2) - (refsum * conj(v2))));
+    h.write(3, 0, -refsum);
+    h.write(3, 1, -refsum * conj(v1));
+    h.write(3, 2, h.read(3, 2) - refsum * conj(v2));
     v.write(0, h.read(1, 0));
     v.write(1, h.read(2, 0));
     v.write(2, h.read(3, 0));
@@ -923,7 +922,7 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
         let vt0 = vt.read(0);
         let vt1 = vt.read(1);
         let vt2 = vt.read(2);
-        let refsum = ((conj(vt0) * h.read(1, 0)) + (conj(vt1) * h.read(2, 0)));
+        let refsum = conj(vt0) * h.read(1, 0) + conj(vt1) * h.read(2, 0);
         if abs1(sub(h[(2, 0)], mul(refsum, vt1))) + abs1(mul(refsum, vt2))
             > epsilon * (abs1(h[(0, 0)]) + abs1(h[(1, 1)]) + abs1(h[(2, 2)]))
         {
@@ -931,7 +930,7 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
             h.write(2, 0, zero());
             h.write(3, 0, zero());
         } else {
-            h.write(1, 0, (h.read(1, 0) - refsum));
+            h.write(1, 0, h.read(1, 0) - refsum);
             h.write(2, 0, zero());
             h.write(3, 0, zero());
             v.write(0, vt.read(0));
@@ -1094,32 +1093,32 @@ fn introduce_bulges<T: ComplexField>(
             let v1 = v.read(1);
             let v2 = v.read(2);
             for j in istart_m..i_pos + 3 {
-                let sum = ((a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)))
-                    + (v2 * a.read(j, i_pos + 2)));
-                a.write(j, i_pos, (a.read(j, i_pos) - mul_real(sum, v0)));
+                let sum = a.read(j, i_pos) + v1 * a.read(j, i_pos + 1) + v2 * a.read(j, i_pos + 2);
+                a.write(j, i_pos, a.read(j, i_pos) - mul_real(sum, v0));
                 a.write(
                     j,
                     i_pos + 1,
-                    (a.read(j, i_pos + 1) - (mul_real(sum, v0) * conj(v1))),
+                    a.read(j, i_pos + 1) - mul_real(sum, v0) * conj(v1),
                 );
                 a.write(
                     j,
                     i_pos + 2,
-                    (a.read(j, i_pos + 2) - (mul_real(sum, v0) * conj(v2))),
+                    a.read(j, i_pos + 2) - mul_real(sum, v0) * conj(v2),
                 );
             }
-            let sum = ((a.read(i_pos, i_pos) + (conj(v1) * a.read(i_pos + 1, i_pos)))
-                + (conj(v2) * a.read(i_pos + 2, i_pos)));
-            a.write(i_pos, i_pos, (a.read(i_pos, i_pos) - mul_real(sum, v0)));
+            let sum = a.read(i_pos, i_pos)
+                + conj(v1) * a.read(i_pos + 1, i_pos)
+                + conj(v2) * a.read(i_pos + 2, i_pos);
+            a.write(i_pos, i_pos, a.read(i_pos, i_pos) - mul_real(sum, v0));
             a.write(
                 i_pos + 1,
                 i_pos,
-                (a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1)),
+                a.read(i_pos + 1, i_pos) - mul_real(sum, v0) * v1,
             );
             a.write(
                 i_pos + 2,
                 i_pos,
-                (a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2)),
+                a.read(i_pos + 2, i_pos) - mul_real(sum, v0) * v2,
             );
             if (i_pos > ilo) && (a[(i_pos, i_pos - 1)] != zero()) {
                 let mut tst1 = abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]);
@@ -1174,19 +1173,12 @@ fn introduce_bulges<T: ComplexField>(
             let v1 = v.read(1);
             let v2 = v.read(2);
             for j in i_pos + 1..istop_m {
-                let sum = ((a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)))
-                    + (conj(v2) * a.read(i_pos + 2, j)));
-                a.write(i_pos, j, (a.read(i_pos, j) - mul_real(sum, v0)));
-                a.write(
-                    i_pos + 1,
-                    j,
-                    (a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1)),
-                );
-                a.write(
-                    i_pos + 2,
-                    j,
-                    (a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2)),
-                );
+                let sum = a.read(i_pos, j)
+                    + conj(v1) * a.read(i_pos + 1, j)
+                    + conj(v2) * a.read(i_pos + 2, j);
+                a.write(i_pos, j, a.read(i_pos, j) - mul_real(sum, v0));
+                a.write(i_pos + 1, j, a.read(i_pos + 1, j) - mul_real(sum, v0) * v1);
+                a.write(i_pos + 2, j, a.read(i_pos + 2, j) - mul_real(sum, v0) * v2);
             }
         }
         for i_bulge in 0..n_active_bulges {
@@ -1198,22 +1190,19 @@ fn introduce_bulges<T: ComplexField>(
             let i1 = 0;
             let i2 = Ord::min(u2.nrows(), (i_pos_last - ilo) + (i_pos_last - ilo) + 3);
             for j in i1..i2 {
-                let sum = ((u2.read(j, i_pos - ilo) + (v1 * u2.read(j, i_pos - ilo + 1)))
-                    + (v2 * u2.read(j, i_pos - ilo + 2)));
-                u2.write(
-                    j,
-                    i_pos - ilo,
-                    (u2.read(j, i_pos - ilo) - mul_real(sum, v0)),
-                );
+                let sum = u2.read(j, i_pos - ilo)
+                    + v1 * u2.read(j, i_pos - ilo + 1)
+                    + v2 * u2.read(j, i_pos - ilo + 2);
+                u2.write(j, i_pos - ilo, u2.read(j, i_pos - ilo) - mul_real(sum, v0));
                 u2.write(
                     j,
                     i_pos - ilo + 1,
-                    (u2.read(j, i_pos - ilo + 1) - (mul_real(sum, v0) * conj(v1))),
+                    u2.read(j, i_pos - ilo + 1) - mul_real(sum, v0) * conj(v1),
                 );
                 u2.write(
                     j,
                     i_pos - ilo + 2,
-                    (u2.read(j, i_pos - ilo + 2) - (mul_real(sum, v0) * conj(v2))),
+                    u2.read(j, i_pos - ilo + 2) - mul_real(sum, v0) * conj(v2),
                 );
             }
         }
@@ -1332,32 +1321,33 @@ fn move_bulges_down<T: ComplexField>(
                 let v1 = v.read(1);
                 let v2 = v.read(2);
                 for j in istart_m..i_pos + 3 {
-                    let sum = ((a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)))
-                        + (v2 * a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, (a.read(j, i_pos) - mul_real(sum, v0)));
+                    let sum =
+                        a.read(j, i_pos) + v1 * a.read(j, i_pos + 1) + v2 * a.read(j, i_pos + 2);
+                    a.write(j, i_pos, a.read(j, i_pos) - mul_real(sum, v0));
                     a.write(
                         j,
                         i_pos + 1,
-                        (a.read(j, i_pos + 1) - (mul_real(sum, v0) * conj(v1))),
+                        a.read(j, i_pos + 1) - mul_real(sum, v0) * conj(v1),
                     );
                     a.write(
                         j,
                         i_pos + 2,
-                        (a.read(j, i_pos + 2) - (mul_real(sum, v0) * conj(v2))),
+                        a.read(j, i_pos + 2) - mul_real(sum, v0) * conj(v2),
                     );
                 }
-                let sum = ((a.read(i_pos, i_pos) + (conj(v1) * a.read(i_pos + 1, i_pos)))
-                    + (conj(v2) * a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, (a.read(i_pos, i_pos) - mul_real(sum, v0)));
+                let sum = a.read(i_pos, i_pos)
+                    + conj(v1) * a.read(i_pos + 1, i_pos)
+                    + conj(v2) * a.read(i_pos + 2, i_pos);
+                a.write(i_pos, i_pos, a.read(i_pos, i_pos) - mul_real(sum, v0));
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    (a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1)),
+                    a.read(i_pos + 1, i_pos) - mul_real(sum, v0) * v1,
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    (a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2)),
+                    a.read(i_pos + 2, i_pos) - mul_real(sum, v0) * v2,
                 );
                 if (i_pos > ilo) && (a[(i_pos, i_pos - 1)] != zero()) {
                     let mut tst1 = abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]);
@@ -1412,18 +1402,19 @@ fn move_bulges_down<T: ComplexField>(
                 let v1 = v.read(1);
                 let v2 = v.read(2);
                 for j in i_pos + 1..istop_m {
-                    let sum = ((a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)))
-                        + (conj(v2) * a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, (a.read(i_pos, j) - mul_real(sum, v0)));
+                    let sum = a.read(i_pos, j)
+                        + conj(v1) * a.read(i_pos + 1, j)
+                        + conj(v2) * a.read(i_pos + 2, j);
+                    a.write(i_pos, j, a.read(i_pos, j) - mul_real(sum, v0));
                     a.write(
                         i_pos + 1,
                         j,
-                        (a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1)),
+                        a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        (a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2)),
+                        a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2),
                     );
                 }
             }
@@ -1439,23 +1430,23 @@ fn move_bulges_down<T: ComplexField>(
                     (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3,
                 );
                 for j in i1..i2 {
-                    let sum = ((u2.read(j, i_pos - *i_pos_block)
-                        + (v1 * u2.read(j, i_pos - *i_pos_block + 1)))
-                        + (v2 * u2.read(j, i_pos - *i_pos_block + 2)));
+                    let sum = u2.read(j, i_pos - *i_pos_block)
+                        + v1 * u2.read(j, i_pos - *i_pos_block + 1)
+                        + v2 * u2.read(j, i_pos - *i_pos_block + 2);
                     u2.write(
                         j,
                         i_pos - *i_pos_block,
-                        (u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0)),
+                        u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 1,
-                        (u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1))),
+                        u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1)),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 2,
-                        (u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2))),
+                        u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2)),
                     );
                 }
             }
@@ -1577,29 +1568,29 @@ fn remove_bulges<T: ComplexField>(
                 h.write(1, zero());
                 let t0 = conj(v.read(0));
                 let v1 = v.read(1);
-                let t1 = (t0 * v1);
+                let t1 = t0 * v1;
                 for j in istart_m..i_pos + 2 {
-                    let sum = (a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)));
-                    a.write(j, i_pos, (a.read(j, i_pos) - (sum * conj(t0))));
-                    a.write(j, i_pos + 1, (a.read(j, i_pos + 1) - (sum * conj(t1))));
+                    let sum = a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1));
+                    a.write(j, i_pos, a.read(j, i_pos) - sum * conj(t0));
+                    a.write(j, i_pos + 1, a.read(j, i_pos + 1) - sum * conj(t1));
                 }
                 for j in i_pos..istop_m {
-                    let sum = (a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)));
-                    a.write(i_pos, j, (a.read(i_pos, j) - (sum * t0)));
-                    a.write(i_pos + 1, j, (a.read(i_pos + 1, j) - (sum * t1)));
+                    let sum = a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j));
+                    a.write(i_pos, j, a.read(i_pos, j) - sum * t0);
+                    a.write(i_pos + 1, j, a.read(i_pos + 1, j) - sum * t1);
                 }
                 for j in 0..u2.nrows() {
-                    let sum = (u2.read(j, i_pos - *i_pos_block)
-                        + (v1 * u2.read(j, i_pos - *i_pos_block + 1)));
+                    let sum = u2.read(j, i_pos - *i_pos_block)
+                        + v1 * u2.read(j, i_pos - *i_pos_block + 1);
                     u2.write(
                         j,
                         i_pos - *i_pos_block,
-                        (u2.read(j, i_pos - *i_pos_block) - (sum * conj(t0))),
+                        u2.read(j, i_pos - *i_pos_block) - sum * conj(t0),
                     );
                     u2.write(
                         j,
                         i_pos - *i_pos_block + 1,
-                        (u2.read(j, i_pos - *i_pos_block + 1) - (sum * conj(t1))),
+                        u2.read(j, i_pos - *i_pos_block + 1) - sum * conj(t1),
                     );
                 }
             } else {
@@ -1611,34 +1602,36 @@ fn remove_bulges<T: ComplexField>(
                 {
                     let t0 = conj(v.read(0));
                     let v1 = v.read(1);
-                    let t1 = (t0 * v1);
+                    let t1 = t0 * v1;
                     let v2 = v.read(2);
-                    let t2 = (t0 * v2);
+                    let t2 = t0 * v2;
                     for j in istart_m..i_pos + 3 {
-                        let sum = ((a.read(j, i_pos) + (v1 * a.read(j, i_pos + 1)))
-                            + (v2 * a.read(j, i_pos + 2)));
-                        a.write(j, i_pos, (a.read(j, i_pos) - (sum * conj(t0))));
-                        a.write(j, i_pos + 1, (a.read(j, i_pos + 1) - (sum * conj(t1))));
-                        a.write(j, i_pos + 2, (a.read(j, i_pos + 2) - (sum * conj(t2))));
+                        let sum = a.read(j, i_pos)
+                            + v1 * a.read(j, i_pos + 1)
+                            + v2 * a.read(j, i_pos + 2);
+                        a.write(j, i_pos, a.read(j, i_pos) - sum * conj(t0));
+                        a.write(j, i_pos + 1, a.read(j, i_pos + 1) - sum * conj(t1));
+                        a.write(j, i_pos + 2, a.read(j, i_pos + 2) - sum * conj(t2));
                     }
                 }
                 let v0 = real(v.read(0));
                 let v1 = v.read(1);
                 let v2 = v.read(2);
-                let sum = ((a.read(i_pos, i_pos) + (conj(v1) * a.read(i_pos + 1, i_pos)))
-                    + (conj(v2) * a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, (a.read(i_pos, i_pos) - mul_real(sum, v0)));
+                let sum = a.read(i_pos, i_pos)
+                    + conj(v1) * a.read(i_pos + 1, i_pos)
+                    + conj(v2) * a.read(i_pos + 2, i_pos);
+                a.write(i_pos, i_pos, a.read(i_pos, i_pos) - mul_real(sum, v0));
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    (a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1)),
+                    a.read(i_pos + 1, i_pos) - (mul_real(sum, v0) * v1),
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    (a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2)),
+                    a.read(i_pos + 2, i_pos) - (mul_real(sum, v0) * v2),
                 );
-                if (i_pos > ilo) && (a[(i_pos, i_pos - 1)] != zero()) {
+                if i_pos > ilo && a[(i_pos, i_pos - 1)] != zero() {
                     let mut tst1 = abs1(a[(i_pos - 1, i_pos - 1)]) + abs1(a[(i_pos, i_pos)]);
                     if tst1 == zero() {
                         if i_pos > ilo + 1 {
@@ -1697,19 +1690,12 @@ fn remove_bulges<T: ComplexField>(
             let v1 = v.read(1);
             let v2 = v.read(2);
             for j in i_pos + 1..istop_m {
-                let sum = ((a.read(i_pos, j) + (conj(v1) * a.read(i_pos + 1, j)))
-                    + (conj(v2) * a.read(i_pos + 2, j)));
-                a.write(i_pos, j, (a.read(i_pos, j) - mul_real(sum, v0)));
-                a.write(
-                    i_pos + 1,
-                    j,
-                    (a.read(i_pos + 1, j) - (mul_real(sum, v0) * v1)),
-                );
-                a.write(
-                    i_pos + 2,
-                    j,
-                    (a.read(i_pos + 2, j) - (mul_real(sum, v0) * v2)),
-                );
+                let sum = a.read(i_pos, j)
+                    + conj(v1) * a.read(i_pos + 1, j)
+                    + conj(v2) * a.read(i_pos + 2, j);
+                a.write(i_pos, j, a.read(i_pos, j) - mul_real(sum, v0));
+                a.write(i_pos + 1, j, a.read(i_pos + 1, j) - mul_real(sum, v0) * v1);
+                a.write(i_pos + 2, j, a.read(i_pos + 2, j) - mul_real(sum, v0) * v2);
             }
         }
         for i_bulge in i_bulge_start..n_bulges {
@@ -1724,23 +1710,23 @@ fn remove_bulges<T: ComplexField>(
                 (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3,
             );
             for j in i1..i2 {
-                let sum = ((u2.read(j, i_pos - *i_pos_block)
-                    + (v1 * u2.read(j, i_pos - *i_pos_block + 1)))
-                    + (v2 * u2.read(j, i_pos - *i_pos_block + 2)));
+                let sum = u2.read(j, i_pos - *i_pos_block)
+                    + v1 * u2.read(j, i_pos - *i_pos_block + 1)
+                    + v2 * u2.read(j, i_pos - *i_pos_block + 2);
                 u2.write(
                     j,
                     i_pos - *i_pos_block,
-                    (u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0)),
+                    u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0),
                 );
                 u2.write(
                     j,
                     i_pos - *i_pos_block + 1,
-                    (u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1))),
+                    u2.read(j, i_pos - *i_pos_block + 1) - mul_real(sum, v0) * conj(v1),
                 );
                 u2.write(
                     j,
                     i_pos - *i_pos_block + 2,
-                    (u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2))),
+                    u2.read(j, i_pos - *i_pos_block + 2) - mul_real(sum, v0) * conj(v2),
                 );
             }
         }
