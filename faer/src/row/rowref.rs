@@ -4,7 +4,7 @@ use crate::{
     ContiguousFwd, Idx, IdxInc,
 };
 use equator::{assert, debug_assert};
-use faer_traits::RealValue;
+use faer_traits::Real;
 
 pub struct RowRef<'a, T, Cols = usize, CStride = isize> {
     pub(crate) trans: ColRef<'a, T, Cols, CStride>,
@@ -282,7 +282,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -290,7 +290,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {

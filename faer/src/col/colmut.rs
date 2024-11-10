@@ -11,7 +11,7 @@ use core::{
     ptr::NonNull,
 };
 use equator::assert;
-use faer_traits::RealValue;
+use faer_traits::Real;
 use generativity::Guard;
 
 pub struct ColMut<'a, T, Rows = usize, RStride = isize> {
@@ -274,7 +274,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -282,7 +282,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {

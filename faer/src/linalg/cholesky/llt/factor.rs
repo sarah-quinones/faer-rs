@@ -1,4 +1,4 @@
-use crate::{internal_prelude::*, linalg::cholesky::ldlt::factor::cholesky_recursion, RealValue};
+use crate::{internal_prelude::*, linalg::cholesky::ldlt::factor::cholesky_recursion, Real};
 use core::num::NonZero;
 
 /// Dynamic LDLT regularization.
@@ -6,9 +6,9 @@ use core::num::NonZero;
 /// their corrected sign.
 pub struct LltRegularization<T: ComplexField> {
     /// Regularized value.
-    pub dynamic_regularization_delta: RealValue<T>,
+    pub dynamic_regularization_delta: Real<T>,
     /// Regularization threshold.
-    pub dynamic_regularization_epsilon: RealValue<T>,
+    pub dynamic_regularization_epsilon: Real<T>,
 }
 
 /// Info about the result of the LDLT factorization.

@@ -1,10 +1,10 @@
-use faer_traits::RealValue;
+use faer_traits::Real;
 
 use crate::internal_prelude::*;
 
 pub struct ApproxEq<T: ComplexField> {
-    pub abs_tol: RealValue<T>,
-    pub rel_tol: RealValue<T>,
+    pub abs_tol: Real<T>,
+    pub rel_tol: Real<T>,
 }
 
 pub struct CwiseMat<Cmp>(pub Cmp);

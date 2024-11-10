@@ -1,5 +1,5 @@
 use crate::{assert, internal_prelude::*, perm::swap_cols_idx, utils::thread::par_split_indices};
-use faer_traits::{Real, RealValue};
+use faer_traits::{Real, RealMarker};
 use linalg::{householder, matmul::dot};
 use pulp::Simd;
 
@@ -10,20 +10,20 @@ fn update_col_and_norm2_simd<'M, T: ComplexField, S: Simd>(
     A: ColMut<'_, T, Dim<'M>, ContiguousFwd>,
     lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
     rhs: T,
-) -> RealValue<T> {
+) -> Real<T> {
     let mut A = A;
 
-    let mut sml0 = Real(simd.zero());
-    let mut sml1 = Real(simd.zero());
-    let mut sml2 = Real(simd.zero());
+    let mut sml0 = RealMarker(simd.zero());
+    let mut sml1 = RealMarker(simd.zero());
+    let mut sml2 = RealMarker(simd.zero());
 
-    let mut med0 = Real(simd.zero());
-    let mut med1 = Real(simd.zero());
-    let mut med2 = Real(simd.zero());
+    let mut med0 = RealMarker(simd.zero());
+    let mut med1 = RealMarker(simd.zero());
+    let mut med2 = RealMarker(simd.zero());
 
-    let mut big0 = Real(simd.zero());
-    let mut big1 = Real(simd.zero());
-    let mut big2 = Real(simd.zero());
+    let mut big0 = RealMarker(simd.zero());
+    let mut big1 = RealMarker(simd.zero());
+    let mut big2 = RealMarker(simd.zero());
 
     let (head, body3, body1, tail) = simd.batch_indices::<3>();
 
@@ -104,9 +104,9 @@ fn update_col_and_norm2_simd<'M, T: ComplexField, S: Simd>(
     big0.0 = simd.add(big0.0, big1.0);
     big0.0 = simd.add(big0.0, big2.0);
 
-    let sml0 = real(simd.reduce_sum(sml0.0));
-    let med0 = real(simd.reduce_sum(med0.0));
-    let big0 = real(simd.reduce_sum(big0.0));
+    let sml0 = simd.reduce_sum_real(sml0);
+    let med0 = simd.reduce_sum_real(med0);
+    let big0 = simd.reduce_sum_real(big0);
 
     let sml = sqrt_min_positive();
     let big = sqrt_max_positive();
@@ -125,19 +125,19 @@ fn update_mat_and_best_norm2_simd<'M, 'N, T: ComplexField>(
     A: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
     lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
     rhs: RowMut<'_, T, Dim<'N>>,
-    tau_inv: RealValue<T>,
+    tau_inv: Real<T>,
     align: usize,
-) -> (Idx<'N>, RealValue<T>) {
+) -> (Idx<'N>, Real<T>) {
     struct Impl<'a, 'M, 'N, T: ComplexField> {
         A: MatMut<'a, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
         lhs: ColRef<'a, T, Dim<'M>, ContiguousFwd>,
         rhs: RowMut<'a, T, Dim<'N>>,
-        tau_inv: RealValue<T>,
+        tau_inv: Real<T>,
         align: usize,
     }
 
     impl<'M, 'N, T: ComplexField> pulp::WithSimd for Impl<'_, 'M, 'N, T> {
-        type Output = (Idx<'N>, RealValue<T>);
+        type Output = (Idx<'N>, Real<T>);
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self {
@@ -186,8 +186,8 @@ fn update_mat_and_best_norm2_fallback<'M, 'N, T: ComplexField>(
     A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
     lhs: ColRef<'_, T, Dim<'M>>,
     rhs: RowMut<'_, T, Dim<'N>>,
-    tau_inv: RealValue<T>,
-) -> (Idx<'N>, RealValue<T>) {
+    tau_inv: Real<T>,
+) -> (Idx<'N>, Real<T>) {
     let mut A = A;
     let mut rhs = rhs;
 
@@ -218,9 +218,9 @@ fn update_mat_and_best_norm2<'M, 'N, T: ComplexField>(
     A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
     lhs: ColRef<'_, T, Dim<'M>>,
     rhs: RowMut<'_, T, Dim<'N>>,
-    tau_inv: RealValue<T>,
+    tau_inv: Real<T>,
     align: usize,
-) -> (Idx<'N>, RealValue<T>) {
+) -> (Idx<'N>, Real<T>) {
     if const { T::SIMD_CAPABILITIES.is_simd() } {
         let mut A = A;
 

@@ -5,7 +5,7 @@ use crate::{
 };
 use core::ops::{Index, IndexMut};
 use equator::{assert, debug_assert};
-use faer_traits::RealValue;
+use faer_traits::Real;
 
 pub struct RowMut<'a, T, Cols = usize, CStride = isize> {
     pub(crate) trans: ColMut<'a, T, Cols, CStride>,
@@ -222,7 +222,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -230,7 +230,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {

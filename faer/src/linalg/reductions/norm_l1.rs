@@ -1,3 +1,4 @@
+use faer_traits::RealMarker;
 use num_complex::Complex;
 
 use super::LINEAR_IMPL_THRESHOLD;
@@ -19,16 +20,16 @@ fn norm_l1_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
 
             let zero = simd.splat(&zero());
 
-            let mut acc0 = zero;
-            let mut acc1 = zero;
-            let mut acc2 = zero;
-            let mut acc3 = zero;
+            let mut acc0 = RealMarker(zero);
+            let mut acc1 = RealMarker(zero);
+            let mut acc2 = RealMarker(zero);
+            let mut acc3 = RealMarker(zero);
 
             let (head, body4, body1, tail) = simd.batch_indices::<4>();
 
             if let Some(i0) = head {
                 let x0 = simd.abs1(simd.read(data, i0));
-                acc0 = simd.add(acc0, x0.0);
+                acc0 = RealMarker(simd.add(acc0.0, x0.0));
             }
             for [i0, i1, i2, i3] in body4 {
                 let x0 = simd.abs1(simd.read(data, i0));
@@ -36,25 +37,25 @@ fn norm_l1_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
                 let x2 = simd.abs1(simd.read(data, i2));
                 let x3 = simd.abs1(simd.read(data, i3));
 
-                acc0 = simd.add(acc0, x0.0);
-                acc1 = simd.add(acc1, x1.0);
-                acc2 = simd.add(acc2, x2.0);
-                acc3 = simd.add(acc3, x3.0);
+                acc0 = RealMarker(simd.add(acc0.0, x0.0));
+                acc1 = RealMarker(simd.add(acc1.0, x1.0));
+                acc2 = RealMarker(simd.add(acc2.0, x2.0));
+                acc3 = RealMarker(simd.add(acc3.0, x3.0));
             }
             for i0 in body1 {
                 let x0 = simd.abs1(simd.read(data, i0));
-                acc0 = simd.add(acc0, x0.0);
+                acc0 = RealMarker(simd.add(acc0.0, x0.0));
             }
             if let Some(i0) = tail {
                 let x0 = simd.abs1(simd.read(data, i0));
-                acc0 = simd.add(acc0, x0.0);
+                acc0 = RealMarker(simd.add(acc0.0, x0.0));
             }
 
-            acc0 = simd.add(acc0, acc1);
-            acc2 = simd.add(acc2, acc3);
-            acc0 = simd.add(acc0, acc2);
+            acc0 = RealMarker(simd.add(acc0.0, acc1.0));
+            acc2 = RealMarker(simd.add(acc2.0, acc3.0));
+            acc0 = RealMarker(simd.add(acc0.0, acc2.0));
 
-            real(simd.reduce_sum(acc0))
+            simd.reduce_sum_real(acc0)
         }
     }
 

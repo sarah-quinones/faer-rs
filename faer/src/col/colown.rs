@@ -1,6 +1,6 @@
 use crate::{internal_prelude::*, Idx, IdxInc, TryReserveError};
 use core::ops::{Index, IndexMut};
-use faer_traits::RealValue;
+use faer_traits::Real;
 
 pub struct Col<T, Rows: Shape = usize> {
     column: Mat<T, Rows, usize>,
@@ -80,7 +80,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -94,7 +94,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {

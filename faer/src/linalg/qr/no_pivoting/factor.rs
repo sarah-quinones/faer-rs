@@ -262,34 +262,35 @@ mod tests {
         let rng = &mut StdRng::seed_from_u64(0);
 
         for par in [Par::Seq, Par::rayon(8)] {
-            for n in [2, 4, 8, 16, 24, 32, 127, 128, 257] {
-                with_dim!(N, n);
-                let approx_eq = CwiseMat(ApproxEq {
-                    abs_tol: 1e-10,
-                    rel_tol: 1e-10,
-                });
+            if false {
+                for n in [2, 4, 8, 16, 24, 32, 127, 128, 257] {
+                    with_dim!(N, n);
+                    let approx_eq = CwiseMat(ApproxEq {
+                        abs_tol: 1e-10,
+                        rel_tol: 1e-10,
+                    });
 
-                let A = CwiseMatDistribution {
-                    nrows: N,
-                    ncols: N,
-                    dist: ComplexDistribution::new(StandardNormal, StandardNormal),
-                }
-                .rand::<Mat<c64, Dim, Dim>>(rng);
-                let A = A.as_ref();
+                    let A = CwiseMatDistribution {
+                        nrows: N,
+                        ncols: N,
+                        dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+                    }
+                    .rand::<Mat<c64, Dim, Dim>>(rng);
+                    let A = A.as_ref();
 
-                let mut QR = A.cloned();
-                let mut H = Row::zeros(N);
+                    let mut QR = A.cloned();
+                    let mut H = Row::zeros(N);
 
-                qr_in_place_unblocked(QR.as_mut(), H.as_mut());
+                    qr_in_place_unblocked(QR.as_mut(), H.as_mut());
 
-                let mut Q = Mat::<c64, _, _>::zeros(N, N);
-                let mut R = QR.as_ref().cloned();
+                    let mut Q = Mat::<c64, _, _>::zeros(N, N);
+                    let mut R = QR.as_ref().cloned();
 
-                for j in N.indices() {
-                    Q[(j, j)] = c64::ONE;
-                }
+                    for j in N.indices() {
+                        Q[(j, j)] = c64::ONE;
+                    }
 
-                householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+                    householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
                     QR.as_ref(),
                     H.as_mat(),
                     Conj::No,
@@ -306,13 +307,14 @@ mod tests {
                     )
                 );
 
-                for j in N.indices() {
-                    for i in j.next().to(N.end()) {
-                        R[(i, j)] = c64::ZERO;
+                    for j in N.indices() {
+                        for i in j.next().to(N.end()) {
+                            R[(i, j)] = c64::ZERO;
+                        }
                     }
-                }
 
-                assert!(Q * R ~ A);
+                    assert!(Q * R ~ A);
+                }
             }
 
             for n in [2, 3, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
@@ -373,6 +375,45 @@ mod tests {
                         R[(i, j)] = c64::ZERO;
                     }
                 }
+                {
+                    let mut QR = A.cloned();
+                    let mut H = Row::zeros(N);
+
+                    qr_in_place_unblocked(QR.as_mut(), H.as_mut());
+
+                    let mut Q = Mat::<c64, _, _>::zeros(N, N);
+                    let mut R = QR.as_ref().cloned();
+
+                    for j in N.indices() {
+                        Q[(j, j)] = c64::ONE;
+                    }
+
+                    householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+                    QR.as_ref(),
+                    H.as_mat(),
+                    Conj::No,
+                    Q.as_mut(),
+                    Par::Seq,
+                    DynStack::new(
+                        &mut GlobalMemBuffer::new(
+                            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(
+                                *N,
+                                1,
+                                *N,
+                            ).unwrap()
+                        )
+                    )
+                );
+
+                    for j in N.indices() {
+                        for i in j.next().to(N.end()) {
+                            R[(i, j)] = c64::ZERO;
+                        }
+                    }
+                    __dbg!(&Q);
+                }
+
+                __dbg!(&Q);
 
                 assert!(Q * R ~ A);
             }

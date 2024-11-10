@@ -140,8 +140,9 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
 
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
+                let mut dst = dst;
                 super::matmul_with_conj(
-                    dst,
+                    dst.rb_mut(),
                     beta,
                     lhs,
                     conj_lhs,

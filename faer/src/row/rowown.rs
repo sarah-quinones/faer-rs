@@ -1,6 +1,6 @@
 use crate::{internal_prelude::*, ContiguousFwd, Idx, IdxInc, TryReserveError};
 use core::ops::{Index, IndexMut};
-use faer_traits::RealValue;
+use faer_traits::Real;
 
 pub struct Row<T, Cols: Shape = usize> {
     trans: Col<T, Cols>,
@@ -77,7 +77,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -85,7 +85,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {

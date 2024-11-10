@@ -1,6 +1,6 @@
 use crate::{assert, internal_prelude::*};
 use core::num::NonZero;
-use faer_traits::RealValue;
+use faer_traits::Real;
 use linalg::matmul::triangular::BlockStructure;
 use pulp::Simd;
 
@@ -541,9 +541,9 @@ pub struct LdltRegularization<'a, T: ComplexField> {
     /// Expected signs for the diagonal at each step of the decomposition.
     pub dynamic_regularization_signs: Option<&'a [i8]>,
     /// Regularized value.
-    pub dynamic_regularization_delta: RealValue<T>,
+    pub dynamic_regularization_delta: Real<T>,
     /// Regularization threshold.
-    pub dynamic_regularization_epsilon: RealValue<T>,
+    pub dynamic_regularization_epsilon: Real<T>,
 }
 
 /// Info about the result of the LDLT factorization.

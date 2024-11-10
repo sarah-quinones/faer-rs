@@ -79,6 +79,7 @@ pub mod math_utils {
         lhs.by_ref().add_by_ref(rhs.by_ref())
     }
     #[inline(always)]
+    #[track_caller]
     pub fn sub<T: SubByRef<Output = T>>(lhs: &T, rhs: &T) -> T {
         lhs.by_ref().sub_by_ref(rhs.by_ref())
     }
@@ -209,6 +210,7 @@ where
     type Output = Output;
 
     #[inline]
+    #[track_caller]
     fn sub_by_ref(&self, rhs: &Rhs) -> Self::Output {
         self - rhs
     }
@@ -348,7 +350,7 @@ pub struct SimdCtxCopy<T: ComplexField, S: Simd>(pub T::SimdCtx<S>);
 
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct Real<T>(pub T);
+pub struct RealMarker<T>(pub T);
 
 impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     #[inline(always)]
@@ -367,8 +369,10 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     }
 
     #[inline(always)]
-    pub fn splat_real(&self, value: &T::Real) -> Real<T::SimdVec<S>> {
-        Real(unsafe { core::mem::transmute_copy(&T::simd_splat_real(&self.0, (value).by_ref())) })
+    pub fn splat_real(&self, value: &T::Real) -> RealMarker<T::SimdVec<S>> {
+        RealMarker(unsafe {
+            core::mem::transmute_copy(&T::simd_splat_real(&self.0, (value).by_ref()))
+        })
     }
 
     #[inline(always)]
@@ -396,25 +400,25 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
         unsafe { core::mem::transmute_copy(&T::simd_conj(&self.0, value)) }
     }
     #[inline(always)]
-    pub fn abs1(&self, value: T::SimdVec<S>) -> Real<T::SimdVec<S>> {
+    pub fn abs1(&self, value: T::SimdVec<S>) -> RealMarker<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        Real(unsafe { core::mem::transmute_copy(&T::simd_abs1(&self.0, value)) })
+        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs1(&self.0, value)) })
     }
     #[inline(always)]
-    pub fn abs_max(&self, value: T::SimdVec<S>) -> Real<T::SimdVec<S>> {
+    pub fn abs_max(&self, value: T::SimdVec<S>) -> RealMarker<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        Real(unsafe { core::mem::transmute_copy(&T::simd_abs_max(&self.0, value)) })
+        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs_max(&self.0, value)) })
     }
 
     #[inline(always)]
-    pub fn mul_real(&self, lhs: T::SimdVec<S>, rhs: Real<T::SimdVec<S>>) -> T::SimdVec<S> {
+    pub fn mul_real(&self, lhs: T::SimdVec<S>, rhs: RealMarker<T::SimdVec<S>>) -> T::SimdVec<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_mul_real(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn mul_pow2(&self, lhs: T::SimdVec<S>, rhs: Real<T::SimdVec<S>>) -> T::SimdVec<S> {
+    pub fn mul_pow2(&self, lhs: T::SimdVec<S>, rhs: RealMarker<T::SimdVec<S>>) -> T::SimdVec<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_mul_pow2(&self.0, lhs, rhs)) }
@@ -461,16 +465,20 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     }
 
     #[inline(always)]
-    pub fn abs2(&self, value: T::SimdVec<S>) -> Real<T::SimdVec<S>> {
+    pub fn abs2(&self, value: T::SimdVec<S>) -> RealMarker<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        Real(unsafe { core::mem::transmute_copy(&T::simd_abs2(&self.0, value)) })
+        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs2(&self.0, value)) })
     }
 
     #[inline(always)]
-    pub fn abs2_add(&self, value: T::SimdVec<S>, acc: Real<T::SimdVec<S>>) -> Real<T::SimdVec<S>> {
+    pub fn abs2_add(
+        &self,
+        value: T::SimdVec<S>,
+        acc: RealMarker<T::SimdVec<S>>,
+    ) -> RealMarker<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
         let acc = unsafe { core::mem::transmute_copy(&acc) };
-        Real(unsafe { core::mem::transmute_copy(&T::simd_abs2_add(&self.0, value, acc)) })
+        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs2_add(&self.0, value, acc)) })
     }
 
     #[inline(always)]
@@ -479,40 +487,81 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
         unsafe { core::mem::transmute_copy(&T::simd_reduce_sum(&self.0, value)) }
     }
     #[inline(always)]
-    pub fn reduce_max(&self, value: Real<T::SimdVec<S>>) -> RealValue<T> {
+    pub fn reduce_max(&self, value: RealMarker<T::SimdVec<S>>) -> T {
         let value = unsafe { core::mem::transmute_copy(&value) };
         unsafe { core::mem::transmute_copy(&T::simd_reduce_max(&self.0, value)) }
     }
 
+    #[faer_macros::math]
     #[inline(always)]
-    pub fn max(&self, lhs: Real<T::SimdVec<S>>, rhs: Real<T::SimdVec<S>>) -> Real<T::SimdVec<S>> {
-        let cmp = self.gt(lhs, rhs);
-        Real(self.select(cmp, lhs.0, rhs.0))
+    pub fn reduce_sum_real(&self, value: RealMarker<T::SimdVec<S>>) -> Real<T> {
+        let value = T::simd_reduce_sum(&self.0, value.0);
+        if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
+            add(real(value), imag(value))
+        } else {
+            real(value)
+        }
+    }
+    #[faer_macros::math]
+    #[inline(always)]
+    pub fn reduce_max_real(&self, value: RealMarker<T::SimdVec<S>>) -> Real<T> {
+        let value = T::simd_reduce_max(&self.0, value.0);
+        if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
+            max(real(value), imag(value))
+        } else {
+            real(value)
+        }
     }
 
     #[inline(always)]
-    pub fn lt(&self, lhs: Real<T::SimdVec<S>>, rhs: Real<T::SimdVec<S>>) -> T::SimdMask<S> {
+    pub fn max(
+        &self,
+        lhs: RealMarker<T::SimdVec<S>>,
+        rhs: RealMarker<T::SimdVec<S>>,
+    ) -> RealMarker<T::SimdVec<S>> {
+        let cmp = self.gt(lhs, rhs);
+        RealMarker(self.select(cmp, lhs.0, rhs.0))
+    }
+
+    #[inline(always)]
+    pub fn lt(
+        &self,
+        lhs: RealMarker<T::SimdVec<S>>,
+        rhs: RealMarker<T::SimdVec<S>>,
+    ) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_less_than(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn gt(&self, lhs: Real<T::SimdVec<S>>, rhs: Real<T::SimdVec<S>>) -> T::SimdMask<S> {
+    pub fn gt(
+        &self,
+        lhs: RealMarker<T::SimdVec<S>>,
+        rhs: RealMarker<T::SimdVec<S>>,
+    ) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_greater_than(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn le(&self, lhs: Real<T::SimdVec<S>>, rhs: Real<T::SimdVec<S>>) -> T::SimdMask<S> {
+    pub fn le(
+        &self,
+        lhs: RealMarker<T::SimdVec<S>>,
+        rhs: RealMarker<T::SimdVec<S>>,
+    ) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_less_than_or_equal(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn ge(&self, lhs: Real<T::SimdVec<S>>, rhs: Real<T::SimdVec<S>>) -> T::SimdMask<S> {
+    pub fn ge(
+        &self,
+        lhs: RealMarker<T::SimdVec<S>>,
+        rhs: RealMarker<T::SimdVec<S>>,
+    ) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_greater_than_or_equal(&self.0, lhs, rhs)) }
@@ -550,14 +599,6 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     }
 
     #[inline(always)]
-    pub fn tail_mask(&self, len: usize) -> T::SimdMask<S> {
-        unsafe { core::mem::transmute_copy(&T::simd_tail_mask(&self.0, len)) }
-    }
-    #[inline(always)]
-    pub fn head_mask(&self, len: usize) -> T::SimdMask<S> {
-        unsafe { core::mem::transmute_copy(&T::simd_head_mask(&self.0, len)) }
-    }
-    #[inline(always)]
     pub fn and_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
         T::simd_and_mask(&self.0, lhs, rhs)
     }
@@ -566,22 +607,32 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
         T::simd_first_true_mask(&self.0, value)
     }
     #[inline(always)]
-    pub unsafe fn mask_load(
-        &self,
-        mask: T::SimdMask<S>,
-        ptr: *const T::SimdVec<S>,
-    ) -> T::SimdVec<S> {
-        unsafe { core::mem::transmute_copy(&T::simd_mask_load(&self.0, mask, ptr)) }
+    pub unsafe fn partial_load_tail(&self, len: usize, ptr: *const T::SimdVec<S>) -> T::SimdVec<S> {
+        unsafe { core::mem::transmute_copy(&T::simd_partial_load_tail(&self.0, len, ptr)) }
     }
     #[inline(always)]
-    pub unsafe fn mask_store(
+    pub unsafe fn partial_store_tail(
         &self,
-        mask: T::SimdMask<S>,
+        len: usize,
         ptr: *mut T::SimdVec<S>,
         value: T::SimdVec<S>,
     ) {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        unsafe { core::mem::transmute_copy(&T::simd_mask_store(&self.0, mask, ptr, value)) }
+        unsafe { core::mem::transmute_copy(&T::simd_partial_store_tail(&self.0, len, ptr, value)) }
+    }
+    #[inline(always)]
+    pub unsafe fn partial_load_head(&self, len: usize, ptr: *const T::SimdVec<S>) -> T::SimdVec<S> {
+        unsafe { core::mem::transmute_copy(&T::simd_partial_load_head(&self.0, len, ptr)) }
+    }
+    #[inline(always)]
+    pub unsafe fn partial_store_head(
+        &self,
+        len: usize,
+        ptr: *mut T::SimdVec<S>,
+        value: T::SimdVec<S>,
+    ) {
+        let value = unsafe { core::mem::transmute_copy(&value) };
+        unsafe { core::mem::transmute_copy(&T::simd_partial_store_head(&self.0, len, ptr, value)) }
     }
 
     #[inline(always)]
@@ -602,7 +653,7 @@ pub unsafe trait Conjugate {
     type Canonical: Conjugate<Canonical = Self::Canonical> + ComplexField;
 }
 
-pub type RealValue<T> = <<T as Conjugate>::Canonical as ComplexField>::Real;
+pub type Real<T> = <<T as Conjugate>::Canonical as ComplexField>::Real;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ComplexConj<T> {
@@ -614,24 +665,18 @@ pub struct ComplexConj<T> {
 pub enum SimdCapabilities {
     None,
     Copy,
-    Shuffled,
-    All,
+    Simd,
 }
 
 impl SimdCapabilities {
     #[inline]
     pub const fn is_copy(self) -> bool {
-        matches!(self, Self::Copy | Self::Shuffled | Self::All)
+        matches!(self, Self::Copy | Self::Simd)
     }
 
     #[inline]
     pub const fn is_simd(self) -> bool {
-        matches!(self, Self::Shuffled | Self::All)
-    }
-
-    #[inline]
-    pub const fn is_unshuffled_simd(self) -> bool {
-        matches!(self, Self::All)
+        matches!(self, Self::Simd)
     }
 }
 
@@ -877,160 +922,20 @@ unsafe impl<T: RealField> Conjugate for T {
     type Canonical = T;
 }
 
-pub trait EnableComplex: Sized + RealField + Default {
-    type Arch: SimdArch;
+pub trait EnableComplex: Sized + RealField + Default {}
 
-    const COMPLEX_SIMD_CAPABILITIES: SimdCapabilities = match Self::SIMD_CAPABILITIES {
-        SimdCapabilities::Copy => SimdCapabilities::Copy,
-        _ => SimdCapabilities::None,
-    };
-    type SimdComplexUnit<S: Simd>: Pod + Debug;
-
-    fn simd_complex_splat<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: &Complex<Self>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_splat_real<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: &Self,
-    ) -> Self::SimdComplexUnit<S>;
-
-    fn simd_complex_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_sub<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_neg<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_conj<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_abs1<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_abs_max<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_abs2<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_abs2_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_mul<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_conj_mul<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_mul_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_conj_mul_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-
-    fn simd_complex_mul_real<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_mul_pow2<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-
-    fn simd_complex_reduce_sum<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Complex<Self>;
-    fn simd_complex_reduce_max<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self;
-
-    fn simd_complex_less_than<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S>;
-    fn simd_complex_less_than_or_equal<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S>;
-    fn simd_complex_greater_than<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S>;
-    fn simd_complex_greater_than_or_equal<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S>;
-
-    fn simd_complex_select<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-
-    unsafe fn simd_complex_mask_load<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *const Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    unsafe fn simd_complex_mask_store<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *mut Self::SimdComplexUnit<S>,
-        value: Self::SimdComplexUnit<S>,
-    );
-    fn simd_complex_load<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        ptr: &Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S>;
-    fn simd_complex_store<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        ptr: &mut Self::SimdComplexUnit<S>,
-        value: Self::SimdComplexUnit<S>,
-    );
-
-    fn simd_complex_iota<S: Simd>(ctx: &Self::SimdCtx<S>) -> Self::SimdIndex<S>;
-}
-
-unsafe impl<T: EnableComplex> Conjugate for Complex<T> {
+unsafe impl<T> Conjugate for Complex<T>
+where
+    Complex<T>: ComplexField,
+{
     const IS_CANONICAL: bool = true;
     type Conj = ComplexConj<T>;
     type Canonical = Complex<T>;
 }
-unsafe impl<T: EnableComplex> Conjugate for ComplexConj<T> {
+unsafe impl<T> Conjugate for ComplexConj<T>
+where
+    Complex<T>: ComplexField,
+{
     const IS_CANONICAL: bool = false;
     type Conj = Complex<T>;
     type Canonical = Complex<T>;
@@ -1067,8 +972,10 @@ pub trait ComplexField:
     + NegByRef<Output = Self>
 {
     const IS_REAL: bool;
+    const SIMD_ABS_SPLIT_REAL_IMAG: bool = false;
 
     type Arch: SimdArch;
+    type Unit: ComplexField;
 
     type SimdCtx<S: Simd>: Copy;
     type Index: Index;
@@ -1181,7 +1088,7 @@ pub trait ComplexField:
     ) -> Self::SimdVec<S>;
 
     fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self;
-    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::Real;
+    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self;
     fn simd_less_than<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         real_lhs: Self::SimdVec<S>,
@@ -1223,7 +1130,6 @@ pub trait ComplexField:
         rhs: Self::SimdIndex<S>,
     ) -> Self::SimdIndex<S>;
 
-    fn simd_tail_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S>;
     fn simd_and_mask<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         lhs: Self::SimdMask<S>,
@@ -1231,27 +1137,254 @@ pub trait ComplexField:
     ) -> Self::SimdMask<S>;
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize;
 
-    fn simd_head_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S>;
-    unsafe fn simd_mask_load<S: Simd>(
+    #[inline(always)]
+    unsafe fn simd_partial_load_tail<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
+        len: usize,
         ptr: *const Self::SimdVec<S>,
-    ) -> Self::SimdVec<S>;
-    unsafe fn simd_mask_store<S: Simd>(
+    ) -> Self::SimdVec<S> {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
+            let mut read = core::slice::from_raw_parts(
+                ptr as *const f32,
+                size_of::<Self>() / size_of::<Self::Unit>() * len,
+            );
+            let write = core::slice::from_raw_parts_mut(
+                (&mut out) as *mut _ as *mut S::f32s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
+            );
+            for w in write {
+                let (r, new_read) = read.split_at(Ord::min(
+                    read.len(),
+                    size_of::<S::f32s>() / size_of::<f32>(),
+                ));
+                *w = simd.partial_load_f32s(r);
+                read = new_read;
+            }
+            simd.deinterleave_shfl_f32s(out)
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
+            let mut read = core::slice::from_raw_parts(
+                ptr as *const f64,
+                size_of::<Self>() / size_of::<Self::Unit>() * len,
+            );
+            let write = core::slice::from_raw_parts_mut(
+                (&mut out) as *mut _ as *mut S::f64s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
+            );
+            for w in write {
+                let (r, new_read) = read.split_at(Ord::min(
+                    read.len(),
+                    size_of::<S::f64s>() / size_of::<f64>(),
+                ));
+                *w = simd.partial_load_f64s(r);
+                read = new_read;
+            }
+            simd.deinterleave_shfl_f64s(out)
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_partial_load_head<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
+        len: usize,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
+            let mut read = core::slice::from_raw_parts(
+                ptr as *const f32,
+                size_of::<Self>() / size_of::<Self::Unit>() * len,
+            );
+            let write = core::slice::from_raw_parts_mut(
+                (&mut out) as *mut _ as *mut S::f32s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
+            );
+            for w in write.iter_mut().rev() {
+                let (new_read, r) = read.split_at(
+                    read.len() - Ord::min(read.len(), size_of::<S::f32s>() / size_of::<f32>()),
+                );
+                *w = simd.partial_load_last_f32s(r);
+                read = new_read;
+            }
+            simd.deinterleave_shfl_f32s(out)
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
+            let mut read = core::slice::from_raw_parts(
+                ptr as *const f64,
+                size_of::<Self>() / size_of::<Self::Unit>() * len,
+            );
+            let write = core::slice::from_raw_parts_mut(
+                (&mut out) as *mut _ as *mut S::f64s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
+            );
+            for w in write.iter_mut().rev() {
+                let (new_read, r) = read.split_at(
+                    read.len() - Ord::min(read.len(), size_of::<S::f64s>() / size_of::<f64>()),
+                );
+                *w = simd.partial_load_last_f64s(r);
+                read = new_read;
+            }
+            simd.deinterleave_shfl_f64s(out)
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_partial_store_tail<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        len: usize,
         ptr: *mut Self::SimdVec<S>,
         value: Self::SimdVec<S>,
-    );
+    ) {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            let value = simd.interleave_shfl_f32s(value);
+            let mut write = core::slice::from_raw_parts_mut(
+                ptr as *mut f32,
+                size_of::<Self>() / size_of::<f32>() * len,
+            );
+            let read = core::slice::from_raw_parts(
+                (&value) as *const _ as *const S::f32s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
+            );
 
-    fn simd_load<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S>;
+            for r in read {
+                let (w, new_write) = write.split_at_mut(Ord::min(
+                    write.len(),
+                    size_of::<S::f32s>() / size_of::<f32>(),
+                ));
+                simd.partial_store_f32s(w, *r);
+                write = new_write;
+            }
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            let value = simd.interleave_shfl_f64s(value);
+            let mut write = core::slice::from_raw_parts_mut(
+                ptr as *mut f64,
+                size_of::<Self>() / size_of::<f64>() * len,
+            );
+            let read = core::slice::from_raw_parts(
+                (&value) as *const _ as *const S::f64s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
+            );
+
+            for r in read {
+                let (w, new_write) = write.split_at_mut(Ord::min(
+                    write.len(),
+                    size_of::<S::f64s>() / size_of::<f64>(),
+                ));
+                simd.partial_store_f64s(w, *r);
+                write = new_write;
+            }
+        } else {
+            panic!()
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_partial_store_head<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        len: usize,
+        ptr: *mut Self::SimdVec<S>,
+        value: Self::SimdVec<S>,
+    ) {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            let value = simd.interleave_shfl_f32s(value);
+            let mut write = core::slice::from_raw_parts_mut(
+                ptr as *mut f32,
+                size_of::<Self>() / size_of::<f32>() * len,
+            );
+            let read = core::slice::from_raw_parts(
+                (&value) as *const _ as *const S::f32s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
+            );
+
+            for r in read.iter().rev() {
+                let (new_write, w) = write.split_at_mut(
+                    write.len() - Ord::min(write.len(), size_of::<S::f32s>() / size_of::<f32>()),
+                );
+                simd.partial_store_last_f32s(w, *r);
+                write = new_write;
+            }
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            let value = simd.interleave_shfl_f64s(value);
+            let mut write = core::slice::from_raw_parts_mut(
+                ptr as *mut f64,
+                size_of::<Self>() / size_of::<f64>() * len,
+            );
+            let read = core::slice::from_raw_parts(
+                (&value) as *const _ as *const S::f64s,
+                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
+            );
+
+            for r in read.iter().rev() {
+                let (new_write, w) = write.split_at_mut(
+                    write.len() - Ord::min(write.len(), size_of::<S::f64s>() / size_of::<f64>()),
+                );
+                simd.partial_store_last_f64s(w, *r);
+                write = new_write;
+            }
+        } else {
+            panic!()
+        }
+    }
+
+    #[inline(always)]
+    fn simd_load<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S> {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            simd.deinterleave_shfl_f32s(*ptr)
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            simd.deinterleave_shfl_f64s(*ptr)
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
     fn simd_store<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         ptr: &mut Self::SimdVec<S>,
         value: Self::SimdVec<S>,
-    );
+    ) {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            *ptr = simd.deinterleave_shfl_f32s(value)
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            *ptr = simd.deinterleave_shfl_f64s(value)
+        } else {
+            panic!();
+        }
+    }
 
-    fn simd_iota<S: Simd>(ctx: &Self::SimdCtx<S>) -> Self::SimdIndex<S>;
+    #[inline(always)]
+    fn simd_iota<S: Simd>(ctx: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
+        let simd = Self::ctx_from_simd(ctx);
+        struct Interleave<T>(T);
+        unsafe impl<T> pulp::Interleave for Interleave<T> {}
+
+        unsafe {
+            if const { Self::Unit::IS_NATIVE_F32 } {
+                core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f32s(
+                    Interleave(core::mem::transmute_copy::<_, Self::SimdVec<S>>(
+                        &<Self as pulp::Iota32>::IOTA,
+                    )),
+                ))
+            } else if const { Self::Unit::IS_NATIVE_F64 } {
+                core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f64s(
+                    core::mem::transmute_copy::<_, Self::SimdVec<S>>(&<Self as pulp::Iota64>::IOTA),
+                ))
+            } else {
+                panic!();
+            }
+        }
+    }
 }
 
 pub trait RealField:
@@ -1277,11 +1410,12 @@ impl ComplexField for f32 {
     type Index = u32;
     type SimdCtx<S: Simd> = S;
     type Real = Self;
+    type Unit = Self;
     type Arch = pulp::Arch;
 
     const IS_NATIVE_F32: bool = true;
 
-    const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::All;
+    const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::Simd;
 
     type SimdMask<S: Simd> = S::m32s;
     type SimdVec<S: Simd> = S::f32s;
@@ -1482,7 +1616,7 @@ impl ComplexField for f32 {
         ctx.reduce_sum_f32s(value)
     }
     #[inline(always)]
-    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::Real {
+    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
         ctx.reduce_max_f32s(value)
     }
     #[inline(always)]
@@ -1550,56 +1684,6 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
-    fn simd_tail_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S> {
-        ctx.tail_mask_f32s(len)
-    }
-    #[inline(always)]
-    fn simd_head_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S> {
-        ctx.head_mask_f32s(len)
-    }
-    #[inline(always)]
-    unsafe fn simd_mask_load<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *const Self::SimdVec<S>,
-    ) -> Self::SimdVec<S> {
-        ctx.mask_load_ptr_f32s(mask, ptr as *const f32)
-    }
-    #[inline(always)]
-    unsafe fn simd_mask_store<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *mut Self::SimdVec<S>,
-        value: Self::SimdVec<S>,
-    ) {
-        ctx.mask_store_ptr_f32s(mask, ptr as *mut f32, value);
-    }
-
-    #[inline(always)]
-    fn simd_iota<S: Simd>(_: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
-        const {
-            core::assert!(
-                size_of::<Self::Index>() * Self::Index::IOTA.len()
-                    >= size_of::<Self::SimdIndex<S>>()
-            )
-        };
-        unsafe { core::mem::transmute_copy(Self::Index::IOTA) }
-    }
-
-    #[inline(always)]
-    fn simd_load<S: Simd>(_: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S> {
-        *ptr
-    }
-    #[inline(always)]
-    fn simd_store<S: Simd>(
-        _: &Self::SimdCtx<S>,
-        ptr: &mut Self::SimdVec<S>,
-        value: Self::SimdVec<S>,
-    ) {
-        *ptr = value;
-    }
-
-    #[inline(always)]
     fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
         ctx.abs_f32s(value)
     }
@@ -1658,11 +1742,12 @@ impl ComplexField for f64 {
     type Index = u64;
     type SimdCtx<S: Simd> = S;
     type Real = Self;
+    type Unit = Self;
     type Arch = pulp::Arch;
 
     const IS_NATIVE_F64: bool = true;
 
-    const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::All;
+    const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::Simd;
 
     type SimdMask<S: Simd> = S::m64s;
     type SimdVec<S: Simd> = S::f64s;
@@ -1859,7 +1944,7 @@ impl ComplexField for f64 {
         ctx.reduce_sum_f64s(value)
     }
     #[inline(always)]
-    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::Real {
+    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
         ctx.reduce_max_f64s(value)
     }
     #[inline(always)]
@@ -1927,55 +2012,6 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
-    fn simd_tail_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S> {
-        ctx.tail_mask_f64s(len)
-    }
-    #[inline(always)]
-    fn simd_head_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S> {
-        ctx.head_mask_f64s(len)
-    }
-    #[inline(always)]
-    unsafe fn simd_mask_load<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *const Self::SimdVec<S>,
-    ) -> Self::SimdVec<S> {
-        ctx.mask_load_ptr_f64s(mask, ptr as *const f64)
-    }
-    #[inline(always)]
-    unsafe fn simd_mask_store<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *mut Self::SimdVec<S>,
-        value: Self::SimdVec<S>,
-    ) {
-        ctx.mask_store_ptr_f64s(mask, ptr as *mut f64, value);
-    }
-
-    #[inline(always)]
-    fn simd_iota<S: Simd>(_: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
-        const {
-            core::assert!(
-                size_of::<Self::Index>() * Self::Index::IOTA.len()
-                    >= size_of::<Self::SimdIndex<S>>()
-            )
-        };
-        unsafe { core::mem::transmute_copy(Self::Index::IOTA) }
-    }
-    #[inline(always)]
-    fn simd_load<S: Simd>(_: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S> {
-        *ptr
-    }
-    #[inline(always)]
-    fn simd_store<S: Simd>(
-        _: &Self::SimdCtx<S>,
-        ptr: &mut Self::SimdVec<S>,
-        value: Self::SimdVec<S>,
-    ) {
-        *ptr = value;
-    }
-
-    #[inline(always)]
     fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
         ctx.abs_f64s(value)
     }
@@ -2035,23 +2071,20 @@ impl RealField for f64 {
 
 impl<T: EnableComplex> ComplexField for Complex<T> {
     const IS_REAL: bool = false;
-    type Arch = <T as EnableComplex>::Arch;
 
+    type Arch = T::Arch;
     type SimdCtx<S: Simd> = T::SimdCtx<S>;
     type Index = T::Index;
-
+    type Unit = T::Unit;
     type Real = T;
 
-    const IS_NATIVE_C32: bool = T::IS_NATIVE_F32;
-    const IS_NATIVE_C64: bool = T::IS_NATIVE_F64;
-
     const SIMD_CAPABILITIES: SimdCapabilities = T::SIMD_CAPABILITIES;
+
     type SimdMask<S: Simd> = T::SimdMask<S>;
-    type SimdVec<S: Simd> = T::SimdComplexUnit<S>;
+    type SimdVec<S: Simd> = Complex<T::SimdVec<S>>;
     type SimdIndex<S: Simd> = T::SimdIndex<S>;
 
-    #[inline(always)]
-    #[faer_macros::math]
+    #[inline]
     fn zero_impl() -> Self {
         Complex {
             re: T::zero_impl(),
@@ -2059,20 +2092,7 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
         }
     }
 
-    #[inline(always)]
-    #[faer_macros::math]
-    fn mul_real_impl(lhs: &Self, rhs: &T) -> Self {
-        Complex::new(mul_real(&lhs.re, &rhs), mul_real(&lhs.im, &rhs))
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn mul_pow2_impl(lhs: &Self, rhs: &T) -> Self {
-        Complex::new(mul_pow2(&lhs.re, &rhs), mul_pow2(&lhs.im, &rhs))
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
+    #[inline]
     fn one_impl() -> Self {
         Complex {
             re: T::one_impl(),
@@ -2080,55 +2100,7 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
         }
     }
 
-    #[inline(always)]
-    #[faer_macros::math]
-    fn real_part_impl(value: &Self) -> T {
-        T::copy_impl(&value.re)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn imag_part_impl(value: &Self) -> T {
-        T::copy_impl(&value.im)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn copy_impl(value: &Self) -> Self {
-        Complex::new(copy(&value.re), copy(&value.im))
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn conj_impl(value: &Self) -> Self {
-        Complex::new(copy(&value.re), neg(&value.im))
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn abs1_impl(value: &Self) -> T {
-        abs1(value.re) + abs1(value.im)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn abs2_impl(value: &Self) -> T {
-        abs2(value.re) + abs2(value.im)
-    }
-
-    #[faer_macros::math]
-    fn abs_impl(value: &Self) -> T {
-        abs_impl(value.re.clone(), value.im.clone())
-    }
-
-    #[faer_macros::math]
-    fn recip_impl(value: &Self) -> Self {
-        let (re, im) = recip_impl(value.re.clone(), value.im.clone());
-        Complex { re, im }
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
+    #[inline]
     fn nan_impl() -> Self {
         Complex {
             re: T::nan_impl(),
@@ -2136,8 +2108,7 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
         }
     }
 
-    #[inline(always)]
-    #[faer_macros::math]
+    #[inline]
     fn infinity_impl() -> Self {
         Complex {
             re: T::infinity_impl(),
@@ -2145,495 +2116,634 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
         }
     }
 
-    #[faer_macros::math]
-    fn sqrt_impl(value: &Self) -> Self {
-        let (re, im) = sqrt_impl::<T>(value.re.clone(), value.im.clone());
+    #[inline]
+    fn from_real_impl(real: &Self::Real) -> Self {
+        Complex {
+            re: real.clone(),
+            im: T::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn from_f64_impl(real: f64) -> Self {
+        Complex {
+            re: T::from_f64_impl(real),
+            im: T::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn real_part_impl(value: &Self) -> Self::Real {
+        value.re.clone()
+    }
+
+    #[inline]
+    fn imag_part_impl(value: &Self) -> Self::Real {
+        value.im.clone()
+    }
+
+    #[inline]
+    fn copy_impl(value: &Self) -> Self {
+        value.clone()
+    }
+
+    #[inline]
+    fn conj_impl(value: &Self) -> Self {
+        Self {
+            re: value.re.clone(),
+            im: value.im.neg_by_ref(),
+        }
+    }
+
+    #[inline]
+    fn recip_impl(value: &Self) -> Self {
+        let (re, im) = recip_impl(value.re.clone(), value.im.clone());
         Complex { re, im }
     }
 
-    #[inline(always)]
+    #[inline]
+    fn sqrt_impl(value: &Self) -> Self {
+        let (re, im) = sqrt_impl(value.re.clone(), value.im.clone());
+        Complex { re, im }
+    }
+
+    #[inline]
+    fn abs_impl(value: &Self) -> Self::Real {
+        abs_impl(value.re.clone(), value.im.clone())
+    }
+
+    #[inline]
     #[faer_macros::math]
-    fn from_real_impl(real: &Self::Real) -> Self {
+    fn abs1_impl(value: &Self) -> Self::Real {
+        abs1(value.re) + abs1(value.im)
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn abs2_impl(value: &Self) -> Self::Real {
+        abs2(value.re) + abs2(value.im)
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: copy(real),
-            im: zero(),
+            re: lhs.re * rhs,
+            im: lhs.im * rhs,
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[faer_macros::math]
-    fn from_f64_impl(real: f64) -> Self {
+    fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: from_f64(real),
-            im: zero(),
+            re: mul_pow2(lhs.re, rhs),
+            im: mul_pow2(lhs.im, rhs),
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[faer_macros::math]
     fn is_finite_impl(value: &Self) -> bool {
-        is_finite(value.re) && is_finite(value.im)
+        is_finite(*value)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn is_nan_impl(value: &Self) -> bool {
-        is_nan(value.re) || is_nan(value.im)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
     fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S> {
         T::simd_ctx(simd)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> T::SimdComplexUnit<S> {
-        T::simd_complex_splat(ctx, value)
+    fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S {
+        T::ctx_from_simd(ctx)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_splat_real<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        value: &Self::Real,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_splat_real(ctx, value)
+    fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_splat(ctx, &value.re),
+            im: T::simd_splat(ctx, &value.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
+    fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_splat_real(ctx, value),
+            im: T::simd_splat_real(ctx, value),
+        }
+    }
+
+    #[inline(always)]
     fn simd_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_add(ctx, lhs, rhs)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_add(ctx, lhs.re, rhs.re),
+            im: T::simd_add(ctx, lhs.im, rhs.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_sub<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_sub(ctx, lhs, rhs)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_sub(ctx, lhs.re, rhs.re),
+            im: T::simd_sub(ctx, lhs.im, rhs.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_neg<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        value: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_neg(ctx, value)
+    fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_neg(ctx, value.re),
+            im: T::simd_neg(ctx, value.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_conj<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        value: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_conj(ctx, value)
+    fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        Complex {
+            re: value.re,
+            im: T::simd_neg(ctx, value.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_abs1<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        value: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_abs1(ctx, value)
+    fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        let v = T::simd_add(
+            ctx,
+            T::simd_abs1(ctx, value.re),
+            T::simd_abs1(ctx, value.im),
+        );
+        Complex { re: v, im: v }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
+    fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        let re = T::simd_abs_max(ctx, value.re);
+        let im = T::simd_abs_max(ctx, value.im);
+
+        let v = T::simd_select(ctx, T::simd_greater_than(ctx, re, im), re, im);
+        Complex { re: v, im: v }
+    }
+
+    #[inline(always)]
     fn simd_mul_real<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        real_rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_mul_real(ctx, lhs, real_rhs)
+        lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mul_real(ctx, lhs.re, real_rhs.re),
+            im: T::simd_mul_real(ctx, lhs.im, real_rhs.re),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_mul_pow2<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        real_rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_mul_pow2(ctx, lhs, real_rhs)
+        lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mul_pow2(ctx, lhs.re, real_rhs.re),
+            im: T::simd_mul_pow2(ctx, lhs.im, real_rhs.re),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_mul<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_mul(ctx, lhs, rhs)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mul_add(
+                ctx,
+                lhs.re,
+                rhs.re,
+                T::simd_neg(ctx, T::simd_mul(ctx, lhs.im, rhs.im)),
+            ),
+            im: T::simd_mul_add(ctx, lhs.re, rhs.im, T::simd_mul(ctx, lhs.im, rhs.re)),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_conj_mul<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_conj_mul(ctx, lhs, rhs)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mul_add(ctx, lhs.re, rhs.re, T::simd_mul(ctx, lhs.im, rhs.im)),
+            im: T::simd_mul_add(
+                ctx,
+                lhs.re,
+                rhs.im,
+                T::simd_neg(ctx, T::simd_mul(ctx, lhs.im, rhs.re)),
+            ),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_mul_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-        acc: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_mul_add(ctx, lhs, rhs, acc)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mul_add(
+                ctx,
+                T::simd_neg(ctx, lhs.im),
+                rhs.im,
+                T::simd_mul_add(ctx, lhs.re, rhs.re, acc.re),
+            ),
+            im: T::simd_mul_add(
+                ctx,
+                lhs.re,
+                rhs.im,
+                T::simd_mul_add(ctx, lhs.im, rhs.re, acc.im),
+            ),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_conj_mul_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-        acc: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_conj_mul_add(ctx, lhs, rhs, acc)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mul_add(
+                ctx,
+                lhs.im,
+                rhs.im,
+                T::simd_mul_add(ctx, lhs.re, rhs.re, acc.re),
+            ),
+            im: T::simd_mul_add(
+                ctx,
+                lhs.re,
+                rhs.im,
+                T::simd_mul_add(ctx, T::simd_neg(ctx, lhs.im), rhs.re, acc.im),
+            ),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_abs2<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        value: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_abs2(ctx, value)
+    fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        let v = T::simd_abs2_add(ctx, value.re, T::simd_abs2(ctx, value.im));
+        Complex { re: v, im: v }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_abs2_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        value: T::SimdComplexUnit<S>,
-        acc: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_abs2_add(ctx, value, acc)
+        value: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        let v = T::simd_abs2_add(ctx, value.re, T::simd_abs2_add(ctx, value.im, acc.re));
+        Complex { re: v, im: v }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: T::SimdComplexUnit<S>) -> Self {
-        T::simd_complex_reduce_sum(ctx, value)
-    }
-    #[inline(always)]
-    #[faer_macros::math]
-    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: T::SimdComplexUnit<S>) -> T {
-        T::simd_complex_reduce_max(ctx, value)
+    fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+        Complex {
+            re: T::simd_reduce_sum(ctx, value.re),
+            im: T::simd_reduce_sum(ctx, value.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
+    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+        Complex {
+            re: T::simd_reduce_max(ctx, value.re),
+            im: T::simd_reduce_max(ctx, value.im),
+        }
+    }
+
+    #[inline(always)]
     fn simd_less_than<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: T::SimdComplexUnit<S>,
-        real_rhs: T::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
-        T::simd_complex_less_than(ctx, real_lhs, real_rhs)
+        T::simd_less_than(ctx, real_lhs.re, real_rhs.re)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_greater_than<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: T::SimdComplexUnit<S>,
-        real_rhs: T::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S> {
-        T::simd_complex_greater_than(ctx, real_lhs, real_rhs)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
     fn simd_less_than_or_equal<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: T::SimdComplexUnit<S>,
-        real_rhs: T::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
-        T::simd_complex_less_than_or_equal(ctx, real_lhs, real_rhs)
+        T::simd_less_than_or_equal(ctx, real_lhs.re, real_rhs.re)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
+    fn simd_greater_than<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdMask<S> {
+        T::simd_greater_than(ctx, real_lhs.re, real_rhs.re)
+    }
+
+    #[inline(always)]
     fn simd_greater_than_or_equal<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: T::SimdComplexUnit<S>,
-        real_rhs: T::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
-        T::simd_complex_greater_than_or_equal(ctx, real_lhs, real_rhs)
+        T::simd_greater_than_or_equal(ctx, real_lhs.re, real_rhs.re)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_select<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         mask: Self::SimdMask<S>,
-        lhs: T::SimdComplexUnit<S>,
-        rhs: T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_select(ctx, mask, lhs, rhs)
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_select(ctx, mask, lhs.re, rhs.re),
+            im: T::simd_select(ctx, mask, lhs.im, rhs.im),
+        }
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_index_select<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         mask: Self::SimdMask<S>,
         lhs: Self::SimdIndex<S>,
         rhs: Self::SimdIndex<S>,
     ) -> Self::SimdIndex<S> {
-        let ctx = SimdCtx::<T, S>::new(ctx);
-        ctx.iselect(mask, lhs, rhs)
+        T::simd_index_select(ctx, mask, lhs, rhs)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
-        let ctx = SimdCtx::<T, S>::new(ctx);
-        ctx.isplat(value)
+        T::simd_index_splat(ctx, value)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_index_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         lhs: Self::SimdIndex<S>,
         rhs: Self::SimdIndex<S>,
     ) -> Self::SimdIndex<S> {
-        let ctx = SimdCtx::<T, S>::new(ctx);
-        ctx.iadd(lhs, rhs)
+        T::simd_index_add(ctx, lhs, rhs)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
-    fn simd_tail_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S> {
-        let ctx = SimdCtx::<T, S>::new(ctx);
-        ctx.tail_mask(2 * len)
-    }
-    #[inline(always)]
-    #[faer_macros::math]
-    fn simd_head_mask<S: Simd>(ctx: &Self::SimdCtx<S>, len: usize) -> Self::SimdMask<S> {
-        let ctx = SimdCtx::<T, S>::new(ctx);
-        ctx.head_mask(2 * len)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    unsafe fn simd_mask_load<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *const T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_mask_load(ctx, mask, ptr)
-    }
-    #[inline(always)]
-    #[faer_macros::math]
-    unsafe fn simd_mask_store<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *mut T::SimdComplexUnit<S>,
-        value: T::SimdComplexUnit<S>,
-    ) {
-        T::simd_complex_mask_store(ctx, mask, ptr, value)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn simd_load<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        ptr: &T::SimdComplexUnit<S>,
-    ) -> T::SimdComplexUnit<S> {
-        T::simd_complex_load(ctx, ptr)
-    }
-    #[inline(always)]
-    #[faer_macros::math]
-    fn simd_store<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        ptr: &mut T::SimdComplexUnit<S>,
-        value: T::SimdComplexUnit<S>,
-    ) {
-        T::simd_complex_store(ctx, ptr, value)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn simd_iota<S: Simd>(ctx: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
-        T::simd_complex_iota(ctx)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-        T::simd_complex_abs_max(ctx, value)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
-    fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S {
-        T::ctx_from_simd(ctx)
-    }
-
-    #[inline(always)]
-    #[faer_macros::math]
     fn simd_and_mask<S: Simd>(
-        simd: &Self::SimdCtx<S>,
+        ctx: &Self::SimdCtx<S>,
         lhs: Self::SimdMask<S>,
         rhs: Self::SimdMask<S>,
     ) -> Self::SimdMask<S> {
-        T::simd_and_mask(simd, lhs, rhs)
+        T::simd_and_mask(ctx, lhs, rhs)
     }
 
     #[inline(always)]
-    #[faer_macros::math]
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
         T::simd_first_true_mask(ctx, value)
     }
 }
 
-impl EnableComplex for f32 {
-    const COMPLEX_SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::All;
-    type SimdComplexUnit<S: Simd> = S::c32s;
+impl ComplexField for Complex<f32> {
+    const IS_REAL: bool = false;
+    const SIMD_ABS_SPLIT_REAL_IMAG: bool = true;
+
     type Arch = pulp::Arch;
+    type SimdCtx<S: Simd> = S;
+    type Index = u32;
+    type Unit = f32;
+    type Real = f32;
+
+    const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::Simd;
+
+    type SimdMask<S: Simd> = S::m32s;
+    type SimdVec<S: Simd> = S::c32s;
+    type SimdIndex<S: Simd> = S::u32s;
+
+    #[inline]
+    fn zero_impl() -> Self {
+        Complex {
+            re: f32::zero_impl(),
+            im: f32::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn one_impl() -> Self {
+        Complex {
+            re: f32::one_impl(),
+            im: f32::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn nan_impl() -> Self {
+        Complex {
+            re: f32::nan_impl(),
+            im: f32::nan_impl(),
+        }
+    }
+
+    #[inline]
+    fn infinity_impl() -> Self {
+        Complex {
+            re: f32::infinity_impl(),
+            im: f32::infinity_impl(),
+        }
+    }
+
+    #[inline]
+    fn from_real_impl(real: &Self::Real) -> Self {
+        Complex {
+            re: real.clone(),
+            im: f32::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn from_f64_impl(real: f64) -> Self {
+        Complex {
+            re: f32::from_f64_impl(real),
+            im: f32::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn real_part_impl(value: &Self) -> Self::Real {
+        value.re.clone()
+    }
+
+    #[inline]
+    fn imag_part_impl(value: &Self) -> Self::Real {
+        value.im.clone()
+    }
+
+    #[inline]
+    fn copy_impl(value: &Self) -> Self {
+        value.clone()
+    }
+
+    #[inline]
+    fn conj_impl(value: &Self) -> Self {
+        Self {
+            re: value.re.clone(),
+            im: value.im.neg_by_ref(),
+        }
+    }
+
+    #[inline]
+    fn recip_impl(value: &Self) -> Self {
+        let (re, im) = recip_impl(value.re.clone(), value.im.clone());
+        Complex { re, im }
+    }
+
+    #[inline]
+    fn sqrt_impl(value: &Self) -> Self {
+        let (re, im) = sqrt_impl(value.re.clone(), value.im.clone());
+        Complex { re, im }
+    }
+
+    #[inline]
+    fn abs_impl(value: &Self) -> Self::Real {
+        abs_impl(value.re.clone(), value.im.clone())
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn abs1_impl(value: &Self) -> Self::Real {
+        abs1(value.re) + abs1(value.im)
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn abs2_impl(value: &Self) -> Self::Real {
+        abs2(value.re) + abs2(value.im)
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
+        Complex {
+            re: lhs.re * rhs,
+            im: lhs.im * rhs,
+        }
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self {
+        Complex {
+            re: mul_pow2(lhs.re, rhs),
+            im: mul_pow2(lhs.im, rhs),
+        }
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn is_finite_impl(value: &Self) -> bool {
+        is_finite(*value)
+    }
 
     #[inline(always)]
-    fn simd_complex_splat<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: &Complex<Self>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.splat_c32s(*value)
+    fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S> {
+        f32::simd_ctx(simd)
     }
+
     #[inline(always)]
-    fn simd_complex_splat_real<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: &Self,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.splat_c32s(Complex {
+    fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S {
+        f32::ctx_from_simd(ctx)
+    }
+
+    #[inline(always)]
+    fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+        ctx.splat_c32s(*value)
+    }
+
+    #[inline(always)]
+    fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+        ctx.splat_c32s(Complex {
             re: *value,
             im: *value,
         })
     }
 
     #[inline(always)]
-    fn simd_complex_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.add_c32s(lhs, rhs)
+    fn simd_add<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.add_c32s(lhs, rhs)
     }
+
     #[inline(always)]
-    fn simd_complex_sub<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.sub_c32s(lhs, rhs)
+    fn simd_sub<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.sub_c32s(lhs, rhs)
     }
+
     #[inline(always)]
-    fn simd_complex_neg<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.neg_c32s(value)
+    fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        ctx.neg_c32s(value)
     }
+
     #[inline(always)]
-    fn simd_complex_conj<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.conj_c32s(value)
+    fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        ctx.conj_c32s(value)
     }
+
     #[inline(always)]
-    fn simd_complex_abs1<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
+    fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
         if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
-            bytemuck::cast(simd.abs_f32s(bytemuck::cast(value)))
+            bytemuck::cast(ctx.abs_f32s(bytemuck::cast(value)))
         } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
             let value: Complex<f32> = bytemuck::cast(value);
-            let abs = value.re.abs() + value.im.abs();
-            bytemuck::cast(Complex { re: abs, im: abs })
+            let v = value.re.abs() + value.im.abs();
+            bytemuck::cast(Complex { re: v, im: v })
         } else {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_abs2<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.abs2_c32s(value)
-    }
-    #[inline(always)]
-    fn simd_complex_abs2_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.add_c32s(simd.abs2_c32s(value), acc)
-    }
-    #[inline(always)]
-    fn simd_complex_mul<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.mul_e_c32s(lhs, rhs)
-    }
-    #[inline(always)]
-    fn simd_complex_conj_mul<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.conj_mul_e_c32s(lhs, rhs)
-    }
-    #[inline(always)]
-    fn simd_complex_mul_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.mul_add_e_c32s(lhs, rhs, acc)
-    }
-    #[inline(always)]
-    fn simd_complex_conj_mul_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.conj_mul_add_e_c32s(lhs, rhs, acc)
+    fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+            bytemuck::cast(ctx.abs_f32s(bytemuck::cast(value)))
+        } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+            let value: Complex<f32> = bytemuck::cast(value);
+            let re = value.re.abs();
+            let im = value.im.abs();
+            let v = if re > im { re } else { im };
+            bytemuck::cast(Complex { re: v, im: v })
+        } else {
+            panic!();
+        }
     }
 
     #[inline(always)]
-    fn simd_complex_mul_real<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
+    fn simd_mul_real<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
         if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
-            bytemuck::cast(simd.mul_f32s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
+            bytemuck::cast(ctx.mul_f32s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
         } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
             let mut lhs: Complex<f32> = bytemuck::cast(lhs);
             let rhs: Complex<f32> = bytemuck::cast(real_rhs);
@@ -2643,46 +2753,104 @@ impl EnableComplex for f32 {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_mul_pow2<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        Self::simd_complex_mul_real(simd, lhs, real_rhs)
+    fn simd_mul_pow2<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Self::simd_mul_real(ctx, lhs, real_rhs)
     }
 
     #[inline(always)]
-    fn simd_complex_reduce_sum<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Complex<Self> {
-        simd.reduce_sum_c32s(value)
+    fn simd_mul<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mul_e_c32s(lhs, rhs)
     }
+
     #[inline(always)]
-    fn simd_complex_reduce_max<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self {
+    fn simd_conj_mul<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.conj_mul_e_c32s(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul_add<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mul_add_e_c32s(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_add<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.conj_mul_add_e_c32s(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
         if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
-            bytemuck::cast(simd.reduce_max_f32s(bytemuck::cast(value)))
+            bytemuck::cast(ctx.mul_f32s(bytemuck::cast(value), bytemuck::cast(value)))
         } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
-            let tmp = bytemuck::cast::<_, Complex<f32>>(value);
-            if tmp.re > tmp.im {
-                tmp.re
-            } else {
-                tmp.im
-            }
+            let value: Complex<f32> = bytemuck::cast(value);
+            let v = value.re * value.re + value.im * value.im;
+            bytemuck::cast(Complex { re: v, im: v })
         } else {
-            panic!()
+            panic!();
         }
     }
 
     #[inline(always)]
-    fn simd_complex_less_than<S: Simd>(
+    fn simd_abs2_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
+        value: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+            bytemuck::cast(ctx.mul_add_f32s(
+                bytemuck::cast(value),
+                bytemuck::cast(value),
+                bytemuck::cast(acc),
+            ))
+        } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+            let value: Complex<f32> = bytemuck::cast(value);
+            let acc: Complex<f32> = bytemuck::cast(acc);
+            let v = value.re * value.re + value.im * value.im + acc.re;
+            bytemuck::cast(Complex { re: v, im: v })
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+        ctx.reduce_sum_c32s(value)
+    }
+
+    #[inline(always)]
+    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+        ctx.reduce_max_c32s(value)
+    }
+
+    #[inline(always)]
+    fn simd_less_than<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
         if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
             ctx.less_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
@@ -2696,11 +2864,12 @@ impl EnableComplex for f32 {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_less_than_or_equal<S: Simd>(
+    fn simd_less_than_or_equal<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
         if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
             ctx.less_than_or_equal_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
@@ -2714,30 +2883,52 @@ impl EnableComplex for f32 {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_greater_than<S: Simd>(
+    fn simd_greater_than<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
-        Self::simd_complex_less_than(ctx, real_rhs, real_lhs)
-    }
-    #[inline(always)]
-    fn simd_complex_greater_than_or_equal<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S> {
-        Self::simd_complex_less_than_or_equal(ctx, real_rhs, real_lhs)
+        if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+            ctx.greater_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
+        } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+            assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+
+            let lhs: Complex<f32> = bytemuck::cast(real_lhs);
+            let rhs: Complex<f32> = bytemuck::cast(real_rhs);
+            unsafe { core::mem::transmute_copy(&(lhs.re > rhs.re)) }
+        } else {
+            panic!();
+        }
     }
 
     #[inline(always)]
-    fn simd_complex_select<S: Simd>(
+    fn simd_greater_than_or_equal<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdMask<S> {
+        if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+            ctx.greater_than_or_equal_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
+        } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+            assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+
+            let lhs: Complex<f32> = bytemuck::cast(real_lhs);
+            let rhs: Complex<f32> = bytemuck::cast(real_rhs);
+            unsafe { core::mem::transmute_copy(&(lhs.re >= rhs.re)) }
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    fn simd_select<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         mask: Self::SimdMask<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
         if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
             bytemuck::cast(ctx.select_f32s_m32s(mask, bytemuck::cast(lhs), bytemuck::cast(rhs)))
         } else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
@@ -2752,185 +2943,271 @@ impl EnableComplex for f32 {
     }
 
     #[inline(always)]
-    unsafe fn simd_complex_mask_load<S: Simd>(
+    fn simd_index_select<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         mask: Self::SimdMask<S>,
-        ptr: *const Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        ctx.mask_load_ptr_c32s(mask, ptr as *const Complex<f32>)
+        lhs: Self::SimdIndex<S>,
+        rhs: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        f32::simd_index_select(ctx, mask, lhs, rhs)
     }
+
     #[inline(always)]
-    unsafe fn simd_complex_mask_store<S: Simd>(
+    fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+        f32::simd_index_splat(ctx, value)
+    }
+
+    #[inline(always)]
+    fn simd_index_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *mut Self::SimdComplexUnit<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) {
-        ctx.mask_store_ptr_c32s(mask, ptr as *mut Complex<f32>, value)
+        lhs: Self::SimdIndex<S>,
+        rhs: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        f32::simd_index_add(ctx, lhs, rhs)
     }
 
     #[inline(always)]
-    fn simd_complex_iota<S: Simd>(_: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
-        const {
-            core::assert!(
-                size_of::<Self::Index>() * Self::Index::COMPLEX_IOTA.len()
-                    >= size_of::<Self::SimdIndex<S>>()
-            )
-        };
-        unsafe { core::mem::transmute_copy(Self::Index::COMPLEX_IOTA) }
+    fn simd_and_mask<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdMask<S>,
+        rhs: Self::SimdMask<S>,
+    ) -> Self::SimdMask<S> {
+        f32::simd_and_mask(ctx, lhs, rhs)
     }
 
     #[inline(always)]
-    fn simd_complex_load<S: Simd>(
-        _: &Self::SimdCtx<S>,
-        ptr: &Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        *ptr
-    }
-    #[inline(always)]
-    fn simd_complex_store<S: Simd>(
-        _: &Self::SimdCtx<S>,
-        ptr: &mut Self::SimdComplexUnit<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) {
-        *ptr = value;
-    }
-
-    #[inline(always)]
-    fn simd_complex_abs_max<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.abs_max_c32s(value)
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+        f32::simd_first_true_mask(ctx, value)
     }
 }
 
-impl EnableComplex for f64 {
-    const COMPLEX_SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::All;
-    type SimdComplexUnit<S: Simd> = S::c64s;
+impl ComplexField for Complex<f64> {
+    const IS_REAL: bool = false;
+    const SIMD_ABS_SPLIT_REAL_IMAG: bool = true;
+
     type Arch = pulp::Arch;
+    type SimdCtx<S: Simd> = S;
+    type Index = u64;
+    type Unit = f64;
+    type Real = f64;
+
+    const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::Simd;
+
+    type SimdMask<S: Simd> = S::m64s;
+    type SimdVec<S: Simd> = S::c64s;
+    type SimdIndex<S: Simd> = S::u64s;
+
+    #[inline]
+    fn zero_impl() -> Self {
+        Complex {
+            re: f64::zero_impl(),
+            im: f64::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn one_impl() -> Self {
+        Complex {
+            re: f64::one_impl(),
+            im: f64::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn nan_impl() -> Self {
+        Complex {
+            re: f64::nan_impl(),
+            im: f64::nan_impl(),
+        }
+    }
+
+    #[inline]
+    fn infinity_impl() -> Self {
+        Complex {
+            re: f64::infinity_impl(),
+            im: f64::infinity_impl(),
+        }
+    }
+
+    #[inline]
+    fn from_real_impl(real: &Self::Real) -> Self {
+        Complex {
+            re: real.clone(),
+            im: f64::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn from_f64_impl(real: f64) -> Self {
+        Complex {
+            re: f64::from_f64_impl(real),
+            im: f64::zero_impl(),
+        }
+    }
+
+    #[inline]
+    fn real_part_impl(value: &Self) -> Self::Real {
+        value.re.clone()
+    }
+
+    #[inline]
+    fn imag_part_impl(value: &Self) -> Self::Real {
+        value.im.clone()
+    }
+
+    #[inline]
+    fn copy_impl(value: &Self) -> Self {
+        value.clone()
+    }
+
+    #[inline]
+    fn conj_impl(value: &Self) -> Self {
+        Self {
+            re: value.re.clone(),
+            im: value.im.neg_by_ref(),
+        }
+    }
+
+    #[inline]
+    fn recip_impl(value: &Self) -> Self {
+        let (re, im) = recip_impl(value.re.clone(), value.im.clone());
+        Complex { re, im }
+    }
+
+    #[inline]
+    fn sqrt_impl(value: &Self) -> Self {
+        let (re, im) = sqrt_impl(value.re.clone(), value.im.clone());
+        Complex { re, im }
+    }
+
+    #[inline]
+    fn abs_impl(value: &Self) -> Self::Real {
+        abs_impl(value.re.clone(), value.im.clone())
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn abs1_impl(value: &Self) -> Self::Real {
+        abs1(value.re) + abs1(value.im)
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn abs2_impl(value: &Self) -> Self::Real {
+        abs2(value.re) + abs2(value.im)
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
+        Complex {
+            re: lhs.re * rhs,
+            im: lhs.im * rhs,
+        }
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self {
+        Complex {
+            re: mul_pow2(lhs.re, rhs),
+            im: mul_pow2(lhs.im, rhs),
+        }
+    }
+
+    #[inline]
+    #[faer_macros::math]
+    fn is_finite_impl(value: &Self) -> bool {
+        is_finite(*value)
+    }
 
     #[inline(always)]
-    fn simd_complex_splat<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: &Complex<Self>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.splat_c64s(*value)
+    fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S> {
+        f64::simd_ctx(simd)
     }
+
     #[inline(always)]
-    fn simd_complex_splat_real<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: &Self,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.splat_c64s(Complex {
+    fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S {
+        f64::ctx_from_simd(ctx)
+    }
+
+    #[inline(always)]
+    fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+        ctx.splat_c64s(*value)
+    }
+
+    #[inline(always)]
+    fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+        ctx.splat_c64s(Complex {
             re: *value,
             im: *value,
         })
     }
 
     #[inline(always)]
-    fn simd_complex_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.add_c64s(lhs, rhs)
+    fn simd_add<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.add_c64s(lhs, rhs)
     }
+
     #[inline(always)]
-    fn simd_complex_sub<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.sub_c64s(lhs, rhs)
+    fn simd_sub<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.sub_c64s(lhs, rhs)
     }
+
     #[inline(always)]
-    fn simd_complex_neg<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.neg_c64s(value)
+    fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        ctx.neg_c64s(value)
     }
+
     #[inline(always)]
-    fn simd_complex_conj<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.conj_c64s(value)
+    fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        ctx.conj_c64s(value)
     }
+
     #[inline(always)]
-    fn simd_complex_abs1<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
+    fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
         if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
-            bytemuck::cast(simd.abs_f64s(bytemuck::cast(value)))
+            bytemuck::cast(ctx.abs_f64s(bytemuck::cast(value)))
         } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
             let value: Complex<f64> = bytemuck::cast(value);
-            let abs = value.re.abs() + value.im.abs();
-            bytemuck::cast(Complex { re: abs, im: abs })
+            let v = value.re.abs() + value.im.abs();
+            bytemuck::cast(Complex { re: v, im: v })
         } else {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_abs2<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.abs2_c64s(value)
-    }
-    #[inline(always)]
-    fn simd_complex_abs2_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.add_c64s(simd.abs2_c64s(value), acc)
-    }
-    #[inline(always)]
-    fn simd_complex_mul<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.mul_e_c64s(lhs, rhs)
-    }
-    #[inline(always)]
-    fn simd_complex_conj_mul<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.conj_mul_e_c64s(lhs, rhs)
-    }
-    #[inline(always)]
-    fn simd_complex_mul_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.mul_add_e_c64s(lhs, rhs, acc)
-    }
-    #[inline(always)]
-    fn simd_complex_conj_mul_add<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-        acc: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.conj_mul_add_e_c64s(lhs, rhs, acc)
+    fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+        if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+            bytemuck::cast(ctx.abs_f64s(bytemuck::cast(value)))
+        } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+            let value: Complex<f64> = bytemuck::cast(value);
+            let re = value.re.abs();
+            let im = value.im.abs();
+            let v = if re > im { re } else { im };
+            bytemuck::cast(Complex { re: v, im: v })
+        } else {
+            panic!();
+        }
     }
 
     #[inline(always)]
-    fn simd_complex_mul_real<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
+    fn simd_mul_real<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
         if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
-            bytemuck::cast(simd.mul_f64s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
+            bytemuck::cast(ctx.mul_f64s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
         } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
             let mut lhs: Complex<f64> = bytemuck::cast(lhs);
             let rhs: Complex<f64> = bytemuck::cast(real_rhs);
@@ -2940,46 +3217,104 @@ impl EnableComplex for f64 {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_mul_pow2<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        Self::simd_complex_mul_real(simd, lhs, real_rhs)
+    fn simd_mul_pow2<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Self::simd_mul_real(ctx, lhs, real_rhs)
     }
 
     #[inline(always)]
-    fn simd_complex_reduce_sum<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Complex<Self> {
-        simd.reduce_sum_c64s(value)
+    fn simd_mul<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mul_e_c64s(lhs, rhs)
     }
+
     #[inline(always)]
-    fn simd_complex_reduce_max<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self {
+    fn simd_conj_mul<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.conj_mul_e_c64s(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul_add<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mul_add_e_c64s(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_add<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.conj_mul_add_e_c64s(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
         if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
-            bytemuck::cast(simd.reduce_max_f64s(bytemuck::cast(value)))
+            bytemuck::cast(ctx.mul_f64s(bytemuck::cast(value), bytemuck::cast(value)))
         } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
-            let tmp = bytemuck::cast::<_, Complex<f64>>(value);
-            if tmp.re > tmp.im {
-                tmp.re
-            } else {
-                tmp.im
-            }
+            let value: Complex<f64> = bytemuck::cast(value);
+            let v = value.re * value.re + value.im * value.im;
+            bytemuck::cast(Complex { re: v, im: v })
         } else {
-            panic!()
+            panic!();
         }
     }
 
     #[inline(always)]
-    fn simd_complex_less_than<S: Simd>(
+    fn simd_abs2_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
+        value: Self::SimdVec<S>,
+        acc: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+            bytemuck::cast(ctx.mul_add_f64s(
+                bytemuck::cast(value),
+                bytemuck::cast(value),
+                bytemuck::cast(acc),
+            ))
+        } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+            let value: Complex<f64> = bytemuck::cast(value);
+            let acc: Complex<f64> = bytemuck::cast(acc);
+            let v = value.re * value.re + value.im * value.im + acc.re;
+            bytemuck::cast(Complex { re: v, im: v })
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+        ctx.reduce_sum_c64s(value)
+    }
+
+    #[inline(always)]
+    fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+        ctx.reduce_max_c64s(value)
+    }
+
+    #[inline(always)]
+    fn simd_less_than<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
         if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
             ctx.less_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
@@ -2993,11 +3328,12 @@ impl EnableComplex for f64 {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_less_than_or_equal<S: Simd>(
+    fn simd_less_than_or_equal<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
         if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
             ctx.less_than_or_equal_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
@@ -3011,30 +3347,52 @@ impl EnableComplex for f64 {
             panic!();
         }
     }
+
     #[inline(always)]
-    fn simd_complex_greater_than<S: Simd>(
+    fn simd_greater_than<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
     ) -> Self::SimdMask<S> {
-        Self::simd_complex_less_than(ctx, real_rhs, real_lhs)
-    }
-    #[inline(always)]
-    fn simd_complex_greater_than_or_equal<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        real_lhs: Self::SimdComplexUnit<S>,
-        real_rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdMask<S> {
-        Self::simd_complex_less_than_or_equal(ctx, real_rhs, real_lhs)
+        if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+            ctx.greater_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
+        } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+            assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+
+            let lhs: Complex<f64> = bytemuck::cast(real_lhs);
+            let rhs: Complex<f64> = bytemuck::cast(real_rhs);
+            unsafe { core::mem::transmute_copy(&(lhs.re > rhs.re)) }
+        } else {
+            panic!();
+        }
     }
 
     #[inline(always)]
-    fn simd_complex_select<S: Simd>(
+    fn simd_greater_than_or_equal<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        real_lhs: Self::SimdVec<S>,
+        real_rhs: Self::SimdVec<S>,
+    ) -> Self::SimdMask<S> {
+        if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+            ctx.greater_than_or_equal_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
+        } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+            assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+
+            let lhs: Complex<f64> = bytemuck::cast(real_lhs);
+            let rhs: Complex<f64> = bytemuck::cast(real_rhs);
+            unsafe { core::mem::transmute_copy(&(lhs.re >= rhs.re)) }
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    fn simd_select<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         mask: Self::SimdMask<S>,
-        lhs: Self::SimdComplexUnit<S>,
-        rhs: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
+        lhs: Self::SimdVec<S>,
+        rhs: Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
         if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
             bytemuck::cast(ctx.select_f64s_m64s(mask, bytemuck::cast(lhs), bytemuck::cast(rhs)))
         } else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
@@ -3049,56 +3407,41 @@ impl EnableComplex for f64 {
     }
 
     #[inline(always)]
-    unsafe fn simd_complex_mask_load<S: Simd>(
+    fn simd_index_select<S: Simd>(
         ctx: &Self::SimdCtx<S>,
         mask: Self::SimdMask<S>,
-        ptr: *const Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        ctx.mask_load_ptr_c64s(mask, ptr as *const Complex<f64>)
+        lhs: Self::SimdIndex<S>,
+        rhs: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        f64::simd_index_select(ctx, mask, lhs, rhs)
     }
+
     #[inline(always)]
-    unsafe fn simd_complex_mask_store<S: Simd>(
+    fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+        f64::simd_index_splat(ctx, value)
+    }
+
+    #[inline(always)]
+    fn simd_index_add<S: Simd>(
         ctx: &Self::SimdCtx<S>,
-        mask: Self::SimdMask<S>,
-        ptr: *mut Self::SimdComplexUnit<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) {
-        ctx.mask_store_ptr_c64s(mask, ptr as *mut Complex<f64>, value)
+        lhs: Self::SimdIndex<S>,
+        rhs: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        f64::simd_index_add(ctx, lhs, rhs)
     }
 
     #[inline(always)]
-    fn simd_complex_iota<S: Simd>(_: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
-        const {
-            core::assert!(
-                size_of::<Self::Index>() * Self::Index::COMPLEX_IOTA.len()
-                    >= size_of::<Self::SimdIndex<S>>()
-            )
-        };
-        unsafe { core::mem::transmute_copy(Self::Index::COMPLEX_IOTA) }
+    fn simd_and_mask<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        lhs: Self::SimdMask<S>,
+        rhs: Self::SimdMask<S>,
+    ) -> Self::SimdMask<S> {
+        f64::simd_and_mask(ctx, lhs, rhs)
     }
 
     #[inline(always)]
-    fn simd_complex_load<S: Simd>(
-        _: &Self::SimdCtx<S>,
-        ptr: &Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        *ptr
-    }
-    #[inline(always)]
-    fn simd_complex_store<S: Simd>(
-        _: &Self::SimdCtx<S>,
-        ptr: &mut Self::SimdComplexUnit<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) {
-        *ptr = value;
-    }
-
-    #[inline(always)]
-    fn simd_complex_abs_max<S: Simd>(
-        simd: &Self::SimdCtx<S>,
-        value: Self::SimdComplexUnit<S>,
-    ) -> Self::SimdComplexUnit<S> {
-        simd.abs_max_c64s(value)
+    fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+        f64::simd_first_true_mask(ctx, value)
     }
 }
 

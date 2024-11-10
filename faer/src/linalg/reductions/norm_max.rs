@@ -1,4 +1,4 @@
-use faer_traits::Real;
+use faer_traits::RealMarker;
 use num_complex::Complex;
 
 use super::LINEAR_IMPL_THRESHOLD;
@@ -20,10 +20,10 @@ fn norm_max_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd
 
             let zero = simd.splat(&zero());
 
-            let mut acc0 = Real(zero);
-            let mut acc1 = Real(zero);
-            let mut acc2 = Real(zero);
-            let mut acc3 = Real(zero);
+            let mut acc0 = RealMarker(zero);
+            let mut acc1 = RealMarker(zero);
+            let mut acc2 = RealMarker(zero);
+            let mut acc3 = RealMarker(zero);
 
             let (head, body4, body1, tail) = simd.batch_indices::<4>();
 
@@ -54,7 +54,7 @@ fn norm_max_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd
             acc2 = simd.max(acc2, acc3);
             acc0 = simd.max(acc0, acc2);
 
-            simd.reduce_max(acc0)
+            simd.reduce_max_real(acc0)
         }
     }
 

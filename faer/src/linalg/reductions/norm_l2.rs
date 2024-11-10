@@ -1,4 +1,4 @@
-use faer_traits::Real;
+use faer_traits::RealMarker;
 use num_complex::Complex;
 
 use super::LINEAR_IMPL_THRESHOLD;
@@ -23,57 +23,58 @@ fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
             let sml = simd.splat_real(&sqrt_min_positive());
             let big = simd.splat_real(&sqrt_max_positive());
 
-            let mut acc0_sml = Real(zero);
-            let mut acc1_sml = Real(zero);
-            let mut acc0_med = Real(zero);
-            let mut acc1_med = Real(zero);
-            let mut acc0_big = Real(zero);
-            let mut acc1_big = Real(zero);
+            let mut acc0_sml = RealMarker(zero);
+            let mut acc1_sml = RealMarker(zero);
+            let mut acc0_med = RealMarker(zero);
+            let mut acc1_med = RealMarker(zero);
+            let mut acc0_big = RealMarker(zero);
+            let mut acc1_big = RealMarker(zero);
 
             let (head, body2, body1, tail) = simd.batch_indices::<2>();
 
             if let Some(i0) = head {
-                let x0 = simd.abs1(simd.read(data, i0));
+                let x0 = simd.read(data, i0);
 
-                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
-                acc0_med = simd.abs2_add(x0.0, acc0_med);
-                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
+                acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
+                acc0_med = simd.abs2_add(x0, acc0_med);
+                acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
             }
             for [i0, i1] in body2 {
-                let x0 = simd.abs1(simd.read(data, i0));
-                let x1 = simd.abs1(simd.read(data, i1));
+                let x0 = simd.read(data, i0);
+                let x1 = simd.read(data, i1);
 
-                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
-                acc1_sml = simd.abs2_add(simd.mul_real(x1.0, sml), acc1_sml);
+                acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
+                acc1_sml = simd.abs2_add(simd.mul_real(x1, sml), acc1_sml);
 
-                acc0_med = simd.abs2_add(x0.0, acc0_med);
-                acc1_med = simd.abs2_add(x1.0, acc1_med);
+                acc0_med = simd.abs2_add(x0, acc0_med);
+                acc1_med = simd.abs2_add(x1, acc1_med);
 
-                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
-                acc1_big = simd.abs2_add(simd.mul_real(x1.0, big), acc1_big);
+                acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
+                acc1_big = simd.abs2_add(simd.mul_real(x1, big), acc1_big);
             }
             for i0 in body1 {
-                let x0 = simd.abs1(simd.read(data, i0));
+                let x0 = simd.read(data, i0);
 
-                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
-                acc0_med = simd.abs2_add(x0.0, acc0_med);
-                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
+                acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
+                acc0_med = simd.abs2_add(x0, acc0_med);
+                acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
             }
             if let Some(i0) = tail {
-                let x0 = simd.abs1(simd.read(data, i0));
+                let x0 = simd.read(data, i0);
 
-                acc0_sml = simd.abs2_add(simd.mul_real(x0.0, sml), acc0_sml);
-                acc0_med = simd.abs2_add(x0.0, acc0_med);
-                acc0_big = simd.abs2_add(simd.mul_real(x0.0, big), acc0_big);
+                acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
+                acc0_med = simd.abs2_add(x0, acc0_med);
+                acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
             }
 
-            acc0_sml = Real(simd.add(acc0_sml.0, acc1_sml.0));
-            acc0_big = Real(simd.add(acc0_big.0, acc1_big.0));
-            acc0_med = Real(simd.add(acc0_med.0, acc1_med.0));
+            acc0_sml = RealMarker(simd.add(acc0_sml.0, acc1_sml.0));
+            acc0_big = RealMarker(simd.add(acc0_big.0, acc1_big.0));
+            acc0_med = RealMarker(simd.add(acc0_med.0, acc1_med.0));
+
             [
-                real(simd.reduce_sum(acc0_sml.0)),
-                real(simd.reduce_sum(acc0_med.0)),
-                real(simd.reduce_sum(acc0_big.0)),
+                simd.reduce_sum_real(acc0_sml),
+                simd.reduce_sum_real(acc0_med),
+                simd.reduce_sum_real(acc0_big),
             ]
         }
     }
@@ -203,8 +204,10 @@ pub fn norm_l2<T: ComplexField>(mat: MatRef<'_, T>) -> T::Real {
 
 #[cfg(test)]
 mod tests {
+    use num_complex::ComplexFloat;
+
     use super::*;
-    use crate::{assert, unzipped, zipped, Col, Mat};
+    use crate::{assert, c64, unzipped, zipped, Col, Mat};
 
     #[test]
     fn test_norm_l2() {
@@ -229,5 +232,28 @@ mod tests {
         let mat = Col::from_fn(10000000, |_| 0.3);
         let target = (0.3 * 0.3 * 10000000.0f64).sqrt();
         assert!(relative_err(norm_l2(mat.as_ref().as_mat()), target) < 1e-14);
+    }
+
+    #[test]
+    fn test_norm_l2_cplx() {
+        let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+
+        for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
+            for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
+                let mat = Mat::from_fn(m, n, |i, j| {
+                    factor * c64::new((i + j) as f64, (i.wrapping_sub(j)) as f64)
+                });
+                let mut target = 0.0;
+                zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
+                    target = f64::hypot(x.abs(), target);
+                });
+
+                if factor == 0.0 {
+                    assert!(norm_l2(mat.as_ref()) == target);
+                } else {
+                    assert!(relative_err(norm_l2(mat.as_ref()), target) < 1e-14);
+                }
+            }
+        }
     }
 }

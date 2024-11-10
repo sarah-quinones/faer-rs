@@ -547,9 +547,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
     let N = dst.ncols();
     let K = lhs.ncols();
 
+    let mut lhs = lhs;
+    let mut rhs = rhs;
+
     if const { T::SIMD_CAPABILITIES.is_simd() } {
-        let mut lhs = lhs;
-        let mut rhs = rhs;
         if dst.row_stride() < 0 {
             dst = dst.reverse_rows_mut();
             lhs = lhs.reverse_rows();
@@ -720,6 +721,9 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
             let dst = dst.rb();
             (0..nthreads).into_par_iter().for_each(|tid| {
                 let task_idx = tid * task_per_thread;
+                if task_idx >= task_count {
+                    return;
+                }
                 let ntasks = Ord::min(task_per_thread, task_count - task_idx);
 
                 for ij in 0..ntasks {

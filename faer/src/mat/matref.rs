@@ -8,7 +8,7 @@ use crate::{
 };
 use core::ops::Index;
 use equator::{assert, debug_assert};
-use faer_traits::RealValue;
+use faer_traits::Real;
 use generativity::Guard;
 use matmut::MatMut;
 use matown::Mat;
@@ -1099,7 +1099,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -1107,7 +1107,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -1115,7 +1115,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn squared_norm_l2(&self) -> RealValue<T>
+    pub fn squared_norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -1123,7 +1123,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn norm_l1(&self) -> RealValue<T>
+    pub fn norm_l1(&self) -> Real<T>
     where
         T: Conjugate,
     {

@@ -7,7 +7,7 @@ use crate::{
 };
 use core::ops::{Index, IndexMut};
 use equator::assert;
-use faer_traits::{ComplexField, RealValue};
+use faer_traits::{ComplexField, Real};
 use generativity::{make_guard, Guard};
 use linalg::zip::Last;
 use matref::MatRef;
@@ -539,7 +539,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -547,7 +547,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -555,7 +555,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn squared_norm_l2(&self) -> RealValue<T>
+    pub fn squared_norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -563,7 +563,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
     }
 
     #[inline]
-    pub fn norm_l1(&self) -> RealValue<T>
+    pub fn norm_l1(&self) -> Real<T>
     where
         T: Conjugate,
     {

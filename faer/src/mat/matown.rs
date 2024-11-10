@@ -5,7 +5,7 @@ use core::{
     ops::{Index, IndexMut},
 };
 use dyn_stack::StackReq;
-use faer_traits::{ComplexField, RealValue};
+use faer_traits::{ComplexField, Real};
 use matmut::MatMut;
 use matref::MatRef;
 
@@ -915,7 +915,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     }
 
     #[inline]
-    pub fn norm_max(&self) -> RealValue<T>
+    pub fn norm_max(&self) -> Real<T>
     where
         T: Conjugate,
     {
@@ -923,7 +923,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     }
 
     #[inline]
-    pub fn norm_l2(&self) -> RealValue<T>
+    pub fn norm_l2(&self) -> Real<T>
     where
         T: Conjugate,
     {
