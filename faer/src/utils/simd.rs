@@ -12,8 +12,8 @@ pub struct SimdCtx<'N, T: ComplexField, S: Simd> {
     head_end: usize,
     body_end: usize,
     tail_end: usize,
-    head_len: usize,
-    tail_len: usize,
+    head_mask: T::SimdMemMask<S>,
+    tail_mask: T::SimdMemMask<S>,
 }
 
 impl<'N, T: ComplexField, S: Simd> core::fmt::Debug for SimdCtx<'N, T, S> {
@@ -24,8 +24,8 @@ impl<'N, T: ComplexField, S: Simd> core::fmt::Debug for SimdCtx<'N, T, S> {
             .field("head_end", &self.head_end)
             .field("body_end", &self.body_end)
             .field("tail_end", &self.tail_end)
-            .field("head_len", &self.head_len)
-            .field("tail_len", &self.tail_len)
+            .field("head_mask", &self.head_mask)
+            .field("tail_mask", &self.tail_mask)
             .finish()
     }
 }
@@ -95,22 +95,27 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdHead<'N, T, S> {
     fn read(
         simd: &SimdCtx<'N, T, S>,
         slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
-        _: Self,
+        index: Self,
     ) -> T::SimdVec<S> {
-        unsafe { simd.partial_load_head(simd.head_len, slice.as_ptr() as *const T::SimdVec<S>) }
+        unsafe {
+            simd.mask_load(
+                simd.head_mask,
+                slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>,
+            )
+        }
     }
 
     #[inline(always)]
     fn write(
         simd: &SimdCtx<'N, T, S>,
         slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
-        _: Self,
+        index: Self,
         value: T::SimdVec<S>,
     ) {
         unsafe {
-            simd.partial_store_head(
-                simd.head_len,
-                slice.as_ptr_mut() as *mut T::SimdVec<S>,
+            simd.mask_store(
+                simd.head_mask,
+                slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
                 value,
             );
         }
@@ -125,8 +130,8 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
         index: Self,
     ) -> T::SimdVec<S> {
         unsafe {
-            simd.partial_load_tail(
-                simd.tail_len,
+            simd.mask_load(
+                simd.tail_mask,
                 slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>,
             )
         }
@@ -140,8 +145,8 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
         value: T::SimdVec<S>,
     ) {
         unsafe {
-            simd.partial_store_tail(
-                simd.tail_len,
+            simd.mask_store(
+                simd.tail_mask,
                 slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
                 value,
             );
@@ -162,8 +167,12 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
             head_end: 0,
             body_end: *len / stride,
             tail_end: (*len + stride - 1) / stride,
-            head_len: 0,
-            tail_len: *len % stride,
+            head_mask: T::simd_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(0)),
+            tail_mask: T::simd_mask_between(
+                &simd,
+                T::Index::truncate(0),
+                T::Index::truncate(*len % stride),
+            ),
         }
     }
 
@@ -174,23 +183,53 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
         let stride = const { size_of::<T::SimdVec<S>>() / size_of::<T>() };
         let align_offset = align_offset % stride;
 
-        if align_offset == 0 || *len < align_offset {
+        if align_offset == 0 {
             Self::new(simd, len)
         } else {
             let offset = stride - align_offset;
             let full_len = offset + *len;
-            let head_len = align_offset;
-            let tail_len = full_len % stride;
 
-            Self {
-                ctx: simd,
-                len,
-                offset,
-                head_end: 1,
-                body_end: full_len / stride,
-                tail_end: (full_len + stride - 1) / stride,
-                head_len,
-                tail_len,
+            if align_offset <= *len {
+                let head_mask = T::simd_mask_between(
+                    &simd,
+                    T::Index::truncate(offset),
+                    T::Index::truncate(stride),
+                );
+                let tail_mask = T::simd_mask_between(
+                    &simd,
+                    T::Index::truncate(0),
+                    T::Index::truncate(full_len % stride),
+                );
+
+                Self {
+                    ctx: simd,
+                    len,
+                    offset,
+                    head_end: 1,
+                    body_end: full_len / stride,
+                    tail_end: (full_len + stride - 1) / stride,
+                    head_mask,
+                    tail_mask,
+                }
+            } else {
+                let head_mask = T::simd_mask_between(
+                    &simd,
+                    T::Index::truncate(offset),
+                    T::Index::truncate(full_len % stride),
+                );
+                let tail_mask =
+                    T::simd_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(0));
+
+                Self {
+                    ctx: simd,
+                    len,
+                    offset,
+                    head_end: 1,
+                    body_end: 1,
+                    tail_end: 1,
+                    head_mask,
+                    tail_mask,
+                }
             }
         }
     }
@@ -215,8 +254,12 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
             head_end: 0,
             body_end: new_len / stride,
             tail_end: new_len / stride + 1,
-            head_len: 0,
-            tail_len: (new_len % stride) + 1,
+            head_mask: T::simd_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(0)),
+            tail_mask: T::simd_mask_between(
+                &simd,
+                T::Index::truncate(0),
+                T::Index::truncate((new_len % stride) + 1),
+            ),
         }
     }
 
@@ -258,7 +301,10 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
             if 0 == self.head_end {
                 None
             } else {
-                Some(SimdHead { mask: PhantomData })
+                Some(SimdHead {
+                    start: offset,
+                    mask: PhantomData,
+                })
             },
             (self.head_end..self.body_end).map(
                 #[inline(always)]
@@ -301,7 +347,10 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
             if 0 == self.head_end {
                 None
             } else {
-                Some(SimdHead { mask: PhantomData })
+                Some(SimdHead {
+                    start: offset,
+                    mask: PhantomData,
+                })
             },
             (self.head_end..self.head_end + len / BATCH * BATCH)
                 .map(move |i| {
@@ -342,6 +391,7 @@ pub struct SimdBody<'N, T: ComplexField, S: Simd> {
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SimdHead<'N, T: ComplexField, S: Simd> {
+    start: isize,
     mask: PhantomData<(Idx<'N>, T::SimdMask<S>)>,
 }
 #[repr(transparent)]

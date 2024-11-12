@@ -607,32 +607,22 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
         T::simd_first_true_mask(&self.0, value)
     }
     #[inline(always)]
-    pub unsafe fn partial_load_tail(&self, len: usize, ptr: *const T::SimdVec<S>) -> T::SimdVec<S> {
-        unsafe { core::mem::transmute_copy(&T::simd_partial_load_tail(&self.0, len, ptr)) }
+    pub unsafe fn mask_load(
+        &self,
+        mask: T::SimdMemMask<S>,
+        ptr: *const T::SimdVec<S>,
+    ) -> T::SimdVec<S> {
+        unsafe { T::simd_mask_load(&self.0, mask, ptr) }
     }
     #[inline(always)]
-    pub unsafe fn partial_store_tail(
+    pub unsafe fn mask_store(
         &self,
-        len: usize,
+        mask: T::SimdMemMask<S>,
         ptr: *mut T::SimdVec<S>,
         value: T::SimdVec<S>,
     ) {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        unsafe { core::mem::transmute_copy(&T::simd_partial_store_tail(&self.0, len, ptr, value)) }
-    }
-    #[inline(always)]
-    pub unsafe fn partial_load_head(&self, len: usize, ptr: *const T::SimdVec<S>) -> T::SimdVec<S> {
-        unsafe { core::mem::transmute_copy(&T::simd_partial_load_head(&self.0, len, ptr)) }
-    }
-    #[inline(always)]
-    pub unsafe fn partial_store_head(
-        &self,
-        len: usize,
-        ptr: *mut T::SimdVec<S>,
-        value: T::SimdVec<S>,
-    ) {
-        let value = unsafe { core::mem::transmute_copy(&value) };
-        unsafe { core::mem::transmute_copy(&T::simd_partial_store_head(&self.0, len, ptr, value)) }
+        unsafe { T::simd_mask_store(&self.0, mask, ptr, value) }
     }
 
     #[inline(always)]
@@ -993,6 +983,8 @@ pub trait ComplexField:
 
     const SIMD_CAPABILITIES: SimdCapabilities;
     type SimdMask<S: Simd>: Copy + Debug;
+    type SimdMemMask<S: Simd>: Copy + Debug;
+
     type SimdVec<S: Simd>: Pod + Debug;
     type SimdIndex<S: Simd>: Pod + Debug;
 
@@ -1027,6 +1019,23 @@ pub trait ComplexField:
 
     fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S>;
     fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S;
+
+    fn simd_mask_between<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        start: Self::Index,
+        end: Self::Index,
+    ) -> Self::SimdMemMask<S>;
+    unsafe fn simd_mask_load_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S>;
+    unsafe fn simd_mask_store_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        values: Self::SimdVec<S>,
+    );
 
     fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S>;
     fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S>;
@@ -1138,204 +1147,6 @@ pub trait ComplexField:
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize;
 
     #[inline(always)]
-    unsafe fn simd_partial_load_tail<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        len: usize,
-        ptr: *const Self::SimdVec<S>,
-    ) -> Self::SimdVec<S> {
-        let simd = Self::ctx_from_simd(ctx);
-        if const { Self::Unit::IS_NATIVE_F32 } {
-            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
-            let mut read = core::slice::from_raw_parts(
-                ptr as *const f32,
-                size_of::<Self>() / size_of::<Self::Unit>() * len,
-            );
-            let write = core::slice::from_raw_parts_mut(
-                (&mut out) as *mut _ as *mut S::f32s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
-            );
-            for w in write {
-                let (r, new_read) = read.split_at(Ord::min(
-                    read.len(),
-                    size_of::<S::f32s>() / size_of::<f32>(),
-                ));
-                *w = simd.partial_load_f32s(r);
-                read = new_read;
-            }
-            simd.deinterleave_shfl_f32s(out)
-        } else if const { Self::Unit::IS_NATIVE_F64 } {
-            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
-            let mut read = core::slice::from_raw_parts(
-                ptr as *const f64,
-                size_of::<Self>() / size_of::<Self::Unit>() * len,
-            );
-            let write = core::slice::from_raw_parts_mut(
-                (&mut out) as *mut _ as *mut S::f64s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
-            );
-            for w in write {
-                let (r, new_read) = read.split_at(Ord::min(
-                    read.len(),
-                    size_of::<S::f64s>() / size_of::<f64>(),
-                ));
-                *w = simd.partial_load_f64s(r);
-                read = new_read;
-            }
-            simd.deinterleave_shfl_f64s(out)
-        } else {
-            panic!();
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn simd_partial_load_head<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        len: usize,
-        ptr: *const Self::SimdVec<S>,
-    ) -> Self::SimdVec<S> {
-        let simd = Self::ctx_from_simd(ctx);
-        if const { Self::Unit::IS_NATIVE_F32 } {
-            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
-            let mut read = core::slice::from_raw_parts(
-                ptr as *const f32,
-                size_of::<Self>() / size_of::<Self::Unit>() * len,
-            );
-            let write = core::slice::from_raw_parts_mut(
-                (&mut out) as *mut _ as *mut S::f32s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
-            );
-            for w in write.iter_mut().rev() {
-                let (new_read, r) = read.split_at(
-                    read.len() - Ord::min(read.len(), size_of::<S::f32s>() / size_of::<f32>()),
-                );
-                *w = simd.partial_load_last_f32s(r);
-                read = new_read;
-            }
-            simd.deinterleave_shfl_f32s(out)
-        } else if const { Self::Unit::IS_NATIVE_F64 } {
-            let mut out = core::mem::zeroed::<Self::SimdVec<S>>();
-            let mut read = core::slice::from_raw_parts(
-                ptr as *const f64,
-                size_of::<Self>() / size_of::<Self::Unit>() * len,
-            );
-            let write = core::slice::from_raw_parts_mut(
-                (&mut out) as *mut _ as *mut S::f64s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
-            );
-            for w in write.iter_mut().rev() {
-                let (new_read, r) = read.split_at(
-                    read.len() - Ord::min(read.len(), size_of::<S::f64s>() / size_of::<f64>()),
-                );
-                *w = simd.partial_load_last_f64s(r);
-                read = new_read;
-            }
-            simd.deinterleave_shfl_f64s(out)
-        } else {
-            panic!();
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn simd_partial_store_tail<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        len: usize,
-        ptr: *mut Self::SimdVec<S>,
-        value: Self::SimdVec<S>,
-    ) {
-        let simd = Self::ctx_from_simd(ctx);
-        if const { Self::Unit::IS_NATIVE_F32 } {
-            let value = simd.interleave_shfl_f32s(value);
-            let mut write = core::slice::from_raw_parts_mut(
-                ptr as *mut f32,
-                size_of::<Self>() / size_of::<f32>() * len,
-            );
-            let read = core::slice::from_raw_parts(
-                (&value) as *const _ as *const S::f32s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
-            );
-
-            for r in read {
-                let (w, new_write) = write.split_at_mut(Ord::min(
-                    write.len(),
-                    size_of::<S::f32s>() / size_of::<f32>(),
-                ));
-                simd.partial_store_f32s(w, *r);
-                write = new_write;
-            }
-        } else if const { Self::Unit::IS_NATIVE_F64 } {
-            let value = simd.interleave_shfl_f64s(value);
-            let mut write = core::slice::from_raw_parts_mut(
-                ptr as *mut f64,
-                size_of::<Self>() / size_of::<f64>() * len,
-            );
-            let read = core::slice::from_raw_parts(
-                (&value) as *const _ as *const S::f64s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
-            );
-
-            for r in read {
-                let (w, new_write) = write.split_at_mut(Ord::min(
-                    write.len(),
-                    size_of::<S::f64s>() / size_of::<f64>(),
-                ));
-                simd.partial_store_f64s(w, *r);
-                write = new_write;
-            }
-        } else {
-            panic!()
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn simd_partial_store_head<S: Simd>(
-        ctx: &Self::SimdCtx<S>,
-        len: usize,
-        ptr: *mut Self::SimdVec<S>,
-        value: Self::SimdVec<S>,
-    ) {
-        let simd = Self::ctx_from_simd(ctx);
-        if const { Self::Unit::IS_NATIVE_F32 } {
-            let value = simd.interleave_shfl_f32s(value);
-            let mut write = core::slice::from_raw_parts_mut(
-                ptr as *mut f32,
-                size_of::<Self>() / size_of::<f32>() * len,
-            );
-            let read = core::slice::from_raw_parts(
-                (&value) as *const _ as *const S::f32s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f32s>(),
-            );
-
-            for r in read.iter().rev() {
-                let (new_write, w) = write.split_at_mut(
-                    write.len() - Ord::min(write.len(), size_of::<S::f32s>() / size_of::<f32>()),
-                );
-                simd.partial_store_last_f32s(w, *r);
-                write = new_write;
-            }
-        } else if const { Self::Unit::IS_NATIVE_F64 } {
-            let value = simd.interleave_shfl_f64s(value);
-            let mut write = core::slice::from_raw_parts_mut(
-                ptr as *mut f64,
-                size_of::<Self>() / size_of::<f64>() * len,
-            );
-            let read = core::slice::from_raw_parts(
-                (&value) as *const _ as *const S::f64s,
-                size_of::<Self::SimdVec<S>>() / size_of::<S::f64s>(),
-            );
-
-            for r in read.iter().rev() {
-                let (new_write, w) = write.split_at_mut(
-                    write.len() - Ord::min(write.len(), size_of::<S::f64s>() / size_of::<f64>()),
-                );
-                simd.partial_store_last_f64s(w, *r);
-                write = new_write;
-            }
-        } else {
-            panic!()
-        }
-    }
-
-    #[inline(always)]
     fn simd_load<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S> {
         let simd = Self::ctx_from_simd(ctx);
         if const { Self::Unit::IS_NATIVE_F32 } {
@@ -1358,6 +1169,40 @@ pub trait ComplexField:
             *ptr = simd.deinterleave_shfl_f32s(value)
         } else if const { Self::Unit::IS_NATIVE_F64 } {
             *ptr = simd.deinterleave_shfl_f64s(value)
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_mask_load<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        let simd = Self::ctx_from_simd(ctx);
+        let value = Self::simd_mask_load_raw(ctx, mask, ptr);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            simd.deinterleave_shfl_f32s(value)
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            simd.deinterleave_shfl_f64s(value)
+        } else {
+            panic!();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_mask_store<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        value: Self::SimdVec<S>,
+    ) {
+        let simd = Self::ctx_from_simd(ctx);
+        if const { Self::Unit::IS_NATIVE_F32 } {
+            Self::simd_mask_store_raw(ctx, mask, ptr, simd.deinterleave_shfl_f32s(value))
+        } else if const { Self::Unit::IS_NATIVE_F64 } {
+            Self::simd_mask_store_raw(ctx, mask, ptr, simd.deinterleave_shfl_f64s(value))
         } else {
             panic!();
         }
@@ -1706,6 +1551,33 @@ impl ComplexField for f32 {
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
         ctx.first_true_m32s(value)
     }
+
+    type SimdMemMask<S: Simd> = pulp::MemMask<S::m32s>;
+    #[inline(always)]
+    fn simd_mask_between<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        start: u32,
+        end: u32,
+    ) -> Self::SimdMemMask<S> {
+        ctx.mask_between_m32s(start, end)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_load_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mask_load_ptr_f32s(mask, ptr as _)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_store_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        values: Self::SimdVec<S>,
+    ) {
+        ctx.mask_store_ptr_f32s(mask, ptr as _, values);
+    }
 }
 
 impl RealField for f32 {
@@ -2038,6 +1910,33 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn is_finite_impl(value: &Self) -> bool {
         (*value).is_finite()
+    }
+
+    type SimdMemMask<S: Simd> = pulp::MemMask<S::m64s>;
+    #[inline(always)]
+    fn simd_mask_between<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        start: u64,
+        end: u64,
+    ) -> Self::SimdMemMask<S> {
+        ctx.mask_between_m64s(start, end)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_load_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mask_load_ptr_f64s(mask, ptr as _)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_store_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        values: Self::SimdVec<S>,
+    ) {
+        ctx.mask_store_ptr_f64s(mask, ptr as _, values);
     }
 }
 
@@ -2515,6 +2414,54 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
         T::simd_first_true_mask(ctx, value)
     }
+
+    type SimdMemMask<S: Simd> = Complex<T::SimdMemMask<S>>;
+
+    #[inline(always)]
+    fn simd_mask_between<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        start: Self::Index,
+        end: Self::Index,
+    ) -> Self::SimdMemMask<S> {
+        let n = const { size_of::<Self::SimdVec<S>>() / size_of::<Self>() };
+        let start = start.zx() * 2;
+        let end = end.zx() * 2;
+
+        let re = T::simd_mask_between(
+            ctx,
+            Self::Index::truncate(start.min(n)),
+            Self::Index::truncate(end.min(n)),
+        );
+        let im = T::simd_mask_between(
+            ctx,
+            Self::Index::truncate(start.max(n) - n),
+            Self::Index::truncate(end.max(n) - n),
+        );
+        Complex { re, im }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_mask_load_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        Complex {
+            re: T::simd_mask_load_raw(ctx, mask.re, &raw const (*ptr).re),
+            im: T::simd_mask_load_raw(ctx, mask.im, &raw const (*ptr).im),
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn simd_mask_store_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        values: Self::SimdVec<S>,
+    ) {
+        T::simd_mask_store_raw(ctx, mask.re, &raw mut (*ptr).re, values.re);
+        T::simd_mask_store_raw(ctx, mask.im, &raw mut (*ptr).im, values.im);
+    }
 }
 
 impl ComplexField for Complex<f32> {
@@ -2979,6 +2926,33 @@ impl ComplexField for Complex<f32> {
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
         f32::simd_first_true_mask(ctx, value)
     }
+
+    type SimdMemMask<S: Simd> = pulp::MemMask<S::m32s>;
+    #[inline(always)]
+    fn simd_mask_between<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        start: u32,
+        end: u32,
+    ) -> Self::SimdMemMask<S> {
+        ctx.mask_between_m32s(2 * start, 2 * end)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_load_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mask_load_ptr_c32s(mask, ptr as _)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_store_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        values: Self::SimdVec<S>,
+    ) {
+        ctx.mask_store_ptr_c32s(mask, ptr as _, values);
+    }
 }
 
 impl ComplexField for Complex<f64> {
@@ -3442,6 +3416,33 @@ impl ComplexField for Complex<f64> {
     #[inline(always)]
     fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
         f64::simd_first_true_mask(ctx, value)
+    }
+
+    type SimdMemMask<S: Simd> = pulp::MemMask<S::m64s>;
+    #[inline(always)]
+    fn simd_mask_between<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        start: u64,
+        end: u64,
+    ) -> Self::SimdMemMask<S> {
+        ctx.mask_between_m64s(2 * start, 2 * end)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_load_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *const Self::SimdVec<S>,
+    ) -> Self::SimdVec<S> {
+        ctx.mask_load_ptr_c64s(mask, ptr as _)
+    }
+    #[inline(always)]
+    unsafe fn simd_mask_store_raw<S: Simd>(
+        ctx: &Self::SimdCtx<S>,
+        mask: Self::SimdMemMask<S>,
+        ptr: *mut Self::SimdVec<S>,
+        values: Self::SimdVec<S>,
+    ) {
+        ctx.mask_store_ptr_c64s(mask, ptr as _, values);
     }
 }
 

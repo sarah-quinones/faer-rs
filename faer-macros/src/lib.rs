@@ -31,7 +31,7 @@ impl visit_mut::VisitMut for MigrationCtx {
         visit_mut::visit_expr_mut(self, i);
 
         match i {
-            Expr::MethodCall(call) if call.method.to_string() == "faer_add" => {
+            Expr::MethodCall(call) if call.method == "faer_add" => {
                 *i = Expr::Binary(syn::ExprBinary {
                     attrs: vec![],
                     left: call.receiver.clone(),
@@ -44,7 +44,7 @@ impl visit_mut::VisitMut for MigrationCtx {
                     expr: Box::new(i.clone()),
                 });
             }
-            Expr::MethodCall(call) if call.method.to_string() == "faer_sub" => {
+            Expr::MethodCall(call) if call.method == "faer_sub" => {
                 *i = Expr::Binary(syn::ExprBinary {
                     attrs: vec![],
                     left: call.receiver.clone(),
@@ -57,7 +57,7 @@ impl visit_mut::VisitMut for MigrationCtx {
                     expr: Box::new(i.clone()),
                 });
             }
-            Expr::MethodCall(call) if call.method.to_string() == "faer_mul" => {
+            Expr::MethodCall(call) if call.method == "faer_mul" => {
                 *i = Expr::Binary(syn::ExprBinary {
                     attrs: vec![],
                     left: call.receiver.clone(),
@@ -70,7 +70,7 @@ impl visit_mut::VisitMut for MigrationCtx {
                     expr: Box::new(i.clone()),
                 });
             }
-            Expr::MethodCall(call) if call.method.to_string() == "faer_div" => {
+            Expr::MethodCall(call) if call.method == "faer_div" => {
                 *i = Expr::Binary(syn::ExprBinary {
                     attrs: vec![],
                     left: call.receiver.clone(),
@@ -83,7 +83,7 @@ impl visit_mut::VisitMut for MigrationCtx {
                     expr: Box::new(i.clone()),
                 });
             }
-            Expr::MethodCall(call) if call.method.to_string() == "faer_neg" => {
+            Expr::MethodCall(call) if call.method == "faer_neg" => {
                 *i = Expr::Unary(syn::ExprUnary {
                     attrs: vec![],
                     op: syn::UnOp::Neg(Default::default()),
@@ -196,7 +196,7 @@ impl visit_mut::VisitMut for MathCtx {
 
             Expr::Call(call) => match &*call.func {
                 Expr::Path(e) if e.path.get_ident().is_some() => {
-                    let name = &*e.path.get_ident().unwrap().to_string().to_string();
+                    let name = &*e.path.get_ident().unwrap().to_string();
                     if matches!(
                         name,
                         "sqrt"
