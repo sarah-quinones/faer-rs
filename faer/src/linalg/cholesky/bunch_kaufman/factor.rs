@@ -82,7 +82,7 @@ fn best_score_idx_skip<'N, T: ComplexField>(
 fn assign_col<'M, 'N, T: ComplexField>(a: MatMut<'_, T, Dim<'M>, Dim<'N>>, i: Idx<'N>, j: Idx<'N>) {
     if i != j {
         let (ai, aj) = a.two_cols_mut(i, j);
-        { ai }.copy_from_with(aj);
+        { ai }.copy_from(aj);
     }
 }
 
@@ -174,7 +174,7 @@ fn cholesky_diagonal_pivoting_blocked_step<'N, 'NB, I: Index, T: ComplexField>(
         w.rb_mut()
             .subrows_range_mut((k0, N))
             .col_mut(j0)
-            .copy_from_with(a.rb().subrows_range((k0, N)).col(k0));
+            .copy_from(a.rb().subrows_range((k0, N)).col(k0));
 
         let (w_left, w_right) = w
             .rb_mut()
@@ -230,7 +230,7 @@ fn cholesky_diagonal_pivoting_blocked_step<'N, 'NB, I: Index, T: ComplexField>(
                 w.rb_mut()
                     .subrows_range_mut((imax, N))
                     .col_mut(j1)
-                    .copy_from_with(a.rb().subrows_range((imax, N)).col(imax));
+                    .copy_from(a.rb().subrows_range((imax, N)).col(imax));
 
                 let (w_left, w_right) = w
                     .rb_mut()
@@ -311,7 +311,7 @@ fn cholesky_diagonal_pivoting_blocked_step<'N, 'NB, I: Index, T: ComplexField>(
                 a.rb_mut()
                     .subrows_range_mut((k0, N))
                     .col_mut(k0)
-                    .copy_from_with(w.rb().subrows_range((k0, N)).col(j0));
+                    .copy_from(w.rb().subrows_range((k0, N)).col(j0));
 
                 let mut d11 = real(w[(k0, j0)]);
                 if has_eps {

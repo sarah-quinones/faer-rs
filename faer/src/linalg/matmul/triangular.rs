@@ -39,7 +39,7 @@ fn copy_lower<'N, T: ComplexField>(
                 dst[(j, j)] = one;
             }
         }
-        DiagonalKind::Generic => dst.copy_from_triangular_lower_with(src),
+        DiagonalKind::Generic => dst.copy_from_triangular_lower(src),
     }
 
     zipped!(dst).for_each_triangular_upper(Diag::Skip, |unzipped!(dst)| *dst = zero());

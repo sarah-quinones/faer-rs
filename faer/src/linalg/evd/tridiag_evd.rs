@@ -487,11 +487,11 @@ fn divide_and_conquer_recurse<T: RealField>(
 
     let (mut z0, mut z1) = z.rb_mut().split_at_row_mut(n1);
 
-    z0.copy_from_with(u0.rb().row(n1 - 1).transpose());
+    z0.copy_from(u0.rb().row(n1 - 1).transpose());
     if rho < zero() {
         z!(z1.rb_mut(), u1.rb().row(0).transpose()).for_each(|uz!(z, u)| *z = -u);
     } else {
-        z1.copy_from_with(u1.rb().row(0).transpose());
+        z1.copy_from(u1.rb().row(0).transpose());
     }
 
     let inv_sqrt2 = sqrt(from_f64(0.5));
@@ -539,15 +539,13 @@ fn divide_and_conquer_recurse<T: RealField>(
         // return
 
         let (mut tmp_tl, mut tmp_tr, mut tmp_bl, mut tmp_br) = tmp.rb_mut().split_at_mut(n1, n1);
-        tmp_tl.copy_from_with(u0.rb());
-        tmp_br.copy_from_with(u1.rb());
+        tmp_tl.copy_from(u0.rb());
+        tmp_br.copy_from(u1.rb());
         tmp_tr.fill(zero());
         tmp_bl.fill(zero());
 
         for (j, &pl_before) in pl_before.iter().enumerate() {
-            u.rb_mut()
-                .col_mut(j)
-                .copy_from_with(tmp.rb().col(pl_before));
+            u.rb_mut().col_mut(j).copy_from(tmp.rb().col(pl_before));
         }
 
         for (j, diag) in diag.iter_mut().enumerate() {
@@ -586,7 +584,7 @@ fn divide_and_conquer_recurse<T: RealField>(
             let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
             let mut permuted_z = permuted_z.rb_mut().subrows_mut(idx, run_len);
 
-            householder.copy_from_with(permuted_z.rb());
+            householder.copy_from(permuted_z.rb());
 
             let (tail, head) = householder.rb_mut().split_at_row_mut(run_len - 1);
             let head = head.at_mut(0);
@@ -784,7 +782,7 @@ fn divide_and_conquer_recurse<T: RealField>(
         par,
     );
 
-    u.copy_from_with(tmp.rb());
+    u.copy_from(tmp.rb());
     for i in 0..n {
         (diag[i] = mus[pr[i]] + shifts[pr[i]]);
     }

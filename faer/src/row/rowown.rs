@@ -376,13 +376,11 @@ impl<T, Cols: Shape> Row<T, Cols> {
     }
 
     #[inline]
-    pub fn copy_from_with<RhsT: Conjugate<Canonical = T>>(
-        &mut self,
-        other: impl AsRowRef<RhsT, Cols>,
-    ) where
+    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<RhsT, Cols>)
+    where
         T: ComplexField,
     {
-        self.as_mut().copy_from_with(other)
+        self.as_mut().copy_from(other)
     }
 
     #[inline]

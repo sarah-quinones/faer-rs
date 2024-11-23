@@ -19,15 +19,15 @@ pub fn bidiag_in_place_scratch<T: ComplexField>(
 }
 
 /// QR factorization tuning parameters.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[non_exhaustive]
 pub struct BidiagParams {
     /// At which size the parallelism should be disabled.
     pub par_threshold: usize,
 }
 
-impl Default for BidiagParams {
-    fn default() -> Self {
+impl<T: ComplexField> Auto<T> for BidiagParams {
+    fn auto() -> Self {
         Self {
             par_threshold: 192 * 256,
         }
@@ -530,7 +530,7 @@ mod tests {
                 Hr.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
-                Default::default(),
+                Auto::<f64>::auto(),
             );
 
             let mut A = A.clone();
@@ -615,7 +615,7 @@ mod tests {
                 Hr.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
-                Default::default(),
+                Auto::<c64>::auto(),
             );
 
             let mut A = A.clone();

@@ -454,10 +454,8 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
     }
 
     #[inline]
-    pub fn copy_from_with<RhsT: Conjugate<Canonical = T>>(
-        &mut self,
-        other: impl AsColRef<RhsT, Rows>,
-    ) where
+    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsColRef<RhsT, Rows>)
+    where
         T: ComplexField,
     {
         let other = other.as_col_ref();

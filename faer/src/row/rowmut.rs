@@ -396,15 +396,13 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
     }
 
     #[inline]
-    pub fn copy_from_with<RhsT: Conjugate<Canonical = T>>(
-        &mut self,
-        other: impl AsRowRef<RhsT, Cols>,
-    ) where
+    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<RhsT, Cols>)
+    where
         T: ComplexField,
     {
         self.rb_mut()
             .transpose_mut()
-            .copy_from_with(other.as_row_ref().transpose());
+            .copy_from(other.as_row_ref().transpose());
     }
 
     #[inline]

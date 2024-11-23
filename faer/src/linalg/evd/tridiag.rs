@@ -490,7 +490,7 @@ pub fn tridiag_in_place<'N, 'B, T: ComplexField>(
                             *a = a - u * conj(y1) - y * conj(u1);
                         });
 
-                        w2.copy_from_with(y2.rb());
+                        w2.copy_from(y2.rb());
 
                         match par {
                             Par::Seq => {

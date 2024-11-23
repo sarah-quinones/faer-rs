@@ -403,8 +403,8 @@ fn hessenberg_rearranged_unblocked<'N, 'B, T: ComplexField>(
                             u2.transpose(),
                             simd_align(*k.next()),
                         );
-                        y2.copy_from_with(v2.rb());
-                        z2.copy_from_with(w2.rb().col(0));
+                        y2.copy_from(v2.rb());
+                        z2.copy_from(w2.rb().col(0));
                     } else {
                         matmul(
                             z2.rb_mut().as_mat_mut(),
@@ -552,7 +552,7 @@ fn hessenberg_gqvdg_unblocked<'N, 'B, T: ComplexField>(
             let T00 = T00.rb();
             let l![U00, U10, U20] = U0.row_segments(row_split);
 
-            x0.copy_from_with(U10.adjoint());
+            x0.copy_from(U10.adjoint());
             triangular_solve::solve_upper_triangular_in_place(T00, x0.rb_mut().as_mat_mut(), par);
             matmul::matmul(
                 A1.rb_mut().as_mat_mut(),
@@ -879,7 +879,7 @@ mod tests {
             .rand::<Mat<f64, _, _>>(rng);
 
             with_dim!(br, 3);
-            let mut H = Mat::zeros( br, n);
+            let mut H = Mat::zeros(br, n);
 
             let mut V = A.clone();
             let mut V = V.as_mut();
@@ -953,7 +953,7 @@ mod tests {
                 .rand::<Mat<c64, _, _>>(rng);
 
                 with_dim!(br, 1);
-                let mut H = Mat::zeros( br, n);
+                let mut H = Mat::zeros(br, n);
 
                 let mut V = A.clone();
                 let mut V = V.as_mut();
@@ -987,18 +987,18 @@ mod tests {
                         let H = H.as_ref().subcols(IdxInc::ZERO, rest.len());
 
                         householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
-                        V,
-                        H,
-                        if iter == 0{Conj::Yes} else {Conj::No},
-                        A.rb_mut(),
-                        Par::Seq,
-                        DynStack::new(&mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
-                                c64,
-                            >(*n - 1, 1, *n)
-                            .unwrap(),
-                        )),
-                    );
+                            V,
+                            H,
+                            if iter == 0{Conj::Yes} else {Conj::No},
+                            A.rb_mut(),
+                            Par::Seq,
+                            DynStack::new(&mut GlobalMemBuffer::new(
+                                householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
+                                    c64,
+                                >(*n - 1, 1, *n)
+                                .unwrap(),
+                            )),
+                        );
                     });
                 }
 
@@ -1032,7 +1032,7 @@ mod tests {
                 }
                 .rand::<Mat<c64, _, _>>(rng);
 
-                let mut H = Mat::zeros( b, n);
+                let mut H = Mat::zeros(b, n);
 
                 let mut V = A.clone();
                 let mut V = V.as_mut();
@@ -1050,9 +1050,8 @@ mod tests {
                 {
                     let mut V = A.clone();
                     let mut V = V.as_mut();
-                    let mut H = Mat::zeros( n, n);
+                    let mut H = Mat::zeros(n, n);
                     hessenberg_rearranged_unblocked(
-                        
                         V.rb_mut(),
                         H.as_mut(),
                         par,
@@ -1083,19 +1082,18 @@ mod tests {
                         let H = H.as_ref().subcols(IdxInc::ZERO, rest.len());
 
                         householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
-                        
-                        V,
-                        H,
-                        if iter == 0{Conj::Yes} else {Conj::No},
-                        A.rb_mut(),
-                        Par::Seq,
-                        DynStack::new(&mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
-                                c64,
-                            >(*n - 1, *n, *n)
-                            .unwrap(),
-                        )),
-                    );
+                            V,
+                            H,
+                            if iter == 0{Conj::Yes} else {Conj::No},
+                            A.rb_mut(),
+                            Par::Seq,
+                            DynStack::new(&mut GlobalMemBuffer::new(
+                                householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<
+                                    c64,
+                                >(*n - 1, *n, *n)
+                                .unwrap(),
+                            )),
+                        );
                     });
                 }
 

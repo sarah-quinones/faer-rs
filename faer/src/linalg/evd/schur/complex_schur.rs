@@ -569,7 +569,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -589,7 +589,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -609,7 +609,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                 one(),
                 par,
             );
-            z_slice.copy_from_with(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1230,7 +1230,7 @@ fn introduce_bulges<T: ComplexField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -1250,7 +1250,7 @@ fn introduce_bulges<T: ComplexField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1270,7 +1270,7 @@ fn introduce_bulges<T: ComplexField>(
                 one(),
                 par,
             );
-            z_slice.copy_from_with(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1474,7 +1474,7 @@ fn move_bulges_down<T: ComplexField>(
                     one(),
                     par,
                 );
-                a_slice.copy_from_with(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -1494,7 +1494,7 @@ fn move_bulges_down<T: ComplexField>(
                     one(),
                     par,
                 );
-                a_slice.copy_from_with(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -1514,7 +1514,7 @@ fn move_bulges_down<T: ComplexField>(
                     one(),
                     par,
                 );
-                z_slice.copy_from_with(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -1755,7 +1755,7 @@ fn remove_bulges<T: ComplexField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -1775,7 +1775,7 @@ fn remove_bulges<T: ComplexField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1795,7 +1795,7 @@ fn remove_bulges<T: ComplexField>(
                 one(),
                 par,
             );
-            z_slice.copy_from_with(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }

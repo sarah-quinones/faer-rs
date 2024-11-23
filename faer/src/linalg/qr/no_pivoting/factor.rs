@@ -180,7 +180,7 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, T: ComplexField>(
                     let H1 = H1.rb_mut().subrows_mut(IdxInc::ZERO, subcols.len());
 
                     H1.transpose_mut()
-                        .copy_from_triangular_lower_with(H0.transpose());
+                        .copy_from_triangular_lower(H0.transpose());
                 });
             }
 
@@ -375,45 +375,6 @@ mod tests {
                         R[(i, j)] = c64::ZERO;
                     }
                 }
-                {
-                    let mut QR = A.cloned();
-                    let mut H = Row::zeros(N);
-
-                    qr_in_place_unblocked(QR.as_mut(), H.as_mut());
-
-                    let mut Q = Mat::<c64, _, _>::zeros(N, N);
-                    let mut R = QR.as_ref().cloned();
-
-                    for j in N.indices() {
-                        Q[(j, j)] = c64::ONE;
-                    }
-
-                    householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-                    QR.as_ref(),
-                    H.as_mat(),
-                    Conj::No,
-                    Q.as_mut(),
-                    Par::Seq,
-                    DynStack::new(
-                        &mut GlobalMemBuffer::new(
-                            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(
-                                *N,
-                                1,
-                                *N,
-                            ).unwrap()
-                        )
-                    )
-                );
-
-                    for j in N.indices() {
-                        for i in j.next().to(N.end()) {
-                            R[(i, j)] = c64::ZERO;
-                        }
-                    }
-                    __dbg!(&Q);
-                }
-
-                __dbg!(&Q);
 
                 assert!(Q * R ~ A);
             }

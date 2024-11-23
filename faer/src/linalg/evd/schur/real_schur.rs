@@ -550,7 +550,7 @@ pub fn schur_swap<T: RealField>(
     if n1 == 2 && n2 == 2 {
         stack_mat!(d, 4, 4, T);
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
-        d.copy_from_with(ad_slice);
+        d.copy_from(ad_slice);
         let mut dnorm = zero();
         z!(d.rb()).for_each(|unzipped!(d)| dnorm = max(dnorm, abs((*d))));
         let eps = epsilon;
@@ -1069,7 +1069,7 @@ fn aggressive_early_deflation<T: RealField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -1089,7 +1089,7 @@ fn aggressive_early_deflation<T: RealField>(
                 one(),
                 par,
             );
-            a_slice.copy_from_with(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1109,7 +1109,7 @@ fn aggressive_early_deflation<T: RealField>(
                 one(),
                 par,
             );
-            z_slice.copy_from_with(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1458,7 +1458,7 @@ fn introduce_bulges<T: RealField>(
                 one(),
                 parallelism,
             );
-            a_slice.copy_from_with(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -1478,7 +1478,7 @@ fn introduce_bulges<T: RealField>(
                 one(),
                 parallelism,
             );
-            a_slice.copy_from_with(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1498,7 +1498,7 @@ fn introduce_bulges<T: RealField>(
                 one(),
                 parallelism,
             );
-            z_slice.copy_from_with(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1689,7 +1689,7 @@ fn move_bulges_down<T: RealField>(
                     one(),
                     parallelism,
                 );
-                a_slice.copy_from_with(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -1709,7 +1709,7 @@ fn move_bulges_down<T: RealField>(
                     one(),
                     parallelism,
                 );
-                a_slice.copy_from_with(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -1729,7 +1729,7 @@ fn move_bulges_down<T: RealField>(
                     one(),
                     parallelism,
                 );
-                z_slice.copy_from_with(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -1966,7 +1966,7 @@ fn remove_bulges<T: RealField>(
                     one(),
                     parallelism,
                 );
-                a_slice.copy_from_with(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -1986,7 +1986,7 @@ fn remove_bulges<T: RealField>(
                     one(),
                     parallelism,
                 );
-                a_slice.copy_from_with(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2006,7 +2006,7 @@ fn remove_bulges<T: RealField>(
                     one(),
                     parallelism,
                 );
-                z_slice.copy_from_with(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }

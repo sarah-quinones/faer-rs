@@ -12,14 +12,10 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use super::SvdError;
 use crate::{internal_prelude::*, perm::swap_cols_idx};
 use core::mem::swap;
 use linalg::jacobi::JacobiRotation;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SvdError {
-    NoConvergence,
-}
 
 #[math]
 #[allow(dead_code)]
@@ -382,7 +378,7 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 }
 
 #[math]
-fn qr_algorithm<'N, T: RealField>(
+pub(super) fn qr_algorithm<'N, T: RealField>(
     diag: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
     subdiag: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
     u: Option<MatMut<'_, T, Dim<'N>, Dim<'N>>>,
@@ -1232,7 +1228,7 @@ fn deflation_44<'N, T: RealField>(
 }
 
 #[derive(Debug)]
-enum MatU<'a, T: RealField> {
+pub(super) enum MatU<'a, T: RealField> {
     Full(MatMut<'a, T>),
     TwoRows(MatMut<'a, T>),
 }
@@ -1249,7 +1245,7 @@ impl<'short, T: RealField> ReborrowMut<'short> for MatU<'_, T> {
     }
 }
 
-fn divide_and_conquer_scratch<T: ComplexField>(
+pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
     n: usize,
     qr_fallback_threshold: usize,
     compute_u: bool,
@@ -1289,7 +1285,7 @@ fn divide_and_conquer_scratch<T: ComplexField>(
 }
 
 #[math]
-fn divide_and_conquer<'N, T: RealField>(
+pub(super) fn divide_and_conquer<'N, T: RealField>(
     diag: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
     subdiag: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
     u: MatU<'_, T>,
@@ -1366,18 +1362,18 @@ fn divide_and_conquer<'N, T: RealField>(
         }
 
         if let Some(mut v) = v.rb_mut() {
-            v.copy_from_with(v_alloc.rb().submatrix(IdxInc::ZERO, IdxInc::ZERO, n, n));
+            v.copy_from(v_alloc.rb().submatrix(IdxInc::ZERO, IdxInc::ZERO, n, n));
         }
         match u.rb_mut() {
-            MatU::Full(u) => u.submatrix_mut(0, 0, n1, n1).copy_from_with(u_alloc.rb()),
+            MatU::Full(u) => u.submatrix_mut(0, 0, n1, n1).copy_from(u_alloc.rb()),
             MatU::TwoRows(u) => {
                 let (mut top, mut bot) = u.subcols_mut(0, n1).two_rows_mut(0, 1);
 
                 let first = n1.idx(0);
                 let last = n1.idx(*n);
 
-                top.copy_from_with(u_alloc.rb().row(first));
-                bot.copy_from_with(u_alloc.rb().row(last));
+                top.copy_from(u_alloc.rb().row(first));
+                bot.copy_from(u_alloc.rb().row(last));
             }
         }
 
@@ -1719,7 +1715,7 @@ fn divide_and_conquer<'N, T: RealField>(
                 par,
             );
 
-            v.copy_from_with(combined_v.rb());
+            v.copy_from(combined_v.rb());
         }
     };
 
@@ -1784,7 +1780,7 @@ fn divide_and_conquer<'N, T: RealField>(
             par,
         );
 
-        u.copy_from_with(combined_u.rb());
+        u.copy_from(combined_u.rb());
     };
 
     match u.rb_mut() {
@@ -1802,7 +1798,7 @@ fn divide_and_conquer<'N, T: RealField>(
                 par,
             );
 
-            u.copy_from_with(combined_u.rb());
+            u.copy_from(combined_u.rb());
         }
         MatU::Full(u) => match par {
             #[cfg(feature = "rayon")]

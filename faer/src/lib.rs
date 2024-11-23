@@ -477,6 +477,7 @@ mod internal_prelude {
     pub use crate::{
         prelude::default,
         variadics::{l, L},
+        Auto, NonExhaustive,
     };
 
     pub use faer_traits::math_utils::*;
@@ -596,3 +597,23 @@ pub mod hacks;
 pub mod stats;
 
 pub mod variadics;
+
+#[doc(hidden)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct NonExhaustive(());
+
+pub trait Auto<T> {
+    fn auto() -> Self;
+}
+
+impl<T, P: Default> Auto<T> for P {
+    #[inline]
+    fn auto() -> Self {
+        P::default()
+    }
+}
+
+#[inline]
+pub fn auto<T, P: Auto<T>>() -> P {
+    P::auto()
+}
