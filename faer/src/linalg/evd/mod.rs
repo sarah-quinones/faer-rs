@@ -293,7 +293,6 @@ mod self_adjoint_tests {
             .unwrap();
 
             let reconstructed = &u * &s * u.adjoint();
-            __dbg!(&u);
             assert!(reconstructed ~ mat);
         }
 
@@ -348,6 +347,18 @@ mod self_adjoint_tests {
             let mat = &mat + mat.adjoint();
 
             test_self_adjoint_evd(mat.as_ref());
+        }
+    }
+
+    #[test]
+    fn test_special() {
+        for n in [1, 2, 4, 10, 15, 20, 50, 100, 150] {
+            test_self_adjoint_evd(Mat::full(n, n, 0.0).as_ref());
+            test_self_adjoint_evd(Mat::full(n, n, c64::ZERO).as_ref());
+            test_self_adjoint_evd(Mat::full(n, n, 1.0).as_ref());
+            test_self_adjoint_evd(Mat::full(n, n, c64::ONE).as_ref());
+            test_self_adjoint_evd(Mat::<f64>::identity(n, n).as_ref());
+            test_self_adjoint_evd(Mat::<c64>::identity(n, n).as_ref());
         }
     }
 }
