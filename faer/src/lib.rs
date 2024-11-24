@@ -101,16 +101,6 @@ macro_rules! unique {
     };
 }
 
-pub mod utils;
-
-pub mod col;
-pub mod diag;
-pub mod mat;
-pub mod perm;
-pub mod row;
-
-pub mod linalg;
-
 #[macro_export]
 macro_rules! zipped {
     ($head: expr $(,)?) => {
@@ -166,6 +156,16 @@ macro_rules! mat {
         }
     };
 }
+
+pub mod utils;
+
+pub mod col;
+pub mod diag;
+pub mod mat;
+pub mod perm;
+pub mod row;
+
+pub mod linalg;
 
 pub trait Index: faer_traits::Index + seal::Seal {}
 impl<T: faer_traits::Index<Signed: seal::Seal> + seal::Seal> Index for T {}
@@ -533,7 +533,7 @@ pub mod prelude {
     use super::*;
 
     pub use super::Par;
-    pub use crate::{c32, c64};
+    pub use crate::{c32, c64, mat};
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};
@@ -611,11 +611,7 @@ mod non_exhaustive {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub struct NonExhaustive(pub(crate) ());
 }
-
 pub(crate) use non_exhaustive::NonExhaustive;
-// #[doc(hidden)]
-// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-// pub struct NonExhaustive(());
 
 pub trait Auto<T> {
     fn auto() -> Self;

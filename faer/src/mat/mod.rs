@@ -106,8 +106,7 @@ impl<T, Rows: Shape, Cols: Shape> AsMatMut for Mat<T, Rows, Cols> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zipped;
-    use num_complex::Complex64;
+    use crate::prelude::*;
 
     #[test]
     fn test_mat() {
@@ -126,8 +125,8 @@ mod tests {
 
     #[test]
     fn test_mat_complex() {
-        let _x = crate::mat![[Complex64::new(0.0, 0.0), Complex64::new(1.0, 0.0)]];
-        let mat = Mat::from_fn(3, 4, |i, j| Complex64::new(i as f64 + j as f64, 0.0));
+        let _x = mat![[c64::new(0.0, 0.0), c64::new(1.0, 0.0)]];
+        let mat = Mat::from_fn(3, 4, |i, j| c64::new(i as f64 + j as f64, 0.0));
         {
             let _conj = mat.as_ref().conjugate();
         }
