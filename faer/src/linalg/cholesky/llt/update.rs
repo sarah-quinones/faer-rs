@@ -558,11 +558,11 @@ mod tests {
                         linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(
                             *N,
                             Par::Seq,
-                            Default::default(),
+                            auto!(c64),
                         )
                         .unwrap(),
                     )),
-                    Default::default(),
+                    auto!(c64),
                 )
                 .unwrap();
 

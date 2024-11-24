@@ -6,7 +6,7 @@ use crate::{
 use linalg::matmul::triangular::{self, BlockStructure};
 
 /// Pivoting strategy for choosing the pivots.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub enum PivotingStrategy {
     /// Diagonal pivoting.
@@ -14,13 +14,14 @@ pub enum PivotingStrategy {
 }
 
 /// Tuning parameters for the decomposition.
-#[derive(Copy, Clone)]
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct BunchKaufmanParams {
     /// Pivoting strategy.
     pub pivoting: PivotingStrategy,
     /// Block size of the algorithm.
     pub blocksize: usize,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
 /// Dynamic Bunch-Kaufman regularization.
@@ -45,11 +46,12 @@ impl<T: ComplexField> Default for BunchKaufmanRegularization<'_, T> {
     }
 }
 
-impl Default for BunchKaufmanParams {
-    fn default() -> Self {
+impl<T: ComplexField> Auto<T> for BunchKaufmanParams {
+    fn auto() -> Self {
         Self {
             pivoting: PivotingStrategy::Diagonal,
             blocksize: 64,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }

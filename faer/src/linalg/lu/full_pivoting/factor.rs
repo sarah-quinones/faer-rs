@@ -557,19 +557,21 @@ fn lu_in_place_unblocked<'M, 'N, T: ComplexField>(
 }
 
 /// LU factorization tuning parameters.
-#[derive(Copy, Clone)]
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct FullPivLuParams {
     /// At which size the parallelism should be disabled. `None` to automatically determine this
     /// threshold.
     pub par_threshold: usize,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl Default for FullPivLuParams {
+impl<T: ComplexField> Auto<T> for FullPivLuParams {
     #[inline]
-    fn default() -> Self {
+    fn auto() -> Self {
         Self {
             par_threshold: 256 * 512,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -728,9 +730,9 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        lu_in_place_scratch::<usize, c64>(*N, *N, par, default()).unwrap(),
+                        lu_in_place_scratch::<usize, c64>(*N, *N, par, auto!(c64)).unwrap(),
                     )),
-                    Default::default(),
+                    auto!(c64),
                 );
 
                 let mut L = LU.as_ref().cloned();
@@ -759,64 +761,64 @@ mod tests {
 
                 assert!(p.inverse() * L * U * q ~ A);
             }
-            // for n in [16, 24, 32, 128, 255, 256, 257] {
-            //     with_dim!(N, n);
-            //     let approx_eq = CwiseMat(ApproxEq {
-            //         abs_tol: 1e-10,
-            //         rel_tol: 1e-10,
-            //     });
+            for n in [16, 24, 32, 128, 255, 256, 257] {
+                with_dim!(N, n);
+                let approx_eq = CwiseMat(ApproxEq {
+                    abs_tol: 1e-10,
+                    rel_tol: 1e-10,
+                });
 
-            //     let A = CwiseMatDistribution {
-            //         nrows: N,
-            //         ncols: N,
-            //         dist: StandardNormal,
-            //     }
-            //     .rand::<Mat<f64, Dim, Dim>>(rng);
-            //     let A = A.as_ref();
+                let A = CwiseMatDistribution {
+                    nrows: N,
+                    ncols: N,
+                    dist: StandardNormal,
+                }
+                .rand::<Mat<f64, Dim, Dim>>(rng);
+                let A = A.as_ref();
 
-            //     let mut LU = A.cloned();
-            //     let row_perm = &mut *vec![0usize; n];
-            //     let row_perm_inv = &mut *vec![0usize; n];
-            //     let row_perm = Array::from_mut(row_perm, N);
-            //     let row_perm_inv = Array::from_mut(row_perm_inv, N);
+                let mut LU = A.cloned();
+                let row_perm = &mut *vec![0usize; n];
+                let row_perm_inv = &mut *vec![0usize; n];
+                let row_perm = Array::from_mut(row_perm, N);
+                let row_perm_inv = Array::from_mut(row_perm_inv, N);
 
-            //     let col_perm = &mut *vec![0usize; n];
-            //     let col_perm_inv = &mut *vec![0usize; n];
-            //     let col_perm = Array::from_mut(col_perm, N);
-            //     let col_perm_inv = Array::from_mut(col_perm_inv, N);
+                let col_perm = &mut *vec![0usize; n];
+                let col_perm_inv = &mut *vec![0usize; n];
+                let col_perm = Array::from_mut(col_perm, N);
+                let col_perm_inv = Array::from_mut(col_perm_inv, N);
 
-            //     let (_, p, q) = lu_in_place(
-            //         LU.as_mut(),
-            //         row_perm,
-            //         row_perm_inv,
-            //         col_perm,
-            //         col_perm_inv,
-            //         par,
-            //         DynStack::new(&mut GlobalMemBuffer::new(
-            //             lu_in_place_scratch::<usize, f64>(*N, *N, par, default()).unwrap(),
-            //         )),
-            //         Default::default(),
-            //     );
+                let (_, p, q) = lu_in_place(
+                    LU.as_mut(),
+                    row_perm,
+                    row_perm_inv,
+                    col_perm,
+                    col_perm_inv,
+                    par,
+                    DynStack::new(&mut GlobalMemBuffer::new(
+                        lu_in_place_scratch::<usize, f64>(*N, *N, par, auto!(f64)).unwrap(),
+                    )),
+                    auto!(f64),
+                );
 
-            //     let mut L = LU.as_ref().cloned();
-            //     let mut U = LU.as_ref().cloned();
+                let mut L = LU.as_ref().cloned();
+                let mut U = LU.as_ref().cloned();
 
-            //     for j in N.indices() {
-            //         for i in IdxInc::ZERO.to(j.excl()) {
-            //             L[(i, j)] = 0.0;
-            //         }
-            //         L[(j, j)] = 1.0;
-            //     }
-            //     for j in N.indices() {
-            //         for i in j.next().to(N.end()) {
-            //             U[(i, j)] = 0.0;
-            //         }
-            //     }
-            //     let L = L.as_ref();
-            //     let U = U.as_ref();
+                for j in N.indices() {
+                    for i in IdxInc::ZERO.to(j.excl()) {
+                        L[(i, j)] = 0.0;
+                    }
+                    L[(j, j)] = 1.0;
+                }
+                for j in N.indices() {
+                    for i in j.next().to(N.end()) {
+                        U[(i, j)] = 0.0;
+                    }
+                }
+                let L = L.as_ref();
+                let U = U.as_ref();
 
-            //     assert!(p.inverse() * L * U * q ~ A);
-            // }
+                assert!(p.inverse() * L * U * q ~ A);
+            }
         }
     }
 }

@@ -3,7 +3,7 @@
 // https://github.com/tlapack/tlapack
 // https://github.com/tlapack/tlapack/blob/master/include/tlapack/lapack/lahqr.hpp
 
-use super::super::*;
+use super::*;
 use crate::{assert, debug_assert};
 use linalg::{householder::*, jacobi::JacobiRotation, matmul::matmul};
 
@@ -293,7 +293,7 @@ fn aggressive_early_deflation<T: ComplexField>(
     nw: usize,
     par: Par,
     stack: &mut DynStack,
-    params: EvdParams,
+    params: SchurParams,
 ) -> (usize, usize) {
     let n = a.nrows();
     let nw_max = (n - 3) / 3;
@@ -338,11 +338,7 @@ fn aggressive_early_deflation<T: ComplexField>(
     }
     v.fill(zero());
     v.rb_mut().diagonal_mut().fill(one());
-    let infqr = if jw
-        < params
-            .blocking_threshold
-            .unwrap_or(default_blocking_threshold())
-    {
+    let infqr = if jw < params.blocking_threshold {
         lahqr(
             true,
             tw.rb_mut(),
@@ -514,7 +510,7 @@ fn aggressive_early_deflation<T: ComplexField>(
                 householder.rb_mut().as_mat_mut().transpose_mut(),
                 par,
                 stack,
-                Default::default(),
+                auto!(T),
             );
             let householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1);
             apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
@@ -695,7 +691,7 @@ pub fn multishift_qr<T: ComplexField>(
     ihi: usize,
     par: Par,
     stack: &mut DynStack,
-    params: EvdParams,
+    params: SchurParams,
 ) -> (isize, usize, usize) {
     assert!(a.nrows() == a.ncols());
     assert!(ilo <= ihi);
@@ -715,23 +711,12 @@ pub fn multishift_qr<T: ComplexField>(
     let non_convergence_limit_shift = 6;
     let dat1 = from_f64(0.75);
     let dat2 = from_f64(-0.4375);
-    let nmin = Ord::max(
-        15,
-        params
-            .blocking_threshold
-            .unwrap_or(default_blocking_threshold()),
-    );
-    let nibble = params
-        .nibble_threshold
-        .unwrap_or(default_nibble_threshold());
-    let nsr = (params
-        .recommended_shift_count
-        .unwrap_or(default_recommended_shift_count))(n, nh);
+    let nmin = Ord::max(15, params.blocking_threshold);
+    let nibble = params.nibble_threshold;
+    let nsr = (params.recommended_shift_count)(n, nh);
     let nsr = Ord::min(Ord::min(nsr, (n.saturating_sub(3)) / 6), ihi - ilo - 1);
     let nsr = Ord::max(nsr / 2 * 2, 2);
-    let nwr = (params
-        .recommended_deflation_window
-        .unwrap_or(default_recommended_deflation_window))(n, nh);
+    let nwr = (params.recommended_deflation_window)(n, nh);
     let nwr = Ord::max(nwr, 2);
     let nwr = Ord::min(Ord::min(nwr, (n.saturating_sub(1)) / 3), ihi - ilo);
     if n < nmin {
@@ -1803,7 +1788,9 @@ fn remove_bulges<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{assert, c64, linalg::evd::multishift_qr_scratch, prelude::*, utils::approx::*};
+    use crate::{
+        assert, c64, linalg::evd::schur::multishift_qr_scratch, prelude::*, utils::approx::*,
+    };
     use dyn_stack::{DynStack, GlobalMemBuffer};
     use rand::{rngs::StdRng, Rng, SeedableRng};
 
@@ -1894,17 +1881,10 @@ mod tests {
                         n,
                         Par::Seq,
                         DynStack::new(&mut GlobalMemBuffer::new(
-                            multishift_qr_scratch::<c64>(
-                                n,
-                                n,
-                                true,
-                                true,
-                                Par::Seq,
-                                Default::default(),
-                            )
-                            .unwrap(),
+                            multishift_qr_scratch::<c64>(n, n, true, true, Par::Seq, auto!(c64))
+                                .unwrap(),
                         )),
-                        crate::linalg::evd::EvdParams::default(),
+                        auto!(c64),
                     );
 
                     for j in 0..n {

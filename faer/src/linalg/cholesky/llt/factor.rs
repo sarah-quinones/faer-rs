@@ -1,5 +1,4 @@
 use crate::{internal_prelude::*, linalg::cholesky::ldlt::factor::cholesky_recursion, Real};
-use core::num::NonZero;
 
 /// Dynamic LDLT regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
@@ -33,18 +32,21 @@ impl<T: ComplexField> Default for LltRegularization<T> {
     }
 }
 
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct LltParams {
-    pub recursion_threshold: NonZero<usize>,
-    pub blocksize: NonZero<usize>,
+    pub recursion_threshold: usize,
+    pub blocksize: usize,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl Default for LltParams {
+impl<T: ComplexField> Auto<T> for LltParams {
     #[inline]
-    fn default() -> Self {
+    fn auto() -> Self {
         Self {
-            recursion_threshold: NonZero::new(64).unwrap(),
-            blocksize: NonZero::new(128).unwrap(),
+            recursion_threshold: 64,
+            blocksize: 128,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -75,8 +77,8 @@ pub fn cholesky_in_place<'N, T: ComplexField>(
     match cholesky_recursion(
         A,
         D.col_mut(0).transpose_mut(),
-        params.recursion_threshold.get(),
-        params.blocksize.get(),
+        params.recursion_threshold,
+        params.blocksize,
         true,
         regularization.dynamic_regularization_delta > zero()
             && regularization.dynamic_regularization_epsilon > zero(),

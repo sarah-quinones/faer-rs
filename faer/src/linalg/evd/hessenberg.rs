@@ -7,20 +7,23 @@ use linalg::{
 use crate::internal_prelude::*;
 
 /// QR factorization tuning parameters.
-#[derive(Copy, Clone)]
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct HessenbergParams {
     /// At which size the parallelism should be disabled.
     pub par_threshold: usize,
     /// At which size the parallelism should be disabled.
     pub blocking_threshold: usize,
+
+    #[doc(hidden)]
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl Default for HessenbergParams {
-    fn default() -> Self {
+impl<T: ComplexField> Auto<T> for HessenbergParams {
+    fn auto() -> Self {
         Self {
             par_threshold: 192 * 256,
             blocking_threshold: 256 * 256,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -888,7 +891,7 @@ mod tests {
                 H.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
-                Default::default(),
+                auto!(f64),
             );
 
             let mut A = A.clone();
@@ -964,7 +967,7 @@ mod tests {
                     DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
                     HessenbergParams {
                         par_threshold: 0,
-                        ..Default::default()
+                        ..auto!(c64)
                     },
                 );
 
@@ -1043,7 +1046,7 @@ mod tests {
                     DynStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]),
                     HessenbergParams {
                         par_threshold: 0,
-                        ..Default::default()
+                        ..auto!(c64)
                     },
                 );
 
@@ -1058,7 +1061,7 @@ mod tests {
                         DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
                         HessenbergParams {
                             par_threshold: 0,
-                            ..Default::default()
+                            ..auto!(c64)
                         },
                     );
                 }

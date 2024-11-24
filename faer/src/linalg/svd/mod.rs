@@ -47,14 +47,14 @@ impl<T: ComplexField> Auto<T> for SvdParams {
             recursion_threshold: 128,
             qr_ratio_threshold: 11.0 / 6.0,
 
-            bidiag: Auto::<T>::auto(),
-            qr: Auto::<T>::auto(),
+            bidiag: auto!(T),
+            qr: auto!(T),
             non_exhaustive: NonExhaustive(()),
         }
     }
 }
 
-fn compute_svd_imp_scratch<T: ComplexField>(
+fn svd_imp_scratch<T: ComplexField>(
     m: usize,
     n: usize,
     compute_u: ComputeSvdVectors,
@@ -323,7 +323,7 @@ fn compute_bidiag_real_svd<T: RealField>(
 
 /// bidiag -> divide conquer svd / qr algo
 #[math]
-fn compute_svd_imp<T: ComplexField>(
+fn svd_imp<T: ComplexField>(
     matrix: MatRef<'_, T>,
     s: ColMut<'_, T>,
     u: Option<MatMut<'_, T>>,
@@ -463,7 +463,7 @@ fn compute_squareish_svd<T: ComplexField>(
     params: SvdParams,
 ) -> Result<(), SvdError> {
     if const { T::IS_REAL } {
-        compute_svd_imp::<T::Real>(
+        svd_imp::<T::Real>(
             unsafe { core::mem::transmute(matrix) },
             unsafe { core::mem::transmute(s) },
             unsafe { core::mem::transmute(u) },
@@ -474,7 +474,7 @@ fn compute_squareish_svd<T: ComplexField>(
             params,
         )
     } else {
-        compute_svd_imp::<T>(
+        svd_imp::<T>(
             matrix,
             s,
             u,
@@ -487,7 +487,7 @@ fn compute_squareish_svd<T: ComplexField>(
     }
 }
 
-pub fn compute_svd_scratch<T: ComplexField>(
+pub fn svd_scratch<T: ComplexField>(
     nrows: usize,
     ncols: usize,
     compute_u: ComputeSvdVectors,
@@ -516,7 +516,7 @@ pub fn compute_svd_scratch<T: ComplexField>(
     };
 
     if m as f64 / n as f64 <= params.qr_ratio_threshold {
-        compute_svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
+        svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
     } else {
         let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
         StackReq::try_all_of([
@@ -525,7 +525,7 @@ pub fn compute_svd_scratch<T: ComplexField>(
             StackReq::try_any_of([
                 StackReq::try_all_of([
                     temp_mat_scratch::<T>(n, n)?,
-                    compute_svd_imp_scratch::<T>(
+                    svd_imp_scratch::<T>(
                         n,
                         n,
                         compute_u,
@@ -552,7 +552,7 @@ pub fn compute_svd_scratch<T: ComplexField>(
 }
 
 #[math]
-pub fn compute_svd<T: ComplexField>(
+pub fn svd<T: ComplexField>(
     matrix: MatRef<'_, T>,
     s: ColMut<'_, T>,
     u: Option<MatMut<'_, T>>,
@@ -698,7 +698,7 @@ mod tests {
         let params = SvdParams {
             recursion_threshold: 8,
             qr_ratio_threshold: 1.0,
-            ..Auto::<T>::auto()
+            ..auto!(T)
         };
         use faer_traits::math_utils::*;
         let approx_eq =
@@ -709,14 +709,14 @@ mod tests {
             let mut u = Mat::zeros(m, m);
             let mut v = Mat::zeros(n, n);
 
-            compute_svd(
+            svd(
                 mat.as_ref(),
                 s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    compute_svd_scratch::<T>(
+                    svd_scratch::<T>(
                         m,
                         n,
                         ComputeSvdVectors::Full,
@@ -740,14 +740,14 @@ mod tests {
             let mut u = Mat::zeros(m, size);
             let mut v = Mat::zeros(n, size);
 
-            compute_svd(
+            svd(
                 mat.as_ref(),
                 s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    compute_svd_scratch::<T>(
+                    svd_scratch::<T>(
                         m,
                         n,
                         ComputeSvdVectors::Thin,
@@ -767,14 +767,14 @@ mod tests {
         {
             let mut s2 = Mat::zeros(size, size);
 
-            compute_svd(
+            svd(
                 mat.as_ref(),
                 s2.as_mut().diagonal_mut().column_vector_mut(),
                 None,
                 None,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    compute_svd_scratch::<T>(
+                    svd_scratch::<T>(
                         m,
                         n,
                         ComputeSvdVectors::No,

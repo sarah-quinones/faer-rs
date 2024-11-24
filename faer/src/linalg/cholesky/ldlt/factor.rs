@@ -1,5 +1,4 @@
 use crate::{assert, internal_prelude::*};
-use core::num::NonZero;
 use faer_traits::Real;
 use linalg::matmul::triangular::BlockStructure;
 use pulp::Simd;
@@ -569,18 +568,20 @@ impl<T: ComplexField> Default for LdltRegularization<'_, T> {
     }
 }
 
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct LdltParams {
-    pub recursion_threshold: NonZero<usize>,
-    pub blocksize: NonZero<usize>,
+    pub recursion_threshold: usize,
+    pub blocksize: usize,
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl Default for LdltParams {
+impl<T: ComplexField> Auto<T> for LdltParams {
     #[inline]
-    fn default() -> Self {
+    fn auto() -> Self {
         Self {
-            recursion_threshold: NonZero::new(2).unwrap(),
-            blocksize: NonZero::new(2).unwrap(),
+            recursion_threshold: 64,
+            blocksize: 128,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -613,8 +614,8 @@ pub fn cholesky_in_place<'N, T: ComplexField>(
     let ret = match cholesky_recursion(
         A.rb_mut(),
         D.rb_mut(),
-        params.recursion_threshold.get(),
-        params.blocksize.get(),
+        params.recursion_threshold,
+        params.blocksize,
         false,
         regularization.dynamic_regularization_delta > zero()
             && regularization.dynamic_regularization_epsilon > zero(),

@@ -227,11 +227,12 @@ fn lu_in_place_recursion<'M, 'NCOLS, 'N, I: Index, T: ComplexField>(
 }
 
 /// LUfactorization tuning parameters.
-#[derive(Copy, Clone)]
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct PartialPivLuParams {
     pub recursion_threshold: NonZero<usize>,
     pub blocksize: NonZero<usize>,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
 /// Information about the resulting LU factorization.
@@ -248,12 +249,13 @@ pub enum LdltError {
     ZeroPivot { index: usize },
 }
 
-impl Default for PartialPivLuParams {
+impl<T: ComplexField> Auto<T> for PartialPivLuParams {
     #[inline]
-    fn default() -> Self {
+    fn auto() -> Self {
         Self {
             recursion_threshold: NonZero::new(16).unwrap(),
             blocksize: NonZero::new(64).unwrap(),
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -378,19 +380,20 @@ mod tests {
             let perm = Array::from_mut(perm, N);
             let perm_inv = Array::from_mut(perm_inv, N);
 
+            let params = PartialPivLuParams {
+                recursion_threshold: NonZero::new(2).unwrap(),
+                blocksize: NonZero::new(2).unwrap(),
+                ..auto!(f64)
+            };
             let p = lu_in_place(
                 LU.as_mut(),
                 perm,
                 perm_inv,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    lu_in_place_scratch::<usize, f64>(*N, *N, Par::Seq, Default::default())
-                        .unwrap(),
+                    lu_in_place_scratch::<usize, f64>(*N, *N, Par::Seq, params).unwrap(),
                 )),
-                PartialPivLuParams {
-                    recursion_threshold: NonZero::new(2).unwrap(),
-                    blocksize: NonZero::new(2).unwrap(),
-                },
+                params,
             )
             .1;
 
@@ -438,9 +441,9 @@ mod tests {
                 perm_inv,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    lu_in_place_scratch::<usize, f64>(*N, *N, Par::Seq, default()).unwrap(),
+                    lu_in_place_scratch::<usize, f64>(*N, *N, Par::Seq, auto!(f64)).unwrap(),
                 )),
-                PartialPivLuParams::default(),
+                auto!(f64),
             )
             .1;
 

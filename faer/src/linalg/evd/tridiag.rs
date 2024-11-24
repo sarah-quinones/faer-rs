@@ -5,17 +5,20 @@ use linalg::{
 };
 
 /// QR factorization tuning parameters.
-#[derive(Copy, Clone)]
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct TridiagParams {
     /// At which size the parallelism should be disabled.
     pub par_threshold: usize,
+
+    #[doc(hidden)]
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl Default for TridiagParams {
-    fn default() -> Self {
+impl<T: ComplexField> Auto<T> for TridiagParams {
+    fn auto() -> Self {
         Self {
             par_threshold: 192 * 256,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -715,7 +718,7 @@ mod tests {
                 H.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
-                Default::default(),
+                auto!(f64),
             );
 
             let mut A = A.clone();
@@ -796,7 +799,10 @@ mod tests {
                     H.as_mut(),
                     par,
                     DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
-                    TridiagParams { par_threshold: 0 },
+                    TridiagParams {
+                        par_threshold: 0,
+                        ..auto!(c64)
+                    },
                 );
 
                 let mut A = A.clone();

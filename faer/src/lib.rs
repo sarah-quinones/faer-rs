@@ -4,6 +4,13 @@ use core::{num::NonZero, sync::atomic::AtomicUsize};
 use equator::{assert, debug_assert};
 use faer_traits::*;
 
+#[macro_export]
+macro_rules! auto {
+    ($ty: ty) => {
+        $crate::Auto::<$ty>::auto()
+    };
+}
+
 macro_rules! stack_mat {
     ($name: ident, $m: expr, $n: expr, $M: expr, $N: expr, $T: ty $(,)?) => {
         let mut __tmp = {
@@ -474,7 +481,7 @@ pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
-    pub use crate::{
+    pub(crate) use crate::{
         prelude::*,
         variadics::{l, L},
         Auto, NonExhaustive,
@@ -526,11 +533,10 @@ pub mod prelude {
     use super::*;
 
     pub use super::Par;
+    pub use crate::{c32, c64};
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};
-
-    pub use crate::{c32, c64};
 
     #[inline]
     pub fn default<T: Default>() -> T {
@@ -600,9 +606,16 @@ pub mod stats;
 
 pub mod variadics;
 
-#[doc(hidden)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct NonExhaustive(());
+mod non_exhaustive {
+    #[doc(hidden)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub struct NonExhaustive(pub(crate) ());
+}
+
+pub(crate) use non_exhaustive::NonExhaustive;
+// #[doc(hidden)]
+// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+// pub struct NonExhaustive(());
 
 pub trait Auto<T> {
     fn auto() -> Self;
@@ -613,9 +626,4 @@ impl<T, P: Default> Auto<T> for P {
     fn auto() -> Self {
         P::default()
     }
-}
-
-#[inline]
-pub fn auto<T, P: Auto<T>>() -> P {
-    P::auto()
 }

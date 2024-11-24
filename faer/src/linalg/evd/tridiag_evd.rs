@@ -8,6 +8,7 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use super::EvdError;
 use crate::{internal_prelude::*, perm::swap_cols_idx, utils::thread::join_raw};
 use linalg::{
     householder,
@@ -15,11 +16,6 @@ use linalg::{
     matmul::{dot, matmul},
     svd::bidiag_svd::secular_eq_root_finder,
 };
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvdError {
-    NoConvergence,
-}
 
 #[math]
 #[allow(dead_code)]
@@ -44,7 +40,7 @@ fn tridiag_to_mat<T: RealField>(
 }
 
 #[math]
-fn qr_algorithm<T: RealField>(
+pub(crate) fn qr_algorithm<T: RealField>(
     diag: ColMut<'_, T, usize, ContiguousFwd>,
     offdiag: ColMut<'_, T, usize, ContiguousFwd>,
     u: Option<MatMut<'_, T, usize, usize>>,
@@ -791,7 +787,7 @@ fn divide_and_conquer_recurse<T: RealField>(
 }
 
 #[math]
-fn divide_and_conquer<T: RealField>(
+pub(crate) fn divide_and_conquer<T: RealField>(
     diag: ColMut<'_, T, usize, ContiguousFwd>,
     offdiag: ColMut<'_, T, usize, ContiguousFwd>,
     u: MatMut<'_, T, usize, usize>,
@@ -851,7 +847,7 @@ fn divide_and_conquer<T: RealField>(
     )
 }
 
-fn divide_and_conquer_scratch<T: ComplexField>(
+pub(crate) fn divide_and_conquer_scratch<T: ComplexField>(
     n: usize,
     par: Par,
 ) -> Result<StackReq, SizeOverflow> {

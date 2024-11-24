@@ -87,12 +87,13 @@ pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usi
 
 /// QR factorization tuning parameters.
 #[derive(Debug, Copy, Clone)]
-#[non_exhaustive]
 pub struct QrParams {
     /// At which size blocking algorithms should be disabled.
     pub blocking_threshold: usize,
     /// At which size the parallelism should be disabled.
     pub par_threshold: usize,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
 impl<T: ComplexField> Auto<T> for QrParams {
@@ -101,6 +102,7 @@ impl<T: ComplexField> Auto<T> for QrParams {
         Self {
             blocking_threshold: 48 * 48,
             par_threshold: 192 * 256,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -363,9 +365,9 @@ mod tests {
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<c64>(*N, *N, *B, par, Auto::<c64>::auto()).unwrap(),
+                        qr_in_place_scratch::<c64>(*N, *N, *B, par, auto!(c64)).unwrap(),
                     )),
-                    Auto::<c64>::auto(),
+                    auto!(c64),
                 );
 
                 let mut Q = Mat::<c64, _, _>::zeros(N, N);
@@ -427,9 +429,9 @@ mod tests {
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<c64>(*M, *N, *B, par, Auto::<c64>::auto()).unwrap(),
+                        qr_in_place_scratch::<c64>(*M, *N, *B, par, auto!(c64)).unwrap(),
                     )),
-                    Auto::<c64>::auto(),
+                    auto!(c64),
                 );
 
                 let mut Q = Mat::<c64, _, _>::zeros(M, M);

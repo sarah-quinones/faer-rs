@@ -235,21 +235,23 @@ fn update_mat_and_best_norm2<'M, 'N, T: ComplexField>(
 }
 
 /// QR factorization with column pivoting tuning parameters.
-#[derive(Copy, Clone)]
-#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
 pub struct ColPivQrParams {
     /// At which size blocking algorithms should be disabled.
     pub blocking_threshold: usize,
     /// At which size the parallelism should be disabled.
     pub par_threshold: usize,
+
+    pub non_exhaustive: NonExhaustive,
 }
 
-impl Default for ColPivQrParams {
+impl<T: ComplexField> Auto<T> for ColPivQrParams {
     #[inline]
-    fn default() -> Self {
+    fn auto() -> Self {
         Self {
             blocking_threshold: 48 * 48,
             par_threshold: 192 * 256,
+            non_exhaustive: NonExhaustive(()),
         }
     }
 }
@@ -535,10 +537,9 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<usize, c64>(*N, *N, *B, par, Default::default())
-                            .unwrap(),
+                        qr_in_place_scratch::<usize, c64>(*N, *N, *B, par, auto!(c64)).unwrap(),
                     )),
-                    Default::default(),
+                    auto!(c64),
                 )
                 .1;
 
@@ -608,10 +609,9 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<usize, c64>(*M, *N, *B, par, Default::default())
-                            .unwrap(),
+                        qr_in_place_scratch::<usize, c64>(*M, *N, *B, par, auto!(c64)).unwrap(),
                     )),
-                    Default::default(),
+                    auto!(c64),
                 )
                 .1;
 

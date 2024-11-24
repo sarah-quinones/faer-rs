@@ -35,7 +35,7 @@ mod tests {
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
 
-            let params = Default::default();
+            let params = auto!(f64);
             let mut mem = GlobalMemBuffer::new(
                 factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params).unwrap(),
             );
@@ -106,6 +106,7 @@ mod tests {
             let params = BunchKaufmanParams {
                 pivoting: factor::PivotingStrategy::Diagonal,
                 blocksize: 32,
+                ..auto!(c32)
             };
             let mut mem = GlobalMemBuffer::new(
                 factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params).unwrap(),
