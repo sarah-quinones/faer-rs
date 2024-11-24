@@ -2104,7 +2104,7 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
     #[inline]
     #[faer_macros::math]
     fn is_finite_impl(value: &Self) -> bool {
-        is_finite(*value)
+        is_finite(value.re) && is_finite(value.im)
     }
 
     #[inline(always)]
@@ -2601,7 +2601,7 @@ impl ComplexField for Complex<f32> {
     #[inline]
     #[faer_macros::math]
     fn is_finite_impl(value: &Self) -> bool {
-        is_finite(*value)
+        is_finite(value.re) && is_finite(value.im)
     }
 
     #[inline(always)]
@@ -3092,7 +3092,7 @@ impl ComplexField for Complex<f64> {
     #[inline]
     #[faer_macros::math]
     fn is_finite_impl(value: &Self) -> bool {
-        is_finite(*value)
+        is_finite(value.re) && is_finite(value.im)
     }
 
     #[inline(always)]

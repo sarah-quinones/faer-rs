@@ -13,7 +13,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use super::SvdError;
-use crate::{internal_prelude::*, perm::swap_cols_idx};
+use crate::{assert, internal_prelude::*, perm::swap_cols_idx};
 use core::mem::swap;
 use linalg::jacobi::JacobiRotation;
 
@@ -1231,6 +1231,7 @@ fn deflation_44<'N, T: RealField>(
 pub(super) enum MatU<'a, T: RealField> {
     Full(MatMut<'a, T>),
     TwoRows(MatMut<'a, T>),
+    TwoRowsStorage(MatMut<'a, T>),
 }
 
 impl<'short, T: RealField> ReborrowMut<'short> for MatU<'_, T> {
@@ -1241,6 +1242,7 @@ impl<'short, T: RealField> ReborrowMut<'short> for MatU<'_, T> {
         match self {
             Self::Full(u) => MatU::Full(u.rb_mut()),
             Self::TwoRows(u) => MatU::TwoRows(u.rb_mut()),
+            Self::TwoRowsStorage(u) => MatU::TwoRowsStorage(u.rb_mut()),
         }
     }
 }
@@ -1252,16 +1254,12 @@ pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
     compute_v: bool,
     par: Par,
 ) -> Result<StackReq, SizeOverflow> {
-    if n <= qr_fallback_threshold {
+    if n < qr_fallback_threshold {
         temp_mat_scratch::<T>(n + 1, n + 1)?.try_array(2)
     } else {
         let _ = par;
-        let perm = StackReq::try_new::<usize>(n)?;
+        let perm = StackReq::try_new::<usize>(n)?.try_array(8)?;
         let jacobi_coeffs = StackReq::try_new::<JacobiRotation<T>>(n)?;
-        let jacobi_indices = perm;
-        let transpositions = perm;
-        let real_ind = perm;
-        let real_col = perm;
 
         let um = temp_mat_scratch::<T>(n + 1, n + 1)?;
         let vm = temp_mat_scratch::<T>(n, if compute_v { n } else { 0 })?;
@@ -1269,18 +1267,7 @@ pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
         let combined_u = temp_mat_scratch::<T>(if compute_u { n + 1 } else { 2 }, n + 1)?;
         let combined_v = vm;
 
-        let prologue = StackReq::try_all_of([perm, jacobi_coeffs, jacobi_indices])?;
-
-        StackReq::try_all_of([
-            prologue,
-            um,
-            vm,
-            combined_u,
-            combined_v,
-            transpositions,
-            real_ind,
-            real_col,
-        ])
+        StackReq::try_all_of([perm, jacobi_coeffs, um, vm, combined_u, combined_v])
     }
 }
 
@@ -1342,6 +1329,25 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
             Some(v_alloc.rb_mut()),
         )?;
 
+        let mut first_zero = i1;
+        for i in n1.indices() {
+            if diag_alloc[i] == zero() {
+                first_zero = i;
+                break;
+            }
+        }
+
+        let mut last = i1;
+        for i in first_zero.to_incl().to(n1.end()) {
+            if abs(v_alloc[(i1, i)]) == one() {
+                last = i;
+            }
+        }
+
+        if last != i1 {
+            swap_cols_idx(v_alloc.rb_mut(), last, i1);
+        }
+
         if v_alloc[(i1, i1)] < zero() {
             for i in n1.indices() {
                 u_alloc[(i, i1)] = -u_alloc[(i, i1)];
@@ -1351,9 +1357,7 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
             }
         }
 
-        if !(v_alloc[(i1, i1)] == one()) {
-            panic!("svd bottom right corner should be one");
-        }
+        assert!(v_alloc[(i1, i1)] == one());
 
         for i in n.indices() {
             let i1 = n1.idx(*i);
@@ -1375,6 +1379,7 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
                 top.copy_from(u_alloc.rb().row(first));
                 bot.copy_from(u_alloc.rb().row(last));
             }
+            MatU::TwoRowsStorage(_) => {}
         }
 
         return Ok(());
@@ -1383,6 +1388,22 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
     let max = max(diag.norm_max(), subdiag.norm_max());
 
     if max == zero() {
+        match u {
+            MatU::Full(mut u) => {
+                u.fill(zero());
+                u.diagonal_mut().fill(one());
+            }
+            MatU::TwoRows(mut u) => {
+                u.fill(zero());
+                u[(0, 0)] = one();
+                u[(1, *n)] = zero();
+            }
+            MatU::TwoRowsStorage(_) => {}
+        }
+        if let Some(mut u) = v.rb_mut() {
+            u.fill(zero());
+            u.diagonal_mut().fill(one());
+        }
         return Ok(());
     }
 
@@ -1411,7 +1432,7 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
                     MatU::Full(u2.submatrix_mut(0, *k + 1, *rem + 1, *rem + 1)),
                 )
             }
-            MatU::TwoRows(u) => {
+            MatU::TwoRows(u) | MatU::TwoRowsStorage(u) => {
                 let (u1, u2) = u.split_at_col_mut(*k + 1);
                 (MatU::TwoRows(u1), MatU::TwoRows(u2))
             }
@@ -1470,7 +1491,7 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
                     with_dim!(ncols, u1.ncols());
 
                     swap_cols_idx(
-                        u1.rb_mut().as_shape_mut(ncols, ncols),
+                        u1.rb_mut().as_col_shape_mut(ncols),
                         ncols.idx(i),
                         ncols.idx(i + 1),
                     );
@@ -1492,11 +1513,11 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
 
     let lambda = match u.rb_mut() {
         MatU::Full(u) => copy(u[(*k, *k + 1)]),
-        MatU::TwoRows(u) => copy(u[(1, 0)]),
+        MatU::TwoRows(u) | MatU::TwoRowsStorage(u) => copy(u[(1, 0)]),
     };
     let phi = match u.rb_mut() {
         MatU::Full(u) => copy(u[(*k + 1, *n)]),
-        MatU::TwoRows(u) => copy(u[(0, *n)]),
+        MatU::TwoRows(u) | MatU::TwoRowsStorage(u) => copy(u[(0, *n)]),
     };
 
     let al = alpha * lambda;
@@ -1566,6 +1587,15 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
             u[(0, *n)] = -s0 * q10;
             u[(1, 0)] = s0 * q21;
             u[(1, *n)] = c0 * q21;
+        }
+        MatU::TwoRowsStorage(u) => {
+            for j in n.idx_inc(1).to(k.next()) {
+                col0[j] = alpha * u[(1, *j)];
+            }
+
+            for j in k.next().to(n.end()) {
+                col0[j] = beta * u[(0, *j)];
+            }
         }
     }
 
@@ -1784,6 +1814,9 @@ pub(super) fn divide_and_conquer<'N, T: RealField>(
     };
 
     match u.rb_mut() {
+        MatU::TwoRowsStorage(_) => {
+            update_v(v.rb_mut(), par, stack);
+        }
         MatU::TwoRows(mut u) => {
             update_v(v.rb_mut(), par, stack);
 

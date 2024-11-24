@@ -11,6 +11,7 @@
 //! $$M = U S V^H.$$
 
 use bidiag::BidiagParams;
+use linalg::qr::no_pivoting::factor::QrParams;
 
 use crate::{assert, internal_prelude::*};
 
@@ -32,6 +33,7 @@ pub enum SvdError {
 #[derive(Debug, Copy, Clone)]
 pub struct SvdParams {
     pub bidiag: BidiagParams,
+    pub qr: QrParams,
     pub recursion_threshold: usize,
     pub qr_ratio_threshold: f64,
 
@@ -46,6 +48,7 @@ impl<T: ComplexField> Auto<T> for SvdParams {
             qr_ratio_threshold: 11.0 / 6.0,
 
             bidiag: Auto::<T>::auto(),
+            qr: Auto::<T>::auto(),
             non_exhaustive: NonExhaustive(()),
         }
     }
@@ -59,10 +62,10 @@ fn compute_svd_imp_scratch<T: ComplexField>(
 
     bidiag_svd_scratch: fn(
         n: usize,
-        recursion_threshold: usize,
         compute_u: bool,
         compute_v: bool,
         par: Par,
+        params: SvdParams,
     ) -> Result<StackReq, SizeOverflow>,
 
     params: SvdParams,
@@ -74,7 +77,7 @@ fn compute_svd_imp_scratch<T: ComplexField>(
     let householder_blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
     let bid = temp_mat_scratch::<T>(m, n)?;
     let householder_left = temp_mat_scratch::<T>(householder_blocksize, n)?;
-    let householder_right = temp_mat_scratch::<T>(householder_blocksize, n - 1)?;
+    let householder_right = temp_mat_scratch::<T>(householder_blocksize, n)?;
 
     let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag)?;
     let diag = temp_mat_scratch::<T>(n, 1)?;
@@ -84,8 +87,7 @@ fn compute_svd_imp_scratch<T: ComplexField>(
     let u_b = temp_mat_scratch::<T>(if compute_ub { n + 1 } else { 2 }, n + 1)?;
     let v_b = temp_mat_scratch::<T>(n, if compute_vb { n } else { 0 })?;
 
-    let compute_bidiag_svd =
-        bidiag_svd_scratch(n, params.recursion_threshold, compute_ub, compute_vb, par)?;
+    let compute_bidiag_svd = bidiag_svd_scratch(n, compute_ub, compute_vb, par, params)?;
 
     let apply_householder_u =
         linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
@@ -127,10 +129,48 @@ fn compute_svd_imp_scratch<T: ComplexField>(
     ])
 }
 
+fn bidiag_cplx_svd_scratch<T: ComplexField>(
+    n: usize,
+    compute_u: bool,
+    compute_v: bool,
+    par: Par,
+    params: SvdParams,
+) -> Result<StackReq, SizeOverflow> {
+    StackReq::try_all_of([
+        temp_mat_scratch::<T>(n, 1)?.try_array(4)?,
+        temp_mat_scratch::<T::Real>(n + 1, if compute_u { n + 1 } else { 0 })?,
+        temp_mat_scratch::<T::Real>(n, if compute_v { n } else { 0 })?,
+        bidiag_real_svd_scratch::<T::Real>(n, compute_u, compute_v, par, params)?,
+    ])
+}
+
+fn bidiag_real_svd_scratch<T: RealField>(
+    n: usize,
+    compute_u: bool,
+    compute_v: bool,
+    par: Par,
+    params: SvdParams,
+) -> Result<StackReq, SizeOverflow> {
+    if n < params.recursion_threshold {
+        Ok(StackReq::empty())
+    } else {
+        StackReq::try_all_of([
+            temp_mat_scratch::<T>(2, if compute_u { 0 } else { n + 1 })?,
+            bidiag_svd::divide_and_conquer_scratch::<T>(
+                n,
+                params.recursion_threshold,
+                compute_u,
+                compute_v,
+                par,
+            )?,
+        ])
+    }
+}
+
 #[math]
 fn compute_bidiag_cplx_svd<T: ComplexField>(
     mut diag: ColMut<'_, T, usize, ContiguousFwd>,
-    mut subdiag: ColMut<'_, T, usize, ContiguousFwd>,
+    subdiag: ColMut<'_, T, usize, ContiguousFwd>,
     mut u: Option<MatMut<'_, T>>,
     mut v: Option<MatMut<'_, T>>,
     params: SvdParams,
@@ -271,7 +311,7 @@ fn compute_bidiag_real_svd<T: RealField>(
             subdiag.as_row_shape_mut(N),
             match u {
                 Some(u) => bidiag_svd::MatU::Full(u),
-                None => bidiag_svd::MatU::TwoRows(u2.as_mat_mut()),
+                None => bidiag_svd::MatU::TwoRowsStorage(u2.as_mat_mut()),
             },
             v.map(|m| m.as_shape_mut(N, N)),
             par,
@@ -331,6 +371,7 @@ fn compute_svd_imp<T: ComplexField>(
             stack,
             params.bidiag,
         );
+        __dbg!(&bid);
     }
 
     let (mut diag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
@@ -351,7 +392,7 @@ fn compute_svd_imp<T: ComplexField>(
     let mut vb = vb.as_mat_mut();
 
     for i in 0..n {
-        diag[i] = copy(bid[(i, i)]);
+        diag[i] = conj(bid[(i, i)]);
         if i + 1 < n {
             subdiag[i] = conj(bid[(i, i + 1)]);
         } else {
@@ -402,7 +443,7 @@ fn compute_svd_imp<T: ComplexField>(
         linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
             bid.rb().subrows(1, n - 1).subcols(0, n - 1),
             Hr.rb().subcols(0, n - 1),
-            Conj::No,
+            Conj::Yes,
             v.subrows_mut(1, n - 1),
             par,
             stack,
@@ -443,6 +484,70 @@ fn compute_squareish_svd<T: ComplexField>(
             stack,
             params,
         )
+    }
+}
+
+pub fn compute_svd_scratch<T: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    compute_u: ComputeSvdVectors,
+    compute_v: ComputeSvdVectors,
+    par: Par,
+    params: SvdParams,
+) -> Result<StackReq, SizeOverflow> {
+    let mut m = nrows;
+    let mut n = ncols;
+    let mut compute_u = compute_u;
+    let mut compute_v = compute_v;
+
+    if n > m {
+        core::mem::swap(&mut m, &mut n);
+        core::mem::swap(&mut compute_u, &mut compute_v);
+    }
+
+    if n == 0 {
+        return Ok(StackReq::empty());
+    }
+
+    let bidiag_svd_scratch = if const { T::IS_REAL } {
+        bidiag_real_svd_scratch::<T::Real>
+    } else {
+        bidiag_cplx_svd_scratch::<T>
+    };
+
+    if m as f64 / n as f64 <= params.qr_ratio_threshold {
+        compute_svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
+    } else {
+        let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+        StackReq::try_all_of([
+            temp_mat_scratch::<T>(m, n)?,
+            temp_mat_scratch::<T>(bs, n)?,
+            StackReq::try_any_of([
+                StackReq::try_all_of([
+                    temp_mat_scratch::<T>(n, n)?,
+                    compute_svd_imp_scratch::<T>(
+                        n,
+                        n,
+                        compute_u,
+                        compute_v,
+                        bidiag_svd_scratch,
+                        params,
+                        par,
+                    )?,
+                ])?,
+                linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<
+                    T,
+                >(
+                    m,
+                    bs,
+                    match compute_u {
+                        ComputeSvdVectors::No => 0,
+                        ComputeSvdVectors::Thin => n,
+                        ComputeSvdVectors::Full => m,
+                    },
+                )?,
+            ])?,
+        ])
     }
 }
 
@@ -490,7 +595,8 @@ pub fn compute_svd<T: ComplexField>(
     let mut u = u;
     let mut v = v;
     let mut matrix = matrix;
-    if n > m {
+    let do_transpose = n > m;
+    if do_transpose {
         matrix = matrix.transpose();
         core::mem::swap(&mut u, &mut v)
     }
@@ -505,12 +611,274 @@ pub fn compute_svd<T: ComplexField>(
     }
 
     if m as f64 / n as f64 <= params.qr_ratio_threshold {
-        compute_squareish_svd(matrix, s, u.rb_mut(), v.rb_mut(), par, stack, params)
-    } else {
         compute_squareish_svd(matrix, s, u.rb_mut(), v.rb_mut(), par, stack, params)?;
-
+    } else {
         let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+        let (mut qr, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, n, stack) };
+        let mut qr = qr.as_mat_mut();
+        let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };
+        let mut householder = householder.as_mat_mut();
 
-        Ok(())
+        {
+            qr.copy_from(matrix.rb());
+            linalg::qr::no_pivoting::factor::qr_in_place(
+                qr.rb_mut(),
+                householder.rb_mut(),
+                par,
+                stack,
+                params.qr,
+            );
+        }
+
+        {
+            let (mut r, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+            let mut r = r.as_mat_mut();
+            z!(r.rb_mut())
+                .for_each_triangular_lower(linalg::zip::Diag::Skip, |uz!(dst)| *dst = zero());
+            z!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
+                .for_each_triangular_upper(linalg::zip::Diag::Include, |uz!(dst, src)| {
+                    *dst = copy(*src)
+                });
+
+            // r = u s v
+            compute_squareish_svd(
+                r.rb(),
+                s,
+                u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
+                v.rb_mut(),
+                par,
+                stack,
+                params,
+            )?;
+        }
+
+        // matrix = q u s v
+        if let Some(mut u) = u.rb_mut() {
+            u.rb_mut().subrows_mut(n, m - n).fill(zero());
+            if u.ncols() == m {
+                u.rb_mut()
+                    .submatrix_mut(n, n, m - n, m - n)
+                    .diagonal_mut()
+                    .fill(one());
+            }
+
+            linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+                qr.rb(),
+                householder.rb(),
+                Conj::No,
+                u.rb_mut(),
+                par,
+                stack,
+            );
+        }
+    }
+
+    if do_transpose {
+        // conjugate u and v
+        if let Some(u) = u.rb_mut() {
+            z!(u).for_each(|uz!(u)| *u = conj(*u))
+        }
+        if let Some(v) = v.rb_mut() {
+            z!(v).for_each(|uz!(v)| *v = conj(*v))
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{assert, stats::prelude::*, utils::approx::*};
+    use dyn_stack::GlobalMemBuffer;
+
+    #[track_caller]
+    fn test_svd<T: ComplexField>(mat: MatRef<'_, T>) {
+        let (m, n) = mat.shape();
+        let params = SvdParams {
+            recursion_threshold: 8,
+            qr_ratio_threshold: 1.0,
+            ..Auto::<T>::auto()
+        };
+        use faer_traits::math_utils::*;
+        let approx_eq =
+            CwiseMat(ApproxEq::<T>::eps() * sqrt(&from_f64(8.0 * Ord::max(m, n) as f64)));
+
+        {
+            let mut s = Mat::zeros(m, n);
+            let mut u = Mat::zeros(m, m);
+            let mut v = Mat::zeros(n, n);
+
+            compute_svd(
+                mat.as_ref(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
+                Some(u.as_mut()),
+                Some(v.as_mut()),
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    compute_svd_scratch::<T>(
+                        m,
+                        n,
+                        ComputeSvdVectors::Full,
+                        ComputeSvdVectors::Full,
+                        Par::Seq,
+                        params,
+                    )
+                    .unwrap(),
+                )),
+                params,
+            )
+            .unwrap();
+
+            let reconstructed = &u * &s * v.adjoint();
+            assert!(reconstructed ~ mat);
+        }
+
+        let size = Ord::min(m, n);
+        let mut s = Mat::zeros(size, size);
+        {
+            let mut u = Mat::zeros(m, size);
+            let mut v = Mat::zeros(n, size);
+
+            compute_svd(
+                mat.as_ref(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
+                Some(u.as_mut()),
+                Some(v.as_mut()),
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    compute_svd_scratch::<T>(
+                        m,
+                        n,
+                        ComputeSvdVectors::Thin,
+                        ComputeSvdVectors::Thin,
+                        Par::Seq,
+                        params,
+                    )
+                    .unwrap(),
+                )),
+                params,
+            )
+            .unwrap();
+
+            let reconstructed = &u * &s * v.adjoint();
+            assert!(reconstructed ~ mat);
+        }
+        {
+            let mut s2 = Mat::zeros(size, size);
+
+            compute_svd(
+                mat.as_ref(),
+                s2.as_mut().diagonal_mut().column_vector_mut(),
+                None,
+                None,
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    compute_svd_scratch::<T>(
+                        m,
+                        n,
+                        ComputeSvdVectors::No,
+                        ComputeSvdVectors::No,
+                        Par::Seq,
+                        params,
+                    )
+                    .unwrap(),
+                )),
+                params,
+            )
+            .unwrap();
+
+            assert!(s2 ~ s);
+        }
+    }
+
+    #[test]
+    fn test_real() {
+        let rng = &mut StdRng::seed_from_u64(1);
+
+        for (m, n) in [
+            (3, 2),
+            (2, 2),
+            (4, 4),
+            (15, 10),
+            (10, 10),
+            (15, 15),
+            (50, 50),
+            (100, 100),
+            (150, 150),
+            (150, 20),
+            (20, 150),
+        ] {
+            let mat = CwiseMatDistribution {
+                nrows: m,
+                ncols: n,
+                dist: StandardNormal,
+            }
+            .rand::<Mat<f64>>(rng);
+
+            test_svd(mat.as_ref());
+        }
+    }
+
+    #[test]
+    fn test_cplx() {
+        let rng = &mut StdRng::seed_from_u64(1);
+
+        for (m, n) in [
+            (1, 1),
+            (2, 2),
+            (3, 2),
+            (2, 2),
+            (3, 3),
+            (4, 4),
+            (15, 10),
+            (10, 10),
+            (15, 15),
+            (16, 16),
+            (17, 17),
+            (18, 18),
+            (19, 19),
+            (20, 20),
+            (30, 30),
+            (50, 50),
+            (100, 100),
+            (150, 150),
+            (150, 20),
+            (20, 150),
+        ] {
+            let mat = CwiseMatDistribution {
+                nrows: m,
+                ncols: n,
+                dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+            }
+            .rand::<Mat<c64>>(rng);
+
+            test_svd(mat.as_ref());
+        }
+    }
+
+    #[test]
+    fn test_special() {
+        for (m, n) in [
+            (3, 2),
+            (2, 2),
+            (4, 4),
+            (15, 10),
+            (10, 10),
+            (15, 15),
+            (50, 50),
+            (100, 100),
+            (150, 150),
+            (150, 20),
+            (20, 150),
+        ] {
+            dbg!(m, n);
+            test_svd(Mat::<f64>::zeros(m, n).as_ref());
+            test_svd(Mat::<c64>::zeros(m, n).as_ref());
+            test_svd(Mat::<f64>::full(m, n, 1.0).as_ref());
+            test_svd(Mat::<c64>::full(m, n, c64::ONE).as_ref());
+            test_svd(Mat::<f64>::identity(m, n).as_ref());
+            test_svd(Mat::<c64>::identity(m, n).as_ref());
+        }
     }
 }

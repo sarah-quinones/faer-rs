@@ -475,7 +475,7 @@ pub use row::{Row, RowMut, RowRef};
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
     pub use crate::{
-        prelude::default,
+        prelude::*,
         variadics::{l, L},
         Auto, NonExhaustive,
     };
@@ -529,6 +529,8 @@ pub mod prelude {
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};
+
+    pub use crate::{c32, c64};
 
     #[inline]
     pub fn default<T: Default>() -> T {

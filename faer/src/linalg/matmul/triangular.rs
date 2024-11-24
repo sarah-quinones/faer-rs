@@ -26,14 +26,14 @@ fn copy_lower<'N, T: ComplexField>(
     let mut dst = dst;
     match src_diag {
         DiagonalKind::Zero => {
-            dst.copy_from_strict_triangular_lower_with(src);
+            dst.copy_from_strict_triangular_lower(src);
             for j in N.indices() {
                 let zero = zero();
                 dst[(j, j)] = zero;
             }
         }
         DiagonalKind::Unit => {
-            dst.copy_from_strict_triangular_lower_with(src);
+            dst.copy_from_strict_triangular_lower(src);
             for j in N.indices() {
                 let one = one();
                 dst[(j, j)] = one;

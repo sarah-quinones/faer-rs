@@ -39,7 +39,7 @@ fn qr_in_place_unblocked<'M, 'N, 'H, T: ComplexField>(
 
             for j in right {
                 let head = A01.rb_mut().at_mut(right.local(j));
-                let tail = A11.rb_mut().col_mut(right.local(j));
+                let mut tail = A11.rb_mut().col_mut(right.local(j));
 
                 let dot = *head
                     + linalg::matmul::dot::inner_prod(
@@ -50,8 +50,8 @@ fn qr_in_place_unblocked<'M, 'N, 'H, T: ComplexField>(
                     );
                 let k = -mul_real(dot, tau_inv);
                 *head = head + k;
-                zipped!(tail, A10.rb()).for_each(|unzipped!(dst, src)| {
-                    *dst = dst + k * src;
+                z!(tail.rb_mut(), A10.rb()).for_each(|uz!(dst, src)| {
+                    *dst = *dst + k * src;
                 });
             }
         });
@@ -86,7 +86,7 @@ pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usi
 }
 
 /// QR factorization tuning parameters.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[non_exhaustive]
 pub struct QrParams {
     /// At which size blocking algorithms should be disabled.
@@ -95,9 +95,9 @@ pub struct QrParams {
     pub par_threshold: usize,
 }
 
-impl Default for QrParams {
+impl<T: ComplexField> Auto<T> for QrParams {
     #[inline]
-    fn default() -> Self {
+    fn auto() -> Self {
         Self {
             blocking_threshold: 48 * 48,
             par_threshold: 192 * 256,
@@ -209,30 +209,52 @@ fn qr_in_place_blocked<'M, 'N, 'B, 'H, T: ComplexField>(
 }
 
 #[track_caller]
-#[math]
-pub fn qr_in_place<'M, 'N, 'B, 'H, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
-    H: MatMut<'_, T, Dim<'B>, Dim<'H>>,
+pub fn qr_in_place<M: Shape, N: Shape, B: Shape, MIN: Shape, T: ComplexField>(
+    A: MatMut<'_, T, M, N>,
+    H: MatMut<'_, T, B, MIN>,
     par: Par,
     stack: &mut DynStack,
     params: QrParams,
 ) {
-    let blocksize = H.nrows();
-    assert!(all(
-        *blocksize > 0,
-        *H.ncols() == Ord::min(*A.nrows(), *A.ncols()),
-    ));
+    #[track_caller]
+    #[math]
+    fn imp<'M, 'N, 'B, 'H, T: ComplexField>(
+        A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
+        H: MatMut<'_, T, Dim<'B>, Dim<'H>>,
+        par: Par,
+        stack: &mut DynStack,
+        params: QrParams,
+    ) {
+        let blocksize = H.nrows();
+        assert!(all(
+            *blocksize > 0,
+            *H.ncols() == Ord::min(*A.nrows(), *A.ncols()),
+        ));
 
-    #[cfg(feature = "perf-warn")]
-    if A.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(QR_WARN) {
-        if A.col_stride().unsigned_abs() == 1 {
-            log::warn!(target: "faer_perf", "QR prefers column-major matrix. Found row-major matrix.");
-        } else {
-            log::warn!(target: "faer_perf", "QR prefers column-major matrix. Found matrix with generic strides.");
+        #[cfg(feature = "perf-warn")]
+        if A.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(QR_WARN) {
+            if A.col_stride().unsigned_abs() == 1 {
+                log::warn!(target: "faer_perf", "QR prefers column-major matrix. Found row-major matrix.");
+            } else {
+                log::warn!(target: "faer_perf", "QR prefers column-major matrix. Found matrix with generic strides.");
+            }
         }
+
+        qr_in_place_blocked(A, H, par, stack, params);
     }
 
-    qr_in_place_blocked(A, H, par, stack, params);
+    with_dim!(M, A.nrows().unbound());
+    with_dim!(N, A.ncols().unbound());
+    with_dim!(B, H.nrows().unbound());
+    with_dim!(MIN, H.ncols().unbound());
+
+    imp(
+        A.as_shape_mut(M, N),
+        H.as_shape_mut(B, MIN),
+        par,
+        stack,
+        params,
+    )
 }
 
 /// Computes the size and alignment of required workspace for performing a QR
@@ -341,9 +363,9 @@ mod tests {
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<c64>(*N, *N, *B, par, Default::default()).unwrap(),
+                        qr_in_place_scratch::<c64>(*N, *N, *B, par, Auto::<c64>::auto()).unwrap(),
                     )),
-                    Default::default(),
+                    Auto::<c64>::auto(),
                 );
 
                 let mut Q = Mat::<c64, _, _>::zeros(N, N);
@@ -405,9 +427,9 @@ mod tests {
                     H.as_mut(),
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<c64>(*M, *N, *B, par, Default::default()).unwrap(),
+                        qr_in_place_scratch::<c64>(*M, *N, *B, par, Auto::<c64>::auto()).unwrap(),
                     )),
-                    Default::default(),
+                    Auto::<c64>::auto(),
                 );
 
                 let mut Q = Mat::<c64, _, _>::zeros(M, M);

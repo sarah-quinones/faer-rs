@@ -1214,7 +1214,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
 
     #[inline]
     #[track_caller]
-    pub fn copy_from_strict_triangular_lower_with<RhsT: Conjugate<Canonical = T>>(
+    pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(
         &mut self,
         other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
     ) where

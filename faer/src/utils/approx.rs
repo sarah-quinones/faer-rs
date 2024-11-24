@@ -1,6 +1,6 @@
-use faer_traits::Real;
-
 use crate::internal_prelude::*;
+use core::ops::Mul;
+use faer_traits::Real;
 
 pub struct ApproxEq<T: ComplexField> {
     pub abs_tol: Real<T>,
@@ -16,6 +16,19 @@ impl<T: ComplexField> ApproxEq<T> {
         Self {
             abs_tol: eps() * from_f64(128.0),
             rel_tol: eps() * from_f64(128.0),
+        }
+    }
+}
+
+impl<T: ComplexField> Mul<Real<T>> for ApproxEq<T> {
+    type Output = ApproxEq<T>;
+
+    #[inline]
+    #[math]
+    fn mul(self, rhs: Real<T>) -> Self::Output {
+        ApproxEq {
+            abs_tol: self.abs_tol * rhs,
+            rel_tol: self.rel_tol * rhs,
         }
     }
 }
@@ -134,11 +147,23 @@ impl<
             Self::Elements(indices) => {
                 let mut prefix = "";
 
+                let mut count = 0;
                 for (i, j, e) in indices {
+                    if count >= 10 {
+                        write!(
+                            f,
+                            "\n\n... ({} mismatches omitted)\n\n",
+                            indices.len() - count,
+                        )?;
+                        break;
+                    }
+                    count += 1;
+
                     let i = *i;
                     let j = *j;
                     let lhs = lhs.at(i, j).clone();
                     let rhs = rhs.at(i, j).clone();
+
                     e.fmt(
                         &cmp.0,
                         &lhs,

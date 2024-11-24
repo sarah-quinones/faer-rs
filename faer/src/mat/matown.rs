@@ -412,6 +412,20 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     }
 
     #[inline]
+    pub fn identity(nrows: Rows, ncols: Cols) -> Self
+    where
+        T: ComplexField,
+    {
+        Self::from_fn(nrows, ncols, |i, j| {
+            if i.unbound() == j.unbound() {
+                T::one_impl()
+            } else {
+                T::zero_impl()
+            }
+        })
+    }
+
+    #[inline]
     pub fn full(nrows: Rows, ncols: Cols, value: T) -> Self
     where
         T: Clone,
@@ -1292,7 +1306,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     }
 
     #[inline]
-    pub fn copy_from_strict_triangular_lower_with<RhsT: Conjugate<Canonical = T>>(
+    pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(
         &mut self,
         other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
     ) where

@@ -36,7 +36,7 @@ fn simd_cholesky_row_batch<'N, T: ComplexField, S: Simd>(
 
         for j in n.indices() {
             ghost_tree!(COL(LEFT, RIGHT), {
-                let (l![left, right], (disjoint_col, ..)) = n.split(l![..j.to_incl(), j], COL);
+                let (l![left, right], (disjoint_col, ..)) = n.split(l![..j.into(), j], COL);
 
                 let l![A_0, mut Aj] = A.rb_mut().col_segments_mut(l![left, right], disjoint_col);
                 let A_0 = A_0.rb();
@@ -453,7 +453,7 @@ pub(crate) fn cholesky_recursion<'N, T: ComplexField>(
             j_next = N.advance(j, blocksize);
 
             ghost_tree!(FULL(HEAD, TAIL), {
-                let (l![head, tail], (disjoint, ..)) = N.split(l![j.to_incl()..j_next, ..], FULL);
+                let (l![head, tail], (disjoint, ..)) = N.split(l![j.into()..j_next, ..], FULL);
 
                 let l![mut A_0, A_1] = A.rb_mut().col_segments_mut(l![head, tail], disjoint);
                 let l![mut A00, mut A10] = A_0.rb_mut().row_segments_mut(l![head, tail], disjoint);

@@ -59,13 +59,18 @@ pub fn make_householder_in_place<M: Shape, T: ComplexField>(
     pub fn imp<'M, T: ComplexField>(head: &mut T, tail: ColMut<'_, T, Dim<'M>>) -> (T, Option<T>) {
         let tail_norm = tail.norm_l2();
 
-        if tail_norm == zero() {
+        let mut head_norm = abs(*head);
+        if head_norm < min_positive() {
+            *head = zero();
+            head_norm = zero();
+        }
+
+        if tail_norm < min_positive() {
             return (infinity(), None);
         }
 
         let one_half = from_f64(0.5);
 
-        let head_norm = abs(*head);
         let norm = hypot(head_norm, tail_norm);
 
         let sign = if head_norm != zero() {
