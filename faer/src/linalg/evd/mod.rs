@@ -345,7 +345,7 @@ mod self_adjoint_tests {
                 dist: ComplexDistribution::new(StandardNormal, StandardNormal),
             }
             .rand::<Mat<c64>>(rng);
-            let mut mat = &mat + mat.adjoint();
+            let mat = &mat + mat.adjoint();
 
             test_self_adjoint_evd(mat.as_ref());
         }
