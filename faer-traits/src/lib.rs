@@ -108,6 +108,18 @@ pub mod math_utils {
     }
 
     #[inline(always)]
+    pub fn absmax<T: ComplexField>(value: &T) -> T::Real {
+        if const { T::IS_REAL } {
+            T::abs1_impl(value)
+        } else {
+            add(
+                &T::Real::abs1_impl(&real(value)),
+                &T::Real::abs1_impl(&imag(value)),
+            )
+        }
+    }
+
+    #[inline(always)]
     pub fn abs<T: ComplexField>(value: &T) -> T::Real {
         T::abs_impl((value).by_ref())
     }

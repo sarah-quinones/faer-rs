@@ -6,6 +6,7 @@ pub(crate) mod tridiag_evd;
 
 use crate::{assert, internal_prelude::*};
 use hessenberg::HessenbergParams;
+use linalg::matmul::triangular::BlockStructure;
 use schur::SchurParams;
 use tridiag::TridiagParams;
 
@@ -258,6 +259,91 @@ pub fn self_adjoint_evd<T: ComplexField>(
     }
 
     Ok(())
+}
+
+pub fn self_adjoint_pseudoinverse_scratch<T: ComplexField>(
+    dim: usize,
+    par: Par,
+) -> Result<StackReq, SizeOverflow> {
+    _ = par;
+    temp_mat_scratch::<T>(dim, dim)?.try_array(2)
+}
+
+#[math]
+#[track_caller]
+pub fn self_adjoint_pseudoinverse<T: ComplexField>(
+    pinv: MatMut<'_, T>,
+    s: ColRef<'_, T>,
+    u: MatRef<'_, T>,
+    par: Par,
+    stack: &mut DynStack,
+) {
+    self_adjoint_pseudoinverse_with_tolerance(
+        pinv,
+        s,
+        u,
+        zero(),
+        eps() * from_f64(u.ncols() as f64),
+        par,
+        stack,
+    );
+}
+
+#[math]
+#[track_caller]
+pub fn self_adjoint_pseudoinverse_with_tolerance<T: ComplexField>(
+    pinv: MatMut<'_, T>,
+    s: ColRef<'_, T>,
+    u: MatRef<'_, T>,
+    abs_tol: T::Real,
+    rel_tol: T::Real,
+    par: Par,
+    stack: &mut DynStack,
+) {
+    let mut pinv = pinv;
+    let n = u.ncols();
+
+    assert!(all(u.nrows() == n, u.ncols() == n, s.nrows() == n));
+
+    let smax = s.norm_max();
+    let tol = max(abs_tol, rel_tol * smax);
+
+    let (mut u_trunc, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+    let (mut up_trunc, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+
+    let mut u_trunc = u_trunc.as_mat_mut();
+    let mut up_trunc = up_trunc.as_mat_mut();
+    let mut len = 0;
+
+    for j in 0..n {
+        let x = absmax(s[j]);
+        if x > tol {
+            let p = recip(real(s[j]));
+            u_trunc.rb_mut().col_mut(len).copy_from(u.col(j));
+            z!(up_trunc.rb_mut().col_mut(len), u.col(j))
+                .for_each(|uz!(dst, src)| *dst = mul_real(*src, p));
+
+            len += 1;
+        }
+    }
+
+    linalg::matmul::triangular::matmul(
+        pinv.rb_mut(),
+        BlockStructure::TriangularLower,
+        Accum::Replace,
+        up_trunc.rb(),
+        BlockStructure::Rectangular,
+        u_trunc.rb().adjoint(),
+        BlockStructure::Rectangular,
+        one(),
+        par,
+    );
+
+    for j in 0..n {
+        for i in 0..j {
+            pinv[(i, j)] = conj(pinv[(j, i)]);
+        }
+    }
 }
 
 #[cfg(test)]

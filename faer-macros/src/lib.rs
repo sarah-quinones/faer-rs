@@ -205,6 +205,7 @@ impl visit_mut::VisitMut for MathCtx {
                             | "max"
                             | "min"
                             | "conj"
+                            | "absmax"
                             | "abs2"
                             | "abs1"
                             | "abs"
