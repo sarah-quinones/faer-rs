@@ -1173,6 +1173,20 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
 
     #[inline]
     #[track_caller]
+    pub fn copy_from_triangular_upper<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
+    ) where
+        T: ComplexField,
+    {
+        (*self)
+            .rb_mut()
+            .transpose_mut()
+            .copy_from_triangular_lower(other.as_mat_ref().transpose())
+    }
+
+    #[inline]
+    #[track_caller]
     pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
         &mut self,
         other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
@@ -1257,6 +1271,20 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
                 }
             }
         }
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn copy_from_strict_triangular_upper<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
+    ) where
+        T: ComplexField,
+    {
+        (*self)
+            .rb_mut()
+            .transpose_mut()
+            .copy_from_strict_triangular_lower(other.as_mat_ref().transpose())
     }
 
     #[inline]

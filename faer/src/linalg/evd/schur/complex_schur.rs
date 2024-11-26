@@ -504,7 +504,7 @@ fn aggressive_early_deflation<T: ComplexField>(
             vv.write(0, head);
         }
         {
-            let mut householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns);
+            let mut householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1);
             hessenberg::hessenberg_in_place(
                 tw.rb_mut().submatrix_mut(0, 0, ns, ns),
                 householder.rb_mut().as_mat_mut().transpose_mut(),
@@ -512,7 +512,6 @@ fn aggressive_early_deflation<T: ComplexField>(
                 stack,
                 auto!(T),
             );
-            let householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1);
             apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                 tw.rb().submatrix(1, 0, ns - 1, ns - 1),
                 householder.rb().transpose().as_mat(),

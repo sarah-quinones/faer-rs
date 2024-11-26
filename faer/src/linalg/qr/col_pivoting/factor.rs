@@ -121,13 +121,13 @@ fn update_col_and_norm2_simd<'M, T: ComplexField, S: Simd>(
 }
 
 #[math]
-fn update_mat_and_best_norm2_simd<'M, 'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
-    lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
-    rhs: RowMut<'_, T, Dim<'N>>,
+fn update_mat_and_best_norm2_simd<T: ComplexField>(
+    A: MatMut<'_, T, usize, usize, ContiguousFwd>,
+    lhs: ColRef<'_, T, usize, ContiguousFwd>,
+    rhs: RowMut<'_, T, usize>,
     tau_inv: Real<T>,
     align: usize,
-) -> (Idx<'N>, Real<T>) {
+) -> (usize, Real<T>) {
     struct Impl<'a, 'M, 'N, T: ComplexField> {
         A: MatMut<'a, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
         lhs: ColRef<'a, T, Dim<'M>, ContiguousFwd>,
@@ -137,7 +137,7 @@ fn update_mat_and_best_norm2_simd<'M, 'N, T: ComplexField>(
     }
 
     impl<'M, 'N, T: ComplexField> pulp::WithSimd for Impl<'_, 'M, 'N, T> {
-        type Output = (Idx<'N>, Real<T>);
+        type Output = (usize, Real<T>);
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self {
@@ -168,34 +168,36 @@ fn update_mat_and_best_norm2_simd<'M, 'N, T: ComplexField>(
                 }
             }
 
-            (best_col, best)
+            (*best_col, best)
         }
     }
 
+    with_dim!(M, A.nrows());
+    with_dim!(N, A.ncols());
     T::Arch::default().dispatch(Impl {
-        A,
-        lhs,
-        rhs,
+        A: A.as_shape_mut(M, N),
+        lhs: lhs.as_row_shape(M),
+        rhs: rhs.as_col_shape_mut(N),
         tau_inv,
         align,
     })
 }
 
 #[math]
-fn update_mat_and_best_norm2_fallback<'M, 'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
-    lhs: ColRef<'_, T, Dim<'M>>,
-    rhs: RowMut<'_, T, Dim<'N>>,
+fn update_mat_and_best_norm2_fallback<T: ComplexField>(
+    A: MatMut<'_, T, usize, usize>,
+    lhs: ColRef<'_, T, usize>,
+    rhs: RowMut<'_, T, usize>,
     tau_inv: Real<T>,
-) -> (Idx<'N>, Real<T>) {
+) -> (usize, Real<T>) {
     let mut A = A;
     let mut rhs = rhs;
 
     let n = A.ncols();
 
     let mut best = zero();
-    let mut best_col = n.idx(0);
-    for j in n.indices() {
+    let mut best_col = 0;
+    for j in 0..n {
         let dot = dot::inner_prod(lhs.transpose(), Conj::Yes, A.rb().col(j), Conj::No) + rhs[j];
 
         let k = mul_real(-dot, tau_inv);
@@ -214,13 +216,13 @@ fn update_mat_and_best_norm2_fallback<'M, 'N, T: ComplexField>(
 }
 
 #[math]
-fn update_mat_and_best_norm2<'M, 'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
-    lhs: ColRef<'_, T, Dim<'M>>,
-    rhs: RowMut<'_, T, Dim<'N>>,
+fn update_mat_and_best_norm2<T: ComplexField>(
+    A: MatMut<'_, T, usize, usize>,
+    lhs: ColRef<'_, T, usize>,
+    rhs: RowMut<'_, T, usize>,
     tau_inv: Real<T>,
     align: usize,
-) -> (Idx<'N>, Real<T>) {
+) -> (usize, Real<T>) {
     if const { T::SIMD_CAPABILITIES.is_simd() } {
         let mut A = A;
 
@@ -258,15 +260,15 @@ impl<T: ComplexField> Auto<T> for ColPivQrParams {
 
 #[track_caller]
 #[math]
-fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
-    H: RowMut<'_, T, Dim<'H>>,
-    col_perm: &'out mut Array<'N, I>,
-    col_perm_inv: &'out mut Array<'N, I>,
+fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
+    A: MatMut<'_, T>,
+    H: RowMut<'_, T>,
+    col_perm: &'out mut [I],
+    col_perm_inv: &'out mut [I],
     par: Par,
     stack: &mut DynStack,
     params: ColPivQrParams,
-) -> (ColPivQrInfo, PermRef<'out, I, Dim<'N>>) {
+) -> (ColPivQrInfo, PermRef<'out, I>) {
     let mut A = A;
     let mut H = H;
     let mut par = par;
@@ -276,21 +278,21 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, T: ComplexField>(
     let n = A.ncols();
     let size = H.ncols();
 
-    assert!(*size == Ord::min(*m, *n));
-    for j in n.indices() {
-        col_perm[j] = I::truncate(*j);
+    assert!(size == Ord::min(m, n));
+    for j in 0..n {
+        col_perm[j] = I::truncate(j);
     }
 
     let mut n_trans = 0;
 
     'main: {
-        if *size == 0 {
+        if size == 0 {
             break 'main;
         }
 
         let mut best = zero();
-        let mut best_col = n.idx(0);
-        for j in n.indices() {
+        let mut best_col = 0;
+        for j in 0..n {
             let val = A.rb().col(j).norm_l2();
             if val > best {
                 best = val;
@@ -298,115 +300,92 @@ fn qr_in_place_unblocked<'out, 'M, 'N, 'H, I: Index, T: ComplexField>(
             }
         }
 
-        for k in size.indices() {
-            let ki = m.idx(*k);
-            let kj = n.idx(*k);
-
-            if best_col != kj {
+        for k in 0..size {
+            if best_col != k {
                 n_trans += 1;
-                col_perm.as_mut().swap(*best_col, *kj);
-                swap_cols_idx(A.rb_mut(), best_col, kj);
+                col_perm.as_mut().swap(best_col, k);
+                swap_cols_idx(A.rb_mut(), best_col, k);
             }
 
-            ghost_tree!(ROWS(TOP, BOT), COLS(LEFT, RIGHT), {
-                let (rows @ l![top, _], (disjoint_rows, ..)) = m.split(l![..ki.next(), ..], ROWS);
-                let (cols @ l![left, right], (disjoint_cols, ..)) =
-                    n.split(l![..kj.next(), ..], COLS);
+            let (mut A00, A01, A10, mut A11) = A.rb_mut().split_at_mut(k + 1, k + 1);
+            let A00 = &mut A00[(k, k)];
+            let mut A01 = A01.row_mut(k);
+            let mut A10 = A10.col_mut(k);
 
-                let ki = top.idx(*ki);
-                let kj = left.idx(*kj);
+            let (tau, _) = householder::make_householder_in_place(A00, A10.rb_mut());
 
-                let l![A0, A1] = A.rb_mut().row_segments_mut(rows, disjoint_rows);
-                let l![A00, A01] = A0.col_segments_mut(cols, disjoint_cols);
-                let l![A10, mut A11] = A1.col_segments_mut(cols, disjoint_cols);
+            let tau_inv = recip(real(tau));
+            H[k] = tau;
 
-                let A00 = A00.at_mut(top.local(ki), left.local(kj));
-                let mut A01 = A01.row_mut(top.local(ki));
-                let mut A10 = A10.col_mut(left.local(kj));
+            if k + 1 == size.end() {
+                break 'main;
+            }
 
-                let (tau, _) = householder::make_householder_in_place(A00, A10.rb_mut());
+            if (m - k - 1) * (n - k - 1) < params.par_threshold {
+                par = Par::Seq;
+            }
 
-                let tau_inv = recip(real(tau));
-                H[k] = tau;
+            let best;
+            (best, _) = match par {
+                Par::Seq => update_mat_and_best_norm2(
+                    A11.rb_mut(),
+                    A10.rb(),
+                    A01.rb_mut(),
+                    tau_inv,
+                    simd_align(k + 1),
+                ),
+                Par::Rayon(nthreads) => {
+                    use rayon::prelude::*;
+                    let nthreads = nthreads.get();
 
-                if k.next() == size.end() {
-                    break 'main;
-                }
+                    let mut best = core::iter::repeat_with(|| (0, (zero())))
+                        .take(nthreads)
+                        .collect::<Vec<_>>();
+                    let full_cols = A11.ncols();
 
-                if (*m - *ki.next()) * (*n - *kj.next()) < params.par_threshold {
-                    par = Par::Seq;
-                }
+                    best.par_iter_mut()
+                        .zip_eq(A11.rb_mut().par_col_partition_mut(nthreads))
+                        .zip_eq(A01.rb_mut().par_partition_mut(nthreads))
+                        .enumerate()
+                        .for_each(|(idx, (((max_col, max_score), A11), A01))| {
+                            let (col, score) = update_mat_and_best_norm2(
+                                A11,
+                                A10.rb(),
+                                A01,
+                                tau_inv.clone(),
+                                simd_align(k + 1),
+                            );
 
-                let best_right;
-                (best_right, _) = match par {
-                    Par::Seq => update_mat_and_best_norm2(
-                        A11.rb_mut(),
-                        A10.rb(),
-                        A01.rb_mut(),
-                        tau_inv,
-                        simd_align(*ki.next()),
-                    ),
-                    Par::Rayon(nthreads) => {
-                        use rayon::prelude::*;
-                        let nthreads = nthreads.get();
+                            *max_col = col + par_split_indices(full_cols, idx, nthreads).0;
+                            *max_score = score;
+                        });
 
-                        let mut best = core::iter::repeat_with(|| (0, (zero())))
-                            .take(nthreads)
-                            .collect::<Vec<_>>();
-                        let full_cols = *A11.ncols();
+                    let mut best_col = 0;
+                    let mut best_val = zero();
 
-                        best.par_iter_mut()
-                            .zip_eq(A11.rb_mut().par_col_partition_mut(nthreads))
-                            .zip_eq(A01.rb_mut().transpose_mut().par_partition_mut(nthreads))
-                            .enumerate()
-                            .for_each(|(idx, (((max_col, max_score), A11), A01))| {
-                                with_dim!(N, A11.ncols());
-
-                                let (col, score) = update_mat_and_best_norm2(
-                                    A11.as_col_shape_mut(N),
-                                    A10.rb(),
-                                    A01.transpose_mut().as_col_shape_mut(N),
-                                    tau_inv.clone(),
-                                    simd_align(*ki.next()),
-                                );
-
-                                *max_col = *col + par_split_indices(full_cols, idx, nthreads).0;
-                                *max_score = score;
-                            });
-
-                        let mut best_col = right.len().idx(0);
-                        let mut best_val = zero();
-
-                        for (col, val) in best {
-                            if val > best_val {
-                                best_col = right.len().idx(col);
-                                best_val = val;
-                            }
+                    for (col, val) in best {
+                        if val > best_val {
+                            best_col = col;
+                            best_val = val;
                         }
-
-                        (best_col, best_val)
                     }
-                };
-                best_col = right.global(best_right).local();
-            });
+
+                    (best_col, best_val)
+                }
+            };
+            best_col = best + k + 1;
         }
     }
 
-    for j in n.indices() {
-        col_perm_inv[n.idx(col_perm[j].zx())] = I::truncate(*j);
+    for j in 0..n {
+        col_perm_inv[col_perm[j].zx()] = I::truncate(j);
     }
 
     (
         ColPivQrInfo {
             transposition_count: n_trans,
         },
-        unsafe {
-            PermRef::new_unchecked(
-                Idx::from_slice_ref_unchecked(col_perm.as_ref()),
-                Idx::from_slice_ref_unchecked(col_perm_inv.as_ref()),
-                n,
-            )
-        },
+        unsafe { PermRef::new_unchecked(col_perm, col_perm_inv, n) },
     )
 }
 
@@ -437,15 +416,15 @@ pub struct ColPivQrInfo {
 
 #[track_caller]
 #[math]
-pub fn qr_in_place<'out, 'M, 'N, 'B, 'H, I: Index, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'M>, Dim<'N>>,
-    H: MatMut<'_, T, Dim<'B>, Dim<'H>>,
-    col_perm: &'out mut Array<'N, I>,
-    col_perm_inv: &'out mut Array<'N, I>,
+pub fn qr_in_place<'out, I: Index, T: ComplexField>(
+    A: MatMut<'_, T>,
+    H: MatMut<'_, T>,
+    col_perm: &'out mut [I],
+    col_perm_inv: &'out mut [I],
     par: Par,
     stack: &mut DynStack,
     params: ColPivQrParams,
-) -> (ColPivQrInfo, PermRef<'out, I, Dim<'N>>) {
+) -> (ColPivQrInfo, PermRef<'out, I>) {
     let mut A = A;
     let mut H = H;
     let size = H.ncols();
@@ -453,7 +432,7 @@ pub fn qr_in_place<'out, 'M, 'N, 'B, 'H, I: Index, T: ComplexField>(
 
     let ret = qr_in_place_unblocked(
         A.rb_mut(),
-        H.rb_mut().row_mut(blocksize.idx(0)),
+        H.rb_mut().row_mut(0),
         col_perm,
         col_perm_inv,
         par,
@@ -461,36 +440,23 @@ pub fn qr_in_place<'out, 'M, 'N, 'B, 'H, I: Index, T: ComplexField>(
         params,
     );
 
-    let mut j_next = IdxInc::ZERO;
-    while let Some(j) = size.try_check(*j_next) {
-        j_next = size.advance(j, *blocksize);
-        let ji = A.nrows().idx_inc(*j);
-        let jj = A.ncols().idx_inc(*j);
-
-        with_dim!(blocksize, *j_next - *j);
+    let mut j = 0;
+    while j < size {
+        let blocksize = Ord::min(blocksize, size - j);
 
         let mut H = H
             .rb_mut()
-            .subcols_mut(j.to_incl(), blocksize)
-            .subrows_mut(IdxInc::ZERO, blocksize);
+            .subcols_mut(j, blocksize)
+            .subrows_mut(0, blocksize);
 
-        let i = blocksize.idx(0);
-        for j in blocksize.indices() {
-            H[(j, j)] = copy(H[(i, j)]);
+        for j in 0..blocksize {
+            H[(j, j)] = copy(H[(0, j)]);
         }
 
-        let A = A
-            .rb()
-            .subcols(jj, blocksize)
-            .subrows_range((ji, A.nrows().end()));
+        let A = A.rb().subcols(j, blocksize).subrows_range((j, A.nrows()));
 
-        householder::upgrade_householder_factor(
-            H.rb_mut(),
-            A.bind_r(unique!()),
-            *blocksize,
-            1,
-            par,
-        );
+        householder::upgrade_householder_factor(H.rb_mut(), A, blocksize, 1, par);
+        j += blocksize;
     }
     ret
 }
@@ -507,8 +473,7 @@ mod tests {
 
         for par in [Par::Seq, Par::rayon(8)] {
             for n in [2, 3, 4, 8, 16, 24, 32, 128, 255] {
-                with_dim!(N, n);
-                with_dim!(B, 15);
+                let bs = 15;
 
                 let approx_eq = CwiseMat(ApproxEq {
                     abs_tol: 1e-10,
@@ -516,19 +481,17 @@ mod tests {
                 });
 
                 let A = CwiseMatDistribution {
-                    nrows: N,
-                    ncols: N,
+                    nrows: n,
+                    ncols: n,
                     dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<c64, Dim, Dim>>(rng);
+                .rand::<Mat<c64>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
-                let mut H = Mat::zeros(B, N);
+                let mut H = Mat::zeros(bs, n);
 
-                let col_perm = &mut *vec![0usize; *N];
-                let col_perm_inv = &mut *vec![0usize; *N];
-                let col_perm = Array::from_mut(col_perm, N);
-                let col_perm_inv = Array::from_mut(col_perm_inv, N);
+                let col_perm = &mut *vec![0usize; n];
+                let col_perm_inv = &mut *vec![0usize; n];
 
                 let q = qr_in_place(
                     QR.as_mut(),
@@ -537,16 +500,16 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<usize, c64>(*N, *N, *B, par, auto!(c64)).unwrap(),
+                        qr_in_place_scratch::<usize, c64>(n, n, bs, par, auto!(c64)).unwrap(),
                     )),
                     auto!(c64),
                 )
                 .1;
 
-                let mut Q = Mat::<c64, _, _>::zeros(N, N);
+                let mut Q = Mat::<c64, _, _>::zeros(n, n);
                 let mut R = QR.as_ref().cloned();
 
-                for j in N.indices() {
+                for j in 0..n {
                     Q[(j, j)] = c64::ONE;
                 }
 
@@ -559,16 +522,16 @@ mod tests {
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
                             householder::apply_block_householder_sequence_on_the_left_in_place_scratch::< c64>(
-                                *N,
-                                *B,
-                                *N,
+                                n,
+                                bs,
+                                n,
                             ).unwrap()
                         )
                     )
                 );
 
-                for j in N.indices() {
-                    for i in j.next().to(N.end()) {
+                for j in 0..n {
+                    for i in j + 1..n {
                         R[(i, j)] = c64::ZERO;
                     }
                 }
@@ -576,11 +539,10 @@ mod tests {
                 assert!(Q * R * q ~ A);
             }
 
-            with_dim!(N, 20);
+            let n = 20;
             for m in [2, 3, 4, 8, 16, 24, 32, 128, 255] {
-                with_dim!(M, m);
-                with_dim!(B, 15);
-                with_dim!(H, Ord::min(*M, *N));
+                let bs = 15;
+                let size = Ord::min(m, n);
 
                 let approx_eq = CwiseMat(ApproxEq {
                     abs_tol: 1e-10,
@@ -588,19 +550,17 @@ mod tests {
                 });
 
                 let A = CwiseMatDistribution {
-                    nrows: M,
-                    ncols: N,
+                    nrows: m,
+                    ncols: n,
                     dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<c64, Dim, Dim>>(rng);
+                .rand::<Mat<c64>>(rng);
                 let A = A.as_ref();
                 let mut QR = A.cloned();
-                let mut H = Mat::zeros(B, H);
+                let mut H = Mat::zeros(bs, size);
 
-                let col_perm = &mut *vec![0usize; *N];
-                let col_perm_inv = &mut *vec![0usize; *N];
-                let col_perm = Array::from_mut(col_perm, N);
-                let col_perm_inv = Array::from_mut(col_perm_inv, N);
+                let col_perm = &mut *vec![0usize; n];
+                let col_perm_inv = &mut *vec![0usize; n];
 
                 let q = qr_in_place(
                     QR.as_mut(),
@@ -609,21 +569,21 @@ mod tests {
                     col_perm_inv,
                     par,
                     DynStack::new(&mut GlobalMemBuffer::new(
-                        qr_in_place_scratch::<usize, c64>(*M, *N, *B, par, auto!(c64)).unwrap(),
+                        qr_in_place_scratch::<usize, c64>(m, n, bs, par, auto!(c64)).unwrap(),
                     )),
                     auto!(c64),
                 )
                 .1;
 
-                let mut Q = Mat::<c64, _, _>::zeros(M, M);
+                let mut Q = Mat::<c64, _, _>::zeros(m, m);
                 let mut R = QR.as_ref().cloned();
 
-                for j in M.indices() {
+                for j in 0..m {
                     Q[(j, j)] = c64::ONE;
                 }
 
                 householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-                    QR.as_ref().subcols(IdxInc::ZERO, H.ncols()),
+                    QR.as_ref().subcols(0, size),
                     H.as_ref(),
                     Conj::No,
                     Q.as_mut(),
@@ -631,16 +591,16 @@ mod tests {
                     DynStack::new(
                         &mut GlobalMemBuffer::new(
                             householder::apply_block_householder_sequence_on_the_left_in_place_scratch::< c64>(
-                                *M,
-                                *B,
-                                *M,
+                                m,
+                                bs,
+                                m,
                             ).unwrap()
                         )
                     )
                 );
 
-                for j in N.indices() {
-                    for i in M.indices().skip(*j + 1) {
+                for j in 0..n {
+                    for i in j + 1..m {
                         R[(i, j)] = c64::ZERO;
                     }
                 }

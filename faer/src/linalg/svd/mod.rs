@@ -278,42 +278,42 @@ fn compute_bidiag_real_svd<T: RealField>(
     par: Par,
     stack: &mut DynStack,
 ) -> Result<(), SvdError> {
-    with_dim!(N, diag.nrows());
-    for i in 0..*N {
+    let n = diag.nrows();
+    for i in 0..n {
         if !(is_finite(diag[i]) && is_finite(subdiag[i])) {
             return Err(SvdError::NoConvergence);
         }
     }
 
-    if *N < params.recursion_threshold {
+    if n < params.recursion_threshold {
         bidiag_svd::qr_algorithm(
-            diag.rb_mut().as_row_shape_mut(N),
-            subdiag.rb_mut().as_row_shape_mut(N),
-            u.rb_mut().map(|u| u.submatrix_mut(0, 0, N, N)),
-            v.rb_mut().map(|v| v.as_shape_mut(N, N)),
+            diag.rb_mut().as_row_shape_mut(n),
+            subdiag.rb_mut().as_row_shape_mut(n),
+            u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
+            v.rb_mut().map(|v| v.as_shape_mut(n, n)),
         )?;
 
         if let Some(mut u) = u.rb_mut() {
-            for i in N.indices() {
-                u[(*N, *i)] = zero();
-                u[(*i, *N)] = zero();
+            for i in 0..n {
+                u[(n, i)] = zero();
+                u[(i, n)] = zero();
             }
-            u[(*N, *N)] = one();
+            u[(n, n)] = one();
         }
         return Ok(());
     } else {
         let (mut u2, stack) = unsafe {
-            temp_mat_uninit::<T::Real, _, _>(2, if u.is_some() { 0 } else { *N + 1 }, stack)
+            temp_mat_uninit::<T::Real, _, _>(2, if u.is_some() { 0 } else { n + 1 }, stack)
         };
 
         bidiag_svd::divide_and_conquer(
-            diag.as_row_shape_mut(N),
-            subdiag.as_row_shape_mut(N),
+            diag.as_row_shape_mut(n),
+            subdiag.as_row_shape_mut(n),
             match u {
                 Some(u) => bidiag_svd::MatU::Full(u),
                 None => bidiag_svd::MatU::TwoRowsStorage(u2.as_mat_mut()),
             },
-            v.map(|m| m.as_shape_mut(N, N)),
+            v.map(|m| m.as_shape_mut(n, n)),
             par,
             stack,
             params.recursion_threshold,
@@ -351,28 +351,20 @@ fn svd_imp<T: ComplexField>(
     let mut bid = bid.as_mat_mut();
 
     let (mut Hl, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };
-    let (mut Hr, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };
+    let (mut Hr, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
 
     let mut Hl = Hl.as_mat_mut();
     let mut Hr = Hr.as_mat_mut();
 
     bid.copy_from(matrix);
-
-    {
-        with_dim!(M, m);
-        with_dim!(N, n);
-        with_dim!(BS, bs);
-
-        bidiag::bidiag_in_place(
-            bid.rb_mut().as_shape_mut(M, N),
-            Hl.rb_mut().as_shape_mut(BS, N),
-            Hr.rb_mut().as_shape_mut(BS, N),
-            par,
-            stack,
-            params.bidiag,
-        );
-        __dbg!(&bid);
-    }
+    bidiag::bidiag_in_place(
+        bid.rb_mut(),
+        Hl.rb_mut(),
+        Hr.rb_mut(),
+        par,
+        stack,
+        params.bidiag,
+    );
 
     let (mut diag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
     let (mut subdiag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
@@ -441,8 +433,8 @@ fn svd_imp<T: ComplexField>(
         }
 
         linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-            bid.rb().subrows(1, n - 1).subcols(0, n - 1),
-            Hr.rb().subcols(0, n - 1),
+            bid.rb().submatrix(1, 0, n - 1, n - 1),
+            Hr.rb(),
             Conj::Yes,
             v.subrows_mut(1, n - 1),
             par,
@@ -686,6 +678,96 @@ pub fn svd<T: ComplexField>(
     Ok(())
 }
 
+pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    par: Par,
+) -> Result<StackReq, SizeOverflow> {
+    _ = par;
+    let size = Ord::min(nrows, ncols);
+    StackReq::try_all_of([
+        temp_mat_scratch::<T>(nrows, size)?,
+        temp_mat_scratch::<T>(ncols, size)?,
+    ])
+}
+
+#[math]
+pub fn pseudoinverse_from_svd<T: ComplexField>(
+    pinv: MatMut<'_, T>,
+    s: ColRef<'_, T>,
+    u: MatRef<'_, T>,
+    v: MatRef<'_, T>,
+    par: Par,
+    stack: &mut DynStack,
+) {
+    pseudoinverse_from_svd_with_tolerance(
+        pinv,
+        s,
+        u,
+        v,
+        zero(),
+        eps() * from_f64(Ord::max(u.nrows(), v.nrows()) as f64),
+        par,
+        stack,
+    );
+}
+
+#[math]
+pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
+    pinv: MatMut<'_, T>,
+    s: ColRef<'_, T>,
+    u: MatRef<'_, T>,
+    v: MatRef<'_, T>,
+    abs_tol: T::Real,
+    rel_tol: T::Real,
+    par: Par,
+    stack: &mut DynStack,
+) {
+    let mut pinv = pinv;
+    let m = u.nrows();
+    let n = v.nrows();
+    let size = Ord::min(m, n);
+
+    assert!(all(
+        u.nrows() == m,
+        v.nrows() == n,
+        u.ncols() >= size,
+        v.ncols() >= size,
+        s.nrows() >= size,
+    ));
+
+    let smax = s.norm_max();
+    let tol = max(abs_tol, rel_tol * smax);
+
+    let (mut u_trunc, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, size, stack) };
+    let (mut vp_trunc, _) = unsafe { temp_mat_uninit::<T, _, _>(n, size, stack) };
+
+    let mut u_trunc = u_trunc.as_mat_mut();
+    let mut vp_trunc = vp_trunc.as_mat_mut();
+    let mut len = 0;
+
+    for j in 0..n {
+        let x = absmax(s[j]);
+        if x > tol {
+            let p = recip(real(s[j]));
+            u_trunc.rb_mut().col_mut(len).copy_from(u.col(j));
+            z!(vp_trunc.rb_mut().col_mut(len), v.col(j))
+                .for_each(|uz!(dst, src)| *dst = mul_real(*src, p));
+
+            len += 1;
+        }
+    }
+
+    linalg::matmul::matmul(
+        pinv.rb_mut(),
+        Accum::Replace,
+        vp_trunc.rb(),
+        u_trunc.rb().adjoint(),
+        one(),
+        par,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -872,7 +954,6 @@ mod tests {
             (150, 20),
             (20, 150),
         ] {
-            dbg!(m, n);
             test_svd(Mat::<f64>::zeros(m, n).as_ref());
             test_svd(Mat::<c64>::zeros(m, n).as_ref());
             test_svd(Mat::<f64>::full(m, n, 1.0).as_ref());

@@ -136,16 +136,13 @@ pub fn self_adjoint_evd<T: ComplexField>(
     trid.copy_from_triangular_lower(matrix);
 
     let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
-    let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };
+    let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
     let mut householder = householder.as_mat_mut();
 
     {
-        with_dim!(N, n);
-        with_dim!(B, bs);
-
         tridiag::tridiag_in_place(
-            trid.rb_mut().as_shape_mut(N, N),
-            householder.rb_mut().as_shape_mut(B, N),
+            trid.rb_mut(),
+            householder.rb_mut(),
             par,
             stack,
             params.tridiag,
@@ -247,7 +244,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 
     linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
         trid.submatrix(1, 0, n - 1, n - 1),
-        householder.rb().subcols(0, n - 1),
+        householder.rb(),
         Conj::No,
         u.rb_mut().subrows_mut(1, n - 1),
         par,
@@ -261,7 +258,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
     Ok(())
 }
 
-pub fn self_adjoint_pseudoinverse_scratch<T: ComplexField>(
+pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(
     dim: usize,
     par: Par,
 ) -> Result<StackReq, SizeOverflow> {
@@ -271,14 +268,14 @@ pub fn self_adjoint_pseudoinverse_scratch<T: ComplexField>(
 
 #[math]
 #[track_caller]
-pub fn self_adjoint_pseudoinverse<T: ComplexField>(
+pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(
     pinv: MatMut<'_, T>,
     s: ColRef<'_, T>,
     u: MatRef<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    self_adjoint_pseudoinverse_with_tolerance(
+    pseudoinverse_from_self_adjoint_evd_with_tolerance(
         pinv,
         s,
         u,
@@ -291,7 +288,7 @@ pub fn self_adjoint_pseudoinverse<T: ComplexField>(
 
 #[math]
 #[track_caller]
-pub fn self_adjoint_pseudoinverse_with_tolerance<T: ComplexField>(
+pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
     pinv: MatMut<'_, T>,
     s: ColRef<'_, T>,
     u: MatRef<'_, T>,
@@ -447,4 +444,62 @@ mod self_adjoint_tests {
             test_self_adjoint_evd(Mat::<c64>::identity(n, n).as_ref());
         }
     }
+}
+
+#[math]
+fn dot2x1<T: RealField>(lhs0: ColRef<'_, T>, lhs1: ColRef<'_, T>, rhs: ColRef<'_, T>) -> (T, T) {
+    let n = rhs.nrows();
+    assert!(all(lhs0.nrows() == n, lhs1.nrows() == n));
+
+    let mut acc00 = zero();
+    let mut acc01 = zero();
+    let mut acc10 = zero();
+    let mut acc11 = zero();
+
+    let n2 = n / 2 * 2;
+
+    let mut i = 0;
+    while i < n2 {
+        acc00 = acc00 + lhs0[i] * rhs[i];
+        acc10 = acc10 + lhs1[i] * rhs[i];
+
+        acc01 = acc01 + lhs0[i + 1] * rhs[i + 1];
+        acc11 = acc11 + lhs1[i + 1] * rhs[i + 1];
+
+        i += 2;
+    }
+    while i < n {
+        acc00 = acc00 + lhs0[i] * rhs[i];
+        acc10 = acc10 + lhs1[i] * rhs[i];
+    }
+
+    (acc00 + acc01, acc10 + acc11)
+}
+
+#[math]
+fn dot2x2<T: RealField>(
+    lhs0: ColRef<'_, T>,
+    lhs1: ColRef<'_, T>,
+    rhs0: ColRef<'_, T>,
+    rhs1: ColRef<'_, T>,
+) -> (T, T, T, T) {
+    let n = rhs0.nrows();
+    assert!(all(lhs0.nrows() == n, lhs1.nrows() == n));
+
+    let mut acc0 = zero();
+    let mut acc1 = zero();
+    let mut acc2 = zero();
+    let mut acc3 = zero();
+
+    let mut i = 0;
+    while i < n {
+        acc0 = acc0 + lhs0[i] * rhs0[i];
+        acc1 = acc1 + lhs1[i] * rhs0[i];
+        acc2 = acc0 + lhs0[i] * rhs1[i];
+        acc3 = acc1 + lhs1[i] * rhs1[i];
+
+        i += 2;
+    }
+
+    (acc0, acc1, acc2, acc3)
 }

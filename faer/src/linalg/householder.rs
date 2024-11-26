@@ -98,18 +98,25 @@ pub fn make_householder_in_place<M: Shape, T: ComplexField>(
 
 #[doc(hidden)]
 #[math]
-pub fn upgrade_householder_factor<'M, 'N, T: ComplexField>(
-    mut householder_factor: MatMut<'_, T, Dim<'N>, Dim<'N>>,
-    essentials: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+pub fn upgrade_householder_factor<T: ComplexField>(
+    householder_factor: MatMut<'_, T>,
+    essentials: MatRef<'_, T>,
     blocksize: usize,
     prev_blocksize: usize,
     par: Par,
 ) {
+    assert!(all(
+        householder_factor.nrows() == householder_factor.ncols(),
+        essentials.ncols() == householder_factor.ncols(),
+    ));
+
     if blocksize == prev_blocksize || householder_factor.nrows().unbound() <= prev_blocksize {
         return;
     }
-    let M: Dim<'M> = essentials.nrows();
-    let N: Dim<'N> = essentials.ncols();
+
+    let n = essentials.ncols();
+    let mut householder_factor = householder_factor;
+    let essentials = essentials;
 
     assert!(householder_factor.nrows() == householder_factor.ncols());
 
@@ -119,20 +126,11 @@ pub fn upgrade_householder_factor<'M, 'N, T: ComplexField>(
             blocksize > prev_blocksize,
             blocksize % prev_blocksize == 0,
         ));
-        make_guard!(HEAD);
-        make_guard!(N_TAIL);
-        make_guard!(M_TAIL);
+        let mid = block_count / 2;
 
-        let N_idx = N.partition(
-            IdxInc::<'N>::new_checked((block_count / 2) * blocksize, N),
-            HEAD,
-            N_TAIL,
-        );
-        let M_idx = M.head_partition(N_idx.head, M_TAIL);
-
-        let (tau_tl, _, _, tau_br) = householder_factor.split_with_mut(N_idx, N_idx);
-        let (basis_left, basis_right) = essentials.split_cols_with(N_idx);
-        let basis_right = basis_right.split_rows_with(M_idx).1;
+        let (tau_tl, _, _, tau_br) = householder_factor.split_at_mut(mid, mid);
+        let (basis_left, basis_right) = essentials.split_at_col(mid);
+        let basis_right = basis_right.split_at_row(mid).1;
         join_raw(
             |parallelism| {
                 upgrade_householder_factor(
@@ -157,13 +155,10 @@ pub fn upgrade_householder_factor<'M, 'N, T: ComplexField>(
         return;
     }
 
-    make_guard!(TAIL);
-    let midpoint = M.head_partition(N, TAIL);
-
     if prev_blocksize < 8 {
         // pretend that prev_blocksize == 1, recompute whole top half of matrix
 
-        let (basis_top, basis_bot) = essentials.split_rows_with(midpoint);
+        let (basis_top, basis_bot) = essentials.split_at_row(n);
         let acc_structure = BlockStructure::UnitTriangularUpper;
 
         triangular::matmul(
@@ -191,20 +186,11 @@ pub fn upgrade_householder_factor<'M, 'N, T: ComplexField>(
     } else {
         let prev_block_count = householder_factor.nrows().div_ceil(prev_blocksize);
 
-        make_guard!(HEAD);
-        make_guard!(N_TAIL);
+        let mid = (prev_block_count / 2) * prev_blocksize;
 
-        let N_idx = N.partition(
-            IdxInc::new_checked((prev_block_count / 2) * prev_blocksize, N),
-            HEAD,
-            N_TAIL,
-        );
-        make_guard!(M_TAIL);
-        let M_idx = M.head_partition(N_idx.head, M_TAIL);
-
-        let (tau_tl, mut tau_tr, _, tau_br) = householder_factor.split_with_mut(N_idx, N_idx);
-        let (basis_left, basis_right) = essentials.split_cols_with(N_idx);
-        let basis_right = basis_right.split_rows_with(M_idx).1;
+        let (tau_tl, mut tau_tr, _, tau_br) = householder_factor.split_at_mut(mid, mid);
+        let (basis_left, basis_right) = essentials.split_at_col(mid);
+        let basis_right = basis_right.split_at_row(mid).1;
 
         join_raw(
             |parallelism| {
@@ -231,12 +217,11 @@ pub fn upgrade_householder_factor<'M, 'N, T: ComplexField>(
                 );
             },
             |parallelism| {
-                let basis_left = basis_left.split_rows_with(M_idx).1;
-                make_guard!(M_TAIL);
-                let M_idx = M_idx.tail.head_partition(basis_right.ncols(), M_TAIL);
+                let basis_left = basis_left.split_at_row(mid).1;
+                let row_mid = basis_right.ncols();
 
-                let (basis_left_top, basis_left_bot) = basis_left.split_rows_with(M_idx);
-                let (basis_right_top, basis_right_bot) = basis_right.split_rows_with(M_idx);
+                let (basis_left_top, basis_left_bot) = basis_left.split_at_row(row_mid);
+                let (basis_right_top, basis_right_bot) = basis_right.split_at_row(row_mid);
 
                 triangular::matmul(
                     tau_tr.rb_mut(),
