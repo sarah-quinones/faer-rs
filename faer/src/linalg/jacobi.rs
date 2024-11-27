@@ -26,7 +26,7 @@ impl<T: ComplexField> JacobiRotation<T> {
                 Self { c, s }
             } else if p == zero() {
                 let c = zero();
-                let s = if q < zero() { -one() } else { one() };
+                let s = if q < zero() { one() } else { -one() };
                 let c = from_real(c);
                 let s = from_real(s);
 

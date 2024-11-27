@@ -13,7 +13,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use super::SvdError;
-use crate::{assert, internal_prelude::*, perm::swap_cols_idx};
+use crate::{internal_prelude::*, perm::swap_cols_idx};
 use core::mem::swap;
 use linalg::jacobi::JacobiRotation;
 
@@ -382,18 +382,6 @@ pub(super) fn qr_algorithm<T: RealField>(
     let eps = eps();
     let sml = min_positive();
 
-    let mut u = u;
-    let mut v = v;
-
-    if let Some(mut u) = u.rb_mut() {
-        u.fill(zero());
-        u.diagonal_mut().fill(one());
-    }
-    if let Some(mut u) = v.rb_mut() {
-        u.fill(zero());
-        u.diagonal_mut().fill(one());
-    }
-
     if n == 0 {
         return Ok(());
     }
@@ -434,12 +422,6 @@ pub(super) fn qr_algorithm<T: RealField>(
                 }
             }
 
-            for i in 0..n {
-                if abs(diag[i]) <= eps {
-                    diag[i] = zero();
-                }
-            }
-
             let mut end = n;
             while end >= 2 && abs2(subdiag[end - 2]) <= sml {
                 end -= 1
@@ -457,27 +439,39 @@ pub(super) fn qr_algorithm<T: RealField>(
             let mut found_zero_diag = false;
 
             for i in start..end - 1 {
-                if diag[i] == zero() {
+                if abs(diag[i]) <= eps {
                     found_zero_diag = true;
 
                     let mut val = copy(subdiag[i]);
                     subdiag[i] = zero();
                     for j in i + 1..end {
                         let rot = JacobiRotation::make_givens(copy(diag[j]), copy(val));
-                        diag[j] = abs(rot.c * diag[j] - rot.s * val);
+
+                        diag[j] = rot.c * diag[j] - rot.s * val;
                         if j + 1 < end {
-                            val = -rot.s * subdiag[j];
+                            val = rot.s * subdiag[j];
                             subdiag[j] = rot.c * subdiag[j];
                         }
                         if let Some(v) = v.rb_mut() {
-                            let (i, j) = v.two_cols_mut(i, j);
-                            rot.apply_on_the_right_in_place((j, i));
+                            rot.transpose()
+                                .apply_on_the_right_in_place(v.two_cols_mut(j, i));
                         }
                     }
                 }
             }
 
             if found_zero_diag {
+                if iter + 1 == max_iters {
+                    for x in diag.rb_mut().iter_mut() {
+                        *x = x * max;
+                    }
+                    for x in subdiag.rb_mut().iter_mut() {
+                        *x = x * max;
+                    }
+
+                    return Err(SvdError::NoConvergence);
+                }
+
                 continue;
             }
 
@@ -538,7 +532,7 @@ pub(super) fn qr_algorithm<T: RealField>(
 
                 let rot = JacobiRotation::make_givens(copy(y), copy(z));
 
-                diag_k = abs(rot.c * y - rot.s * z);
+                diag_k = rot.c * y - rot.s * z;
                 diag[k] = diag_k;
 
                 let tmp = (
@@ -1175,7 +1169,6 @@ fn deflation_43<T: RealField>(
     let q = copy(col0[i]);
 
     if (p == zero()) && (q == zero()) {
-        diag[i] = zero();
         return None;
     }
 
@@ -1185,7 +1178,6 @@ fn deflation_43<T: RealField>(
     col0[first] = copy(r);
     diag[first] = copy(r);
     col0[i] = zero();
-    diag[i] = zero();
 
     Some(rot)
 }
@@ -1284,83 +1276,50 @@ pub(super) fn divide_and_conquer<T: RealField>(
     let mut v = v;
 
     if n < qr_fallback_threshold {
-        let n1 = n + 1;
-
-        let (mut diag_alloc, stack) = unsafe { temp_mat_uninit(n1, 1, stack) };
-        let (mut subdiag_alloc, stack) = unsafe { temp_mat_uninit(n1, 1, stack) };
-
-        let mut diag_alloc = diag_alloc
-            .as_mat_mut()
-            .col_mut(0)
-            .try_as_col_major_mut()
-            .unwrap();
-        let mut subdiag_alloc = subdiag_alloc
-            .as_mat_mut()
-            .col_mut(0)
-            .try_as_col_major_mut()
-            .unwrap();
-
-        for i in 0..n {
-            diag_alloc[i] = copy(diag[i]);
-            subdiag_alloc[i] = copy(subdiag[i]);
-        }
-        diag_alloc[n] = zero();
-        subdiag_alloc[n] = zero();
-
-        let (mut u_alloc, stack) = unsafe { temp_mat_uninit(n1, n1, stack) };
-        let (mut v_alloc, _) = unsafe { temp_mat_uninit(n1, n1, stack) };
+        let (mut u_alloc, _) = unsafe { temp_mat_uninit(n + 1, n + 1, stack) };
         let mut u_alloc = u_alloc.as_mat_mut();
-        let mut v_alloc = v_alloc.as_mat_mut();
 
-        qr_algorithm(
-            diag_alloc.rb_mut(),
-            subdiag_alloc.rb_mut(),
-            Some(u_alloc.rb_mut()),
-            Some(v_alloc.rb_mut()),
-        )?;
-
-        let mut first_zero = n;
-        for i in 0..n1 {
-            if diag_alloc[i] == zero() {
-                first_zero = i;
-                break;
-            }
-        }
-
-        let mut last = n;
-        for i in first_zero..n1 {
-            if abs(v_alloc[(n, i)]) == one() {
-                last = i;
-            }
-        }
-
-        if last != n {
-            swap_cols_idx(v_alloc.rb_mut(), last, n);
-        }
-
-        if v_alloc[(n, n)] < zero() {
-            for i in 0..n1 {
-                u_alloc[(i, n)] = -u_alloc[(i, n)];
-            }
-            for i in 0..n1 {
-                v_alloc[(i, n)] = -v_alloc[(i, n)];
-            }
-        }
-
-        assert!(v_alloc[(n, n)] == one());
-
-        for i in 0..n {
-            diag[i] = copy(diag_alloc[i]);
-            subdiag[i] = copy(subdiag_alloc[i]);
-        }
+        u_alloc.fill(zero());
+        u_alloc.rb_mut().diagonal_mut().fill(one());
 
         if let Some(mut v) = v.rb_mut() {
-            v.copy_from(v_alloc.rb().submatrix(0, 0, n, n));
+            v.fill(zero());
+            v.rb_mut().diagonal_mut().fill(one());
         }
+
+        // make the last subdiag zero
+        let mut val = copy(subdiag[n - 1]);
+        subdiag[n - 1] = zero();
+
+        let j = n;
+
+        let mut i = n;
+        while i > 0 {
+            i -= 1;
+            let rot = JacobiRotation::make_givens(copy(diag[i]), copy(val));
+
+            diag[i] = rot.c * diag[i] - rot.s * val;
+
+            if i > 0 {
+                val = rot.s * subdiag[i - 1];
+                subdiag[i - 1] = rot.c * subdiag[i - 1];
+            }
+
+            rot.transpose()
+                .apply_on_the_right_in_place(u_alloc.rb_mut().two_cols_mut(i, j));
+        }
+
+        qr_algorithm(
+            diag.rb_mut(),
+            subdiag.rb_mut(),
+            Some(u_alloc.rb_mut()),
+            v.rb_mut(),
+        )?;
+
         match u.rb_mut() {
-            MatU::Full(u) => u.submatrix_mut(0, 0, n1, n1).copy_from(u_alloc.rb()),
+            MatU::Full(u) => u.submatrix_mut(0, 0, n + 1, n + 1).copy_from(u_alloc.rb()),
             MatU::TwoRows(u) => {
-                let (mut top, mut bot) = u.subcols_mut(0, n1).two_rows_mut(0, 1);
+                let (mut top, mut bot) = u.subcols_mut(0, n + 1).two_rows_mut(0, 1);
 
                 top.copy_from(u_alloc.rb().row(0));
                 bot.copy_from(u_alloc.rb().row(n));
@@ -1920,8 +1879,8 @@ mod tests {
             let mut d = diag.to_owned();
             let mut subd = subdiag.to_owned();
 
-            let mut u = Mat::zeros(n, n);
-            let mut v = Mat::zeros(n, n);
+            let mut u = Mat::identity(n, n);
+            let mut v = Mat::identity(n, n);
 
             for i in 0..n {
                 u[(i, i)] = 1.0;

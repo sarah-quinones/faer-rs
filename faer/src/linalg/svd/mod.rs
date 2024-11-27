@@ -287,6 +287,15 @@ fn compute_bidiag_real_svd<T: RealField>(
     }
 
     if n < params.recursion_threshold {
+        if let Some(mut u) = u.rb_mut() {
+            u.fill(zero());
+            u.diagonal_mut().fill(one());
+        }
+        if let Some(mut v) = v.rb_mut() {
+            v.fill(zero());
+            v.diagonal_mut().fill(one());
+        }
+
         bidiag_svd::qr_algorithm(
             diag.rb_mut(),
             subdiag.rb_mut(),
@@ -294,13 +303,6 @@ fn compute_bidiag_real_svd<T: RealField>(
             v.rb_mut(),
         )?;
 
-        if let Some(mut u) = u.rb_mut() {
-            for i in 0..n {
-                u[(n, i)] = zero();
-                u[(i, n)] = zero();
-            }
-            u[(n, n)] = one();
-        }
         return Ok(());
     } else {
         let (mut u2, stack) = unsafe {
@@ -1019,5 +1021,77 @@ mod tests {
             test_svd(Mat::<f64>::identity(m, n).as_ref());
             test_svd(Mat::<c64>::identity(m, n).as_ref());
         }
+    }
+
+    #[test]
+    fn test_zink() {
+        let diag = [
+            -9.931833701529301,
+            -10.920807536026027,
+            -52.33647796311243,
+            2.3685025127736967,
+            2.421701994236093,
+            -0.5051763005624579,
+            -0.04808263896606017,
+            -0.003875251886338955,
+            -0.0006413264967716465,
+            -0.003381944152463707,
+            2.981152313236375e-5,
+            5.4290648208388795e-6,
+            -6.329275972084404e-7,
+            -6.879142344209158e-7,
+            -5.265228263479126e-9,
+            -2.941999902335516e-9,
+            -1.3060984997930294e-10,
+            7.07516117218088e-12,
+            1.8657003929029376e-12,
+            -6.216080089659131e-14,
+        ];
+        let subdiag = [
+            -57.8029649868477,
+            17.67263066467847,
+            8.884153814270894,
+            -9.01998231080713,
+            -1.028638150814966,
+            0.22247719217200435,
+            0.016389886745811315,
+            -0.004090989452162578,
+            0.00036818904090536926,
+            -0.0031394146217732367,
+            -7.571300829706796e-6,
+            3.0045718718618155e-6,
+            2.1329796886727743e-6,
+            9.259701025627789e-8,
+            2.2291214755992877e-9,
+            -2.3017207713252894e-9,
+            6.807967994979358e-11,
+            2.1677299575405587e-12,
+            -3.07282771050034e-13,
+            0.0,
+        ];
+
+        let n = diag.len();
+        let params = SvdParams {
+            recursion_threshold: 8,
+            qr_ratio_threshold: 1.0,
+            ..auto!(f64)
+        };
+
+        let mut d = ColRef::from_slice(&diag).to_owned();
+        let mut s = ColRef::from_slice(&subdiag).to_owned();
+        compute_bidiag_real_svd(
+            d.as_mut().try_as_col_major_mut().unwrap(),
+            s.as_mut().try_as_col_major_mut().unwrap(),
+            None,
+            None,
+            params,
+            Par::Seq,
+            DynStack::new(&mut GlobalMemBuffer::new(
+                bidiag_real_svd_scratch::<f64>(n, false, false, Par::Seq, params).unwrap(),
+            )),
+        )
+        .unwrap();
+
+        assert!(d[n - 1] != 0.0);
     }
 }
