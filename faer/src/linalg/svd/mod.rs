@@ -192,6 +192,7 @@ fn compute_bidiag_cplx_svd<T: ComplexField>(
 
     let mut u_real = u.rb().map(|_| u_real.as_mat_mut());
     let mut v_real = v.rb().map(|_| v_real.as_mat_mut());
+
     let mut diag_real = diag_real
         .as_mat_mut()
         .col_mut(0)
@@ -287,10 +288,10 @@ fn compute_bidiag_real_svd<T: RealField>(
 
     if n < params.recursion_threshold {
         bidiag_svd::qr_algorithm(
-            diag.rb_mut().as_row_shape_mut(n),
-            subdiag.rb_mut().as_row_shape_mut(n),
+            diag.rb_mut(),
+            subdiag.rb_mut(),
             u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
-            v.rb_mut().map(|v| v.as_shape_mut(n, n)),
+            v.rb_mut(),
         )?;
 
         if let Some(mut u) = u.rb_mut() {
@@ -376,9 +377,9 @@ fn svd_imp<T: ComplexField>(
         .unwrap();
 
     let (mut ub, stack) =
-        unsafe { temp_mat_uninit::<T, _, _>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
+        unsafe { temp_mat_uninit::<T, _, _>(n + 1, if v.is_some() { n + 1 } else { 0 }, stack) };
     let (mut vb, stack) =
-        unsafe { temp_mat_uninit::<T, _, _>(n, if v.is_some() { n } else { 0 }, stack) };
+        unsafe { temp_mat_uninit::<T, _, _>(n, if u.is_some() { n } else { 0 }, stack) };
 
     let mut ub = ub.as_mat_mut();
     let mut vb = vb.as_mat_mut();
@@ -818,10 +819,10 @@ mod tests {
 
         let size = Ord::min(m, n);
         let mut s = Mat::zeros(size, size);
-        {
-            let mut u = Mat::zeros(m, size);
-            let mut v = Mat::zeros(n, size);
+        let mut u = Mat::zeros(m, size);
+        let mut v = Mat::zeros(n, size);
 
+        {
             svd(
                 mat.as_ref(),
                 s.as_mut().diagonal_mut().column_vector_mut(),
@@ -845,6 +846,63 @@ mod tests {
 
             let reconstructed = &u * &s * v.adjoint();
             assert!(reconstructed ~ mat);
+        }
+        {
+            let mut s2 = Mat::zeros(size, size);
+            let mut u2 = Mat::zeros(m, size);
+
+            svd(
+                mat.as_ref(),
+                s2.as_mut().diagonal_mut().column_vector_mut(),
+                Some(u2.as_mut()),
+                None,
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    svd_scratch::<T>(
+                        m,
+                        n,
+                        ComputeSvdVectors::Thin,
+                        ComputeSvdVectors::No,
+                        Par::Seq,
+                        params,
+                    )
+                    .unwrap(),
+                )),
+                params,
+            )
+            .unwrap();
+
+            assert!(s2 ~ s);
+            assert!(u2 ~ u);
+        }
+
+        {
+            let mut s2 = Mat::zeros(size, size);
+            let mut v2 = Mat::zeros(n, size);
+
+            svd(
+                mat.as_ref(),
+                s2.as_mut().diagonal_mut().column_vector_mut(),
+                None,
+                Some(v2.as_mut()),
+                Par::Seq,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    svd_scratch::<T>(
+                        m,
+                        n,
+                        ComputeSvdVectors::No,
+                        ComputeSvdVectors::Thin,
+                        Par::Seq,
+                        params,
+                    )
+                    .unwrap(),
+                )),
+                params,
+            )
+            .unwrap();
+
+            assert!(s2 ~ s);
+            assert!(v2 ~ v);
         }
         {
             let mut s2 = Mat::zeros(size, size);

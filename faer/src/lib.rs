@@ -482,25 +482,30 @@ pub use row::{Row, RowMut, RowRef};
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
     pub(crate) use crate::{
+        col::{AsColMut, AsColRef, Col, ColMut, ColRef},
+        diag::{Diag, DiagMut, DiagRef},
+        linalg::{self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed},
+        mat::{AsMatMut, AsMatRef, Mat, MatMut, MatRef},
+        perm::{Perm, PermRef},
         prelude::*,
+        row::{AsRowMut, AsRowRef, Row, RowMut, RowRef},
+        utils::{
+            bound::{Array, Dim, Idx, IdxInc, MaybeIdx},
+            simd::SimdCtx,
+        },
         variadics::{l, L},
         Auto, NonExhaustive,
     };
 
-    pub use faer_traits::math_utils::*;
+    pub use faer_macros::math;
+    pub use faer_traits::{
+        math_utils::*, ComplexField, Conjugate, Index, RealField, SignedIndex, SimdArch,
+    };
 
     #[inline]
     pub fn simd_align(i: usize) -> usize {
         i.wrapping_neg()
     }
-
-    pub use crate::{
-        col::{AsColMut, AsColRef, Col, ColMut, ColRef},
-        diag::{Diag, DiagMut, DiagRef},
-        mat::{AsMatMut, AsMatRef, Mat, MatMut, MatRef},
-        perm::{Perm, PermRef},
-        row::{AsRowMut, AsRowRef, Row, RowMut, RowRef},
-    };
 
     pub use crate::{
         unzipped, zipped, Accum, Conj, ContiguousBwd, ContiguousFwd, Par, Shape, Stride, Unbind,
@@ -509,24 +514,10 @@ mod internal_prelude {
     pub use unzipped as uz;
     pub use zipped as z;
 
-    pub use crate::utils::{
-        bound::{Array, Dim, Idx, IdxInc, MaybeIdx},
-        simd::SimdCtx,
-    };
-
-    pub use crate::linalg::{self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed};
-
-    pub use faer_macros::{ghost_tree, math};
-
-    pub use faer_traits::{ComplexField, Conjugate, Index, RealField, SignedIndex, SimdArch};
-
-    pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
-
     pub use dyn_stack::{DynStack, SizeOverflow, StackReq};
-
-    pub use reborrow::*;
-
+    pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
     pub use generativity::make_guard;
+    pub use reborrow::*;
 }
 
 pub mod prelude {

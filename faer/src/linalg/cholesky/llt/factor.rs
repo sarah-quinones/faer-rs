@@ -63,8 +63,8 @@ pub fn cholesky_in_place_scratch<T: ComplexField>(
 }
 
 #[math]
-pub fn cholesky_in_place<'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+pub fn cholesky_in_place<T: ComplexField>(
+    A: MatMut<'_, T>,
     regularization: LltRegularization<T>,
     par: Par,
     stack: &mut DynStack,

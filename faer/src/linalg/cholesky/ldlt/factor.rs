@@ -23,217 +23,216 @@ fn simd_cholesky_row_batch<'N, T: ComplexField, S: Simd>(
 
     let n = A.ncols();
 
-    ghost_tree!(ROW(HEAD, TAIL), {
-        let (l![head, tail], (disjoint, ..)) = n.split(l![..start, ..], ROW);
+    with_dim!(TAIL, *n - *start);
 
-        let simd = SimdCtx::<T, S>::new_force_mask(simd, tail.len());
-        let (idx_head, indices, idx_tail) = simd.indices();
-        assert!(idx_head.is_none());
-        let Some(idx_tail) = idx_tail else { panic!() };
+    let simd = SimdCtx::<T, S>::new_force_mask(simd, TAIL);
+    let (idx_head, indices, idx_tail) = simd.indices();
+    assert!(idx_head.is_none());
+    let Some(idx_tail) = idx_tail else { panic!() };
 
-        let mut count = 0usize;
+    let mut count = 0usize;
 
-        for j in n.indices() {
-            ghost_tree!(COL(LEFT, RIGHT), {
-                let (l![left, right], (disjoint_col, ..)) = n.split(l![..j.into(), j], COL);
+    for j in n.indices() {
+        with_dim!(LEFT, *j);
 
-                let l![A_0, mut Aj] = A.rb_mut().col_segments_mut(l![left, right], disjoint_col);
-                let A_0 = A_0.rb();
-                let A10 = A_0.row_segment(tail);
+        let (A_0, Aj) = A.rb_mut().split_at_col_mut(j.into());
+        let A_0 = A_0.as_col_shape(LEFT);
+        let A10 = A_0.subrows(start, TAIL);
 
-                let l![_, mut Aj] = Aj.rb_mut().row_segments_mut(l![head, tail], disjoint);
+        let mut Aj = Aj.col_mut(0).subrows_mut(start, TAIL);
 
-                {
-                    let mut Aj = Aj.rb_mut();
-                    let mut iter = indices.clone();
-                    let i0 = iter.next();
-                    let i1 = iter.next();
-                    let i2 = iter.next();
+        {
+            let D = D.rb().subcols(IdxInc::ZERO, LEFT);
+            let mut Aj = Aj.rb_mut();
+            let mut iter = indices.clone();
+            let i0 = iter.next();
+            let i1 = iter.next();
+            let i2 = iter.next();
 
-                    match (i0, i1, i2) {
-                        (None, None, None) => {
-                            let mut Aij = simd.read(Aj.rb(), idx_tail);
+            match (i0, i1, i2) {
+                (None, None, None) => {
+                    let mut Aij = simd.read(Aj.rb(), idx_tail);
 
-                            for k in left {
-                                let Ak = A10.col(left.local(k));
+                    for k in LEFT.indices() {
+                        let Ak = A10.col(k);
 
-                                let D = real(D[k.local()]);
-                                let D = if is_llt { one() } else { D };
+                        let D = real(D[k]);
+                        let D = if is_llt { one() } else { D };
 
-                                let Ajk = simd.splat(&mul_real(conj(A_0[(j, left.local(k))]), -D));
+                        let Ajk = simd.splat(&mul_real(conj(A_0[(j, k)]), -D));
 
-                                let Aik = simd.read(Ak, idx_tail);
-                                Aij = simd.mul_add(Ajk, Aik, Aij);
-                            }
-                            simd.write(Aj.rb_mut(), idx_tail, Aij);
-                        }
-                        (Some(i0), None, None) => {
-                            let mut A0j = simd.read(Aj.rb(), i0);
-                            let mut Aij = simd.read(Aj.rb(), idx_tail);
-
-                            for k in left {
-                                let Ak = A10.col(left.local(k));
-
-                                let D = real(D[k.local()]);
-                                let D = if is_llt { one() } else { D };
-
-                                let Ajk = simd.splat(&mul_real(conj(A_0[(j, left.local(k))]), -D));
-
-                                let A0k = simd.read(Ak, i0);
-                                let Aik = simd.read(Ak, idx_tail);
-                                A0j = simd.mul_add(Ajk, A0k, A0j);
-                                Aij = simd.mul_add(Ajk, Aik, Aij);
-                            }
-                            simd.write(Aj.rb_mut(), i0, A0j);
-                            simd.write(Aj.rb_mut(), idx_tail, Aij);
-                        }
-                        (Some(i0), Some(i1), None) => {
-                            let mut A0j = simd.read(Aj.rb(), i0);
-                            let mut A1j = simd.read(Aj.rb(), i1);
-                            let mut Aij = simd.read(Aj.rb(), idx_tail);
-
-                            for k in left {
-                                let Ak = A10.col(left.local(k));
-
-                                let D = real(D[k.local()]);
-                                let D = if is_llt { one() } else { D };
-
-                                let Ajk = simd.splat(&mul_real(conj(A_0[(j, left.local(k))]), -D));
-
-                                let A0k = simd.read(Ak, i0);
-                                let A1k = simd.read(Ak, i1);
-                                let Aik = simd.read(Ak, idx_tail);
-                                A0j = simd.mul_add(Ajk, A0k, A0j);
-                                A1j = simd.mul_add(Ajk, A1k, A1j);
-                                Aij = simd.mul_add(Ajk, Aik, Aij);
-                            }
-                            simd.write(Aj.rb_mut(), i0, A0j);
-                            simd.write(Aj.rb_mut(), i1, A1j);
-                            simd.write(Aj.rb_mut(), idx_tail, Aij);
-                        }
-                        (Some(i0), Some(i1), Some(i2)) => {
-                            let mut A0j = simd.read(Aj.rb(), i0);
-                            let mut A1j = simd.read(Aj.rb(), i1);
-                            let mut A2j = simd.read(Aj.rb(), i2);
-                            let mut Aij = simd.read(Aj.rb(), idx_tail);
-
-                            for k in left {
-                                let Ak = A10.col(left.local(k));
-
-                                let D = real(D[k.local()]);
-                                let D = if is_llt { one() } else { D };
-
-                                let Ajk = simd.splat(&mul_real(conj(A_0[(j, left.local(k))]), -D));
-
-                                let A0k = simd.read(Ak, i0);
-                                let A1k = simd.read(Ak, i1);
-                                let A2k = simd.read(Ak, i2);
-                                let Aik = simd.read(Ak, idx_tail);
-                                A0j = simd.mul_add(Ajk, A0k, A0j);
-                                A1j = simd.mul_add(Ajk, A1k, A1j);
-                                A2j = simd.mul_add(Ajk, A2k, A2j);
-                                Aij = simd.mul_add(Ajk, Aik, Aij);
-                            }
-                            simd.write(Aj.rb_mut(), i0, A0j);
-                            simd.write(Aj.rb_mut(), i1, A1j);
-                            simd.write(Aj.rb_mut(), i2, A2j);
-                            simd.write(Aj.rb_mut(), idx_tail, Aij);
-                        }
-                        _ => {
-                            unreachable!();
-                        }
+                        let Aik = simd.read(Ak, idx_tail);
+                        Aij = simd.mul_add(Ajk, Aik, Aij);
                     }
+                    simd.write(Aj.rb_mut(), idx_tail, Aij);
                 }
+                (Some(i0), None, None) => {
+                    let mut A0j = simd.read(Aj.rb(), i0);
+                    let mut Aij = simd.read(Aj.rb(), idx_tail);
 
-                let D = D.rb_mut().at_mut(j);
+                    for k in LEFT.indices() {
+                        let Ak = A10.col(k);
 
-                if let Some(j_row) = tail.try_idx(*j) {
-                    let mut diag = real(Aj[tail.from_global(j_row)]);
+                        let D = real(D[k]);
+                        let D = if is_llt { one() } else { D };
 
-                    if regularize {
-                        let sign = if is_llt {
-                            1
-                        } else {
-                            if let Some(signs) = signs {
-                                signs[j_row.local()]
-                            } else {
-                                0
-                            }
-                        };
+                        let Ajk = simd.splat(&mul_real(conj(A_0[(j, k)]), -D));
 
-                        let small_or_negative = diag <= eps;
-                        let minus_small_or_positive = diag >= -eps;
-
-                        if sign == 1 && small_or_negative {
-                            diag = copy(delta);
-                            count += 1;
-                        } else if sign == -1 && minus_small_or_positive {
-                            diag = neg(delta);
-                        } else {
-                            if small_or_negative && minus_small_or_positive {
-                                if diag < zero() {
-                                    diag = neg(delta);
-                                } else {
-                                    diag = copy(delta);
-                                }
-                            }
-                        }
+                        let A0k = simd.read(Ak, i0);
+                        let Aik = simd.read(Ak, idx_tail);
+                        A0j = simd.mul_add(Ajk, A0k, A0j);
+                        Aij = simd.mul_add(Ajk, Aik, Aij);
                     }
-
-                    let j = j;
-                    let diag = if is_llt {
-                        if !(diag > zero()) {
-                            *D = from_real(diag);
-                            return Err(*j);
-                        }
-                        sqrt(diag)
-                    } else {
-                        copy(diag)
-                    };
-
-                    *D = from_real(diag);
-
-                    if diag == zero() || !is_finite(diag) {
-                        return Err(*j);
-                    }
+                    simd.write(Aj.rb_mut(), i0, A0j);
+                    simd.write(Aj.rb_mut(), idx_tail, Aij);
                 }
+                (Some(i0), Some(i1), None) => {
+                    let mut A0j = simd.read(Aj.rb(), i0);
+                    let mut A1j = simd.read(Aj.rb(), i1);
+                    let mut Aij = simd.read(Aj.rb(), idx_tail);
 
-                let diag = real(*D);
+                    for k in LEFT.indices() {
+                        let Ak = A10.col(k);
 
-                {
-                    let mut Aj = Aj.rb_mut();
-                    let inv = simd.splat_real(&recip(diag));
+                        let D = real(D[k]);
+                        let D = if is_llt { one() } else { D };
 
-                    for i in indices.clone() {
-                        let mut Aij = simd.read(Aj.rb(), i);
-                        Aij = simd.mul_real(Aij, inv);
-                        simd.write(Aj.rb_mut(), i, Aij);
+                        let Ajk = simd.splat(&mul_real(conj(A_0[(j, k)]), -D));
+
+                        let A0k = simd.read(Ak, i0);
+                        let A1k = simd.read(Ak, i1);
+                        let Aik = simd.read(Ak, idx_tail);
+                        A0j = simd.mul_add(Ajk, A0k, A0j);
+                        A1j = simd.mul_add(Ajk, A1k, A1j);
+                        Aij = simd.mul_add(Ajk, Aik, Aij);
                     }
-                    {
-                        let mut Aij = simd.read(Aj.rb(), idx_tail);
-                        Aij = simd.mul_real(Aij, inv);
-                        simd.write(Aj.rb_mut(), idx_tail, Aij);
-                    }
+                    simd.write(Aj.rb_mut(), i0, A0j);
+                    simd.write(Aj.rb_mut(), i1, A1j);
+                    simd.write(Aj.rb_mut(), idx_tail, Aij);
                 }
-            });
+                (Some(i0), Some(i1), Some(i2)) => {
+                    let mut A0j = simd.read(Aj.rb(), i0);
+                    let mut A1j = simd.read(Aj.rb(), i1);
+                    let mut A2j = simd.read(Aj.rb(), i2);
+                    let mut Aij = simd.read(Aj.rb(), idx_tail);
+
+                    for k in LEFT.indices() {
+                        let Ak = A10.col(k);
+
+                        let D = real(D[k]);
+                        let D = if is_llt { one() } else { D };
+
+                        let Ajk = simd.splat(&mul_real(conj(A_0[(j, k)]), -D));
+
+                        let A0k = simd.read(Ak, i0);
+                        let A1k = simd.read(Ak, i1);
+                        let A2k = simd.read(Ak, i2);
+                        let Aik = simd.read(Ak, idx_tail);
+                        A0j = simd.mul_add(Ajk, A0k, A0j);
+                        A1j = simd.mul_add(Ajk, A1k, A1j);
+                        A2j = simd.mul_add(Ajk, A2k, A2j);
+                        Aij = simd.mul_add(Ajk, Aik, Aij);
+                    }
+                    simd.write(Aj.rb_mut(), i0, A0j);
+                    simd.write(Aj.rb_mut(), i1, A1j);
+                    simd.write(Aj.rb_mut(), i2, A2j);
+                    simd.write(Aj.rb_mut(), idx_tail, Aij);
+                }
+                _ => {
+                    unreachable!();
+                }
+            }
         }
 
-        Ok(count)
-    })
+        let D = D.rb_mut().at_mut(j);
+
+        if *j >= *start {
+            let j_row = TAIL.idx(*j - *start);
+
+            let mut diag = real(Aj[j_row]);
+
+            if regularize {
+                let sign = if is_llt {
+                    1
+                } else {
+                    if let Some(signs) = signs {
+                        signs[j]
+                    } else {
+                        0
+                    }
+                };
+
+                let small_or_negative = diag <= eps;
+                let minus_small_or_positive = diag >= -eps;
+
+                if sign == 1 && small_or_negative {
+                    diag = copy(delta);
+                    count += 1;
+                } else if sign == -1 && minus_small_or_positive {
+                    diag = neg(delta);
+                } else {
+                    if small_or_negative && minus_small_or_positive {
+                        if diag < zero() {
+                            diag = neg(delta);
+                        } else {
+                            diag = copy(delta);
+                        }
+                    }
+                }
+            }
+
+            let j = j;
+            let diag = if is_llt {
+                if !(diag > zero()) {
+                    *D = from_real(diag);
+                    return Err(*j);
+                }
+                sqrt(diag)
+            } else {
+                copy(diag)
+            };
+
+            *D = from_real(diag);
+
+            if diag == zero() || !is_finite(diag) {
+                return Err(*j);
+            }
+        }
+
+        let diag = real(*D);
+
+        {
+            let mut Aj = Aj.rb_mut();
+            let inv = simd.splat_real(&recip(diag));
+
+            for i in indices.clone() {
+                let mut Aij = simd.read(Aj.rb(), i);
+                Aij = simd.mul_real(Aij, inv);
+                simd.write(Aj.rb_mut(), i, Aij);
+            }
+            {
+                let mut Aij = simd.read(Aj.rb(), idx_tail);
+                Aij = simd.mul_real(Aij, inv);
+                simd.write(Aj.rb_mut(), idx_tail, Aij);
+            }
+        }
+    }
+
+    Ok(count)
 }
 
 #[inline(always)]
 #[math]
-fn simd_cholesky_matrix<'N, T: ComplexField, S: Simd>(
+fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
     simd: T::SimdCtx<S>,
-    A: MatMut<'_, T, Dim<'N>, Dim<'N>, ContiguousFwd>,
-    D: RowMut<'_, T, Dim<'N>>,
+    A: MatMut<'_, T, usize, usize, ContiguousFwd>,
+    D: RowMut<'_, T, usize>,
 
     is_llt: bool,
     regularize: bool,
     eps: T::Real,
     delta: T::Real,
-    signs: Option<&Array<'N, i8>>,
+    signs: Option<&[i8]>,
 ) -> Result<usize, usize> {
     let N = A.ncols();
 
@@ -244,58 +243,55 @@ fn simd_cholesky_matrix<'N, T: ComplexField, S: Simd>(
 
     let mut count = 0;
 
-    let mut J = 0usize;
-    while let Some(j) = N.try_check(J) {
-        let J_next = N.advance(j, blocksize);
+    let mut j = 0;
+    while j < N {
+        let blocksize = Ord::min(blocksize, N - j);
+        let j_next = j + blocksize;
 
-        ghost_tree!(FULL(HEAD), {
-            let (l![head], _) = N.split(l![..J_next], FULL);
+        with_dim!(HEAD, j_next);
+        let A = A.rb_mut().submatrix_mut(0, 0, HEAD, HEAD);
+        let D = D.rb_mut().subcols_mut(0, HEAD);
 
-            let A = A.rb_mut().row_segment_mut(head).col_segment_mut(head);
-            let D = D.rb_mut().col_segment_mut(head);
+        let signs = signs.map(|signs| Array::from_ref(&signs[..*HEAD], HEAD));
 
-            let signs = signs.map(|signs| signs.segment(head));
-
-            count += simd_cholesky_row_batch(
-                simd,
-                A,
-                D,
-                head.len().idx_inc(*j),
-                is_llt,
-                regularize,
-                eps.clone(),
-                delta.clone(),
-                signs,
-            )?;
-        });
-
-        J = *J_next;
+        count += simd_cholesky_row_batch(
+            simd,
+            A,
+            D,
+            HEAD.idx_inc(j),
+            is_llt,
+            regularize,
+            eps.clone(),
+            delta.clone(),
+            signs,
+        )?;
+        j += blocksize;
     }
 
     Ok(count)
 }
 
-pub fn simd_cholesky<'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
-    D: RowMut<'_, T, Dim<'N>>,
+pub fn simd_cholesky<T: ComplexField>(
+    A: MatMut<'_, T>,
+    D: RowMut<'_, T>,
 
     is_llt: bool,
     regularize: bool,
     eps: T::Real,
     delta: T::Real,
-    signs: Option<&Array<'N, i8>>,
+    signs: Option<&[i8]>,
 ) -> Result<usize, usize> {
-    struct Impl<'a, 'N, T: ComplexField> {
-        A: MatMut<'a, T, Dim<'N>, Dim<'N>, ContiguousFwd>,
-        D: RowMut<'a, T, Dim<'N>>,
+    struct Impl<'a, T: ComplexField> {
+        A: MatMut<'a, T, usize, usize, ContiguousFwd>,
+        D: RowMut<'a, T>,
         is_llt: bool,
         regularize: bool,
         eps: T::Real,
         delta: T::Real,
-        signs: Option<&'a Array<'N, i8>>,
+        signs: Option<&'a [i8]>,
     }
 
-    impl<'a, 'N, T: ComplexField> pulp::WithSimd for Impl<'a, 'N, T> {
+    impl<'a, T: ComplexField> pulp::WithSimd for Impl<'a, T> {
         type Output = Result<usize, usize>;
 
         #[inline(always)]
@@ -310,7 +306,7 @@ pub fn simd_cholesky<'N, T: ComplexField>(
                 signs,
             } = self;
             let simd = T::simd_ctx(simd);
-            if *A.nrows() > 0 {
+            if A.nrows() > 0 {
                 simd_cholesky_matrix(simd, A, D, is_llt, regularize, eps, delta, signs)
             } else {
                 Ok(0)
@@ -339,25 +335,25 @@ pub fn simd_cholesky<'N, T: ComplexField>(
 }
 
 #[math]
-fn cholesky_fallback<'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
-    D: RowMut<'_, T, Dim<'N>>,
+fn cholesky_fallback<T: ComplexField>(
+    A: MatMut<'_, T>,
+    D: RowMut<'_, T>,
 
     is_llt: bool,
     regularize: bool,
     eps: T::Real,
     delta: T::Real,
-    signs: Option<&Array<'N, i8>>,
+    signs: Option<&[i8]>,
 ) -> Result<usize, usize> {
-    let N = A.nrows();
+    let n = A.nrows();
     let mut count = 0;
     let mut A = A;
     let mut D = D;
 
-    for j in N.indices() {
-        for i in j.to_incl().to(N.end()) {
+    for j in 0..n {
+        for i in j..n {
             let mut sum = zero();
-            for k in IdxInc::ZERO.to(j.excl()) {
+            for k in 0..j {
                 let D = real(D[k]);
                 let D = if is_llt { one() } else { D };
 
@@ -402,7 +398,7 @@ fn cholesky_fallback<'N, T: ComplexField>(
         let diag = if is_llt {
             if !(diag > zero()) {
                 *D = from_real(diag);
-                return Err(*j);
+                return Err(j);
             }
             sqrt(diag)
         } else {
@@ -411,12 +407,12 @@ fn cholesky_fallback<'N, T: ComplexField>(
         *D = from_real(diag);
 
         if diag == zero() || !is_finite(diag) {
-            return Err(*j);
+            return Err(j);
         }
 
         let inv = recip(diag);
 
-        for i in j.to_incl().to(N.end()) {
+        for i in j..n {
             A[(i, j)] = mul_real(A[(i, j)], inv);
         }
     }
@@ -425,9 +421,9 @@ fn cholesky_fallback<'N, T: ComplexField>(
 }
 
 #[math]
-pub(crate) fn cholesky_recursion<'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
-    D: RowMut<'_, T, Dim<'N>>,
+pub(crate) fn cholesky_recursion<T: ComplexField>(
+    A: MatMut<'_, T>,
+    D: RowMut<'_, T>,
 
     recursion_threshold: usize,
     blocksize: usize,
@@ -435,98 +431,96 @@ pub(crate) fn cholesky_recursion<'N, T: ComplexField>(
     regularize: bool,
     eps: &T::Real,
     delta: &T::Real,
-    signs: Option<&Array<'N, i8>>,
+    signs: Option<&[i8]>,
     par: Par,
 ) -> Result<usize, usize> {
-    let N = A.ncols();
-    if *N <= recursion_threshold {
+    let n = A.ncols();
+    if n <= recursion_threshold {
         cholesky_fallback(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
     } else {
         let mut count = 0;
-        let blocksize = Ord::min(N.next_power_of_two() / 2, blocksize);
+        let blocksize = Ord::min(n.next_power_of_two() / 2, blocksize);
         let mut A = A;
         let mut D = D;
 
-        let mut j_next = IdxInc::ZERO;
-        while let Some(j) = N.try_check(*j_next) {
-            j_next = N.advance(j, blocksize);
+        let mut j = 0;
+        while j < n {
+            let blocksize = Ord::min(blocksize, n - j);
 
-            ghost_tree!(FULL(HEAD, TAIL), {
-                let (l![head, tail], (disjoint, ..)) = N.split(l![j.into()..j_next, ..], FULL);
+            let (mut A00, A01, mut A10, mut A11) = A
+                .rb_mut()
+                .submatrix_range_mut((j, n), (j, n))
+                .split_at_mut(blocksize, blocksize);
 
-                let l![mut A_0, A_1] = A.rb_mut().col_segments_mut(l![head, tail], disjoint);
-                let l![mut A00, mut A10] = A_0.rb_mut().row_segments_mut(l![head, tail], disjoint);
-                let l![A01, mut A11] = A_1.row_segments_mut(l![head, tail], disjoint);
+            let mut D0 = D.rb_mut().subcols_mut(j, blocksize);
 
-                let mut D0 = D.rb_mut().col_segment_mut(head);
+            let mut L10xD0 = A01.transpose_mut();
 
-                let mut L10xD0 = A01.transpose_mut();
+            let signs = signs.map(|signs| &signs[j..][..blocksize]);
 
-                let signs = signs.map(|signs| signs.segment(head));
+            match cholesky_recursion(
+                A00.rb_mut(),
+                D0.rb_mut(),
+                recursion_threshold,
+                blocksize,
+                is_llt,
+                regularize,
+                eps,
+                delta,
+                signs,
+                par,
+            ) {
+                Ok(local_count) => count += local_count,
+                Err(fail_idx) => return Err(j + fail_idx),
+            }
+            let A00 = A00.rb();
 
-                match cholesky_recursion(
-                    A00.rb_mut(),
-                    D0.rb_mut(),
-                    recursion_threshold,
-                    blocksize,
-                    is_llt,
-                    regularize,
-                    eps,
-                    delta,
-                    signs,
+            if is_llt {
+                linalg::triangular_solve::solve_lower_triangular_in_place(
+                    A00.conjugate(),
+                    A10.rb_mut().transpose_mut(),
                     par,
-                ) {
-                    Ok(local_count) => count += local_count,
-                    Err(fail_idx) => return Err(*j + fail_idx),
-                }
-                let A00 = A00.rb();
+                )
+            } else {
+                linalg::triangular_solve::solve_unit_lower_triangular_in_place(
+                    A00.conjugate(),
+                    A10.rb_mut().transpose_mut(),
+                    par,
+                )
+            }
+            let mut A10 = A10.rb_mut();
 
-                if is_llt {
-                    linalg::triangular_solve::solve_lower_triangular_in_place(
-                        A00.conjugate(),
-                        A10.rb_mut().transpose_mut(),
-                        par,
-                    )
-                } else {
-                    linalg::triangular_solve::solve_unit_lower_triangular_in_place(
-                        A00.conjugate(),
-                        A10.rb_mut().transpose_mut(),
-                        par,
-                    )
-                }
-                let mut A10 = A10.rb_mut();
+            let (A10, L10xD0) = if is_llt {
+                (A10.rb(), A10.rb())
+            } else {
+                for k in 0..blocksize {
+                    let d = real(D0[k]);
+                    let d = recip(d);
 
-                let (A10, L10xD0) = if is_llt {
-                    (A10.rb(), A10.rb())
-                } else {
-                    for j in head {
-                        let j = head.from_global(j);
-                        let d = real(D0[j]);
-                        let d = recip(d);
-
-                        for i in tail {
-                            let i = tail.from_global(i);
-                            let a = copy(A10[(i, j)]);
-                            A10[(i, j)] = mul_real(A10[(i, j)], d);
-                            L10xD0[(i, j)] = a;
-                        }
+                    for i in j + blocksize..n {
+                        let i = i - (j + blocksize);
+                        let a = copy(A10[(i, k)]);
+                        A10[(i, k)] = mul_real(A10[(i, k)], d);
+                        L10xD0[(i, k)] = a;
                     }
+                }
 
-                    (A10.rb(), L10xD0.rb())
-                };
+                (A10.rb(), L10xD0.rb())
+            };
 
-                linalg::matmul::triangular::matmul(
-                    A11.rb_mut(),
-                    BlockStructure::TriangularLower,
-                    Accum::Add,
-                    A10,
-                    BlockStructure::Rectangular,
-                    L10xD0.adjoint(),
-                    BlockStructure::Rectangular,
-                    -one(),
-                    par,
-                );
-            });
+            linalg::matmul::triangular::matmul(
+                A11.rb_mut(),
+                BlockStructure::TriangularLower,
+                Accum::Add,
+                A10,
+                BlockStructure::Rectangular,
+                L10xD0.adjoint(),
+                BlockStructure::Rectangular,
+                -one(),
+                par,
+            );
+
+            j += blocksize;
         }
 
         Ok(count)
@@ -598,15 +592,15 @@ pub fn cholesky_in_place_scratch<T: ComplexField>(
 }
 
 #[math]
-pub fn cholesky_in_place<'N, T: ComplexField>(
-    A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+pub fn cholesky_in_place<T: ComplexField>(
+    A: MatMut<'_, T>,
     regularization: LdltRegularization<'_, T>,
     par: Par,
     stack: &mut DynStack,
     params: LdltParams,
 ) -> Result<LdltInfo, LdltError> {
-    let N = A.nrows();
-    let mut D = unsafe { temp_mat_uninit(N, 1, stack).0 };
+    let n = A.nrows();
+    let mut D = unsafe { temp_mat_uninit(n, 1, stack).0 };
     let D = D.as_mat_mut();
     let mut D = D.col_mut(0).transpose_mut();
     let mut A = A;
@@ -623,7 +617,7 @@ pub fn cholesky_in_place<'N, T: ComplexField>(
         &regularization.dynamic_regularization_delta,
         regularization
             .dynamic_regularization_signs
-            .map(|signs| Array::from_ref(signs, N)),
+            .map(|signs| signs),
         par,
     ) {
         Ok(count) => Ok(LdltInfo {
@@ -632,12 +626,12 @@ pub fn cholesky_in_place<'N, T: ComplexField>(
         Err(index) => Err(LdltError::ZeroPivot { index }),
     };
     let init = if let Err(LdltError::ZeroPivot { index }) = ret {
-        N.idx(index).next()
+        index + 1
     } else {
-        N.end()
+        n
     };
 
-    for i in IdxInc::ZERO.to(init) {
+    for i in 0..init {
         A[(i, i)] = copy(D[i]);
     }
 
@@ -656,7 +650,6 @@ mod tests {
         type T = c64;
 
         for n in 0..=64 {
-            with_dim!(N, n);
             for f in [cholesky_fallback::<T>, simd_cholesky::<T>] {
                 for llt in [true, false] {
                     let approx_eq = CwiseMat(ApproxEq {
@@ -665,24 +658,24 @@ mod tests {
                     });
 
                     let A = CwiseMatDistribution {
-                        nrows: N,
-                        ncols: N,
+                        nrows: n,
+                        ncols: n,
                         dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                     }
-                    .rand::<Mat<c64, Dim, Dim>>(rng);
+                    .rand::<Mat<c64>>(rng);
 
                     let A = &A * &A.adjoint();
-                    let A = A.as_ref().as_shape(N, N);
+                    let A = A.as_ref().as_shape(n, n);
 
                     let mut L = A.cloned();
                     let mut L = L.as_mut();
-                    let mut D = Row::zeros(N);
+                    let mut D = Row::zeros(n);
                     let mut D = D.as_mut();
 
                     f(L.rb_mut(), D.rb_mut(), llt, false, 0.0, 0.0, None).unwrap();
 
-                    for j in N.indices() {
-                        for i in IdxInc::ZERO.to(j.into()) {
+                    for j in 0..n {
+                        for i in 0..j {
                             L[(i, j)] = c64::ZERO;
                         }
                     }
@@ -703,8 +696,6 @@ mod tests {
         let rng = &mut StdRng::seed_from_u64(0);
 
         for n in [2, 4, 8, 31, 127, 240] {
-            with_dim!(N, n);
-
             for llt in [false, true] {
                 let approx_eq = CwiseMat(ApproxEq {
                     abs_tol: 1e-12,
@@ -712,18 +703,18 @@ mod tests {
                 });
 
                 let A = CwiseMatDistribution {
-                    nrows: N,
-                    ncols: N,
+                    nrows: n,
+                    ncols: n,
                     dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<c64, Dim, Dim>>(rng);
+                .rand::<Mat<c64>>(rng);
 
                 let A = &A * &A.adjoint();
                 let A = A.as_ref();
 
                 let mut L = A.cloned();
                 let mut L = L.as_mut();
-                let mut D = Row::zeros(N);
+                let mut D = Row::zeros(n);
                 let mut D = D.as_mut();
 
                 cholesky_recursion(
@@ -740,8 +731,8 @@ mod tests {
                 )
                 .unwrap();
 
-                for j in N.indices() {
-                    for i in IdxInc::ZERO.to(j.into()) {
+                for j in 0..n {
+                    for i in 0..j {
                         L[(i, j)] = c64::ZERO;
                     }
                 }

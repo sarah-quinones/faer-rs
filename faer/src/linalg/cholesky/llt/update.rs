@@ -4,12 +4,12 @@ use pulp::Simd;
 use super::factor::LltError;
 
 #[math]
-fn rank_update_step_simd<'N, 'R, T: ComplexField>(
-    L: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
-    W: MatMut<'_, T, Dim<'N>, Dim<'R>, ContiguousFwd>,
-    p: ColRef<'_, T, Dim<'R>>,
-    beta: ColRef<'_, T, Dim<'R>>,
-    gamma: ColRef<'_, T, Dim<'R>>,
+fn rank_update_step_simd<T: ComplexField>(
+    L: ColMut<'_, T, usize, ContiguousFwd>,
+    W: MatMut<'_, T, usize, usize, ContiguousFwd>,
+    p: ColRef<'_, T>,
+    beta: ColRef<'_, T>,
+    gamma: ColRef<'_, T>,
     align_offset: usize,
 ) {
     struct Impl<'a, 'N, 'R, T: ComplexField> {
@@ -217,32 +217,33 @@ fn rank_update_step_simd<'N, 'R, T: ComplexField>(
         }
     }
 
+    with_dim!(N, W.nrows());
+    with_dim!(R, W.ncols());
+
     T::Arch::default().dispatch(Impl {
-        L,
-        W,
-        p,
-        beta,
-        gamma,
+        L: L.as_row_shape_mut(N),
+        W: W.as_shape_mut(N, R),
+        p: p.as_row_shape(R),
+        beta: beta.as_row_shape(R),
+        gamma: gamma.as_row_shape(R),
         align_offset,
     })
 }
 
 #[math]
-fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
-    L: ColMut<'_, T, Dim<'N>>,
-    W: MatMut<'_, T, Dim<'N>, Dim<'R>>,
-    p: ColRef<'_, T, Dim<'R>>,
-    beta: ColRef<'_, T, Dim<'R>>,
-    gamma: ColRef<'_, T, Dim<'R>>,
+fn rank_update_step_fallback<T: ComplexField>(
+    L: ColMut<'_, T>,
+    W: MatMut<'_, T>,
+    p: ColRef<'_, T>,
+    beta: ColRef<'_, T>,
+    gamma: ColRef<'_, T>,
 ) {
     let mut L = L;
     let mut W = W;
     let N = W.nrows();
     let R = W.ncols();
 
-    let body = N.indices();
-
-    let mut iter = R.indices();
+    let mut iter = 0..R;
     let (i0, i1, i2, i3) = (iter.next(), iter.next(), iter.next(), iter.next());
 
     match (i0, i1, i2, i3) {
@@ -251,17 +252,15 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             let beta0 = &beta[i0];
             let gamma0 = &gamma[i0];
 
-            for i in body {
-                {
-                    let mut l = copy(L[i]);
-                    let mut w0 = copy(W[(i, i0)]);
+            for i in 0..N {
+                let mut l = copy(L[i]);
+                let mut w0 = copy(W[(i, i0)]);
 
-                    w0 = p0 * l + w0;
-                    l = beta0 * w0 + l * gamma0;
+                w0 = p0 * l + w0;
+                l = beta0 * w0 + l * gamma0;
 
-                    L[i] = l;
-                    W[(i, i0)] = w0;
-                }
+                L[i] = l;
+                W[(i, i0)] = w0;
             }
         }
         (Some(i0), Some(i1), None, None) => {
@@ -269,21 +268,19 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             let (beta0, beta1) = (&beta[i0], &beta[i1]);
             let (gamma0, gamma1) = (&gamma[i0], &gamma[i1]);
 
-            for i in body {
-                {
-                    let mut l = copy(L[i]);
-                    let mut w0 = copy(W[(i, i0)]);
-                    let mut w1 = copy(W[(i, i1)]);
+            for i in 0..N {
+                let mut l = copy(L[i]);
+                let mut w0 = copy(W[(i, i0)]);
+                let mut w1 = copy(W[(i, i1)]);
 
-                    w0 = p0 * l + w0;
-                    l = beta0 * w0 + l * gamma0;
-                    w1 = p1 * l + w1;
-                    l = beta1 * w1 + l * gamma1;
+                w0 = p0 * l + w0;
+                l = beta0 * w0 + l * gamma0;
+                w1 = p1 * l + w1;
+                l = beta1 * w1 + l * gamma1;
 
-                    L[i] = l;
-                    W[(i, i0)] = w0;
-                    W[(i, i1)] = w1;
-                }
+                L[i] = l;
+                W[(i, i0)] = w0;
+                W[(i, i1)] = w1;
             }
         }
         (Some(i0), Some(i1), Some(i2), None) => {
@@ -291,25 +288,23 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             let (beta0, beta1, beta2) = (&beta[i0], &beta[i1], &beta[i2]);
             let (gamma0, gamma1, gamma2) = (&gamma[i0], &gamma[i1], &gamma[i2]);
 
-            for i in body {
-                {
-                    let mut l = copy(L[i]);
-                    let mut w0 = copy(W[(i, i0)]);
-                    let mut w1 = copy(W[(i, i1)]);
-                    let mut w2 = copy(W[(i, i2)]);
+            for i in 0..N {
+                let mut l = copy(L[i]);
+                let mut w0 = copy(W[(i, i0)]);
+                let mut w1 = copy(W[(i, i1)]);
+                let mut w2 = copy(W[(i, i2)]);
 
-                    w0 = p0 * l + w0;
-                    l = beta0 * w0 + l * gamma0;
-                    w1 = p1 * l + w1;
-                    l = beta1 * w1 + l * gamma1;
-                    w2 = p2 * l + w2;
-                    l = beta2 * w2 + l * gamma2;
+                w0 = p0 * l + w0;
+                l = beta0 * w0 + l * gamma0;
+                w1 = p1 * l + w1;
+                l = beta1 * w1 + l * gamma1;
+                w2 = p2 * l + w2;
+                l = beta2 * w2 + l * gamma2;
 
-                    L[i] = l;
-                    W[(i, i0)] = w0;
-                    W[(i, i1)] = w1;
-                    W[(i, i2)] = w2;
-                }
+                L[i] = l;
+                W[(i, i0)] = w0;
+                W[(i, i1)] = w1;
+                W[(i, i2)] = w2;
             }
         }
         (Some(i0), Some(i1), Some(i2), Some(i3)) => {
@@ -317,43 +312,41 @@ fn rank_update_step_fallback<'N, 'R, T: ComplexField>(
             let (beta0, beta1, beta2, beta3) = (&beta[i0], &beta[i1], &beta[i2], &beta[i3]);
             let (gamma0, gamma1, gamma2, gamma3) = (&gamma[i0], &gamma[i1], &gamma[i2], &gamma[i3]);
 
-            for i in body {
-                {
-                    let mut l = copy(L[i]);
-                    let mut w0 = copy(W[(i, i0)]);
-                    let mut w1 = copy(W[(i, i1)]);
-                    let mut w2 = copy(W[(i, i2)]);
-                    let mut w3 = copy(W[(i, i3)]);
+            for i in 0..N {
+                let mut l = copy(L[i]);
+                let mut w0 = copy(W[(i, i0)]);
+                let mut w1 = copy(W[(i, i1)]);
+                let mut w2 = copy(W[(i, i2)]);
+                let mut w3 = copy(W[(i, i3)]);
 
-                    w0 = p0 * l + w0;
-                    l = beta0 * w0 + l * gamma0;
-                    w1 = p1 * l + w1;
-                    l = beta1 * w1 + l * gamma1;
-                    w2 = p2 * l + w2;
-                    l = beta2 * w2 + l * gamma2;
-                    w3 = p3 * l + w3;
-                    l = beta3 * w3 + l * gamma3;
+                w0 = p0 * l + w0;
+                l = beta0 * w0 + l * gamma0;
+                w1 = p1 * l + w1;
+                l = beta1 * w1 + l * gamma1;
+                w2 = p2 * l + w2;
+                l = beta2 * w2 + l * gamma2;
+                w3 = p3 * l + w3;
+                l = beta3 * w3 + l * gamma3;
 
-                    L[i] = l;
-                    W[(i, i0)] = w0;
-                    W[(i, i1)] = w1;
-                    W[(i, i2)] = w2;
-                    W[(i, i3)] = w3;
-                }
+                L[i] = l;
+                W[(i, i0)] = w0;
+                W[(i, i1)] = w1;
+                W[(i, i2)] = w2;
+                W[(i, i3)] = w3;
             }
         }
         _ => panic!(),
     }
 }
 
-struct RankRUpdate<'a, 'N, 'R, T: ComplexField> {
-    ld: MatMut<'a, T, Dim<'N>, Dim<'N>>,
-    w: MatMut<'a, T, Dim<'N>, Dim<'R>>,
-    alpha: ColMut<'a, T, Dim<'R>>,
-    r: &'a mut dyn FnMut() -> IdxInc<'R>,
+struct RankRUpdate<'a, T: ComplexField> {
+    ld: MatMut<'a, T>,
+    w: MatMut<'a, T>,
+    alpha: ColMut<'a, T>,
+    r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'N, 'R, T: ComplexField> RankRUpdate<'_, 'N, 'R, T> {
+impl<T: ComplexField> RankRUpdate<'_, T> {
     // On the Modification of LDLT Factorizations
     // By R. Fletcher and M. J. D. Powell
     // https://www.ams.org/journals/mcom/1974-28-128/S0025-5718-1974-0359297-1/S0025-5718-1974-0359297-1.pdf
@@ -367,122 +360,101 @@ impl<'N, 'R, T: ComplexField> RankRUpdate<'_, 'N, 'R, T> {
             r,
         } = self;
 
-        let N = w.nrows();
-        let K = w.ncols();
+        let n = w.nrows();
+        let k = w.ncols();
 
-        for j in N.indices() {
-            ghost_tree!(FULL(J, TAIL), {
-                let (l![col, tail], _) = N.split(l![j, ..], FULL);
-                let mut L_col = ld.rb_mut().col_mut(col.local());
+        for j in 0..n {
+            let mut L_col = ld.rb_mut().col_mut(j);
 
-                let r = Ord::min((*r)(), K.end());
-                ghost_tree!(W_FULL(R), {
-                    let (l![R_segment], _) = K.split(l![..r], W_FULL);
-                    let R = R_segment.len();
-                    let mut W = w.rb_mut().col_segment_mut(R_segment);
-                    let mut alpha = alpha.rb_mut().row_segment_mut(R_segment);
+            let r = Ord::min(r(), k);
+            let mut W = w.rb_mut().subcols_mut(0, r);
+            let mut alpha = alpha.rb_mut().subrows_mut(0, r);
+            let R = r;
 
-                    const BLOCKSIZE: usize = 4;
+            const BLOCKSIZE: usize = 4;
 
-                    let mut r_next = IdxInc::ZERO;
-                    while let Some(r) = R.try_check(*r_next) {
-                        r_next = R.advance(r, BLOCKSIZE);
+            let mut r = 0;
+            while r < R {
+                let bs = Ord::min(BLOCKSIZE, R - r);
 
-                        ghost_tree!(W_FULL(R0), {
-                            let (l![r0], _) = R.split(l![r.into()..r_next], W_FULL);
+                stack_mat!(p, bs, 1, BLOCKSIZE, 1, T);
+                stack_mat!(beta, bs, 1, BLOCKSIZE, 1, T);
+                stack_mat!(gamma, bs, 1, BLOCKSIZE, 1, T);
 
-                            stack_mat!(p, r0.len(), 1, BLOCKSIZE, 1, T);
-                            stack_mat!(beta, r0.len(), 1, BLOCKSIZE, 1, T);
-                            stack_mat!(gamma, r0.len(), 1, BLOCKSIZE, 1, T);
+                let mut p = p.rb_mut().col_mut(0);
+                let mut beta = beta.rb_mut().col_mut(0);
+                let mut gamma = gamma.rb_mut().col_mut(0);
 
-                            let mut p = p.rb_mut().col_mut(0);
-                            let mut beta = beta.rb_mut().col_mut(0);
-                            let mut gamma = gamma.rb_mut().col_mut(0);
+                for k in 0..bs {
+                    let p = &mut p[k];
+                    let beta = &mut beta[k];
+                    let gamma = &mut gamma[k];
 
-                            for k in r0 {
-                                let p = p.rb_mut().at_mut(r0.from_global(k));
-                                let beta = beta.rb_mut().at_mut(r0.from_global(k));
-                                let gamma = gamma.rb_mut().at_mut(r0.from_global(k));
+                    let alpha = &mut alpha[r + k];
+                    let d = &mut L_col[j];
 
-                                let alpha = alpha.rb_mut().at_mut(k.local());
-                                let d = L_col.rb_mut().at_mut(j);
+                    let w = W.rb().col(r + k);
 
-                                let w = W.rb().col(k.local());
+                    *p = copy(w[j]);
 
-                                *p = copy(w[j]);
+                    let alpha_conj_p = *alpha * conj(*p);
+                    let new_d = abs2(real(*d)) + real(mul(alpha_conj_p, *p));
 
-                                let alpha_conj_p = *alpha * conj(*p);
-                                let new_d = abs2(real(*d)) + real(mul(alpha_conj_p, *p));
-
-                                if new_d <= zero() {
-                                    return Err(LltError::NonPositivePivot { index: *j });
-                                }
-
-                                let new_d = sqrt(new_d);
-                                let d_inv = recip(real(*d));
-                                let new_d_inv = recip(new_d);
-
-                                *gamma = from_real(new_d * d_inv);
-                                *beta = mul_real(alpha_conj_p, new_d_inv);
-                                *p = mul_real(-p, d_inv);
-
-                                *alpha = from_real(real(*alpha) - abs2(*beta));
-                                *d = from_real(new_d);
-                            }
-
-                            let mut L_col = L_col.rb_mut().row_segment_mut(tail);
-                            let mut W_col = W.rb_mut().col_segment_mut(r0).row_segment_mut(tail);
-
-                            if const { T::SIMD_CAPABILITIES.is_simd() } {
-                                if let (Some(L_col), Some(W_col)) = (
-                                    L_col.rb_mut().try_as_col_major_mut(),
-                                    W_col.rb_mut().try_as_col_major_mut(),
-                                ) {
-                                    rank_update_step_simd(
-                                        L_col,
-                                        W_col,
-                                        p.rb(),
-                                        beta.rb(),
-                                        gamma.rb(),
-                                        simd_align(*j.next()),
-                                    );
-                                } else {
-                                    rank_update_step_fallback(
-                                        L_col,
-                                        W_col,
-                                        p.rb(),
-                                        beta.rb(),
-                                        gamma.rb(),
-                                    );
-                                }
-                            } else {
-                                rank_update_step_fallback(
-                                    L_col,
-                                    W_col,
-                                    p.rb(),
-                                    beta.rb(),
-                                    gamma.rb(),
-                                );
-                            }
-                        });
+                    if new_d <= zero() {
+                        return Err(LltError::NonPositivePivot { index: j });
                     }
-                });
-            });
+
+                    let new_d = sqrt(new_d);
+                    let d_inv = recip(real(*d));
+                    let new_d_inv = recip(new_d);
+
+                    *gamma = from_real(new_d * d_inv);
+                    *beta = mul_real(alpha_conj_p, new_d_inv);
+                    *p = mul_real(-p, d_inv);
+
+                    *alpha = from_real(real(*alpha) - abs2(*beta));
+                    *d = from_real(new_d);
+                }
+
+                let mut L_col = L_col.rb_mut().subrows_range_mut((j + 1, n));
+                let mut W_col = W.rb_mut().subcols_mut(r, bs).subrows_range_mut((j + 1, n));
+
+                if const { T::SIMD_CAPABILITIES.is_simd() } {
+                    if let (Some(L_col), Some(W_col)) = (
+                        L_col.rb_mut().try_as_col_major_mut(),
+                        W_col.rb_mut().try_as_col_major_mut(),
+                    ) {
+                        rank_update_step_simd(
+                            L_col,
+                            W_col,
+                            p.rb(),
+                            beta.rb(),
+                            gamma.rb(),
+                            simd_align(j + 1),
+                        );
+                    } else {
+                        rank_update_step_fallback(L_col, W_col, p.rb(), beta.rb(), gamma.rb());
+                    }
+                } else {
+                    rank_update_step_fallback(L_col, W_col, p.rb(), beta.rb(), gamma.rb());
+                }
+                r += bs;
+            }
         }
         Ok(())
     }
 }
 
 #[track_caller]
-pub fn rank_r_update_clobber<'N, 'R, T: ComplexField>(
-    cholesky_factors: MatMut<'_, T, Dim<'N>, Dim<'N>>,
-    w: MatMut<'_, T, Dim<'N>, Dim<'R>>,
-    alpha: DiagMut<'_, T, Dim<'R>>,
+pub fn rank_r_update_clobber<T: ComplexField>(
+    cholesky_factors: MatMut<'_, T>,
+    w: MatMut<'_, T>,
+    alpha: DiagMut<'_, T>,
 ) -> Result<(), LltError> {
     let N = cholesky_factors.nrows();
     let R = w.ncols();
 
-    if *N == 0 {
+    if N == 0 {
         return Ok(());
     }
 
@@ -490,7 +462,7 @@ pub fn rank_r_update_clobber<'N, 'R, T: ComplexField>(
         ld: cholesky_factors,
         w,
         alpha: alpha.column_vector_mut(),
-        r: &mut || R.end(),
+        r: &mut || R,
     }
     .run()
 }
@@ -514,29 +486,26 @@ mod tests {
 
         for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 10] {
             for n in [2, 4, 8, 15] {
-                with_dim!(N, n);
-                with_dim!(R, r);
-
                 let A = CwiseMatDistribution {
-                    nrows: N,
-                    ncols: N,
+                    nrows: n,
+                    ncols: n,
                     dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<c64, Dim, Dim>>(rng);
+                .rand::<Mat<c64>>(rng);
                 let mut W = CwiseMatDistribution {
-                    nrows: N,
-                    ncols: R,
+                    nrows: n,
+                    ncols: r,
                     dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Mat<c64, Dim, Dim>>(rng);
+                .rand::<Mat<c64>>(rng);
                 let mut alpha = CwiseColDistribution {
-                    nrows: R,
+                    nrows: r,
                     dist: ComplexDistribution::new(StandardNormal, StandardNormal),
                 }
-                .rand::<Col<c64, Dim>>(rng)
+                .rand::<Col<c64>>(rng)
                 .into_diagonal();
 
-                for j in R.indices() {
+                for j in 0..r {
                     alpha.column_vector_mut()[j].re = alpha.column_vector_mut()[j].abs();
                     alpha.column_vector_mut()[j].im = 0.0;
                 }
@@ -556,7 +525,7 @@ mod tests {
                     Par::Seq,
                     DynStack::new(&mut GlobalMemBuffer::new(
                         linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(
-                            *N,
+                            n,
                             Par::Seq,
                             auto!(c64),
                         )
@@ -573,8 +542,8 @@ mod tests {
                 )
                 .unwrap();
 
-                for j in N.indices() {
-                    for i in IdxInc::ZERO.to(j.excl()) {
+                for j in 0..n {
+                    for i in 0..j {
                         L[(i, j)] = c64::ZERO;
                     }
                 }

@@ -105,7 +105,7 @@ mod tests {
 
             let params = BunchKaufmanParams {
                 pivoting: factor::PivotingStrategy::Diagonal,
-                blocksize: 32,
+                blocksize: 4,
                 ..auto!(c32)
             };
             let mut mem = GlobalMemBuffer::new(

@@ -1245,6 +1245,8 @@ pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
     compute_v: bool,
     par: Par,
 ) -> Result<StackReq, SizeOverflow> {
+    let qr_fallback_threshold = Ord::max(qr_fallback_threshold, 4);
+
     if n < qr_fallback_threshold {
         temp_mat_scratch::<T>(n + 1, n + 1)?.try_array(2)
     } else {
@@ -1492,6 +1494,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 
         (alpha, beta)
     };
+
     if let Some(mut v) = v.rb_mut() {
         v[(k, 0)] = one();
     }
