@@ -31,9 +31,9 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>) {
                     Conj::No,
                 );
             let k = -mul_real(dot, tau_inv);
-            *head = head + k;
+            *head = *head + k;
             z!(tail.rb_mut(), A10.rb()).for_each(|uz!(dst, src)| {
-                *dst = *dst + k * src;
+                *dst = *dst + k * *src;
             });
         }
     }

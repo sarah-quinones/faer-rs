@@ -75,21 +75,21 @@ pub mod math_utils {
     }
 
     #[inline(always)]
-    pub fn add<T: AddByRef<Output = T>>(lhs: &T, rhs: &T) -> T {
-        lhs.by_ref().add_by_ref(rhs.by_ref())
+    pub fn add<T: AddByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
+        lhs.add_by_ref(rhs)
     }
     #[inline(always)]
     #[track_caller]
-    pub fn sub<T: SubByRef<Output = T>>(lhs: &T, rhs: &T) -> T {
-        lhs.by_ref().sub_by_ref(rhs.by_ref())
+    pub fn sub<T: SubByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
+        lhs.sub_by_ref(rhs)
     }
     #[inline(always)]
-    pub fn mul<T: MulByRef<Output = T>>(lhs: &T, rhs: &T) -> T {
-        lhs.by_ref().mul_by_ref(rhs.by_ref())
+    pub fn mul<T: MulByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
+        lhs.mul_by_ref(rhs)
     }
     #[inline(always)]
-    pub fn div<T: DivByRef<Output = T>>(lhs: &T, rhs: &T) -> T {
-        lhs.by_ref().div_by_ref(rhs.by_ref())
+    pub fn div<T: DivByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
+        lhs.div_by_ref(rhs)
     }
 
     #[inline(always)]
@@ -2596,8 +2596,8 @@ impl ComplexField for Complex<f32> {
     #[faer_macros::math]
     fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: lhs.re * rhs,
-            im: lhs.im * rhs,
+            re: lhs.re * *rhs,
+            im: lhs.im * *rhs,
         }
     }
 
@@ -3087,8 +3087,8 @@ impl ComplexField for Complex<f64> {
     #[faer_macros::math]
     fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: lhs.re * rhs,
-            im: lhs.im * rhs,
+            re: lhs.re * *rhs,
+            im: lhs.im * *rhs,
         }
     }
 

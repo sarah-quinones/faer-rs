@@ -203,7 +203,7 @@ fn update_mat_and_best_norm2_fallback<T: ComplexField>(
         let k = mul_real(-dot, tau_inv);
         rhs[j] = rhs[j] + k;
         zipped!(A.rb_mut().col_mut(j), lhs).for_each(|unzipped!(dst, src)| {
-            *dst = dst + k * src;
+            *dst = *dst + k * *src;
         });
 
         let val = A.rb().col(j).norm_l2();

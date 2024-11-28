@@ -14,8 +14,8 @@ impl<T: ComplexField> ApproxEq<T> {
     #[inline]
     pub fn eps() -> Self {
         Self {
-            abs_tol: eps() * from_f64(128.0),
-            rel_tol: eps() * from_f64(128.0),
+            abs_tol: eps::<T::Real>() * from_f64::<T::Real>(128.0),
+            rel_tol: eps::<T::Real>() * from_f64::<T::Real>(128.0),
         }
     }
 }

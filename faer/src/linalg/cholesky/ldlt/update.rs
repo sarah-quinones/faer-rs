@@ -232,8 +232,8 @@ fn rank_update_step_fallback<T: ComplexField>(
                 let mut l = copy(L[i]);
                 let mut w0 = copy(W[(i, i0)]);
 
-                w0 = p0 * l + w0;
-                l = beta0 * w0 + l;
+                w0 = *p0 * l + w0;
+                l = *beta0 * w0 + l;
 
                 L[i] = l;
                 W[(i, i0)] = w0;
@@ -248,10 +248,10 @@ fn rank_update_step_fallback<T: ComplexField>(
                 let mut w0 = copy(W[(i, i0)]);
                 let mut w1 = copy(W[(i, i1)]);
 
-                w0 = p0 * l + w0;
-                l = beta0 * w0 + l;
-                w1 = p1 * l + w1;
-                l = beta1 * w1 + l;
+                w0 = *p0 * l + w0;
+                l = *beta0 * w0 + l;
+                w1 = *p1 * l + w1;
+                l = *beta1 * w1 + l;
 
                 L[i] = l;
                 W[(i, i0)] = w0;
@@ -268,12 +268,12 @@ fn rank_update_step_fallback<T: ComplexField>(
                 let mut w1 = copy(W[(i, i1)]);
                 let mut w2 = copy(W[(i, i2)]);
 
-                w0 = p0 * l + w0;
-                l = beta0 * w0 + l;
-                w1 = p1 * l + w1;
-                l = beta1 * w1 + l;
-                w2 = p2 * l + w2;
-                l = beta2 * w2 + l;
+                w0 = *p0 * l + w0;
+                l = *beta0 * w0 + l;
+                w1 = *p1 * l + w1;
+                l = *beta1 * w1 + l;
+                w2 = *p2 * l + w2;
+                l = *beta2 * w2 + l;
 
                 L[i] = l;
                 W[(i, i0)] = w0;
@@ -292,14 +292,14 @@ fn rank_update_step_fallback<T: ComplexField>(
                 let mut w2 = copy(W[(i, i2)]);
                 let mut w3 = copy(W[(i, i3)]);
 
-                w0 = p0 * l + w0;
-                l = beta0 * w0 + l;
-                w1 = p1 * l + w1;
-                l = beta1 * w1 + l;
-                w2 = p2 * l + w2;
-                l = beta2 * w2 + l;
-                w3 = p3 * l + w3;
-                l = beta3 * w3 + l;
+                w0 = *p0 * l + w0;
+                l = *beta0 * w0 + l;
+                w1 = *p1 * l + w1;
+                l = *beta1 * w1 + l;
+                w2 = *p2 * l + w2;
+                l = *beta2 * w2 + l;
+                w3 = *p3 * l + w3;
+                l = *beta3 * w3 + l;
 
                 L[i] = l;
                 W[(i, i0)] = w0;

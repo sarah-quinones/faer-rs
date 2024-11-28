@@ -2487,7 +2487,7 @@ impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<Scale<LhsT>>
     fn mul_assign(&mut self, rhs: Scale<LhsT>) {
         let rhs = &rhs.0;
 
-        zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = x * rhs)
+        zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = *x * *rhs)
     }
 }
 impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for ColMut<'_, LhsT, Len> {
@@ -2495,7 +2495,7 @@ impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for ColMut<'_, LhsT,
     fn mul_assign(&mut self, rhs: Scale<LhsT>) {
         let rhs = &rhs.0;
 
-        zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = x * rhs)
+        zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = *x * *rhs)
     }
 }
 impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for RowMut<'_, LhsT, Len> {
@@ -2503,7 +2503,7 @@ impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for RowMut<'_, LhsT,
     fn mul_assign(&mut self, rhs: Scale<LhsT>) {
         let rhs = &rhs.0;
 
-        zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = x * rhs)
+        zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = *x * *rhs)
     }
 }
 impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for DiagMut<'_, LhsT, Len> {

@@ -69,7 +69,7 @@ pub fn make_householder_in_place<M: Shape, T: ComplexField>(
             return (infinity(), None);
         }
 
-        let one_half = from_f64(0.5);
+        let one_half = from_f64::<T::Real>(0.5);
 
         let norm = hypot(head_norm, tail_norm);
 
@@ -84,12 +84,12 @@ pub fn make_householder_in_place<M: Shape, T: ComplexField>(
         let head_with_beta_inv = recip(head_with_beta);
 
         zipped!(tail).for_each(|unzipped!(e)| {
-            *e = e * head_with_beta_inv;
+            *e = *e * head_with_beta_inv;
         });
 
         *head = -signed_norm;
 
-        let tau = one_half * (one() + abs2(tail_norm * abs(head_with_beta_inv)));
+        let tau = one_half * (one::<T::Real>() + abs2(tail_norm * abs(head_with_beta_inv)));
         (from_real(tau), head_with_beta_inv.into())
     }
 
@@ -412,7 +412,7 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
                     };
 
                     let k = -dot * tau_inv;
-                    *col0 = col0 + k;
+                    *col0 = *col0 + k;
 
                     let k = simd.splat(&k);
                     macro_rules! simd {

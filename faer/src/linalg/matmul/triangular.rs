@@ -62,13 +62,13 @@ fn accum_lower<'N, T: ComplexField>(
         Accum::Add => {
             zipped!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |unzipped!(dst, src)| *dst = dst + src,
+                |unzipped!(dst, src)| *dst = *dst + *src,
             );
         }
         Accum::Replace => {
             zipped!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |unzipped!(dst, src)| *dst = copy(src),
+                |unzipped!(dst, src)| *dst = copy(*src),
             );
         }
     }
@@ -126,7 +126,7 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
     debug_assert!(M == dst.nrows());
     debug_assert!(N == dst.ncols());
 
-    let join_parallelism = if n * n * m < 128 * 128 * 64 {
+    let join_parallelism = if n * n * m < 128usize * 128usize * 64usize {
         Par::Seq
     } else {
         par
@@ -603,7 +603,7 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
     debug_assert!(dst.ncols() == rhs.ncols());
     debug_assert!(lhs.ncols() == rhs.nrows());
 
-    let par = if n * n * k < 128 * 128 * 128 {
+    let par = if n * n * k < 128usize * 128usize * 128usize {
         Par::Seq
     } else {
         par
@@ -1248,12 +1248,12 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
                 match beta {
                     Accum::Add => {
                         for j in 0..N.unbound() {
-                            acc[(j, j)] = acc[(j, j)] + alpha * lhs[(j, j)] * rhs[(j, j)];
+                            acc[(j, j)] = acc[(j, j)] + *alpha * lhs[(j, j)] * rhs[(j, j)];
                         }
                     }
                     Accum::Replace => {
                         for j in 0..N.unbound() {
-                            acc[(j, j)] = alpha * lhs[(j, j)] * rhs[(j, j)];
+                            acc[(j, j)] = *alpha * lhs[(j, j)] * rhs[(j, j)];
                         }
                     }
                 }

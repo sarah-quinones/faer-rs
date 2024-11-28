@@ -435,10 +435,10 @@ pub fn tridiag_in_place<T: ComplexField>(
 
                 let u2 = A20.rb().col(p);
 
-                *a11 = a11 - y1 - conj(y1);
+                *a11 = *a11 - y1 - conj(y1);
 
                 z!(A21.rb_mut(), u2, y2.rb()).for_each(|uz!(a, u, y)| {
-                    *a = a - conj(y1) * u - y;
+                    *a = *a - conj(y1) * *u - *y;
                 });
             }
 
@@ -484,10 +484,10 @@ pub fn tridiag_in_place<T: ComplexField>(
                     let (u1, u2) = A20.rb().col(p).split_at_row(1);
                     let u1 = copy(u1[0]);
 
-                    *a11 = a11 - u1 * conj(y1) - y1 * conj(u1);
+                    *a11 = *a11 - u1 * conj(y1) - *y1 * conj(u1);
 
                     z!(A21.rb_mut(), u2.rb(), y2.rb()).for_each(|uz!(a, u, y)| {
-                        *a = a - u * conj(y1) - y * conj(u1);
+                        *a = *a - *u * conj(y1) - *y * conj(u1);
                     });
 
                     w2.copy_from(y2.rb());
@@ -508,7 +508,7 @@ pub fn tridiag_in_place<T: ComplexField>(
                                 from_real(tau_inv),
                                 simd_align(k1 + 1),
                             );
-                            z!(y2.rb_mut(), z2.rb_mut()).for_each(|uz!(y, z)| *y = y + z);
+                            z!(y2.rb_mut(), z2.rb_mut()).for_each(|uz!(y, z)| *y = *y + *z);
                         }
                         #[cfg(feature = "rayon")]
                         Par::Rayon(nthreads) => {
@@ -580,7 +580,7 @@ pub fn tridiag_in_place<T: ComplexField>(
                             }
 
                             for mut z2 in z2.rb_mut().col_iter_mut() {
-                                z!(y2.rb_mut(), z2.rb_mut()).for_each(|uz!(y, z)| *y = y + z);
+                                z!(y2.rb_mut(), z2.rb_mut()).for_each(|uz!(y, z)| *y = *y + *z);
                             }
                         }
                     }
@@ -609,10 +609,10 @@ pub fn tridiag_in_place<T: ComplexField>(
                     );
                 }
 
-                z!(y2.rb_mut(), A21.rb()).for_each(|uz!(y, a)| *y = y + mul_real(a, tau_inv));
+                z!(y2.rb_mut(), A21.rb()).for_each(|uz!(y, a)| *y = *y + mul_real(*a, tau_inv));
 
                 *y1 = mul_real(
-                    a11 + dot::inner_prod(A21.rb().transpose(), Conj::Yes, x2.rb(), Conj::No),
+                    *a11 + dot::inner_prod(A21.rb().transpose(), Conj::Yes, x2.rb(), Conj::No),
                     tau_inv,
                 );
 
@@ -623,9 +623,9 @@ pub fn tridiag_in_place<T: ComplexField>(
                     ),
                     tau_inv,
                 );
-                *y1 = y1 - b;
+                *y1 = *y1 - b;
                 z!(y2.rb_mut(), x2.rb()).for_each(|uz!(y, u)| {
-                    *y = y - b * u;
+                    *y = *y - b * *u;
                 });
             }
         }

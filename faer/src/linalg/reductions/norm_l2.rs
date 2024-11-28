@@ -173,8 +173,8 @@ pub fn norm_l2_x3<T: ComplexField>(mut mat: MatRef<'_, T>) -> [T::Real; 3] {
             }
         }
 
-        let sml = min_positive();
-        let big = max_positive();
+        let sml = min_positive::<T::Real>();
+        let big = max_positive::<T::Real>();
         let mut acc = zero();
         for j in 0..n {
             for i in 0..m {

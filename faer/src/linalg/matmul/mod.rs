@@ -303,9 +303,9 @@ mod matvec_rowmajor {
                             if conj_rhs == Conj::Yes {
                                 tmp = conj(tmp);
                             }
-                            tmp = mul(alpha, tmp);
+                            tmp = *alpha * tmp;
                             if let Accum::Add = beta {
-                                tmp = dst + tmp;
+                                tmp = *dst + tmp;
                             }
                             *dst = tmp;
                         }
@@ -523,7 +523,7 @@ mod matvec_colmajor {
                 );
                 for j in 0..nthreads {
                     zipped!(dst.rb_mut(), tmp.rb().col(j))
-                        .for_each(|unzipped!(dst, src)| *dst = dst + src)
+                        .for_each(|unzipped!(dst, src)| *dst = *dst + *src)
                 }
             }
         }
@@ -700,9 +700,9 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 
                     let mut acc =
                         dot::inner_prod_schoolbook(lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
-                    acc = alpha * acc;
+                    acc = *alpha * acc;
                     if let Accum::Add = beta {
-                        acc = dst + acc;
+                        acc = *dst + acc;
                     }
                     *dst = acc;
                 }
@@ -735,10 +735,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 
                     let mut acc =
                         dot::inner_prod_schoolbook(lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
-                    acc = alpha * acc;
+                    acc = *alpha * acc;
 
                     if let Accum::Add = beta {
-                        acc = dst + acc;
+                        acc = *dst + acc;
                     }
                     *dst = acc;
                 }
@@ -1035,11 +1035,11 @@ mod tests {
                 let b = b.at(depth, j);
                 local_acc = local_acc
                     + match conj_a {
-                        Conj::Yes => conj(a),
-                        Conj::No => copy(a),
+                        Conj::Yes => conj(*a),
+                        Conj::No => copy(*a),
                     } * match conj_b {
-                        Conj::Yes => conj(b),
-                        Conj::No => copy(b),
+                        Conj::Yes => conj(*b),
+                        Conj::No => copy(*b),
                     }
             }
             match beta {

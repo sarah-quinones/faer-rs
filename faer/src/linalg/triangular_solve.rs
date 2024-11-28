@@ -40,7 +40,7 @@ fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<'N, 'K, T: C
             let (x1, rhs) = rhs.split_first_row_mut().unwrap();
             _ = rhs;
 
-            zipped!(x0, x1).for_each(|unzipped!(x0, x1)| *x1 = x1 + nl10_div_l11 * x0);
+            zipped!(x0, x1).for_each(|unzipped!(x0, x1)| *x1 = *x1 + nl10_div_l11 * *x0);
         }
         3 => {
             let i0 = N.check(0);
@@ -123,7 +123,7 @@ fn solve_lower_triangular_in_place_base_case_generic_unchecked<'N, 'K, T: Comple
             let (x0, rhs) = rhs.split_first_row_mut().unwrap();
             _ = rhs;
 
-            zipped!(x0).for_each(|unzipped!(x0)| *x0 = x0 * inv);
+            zipped!(x0).for_each(|unzipped!(x0)| *x0 = *x0 * inv);
         }
         2 => {
             let i0 = N.check(0);
@@ -138,8 +138,8 @@ fn solve_lower_triangular_in_place_base_case_generic_unchecked<'N, 'K, T: Comple
             _ = rhs;
 
             zipped!(x0, x1).for_each(|unzipped!(x0, x1)| {
-                *x0 = x0 * l00_inv;
-                *x1 = x1 * l11_inv + nl10_div_l11 * x0;
+                *x0 = *x0 * l00_inv;
+                *x1 = *x1 * l11_inv + nl10_div_l11 * x0;
             });
         }
         3 => {

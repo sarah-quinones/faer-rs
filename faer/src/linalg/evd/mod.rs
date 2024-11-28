@@ -296,7 +296,7 @@ pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(
         s,
         u,
         zero(),
-        eps() * from_f64(u.ncols() as f64),
+        eps::<T::Real>() * from_f64::<T::Real>(u.ncols() as f64),
         par,
         stack,
     );
@@ -364,10 +364,10 @@ fn dot2x1<T: RealField>(lhs0: RowRef<'_, T>, lhs1: RowRef<'_, T>, rhs: ColRef<'_
     let n = rhs.nrows();
     assert!(all(lhs0.ncols() == n, lhs1.ncols() == n));
 
-    let mut acc00 = zero();
-    let mut acc01 = zero();
-    let mut acc10 = zero();
-    let mut acc11 = zero();
+    let mut acc00 = zero::<T>();
+    let mut acc01 = zero::<T>();
+    let mut acc10 = zero::<T>();
+    let mut acc11 = zero::<T>();
 
     let n2 = n / 2 * 2;
 
@@ -400,10 +400,10 @@ fn dot2x2<T: RealField>(
     let n = rhs0.nrows();
     assert!(all(lhs0.ncols() == n, lhs1.ncols() == n));
 
-    let mut acc0 = zero();
-    let mut acc1 = zero();
-    let mut acc2 = zero();
-    let mut acc3 = zero();
+    let mut acc0 = zero::<T>();
+    let mut acc1 = zero::<T>();
+    let mut acc2 = zero::<T>();
+    let mut acc3 = zero::<T>();
 
     let mut i = 0;
     while i < n {

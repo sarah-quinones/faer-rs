@@ -799,7 +799,10 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
     let _ = par;
     let mut matrix = matrix;
 
-    let alpha = mul_pow2(one() + sqrt(from_f64(17.0)), from_f64(0.125));
+    let alpha = mul_pow2(
+        one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0)),
+        from_f64::<T::Real>(0.125),
+    );
 
     let (mut pivots, stack) = stack.make_with::<I>(n, |_| I::truncate(0));
     let pivots = &mut *pivots;

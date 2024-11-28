@@ -137,10 +137,10 @@ pub(crate) fn qr_algorithm<T: RealField>(
     let max_inv = recip(max);
 
     for x in diag.rb_mut().iter_mut() {
-        (*x = x * max_inv);
+        (*x = *x * max_inv);
     }
     for x in offdiag.rb_mut().iter_mut() {
-        *x = x * max_inv;
+        *x = *x * max_inv;
     }
 
     let mut end = n - 1;
@@ -167,10 +167,10 @@ pub(crate) fn qr_algorithm<T: RealField>(
 
         if iter + 1 == max_iters {
             for x in diag.rb_mut().iter_mut() {
-                *x = x * max;
+                *x = *x * max;
             }
             for x in offdiag.rb_mut().iter_mut() {
-                *x = x * max;
+                *x = *x * max;
             }
 
             return Err(EvdError::NoConvergence);
@@ -257,7 +257,7 @@ pub(crate) fn qr_algorithm<T: RealField>(
     }
 
     for x in diag.rb_mut().iter_mut() {
-        (*x = x * max);
+        (*x = *x * max);
     }
 
     Ok(())
@@ -305,7 +305,7 @@ fn batch_secular_eq<const N: usize, T: RealField>(
         let z = copy(z[i]);
 
         for ((res, mu), shift) in res.iter_mut().zip(mu.iter()).zip(shift.iter()) {
-            *res = res + z * (z / ((d - *shift) - *mu));
+            *res = *res + z * (z / ((d - *shift) - *mu));
         }
     }
     res
@@ -525,8 +525,8 @@ fn divide_and_conquer_recurse<T: RealField>(
     let dmax = permuted_diag.norm_max();
     let zmax = permuted_z.norm_max();
 
-    let eps = eps();
-    let tol = from_f64(8.0) * eps * max(dmax, zmax);
+    let eps = eps::<T>();
+    let tol = from_f64::<T>(8.0) * eps * max(dmax, zmax);
 
     if rho * zmax <= tol {
         // fill uninitialized values of u with zeros

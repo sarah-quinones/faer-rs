@@ -375,10 +375,10 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(
                 let p = k - 1;
                 let u2 = A20.rb().col(p);
 
-                *A11 = A11 - y1 - z1;
+                *A11 = *A11 - y1 - z1;
                 z!(&mut A12, &y2, u2.rb().transpose())
-                    .for_each(|uz!(a, y, u)| *a = a - y - z1 * conj(u));
-                z!(&mut A21, &u2, &z2).for_each(|uz!(a, u, z)| *a = a - u * y1 - z);
+                    .for_each(|uz!(a, y, u)| *a = *a - *y - z1 * conj(*u));
+                z!(&mut A21, &u2, &z2).for_each(|uz!(a, u, z)| *a = *a - *u * y1 - *z);
             }
 
             {
@@ -454,14 +454,14 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(
                 tau_inv,
             );
             z!(&mut y2, u2.transpose())
-                .for_each(|uz!(y, u)| *y = mul_real(y - b * conj(u), tau_inv));
-            z!(&mut z2, u2).for_each(|uz!(z, u)| *z = mul_real(z - b * u, tau_inv));
+                .for_each(|uz!(y, u)| *y = mul_real(*y - b * conj(*u), tau_inv));
+            z!(&mut z2, u2).for_each(|uz!(z, u)| *z = mul_real(*z - b * *u, tau_inv));
 
             let dot = mul_real(
                 dot::inner_prod(A12.rb(), Conj::No, u2.rb(), Conj::No),
                 tau_inv,
             );
-            z!(&mut A12, u2.transpose()).for_each(|uz!(a, u)| *a = a - dot * conj(u));
+            z!(&mut A12, u2.transpose()).for_each(|uz!(a, u)| *a = *a - dot * conj(u));
 
             matmul(
                 w0.rb_mut().col_mut(0).as_mat_mut(),
@@ -580,7 +580,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
                 one(),
                 par,
             );
-            z!(x0.rb_mut(), U10.transpose()).for_each(|uz!(x, u)| *x = x + A11 * conj(u));
+            z!(x0.rb_mut(), U10.transpose()).for_each(|uz!(x, u)| *x = *x + *A11 * conj(*u));
             matmul::matmul(
                 x0.rb_mut().as_mat_mut(),
                 Accum::Add,
@@ -609,7 +609,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
                 -one(),
                 par,
             );
-            *A11 = A11 - dot::inner_prod(U10, Conj::No, x0.rb(), Conj::No);
+            *A11 = *A11 - dot::inner_prod(U10, Conj::No, x0.rb(), Conj::No);
             matmul::matmul(
                 A21.rb_mut().as_mat_mut(),
                 Accum::Add,

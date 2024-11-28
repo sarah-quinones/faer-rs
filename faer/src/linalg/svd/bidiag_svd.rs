@@ -79,10 +79,10 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
     right: T,
     last: bool,
 ) -> (T, T) {
-    let two = from_f64(2.0);
-    let eight = from_f64(8.0);
-    let one_half = from_f64(0.5);
-    let epsilon = eps();
+    let two = from_f64::<T>(2.0);
+    let eight = from_f64::<T>(8.0);
+    let one_half = from_f64::<T>(0.5);
+    let epsilon = eps::<T>();
 
     let mid = left + mul_pow2(right - left, one_half);
     let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = batch_secular_eq(
@@ -186,7 +186,7 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
                     // find mu such that a / mu + b = -k * f_zero
                     // a / mu = -f_zero - b
                     // mu = -a / (f_zero + b)
-                    let mut k = one();
+                    let mut k = one::<T>();
                     for _ in 0..4 {
                         let mu_opposite = -a / (k * f_zero + b);
                         let f_opposite = secular_eq(copy(shift), copy(mu_opposite));
@@ -405,10 +405,10 @@ pub(super) fn qr_algorithm<T: RealField>(
     let mut v = v;
 
     for x in diag.rb_mut().iter_mut() {
-        *x = x * max_inv;
+        *x = *x * max_inv;
     }
     for x in subdiag.rb_mut().iter_mut() {
-        *x = x * max_inv;
+        *x = *x * max_inv;
     }
 
     {
@@ -463,10 +463,10 @@ pub(super) fn qr_algorithm<T: RealField>(
             if found_zero_diag {
                 if iter + 1 == max_iters {
                     for x in diag.rb_mut().iter_mut() {
-                        *x = x * max;
+                        *x = *x * max;
                     }
                     for x in subdiag.rb_mut().iter_mut() {
-                        *x = x * max;
+                        *x = *x * max;
                     }
 
                     return Err(SvdError::NoConvergence);
@@ -556,10 +556,10 @@ pub(super) fn qr_algorithm<T: RealField>(
 
             if iter + 1 == max_iters {
                 for x in diag.rb_mut().iter_mut() {
-                    *x = x * max;
+                    *x = *x * max;
                 }
                 for x in subdiag.rb_mut().iter_mut() {
-                    *x = x * max;
+                    *x = *x * max;
                 }
 
                 return Err(SvdError::NoConvergence);
@@ -608,10 +608,10 @@ pub(super) fn qr_algorithm<T: RealField>(
     }
 
     for x in diag.rb_mut().iter_mut() {
-        *x = x * max;
+        *x = *x * max;
     }
     for x in subdiag.rb_mut().iter_mut() {
-        *x = x * max;
+        *x = *x * max;
     }
 
     Ok(())
@@ -809,7 +809,7 @@ fn compute_singular_vectors<'N, T: RealField>(
                 u[outer_perm[i]] = (zhat[i] / ((diag[i] - shift) - mu)) / (diag[i] + (shift + mu));
             }
             let norm_inv = recip(u.norm_l2());
-            z!(u.rb_mut()).for_each(|uz!(x)| *x = x * norm_inv);
+            z!(u.rb_mut()).for_each(|uz!(x)| *x = *x * norm_inv);
         }
 
         if let Some(mut v) = v {
@@ -819,7 +819,7 @@ fn compute_singular_vectors<'N, T: RealField>(
                     ((diag[i] * zhat[i]) / ((diag[i] - shift) - mu)) / (diag[i] + (shift + mu));
             }
             let norm_inv = recip(v.norm_l2());
-            z!(v.rb_mut()).for_each(|uz!(x)| *x = x * norm_inv);
+            z!(v.rb_mut()).for_each(|uz!(x)| *x = *x * norm_inv);
         }
     }
     if let Some(mut u) = um.rb_mut() {
@@ -1016,12 +1016,12 @@ fn deflate<T: RealField>(
     );
     let mx = max(max_diag, max_col0);
 
-    let eps = eps();
-    let sml = min_positive();
+    let eps = eps::<T>();
+    let sml = min_positive::<T>();
 
     let eps_strict = max(eps * max_diag, sml);
 
-    let eps_coarse = from_f64(8.0) * eps * mx;
+    let eps_coarse = from_f64::<T>(8.0) * eps * mx;
 
     // condition 4.1
     if diag[first] < eps_coarse {

@@ -217,10 +217,10 @@ impl<T: ComplexField> JacobiRotation<T> {
         let Self { c, s } = self;
 
         (
-            m00 * c + m10 * s,
-            m01 * c + m11 * s,
-            c * m10 - conj(s) * m00,
-            c * m11 - conj(s) * m01,
+            m00 * *c + m10 * *s,
+            m01 * *c + m11 * *s,
+            *c * m10 - conj(*s) * m00,
+            *c * m11 - conj(*s) * m01,
         )
     }
 

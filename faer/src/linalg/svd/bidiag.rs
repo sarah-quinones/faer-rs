@@ -99,7 +99,7 @@ pub fn bidiag_in_place<T: ComplexField>(
                 let up = A20.rb().col(k1);
                 let vp = A02.row(k1);
 
-                *a11 = a11 - up0 * y1 - z1;
+                *a11 = *a11 - up0 * y1 - z1;
                 z!(A21.rb_mut(), up.rb(), z2.rb()).for_each(|uz!(a, u, z)| *a = *a - *u * y1 - *z);
                 z!(A12.rb_mut(), y2.rb(), vp.rb())
                     .for_each(|uz!(a, y, v)| *a = *a - up0 * *y - z1 * *v);
@@ -163,8 +163,8 @@ pub fn bidiag_in_place<T: ComplexField>(
             }
 
             z!(y2.rb_mut(), A12.rb_mut()).for_each(|uz!(y, a)| {
-                *y = mul_real(y + a, tl_inv);
-                *a = a - y;
+                *y = mul_real(*y + *a, tl_inv);
+                *a = *a - *y;
             });
             let norm = A12.rb().norm_l2();
             let norm_inv = recip(norm);

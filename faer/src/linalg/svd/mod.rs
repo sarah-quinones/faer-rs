@@ -709,7 +709,7 @@ pub fn pseudoinverse_from_svd<T: ComplexField>(
         u,
         v,
         zero(),
-        eps() * from_f64(Ord::max(u.nrows(), v.nrows()) as f64),
+        eps::<T::Real>() * from_f64::<T::Real>(Ord::max(u.nrows(), v.nrows()) as f64),
         par,
         stack,
     );

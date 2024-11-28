@@ -14,7 +14,7 @@ fn lahqr_eig22<T: ComplexField>(a00: T, a01: T, a10: T, a11: T) -> (T, T) {
         return (zero(), zero());
     }
 
-    let half = from_f64(0.5);
+    let half = from_f64::<T::Real>(0.5);
     let s_inv = recip(s);
     let a00 = mul_real(a00, s_inv);
     let a01 = mul_real(a01, s_inv);
@@ -44,11 +44,11 @@ fn lahqr<T: ComplexField>(
     let mut Z = Z;
     let mut w = w;
 
-    let eps = eps();
-    let smlnum = min_positive() / eps;
+    let eps = eps::<T::Real>();
+    let smlnum = min_positive::<T::Real>() / eps;
     let non_convergence_limit = 10usize;
-    let dat1 = from_f64(0.75);
-    let dat2 = from_f64(-0.4375);
+    let dat1 = from_f64::<T::Real>(0.75);
+    let dat2 = from_f64::<T::Real>(-0.4375);
 
     if nh == 0 {
         return 0;
@@ -159,9 +159,9 @@ fn lahqr<T: ComplexField>(
                 s = s + abs(A[(istop - 2, istop - 3)]);
             }
 
-            a00 = from_real(mul(dat1, s)) + A[(istop - 1, istop - 1)];
-            a10 = from_real(mul(dat2, s));
-            a01 = from_real(s);
+            a00 = from_real::<T>(&mul(dat1, s)) + A[(istop - 1, istop - 1)];
+            a10 = from_real::<T>(&mul(dat2, s));
+            a01 = from_real::<T>(&s);
             a11 = copy(a00);
         } else {
             // wilkinson shift
@@ -297,8 +297,8 @@ fn aggressive_early_deflation<T: ComplexField>(
 ) -> (usize, usize) {
     let n = a.nrows();
     let nw_max = (n - 3) / 3;
-    let eps = eps();
-    let small_num = min_positive() / eps * from_f64(n as f64);
+    let eps = eps::<T::Real>();
+    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
     let jw = Ord::min(Ord::min(nw, ihi - ilo), nw_max);
     let kwtop = ihi - jw;
     let mut s_spike = if kwtop == ilo {
@@ -708,8 +708,8 @@ pub fn multishift_qr<T: ComplexField>(
     let mut stack = stack;
     let non_convergence_limit_window = 5;
     let non_convergence_limit_shift = 6;
-    let dat1 = from_f64(0.75);
-    let dat2 = from_f64(-0.4375);
+    let dat1 = from_f64::<T::Real>(0.75);
+    let dat2 = from_f64::<T::Real>(-0.4375);
     let nmin = Ord::max(15, params.blocking_threshold);
     let nibble = params.nibble_threshold;
     let nsr = (params.recommended_shift_count)(n, nh);
@@ -800,9 +800,9 @@ pub fn multishift_qr<T: ComplexField>(
             for i in (i_shifts + 1..istop).rev().step_by(2) {
                 if i >= ilo + 2 {
                     let ss = abs1(a[(i, i - 1)]) + abs1(a[(i - 1, i - 2)]);
-                    let aa = from_real(dat1 * ss) + a.read(i, i);
-                    let bb = from_real(ss);
-                    let cc = from_real(dat2 * ss);
+                    let aa = from_real::<T>(&(dat1 * ss)) + a.read(i, i);
+                    let bb = from_real::<T>(&ss);
+                    let cc = from_real::<T>(&(dat2 * ss));
                     let dd = copy(aa);
                     let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
                     w.write(i - 1, s1);
@@ -879,7 +879,7 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
     let v1 = v.read(1);
     let v2 = v.read(2);
     let refsum = mul_real(v2, v0) * h.read(3, 2);
-    let epsilon = eps();
+    let epsilon = eps::<T::Real>();
     h.write(3, 0, -refsum);
     h.write(3, 1, -refsum * conj(v1));
     h.write(3, 2, h.read(3, 2) - refsum * conj(v2));
@@ -1044,8 +1044,8 @@ fn introduce_bulges<T: ComplexField>(
     par: Par,
 ) {
     let n = a.nrows();
-    let eps = eps();
-    let small_num = min_positive() / eps * from_f64(n as f64);
+    let eps = eps::<T::Real>();
+    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
     let n_block = Ord::min(n_block_desired, ihi - ilo);
     let mut istart_m = ilo;
     let mut istop_m = ilo + n_block;
@@ -1280,8 +1280,8 @@ fn move_bulges_down<T: ComplexField>(
     par: Par,
 ) {
     let n = a.nrows();
-    let eps = eps();
-    let small_num = min_positive() / eps * from_f64(n as f64);
+    let eps = eps::<T::Real>();
+    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
     while *i_pos_block + n_block_desired < ihi {
         let n_pos = Ord::min(
             n_block_desired - n_shifts,
@@ -1524,8 +1524,8 @@ fn remove_bulges<T: ComplexField>(
     par: Par,
 ) {
     let n = a.nrows();
-    let eps = eps();
-    let small_num = min_positive() / eps * from_f64(n as f64);
+    let eps = eps::<T::Real>();
+    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
     let n_block = ihi - *i_pos_block;
     let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
     u2.fill(zero());

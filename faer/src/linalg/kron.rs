@@ -32,7 +32,7 @@ pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef
                     // SAFETY: Bounds have been checked.
                     unsafe {
                         let rhs_val = rhs.at_unchecked(rhs_i, rhs_j);
-                        *dst.rb_mut().at_mut_unchecked(rhs_i, rhs_j) = lhs_val * rhs_val;
+                        *dst.rb_mut().at_mut_unchecked(rhs_i, rhs_j) = *lhs_val * *rhs_val;
                     }
                 }
             }
