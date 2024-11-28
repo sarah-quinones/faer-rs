@@ -55,45 +55,40 @@ pub fn make_householder_in_place<M: Shape, T: ComplexField>(
     head: &mut T,
     tail: ColMut<'_, T, M>,
 ) -> (T, Option<T>) {
-    #[inline]
-    pub fn imp<'M, T: ComplexField>(head: &mut T, tail: ColMut<'_, T, Dim<'M>>) -> (T, Option<T>) {
-        let tail_norm = tail.norm_l2();
+    let tail_norm = tail.norm_l2();
 
-        let mut head_norm = abs(*head);
-        if head_norm < min_positive() {
-            *head = zero();
-            head_norm = zero();
-        }
-
-        if tail_norm < min_positive() {
-            return (infinity(), None);
-        }
-
-        let one_half = from_f64::<T::Real>(0.5);
-
-        let norm = hypot(head_norm, tail_norm);
-
-        let sign = if head_norm != zero() {
-            mul_real(*head, recip(head_norm))
-        } else {
-            one()
-        };
-
-        let signed_norm = sign * from_real(norm);
-        let head_with_beta = *head + signed_norm;
-        let head_with_beta_inv = recip(head_with_beta);
-
-        zipped!(tail).for_each(|unzipped!(e)| {
-            *e = *e * head_with_beta_inv;
-        });
-
-        *head = -signed_norm;
-
-        let tau = one_half * (one::<T::Real>() + abs2(tail_norm * abs(head_with_beta_inv)));
-        (from_real(tau), head_with_beta_inv.into())
+    let mut head_norm = abs(*head);
+    if head_norm < min_positive() {
+        *head = zero();
+        head_norm = zero();
     }
 
-    imp(head, tail.bind_r(unique!()))
+    if tail_norm < min_positive() {
+        return (infinity(), None);
+    }
+
+    let one_half = from_f64::<T::Real>(0.5);
+
+    let norm = hypot(head_norm, tail_norm);
+
+    let sign = if head_norm != zero() {
+        mul_real(*head, recip(head_norm))
+    } else {
+        one()
+    };
+
+    let signed_norm = sign * from_real(norm);
+    let head_with_beta = *head + signed_norm;
+    let head_with_beta_inv = recip(head_with_beta);
+
+    zipped!(tail).for_each(|unzipped!(e)| {
+        *e = *e * head_with_beta_inv;
+    });
+
+    *head = -signed_norm;
+
+    let tau = one_half * (one::<T::Real>() + abs2(tail_norm * abs(head_with_beta_inv)));
+    (from_real(tau), head_with_beta_inv.into())
 }
 
 #[doc(hidden)]
@@ -759,13 +754,13 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
                 let jn_prev = N.checked_idx_inc(*j_prev);
                 let jm = M.checked_idx_inc(*j_prev);
 
-                let essentials = householder_basis.submatrix_range((jm, M.end()), (jn_prev, jn));
+                let essentials = householder_basis.get(jm.., jn_prev..jn);
 
                 let householder = householder_factor
-                    .subcols_range((j_prev, j))
+                    .get(.., j_prev.into()..j.into())
                     .subrows(IdxInc::ZERO, *j - *j_prev);
 
-                let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
+                let matrix = matrix.rb_mut().get_mut(jm.., ..);
                 make_guard!(M);
                 make_guard!(N);
                 let M = essentials.nrows().bind(M);
@@ -850,12 +845,12 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
                 let jn_next = N.checked_idx_inc(*j_next);
                 let jm = M.checked_idx_inc(*jn);
 
-                let essentials = householder_basis.submatrix_range((jm, M.end()), (jn, jn_next));
+                let essentials = householder_basis.get(jm.., jn..jn_next);
                 let householder = householder_factor
-                    .subcols_range((j, j_next))
+                    .get(.., j.into()..j_next)
                     .subrows(IdxInc::ZERO, *j_next - *jn);
 
-                let matrix = matrix.rb_mut().subrows_range_mut((jm, M.end()));
+                let matrix = matrix.rb_mut().get_mut(jm.., ..);
                 make_guard!(M);
                 make_guard!(N);
                 let M = essentials.nrows().bind(M);

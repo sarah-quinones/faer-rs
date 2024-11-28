@@ -375,8 +375,8 @@ impl<T: ComplexField> RankRUpdate<'_, T> {
                     *p = -p;
                 }
 
-                let mut L_col = L_col.rb_mut().subrows_range_mut((j + 1, n));
-                let mut W_col = W.rb_mut().subcols_mut(r, bs).subrows_range_mut((j + 1, n));
+                let mut L_col = L_col.rb_mut().get_mut(j + 1..);
+                let mut W_col = W.rb_mut().subcols_mut(r, bs).get_mut(j + 1.., ..);
 
                 if const { T::SIMD_CAPABILITIES.is_simd() } {
                     if let (Some(L_col), Some(W_col)) = (

@@ -48,7 +48,7 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(
             n_trans += 1;
         }
 
-        let mut matrix = matrix.rb_mut().subcols_range_mut((start, end));
+        let mut matrix = matrix.rb_mut().get_mut(.., start..end);
 
         let inv = recip(matrix[(j, j)]);
         for i in j + 1..m {
@@ -100,7 +100,7 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(
     assert!(n <= m);
 
     n_trans += lu_in_place_recursion(
-        A.rb_mut().subcols_range_mut((start, end)),
+        A.rb_mut().get_mut(.., start..end),
         0,
         blocksize,
         &mut trans[..blocksize],
@@ -109,7 +109,7 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(
     );
 
     {
-        let mut A = A.rb_mut().subcols_range_mut((start, end));
+        let mut A = A.rb_mut().get_mut(.., start..end);
         let (A00, mut A01, A10, mut A11) = A.rb_mut().split_at_mut(blocksize, blocksize);
 
         let A00 = A00.rb();
@@ -125,7 +125,7 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(
         linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one(), par);
 
         n_trans += lu_in_place_recursion(
-            A.rb_mut().subrows_range_mut((blocksize, m)),
+            A.rb_mut().get_mut(blocksize..m, ..),
             blocksize,
             n,
             &mut trans[blocksize..n],
@@ -152,7 +152,7 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(
     };
 
     let (A_left, A_right) = A.rb_mut().split_at_col_mut(start);
-    let A_right = A_right.subcols_range_mut((end - start, ncols - start));
+    let A_right = A_right.get_mut(.., end - start..ncols - start);
 
     match par {
         Par::Seq => {

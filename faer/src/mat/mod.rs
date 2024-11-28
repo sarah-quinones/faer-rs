@@ -11,6 +11,14 @@ pub(crate) struct MatView<T: ?Sized, Rows, Cols, RStride, CStride> {
     col_stride: CStride,
 }
 
+pub trait MatIndex<RowRange, ColRange> {
+    type Target;
+
+    fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target;
+
+    unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target;
+}
+
 impl<T: ?Sized, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> Copy
     for MatView<T, Rows, Cols, RStride, CStride>
 {
@@ -30,6 +38,8 @@ fn from_slice_assert(nrows: usize, ncols: usize, len: usize) {
     let size = usize::checked_mul(nrows, ncols);
     assert!(size == Some(len));
 }
+
+mod mat_index;
 
 pub(crate) mod matmut;
 pub(crate) mod matown;

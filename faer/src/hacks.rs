@@ -184,4 +184,3 @@ pub fn hijack_debug<T: Debug>(x: &T) -> &dyn Debug {
 }
 
 pub use crate::variadics;
-pub use faer_traits::hacks::*;

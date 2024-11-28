@@ -224,7 +224,7 @@ fn lahqr<T: ComplexField>(
 
             rot.apply_on_the_right_in_place(
                 A.rb_mut()
-                    .subrows_range_mut((istart_m, Ord::min(i + 3, istop)))
+                    .get_mut(istart_m..Ord::min(i + 3, istop), ..)
                     .two_cols_mut(i, i + 1),
             );
 

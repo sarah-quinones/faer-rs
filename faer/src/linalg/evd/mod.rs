@@ -1257,7 +1257,7 @@ mod general_tests {
 
             let mut i = 0;
             while i < n {
-                if s_im[i] == zero() {
+                if s_im[i] == 0.0 {
                     let ur = ur.col(i);
                     let ul = ul.col(i);
 

@@ -2,6 +2,8 @@ use crate::{internal_prelude::*, Idx, IdxInc, TryReserveError};
 use core::ops::{Index, IndexMut};
 use faer_traits::Real;
 
+use super::ColIndex;
+
 pub struct Col<T, Rows: Shape = usize> {
     column: Mat<T, Rows, usize>,
 }
@@ -192,14 +194,28 @@ impl<T, Rows: Shape> Col<T, Rows> {
         self.as_ref().adjoint()
     }
 
+    #[track_caller]
     #[inline(always)]
-    pub fn at(&self, row: Idx<Rows>) -> &'_ T {
-        self.as_ref().at(row)
+    pub fn get<RowRange>(
+        &self,
+        row: RowRange,
+    ) -> <ColRef<'_, T, Rows> as ColIndex<RowRange>>::Target
+    where
+        for<'a> ColRef<'a, T, Rows>: ColIndex<RowRange>,
+    {
+        <ColRef<'_, T, Rows> as ColIndex<RowRange>>::get(self.as_ref(), row)
     }
 
+    #[track_caller]
     #[inline(always)]
-    pub unsafe fn at_unchecked(&self, row: Idx<Rows>) -> &'_ T {
-        self.as_ref().at_unchecked(row)
+    pub unsafe fn get_unchecked<RowRange>(
+        &self,
+        row: RowRange,
+    ) -> <ColRef<'_, T, Rows> as ColIndex<RowRange>>::Target
+    where
+        for<'a> ColRef<'a, T, Rows>: ColIndex<RowRange>,
+    {
+        unsafe { <ColRef<'_, T, Rows> as ColIndex<RowRange>>::get_unchecked(self.as_ref(), row) }
     }
 
     #[inline]
@@ -210,14 +226,6 @@ impl<T, Rows: Shape> Col<T, Rows> {
     #[inline]
     pub fn subrows<V: Shape>(&self, row_start: IdxInc<Rows>, nrows: V) -> ColRef<'_, T, V> {
         self.as_ref().subrows(row_start, nrows)
-    }
-
-    #[inline]
-    pub fn subrows_range(
-        &self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> ColRef<'_, T, usize> {
-        self.as_ref().subrows_range(rows)
     }
 
     #[inline]
@@ -346,14 +354,28 @@ impl<T, Rows: Shape> Col<T, Rows> {
         self.as_mut().adjoint_mut()
     }
 
+    #[track_caller]
     #[inline(always)]
-    pub fn at_mut(&mut self, row: Idx<Rows>) -> &'_ mut T {
-        self.as_mut().at_mut(row)
+    pub fn get_mut<RowRange>(
+        &mut self,
+        row: RowRange,
+    ) -> <ColMut<'_, T, Rows> as ColIndex<RowRange>>::Target
+    where
+        for<'a> ColMut<'a, T, Rows>: ColIndex<RowRange>,
+    {
+        <ColMut<'_, T, Rows> as ColIndex<RowRange>>::get(self.as_mut(), row)
     }
 
+    #[track_caller]
     #[inline(always)]
-    pub unsafe fn at_mut_unchecked(&mut self, row: Idx<Rows>) -> &'_ mut T {
-        self.as_mut().at_mut_unchecked(row)
+    pub unsafe fn get_mut_unchecked<RowRange>(
+        &mut self,
+        row: RowRange,
+    ) -> <ColMut<'_, T, Rows> as ColIndex<RowRange>>::Target
+    where
+        for<'a> ColMut<'a, T, Rows>: ColIndex<RowRange>,
+    {
+        unsafe { <ColMut<'_, T, Rows> as ColIndex<RowRange>>::get_unchecked(self.as_mut(), row) }
     }
 
     #[inline]
@@ -364,14 +386,6 @@ impl<T, Rows: Shape> Col<T, Rows> {
     #[inline]
     pub fn subrows_mut<V: Shape>(&mut self, row_start: IdxInc<Rows>, nrows: V) -> ColMut<'_, T, V> {
         self.as_mut().subrows_mut(row_start, nrows)
-    }
-
-    #[inline]
-    pub fn subrows_range_mut(
-        &mut self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> ColMut<'_, T, usize> {
-        self.as_mut().subrows_range_mut(rows)
     }
 
     #[inline]

@@ -163,22 +163,15 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
         let j0 = k;
         let j1 = k + 1;
 
-        w.rb_mut()
-            .subrows_range_mut((k0, n))
-            .col_mut(j0)
-            .copy_from(a.rb().subrows_range((k0, n)).col(k0));
-
-        let (w_left, w_right) = w
-            .rb_mut()
-            .subrows_range_mut((k0, n))
-            .split_at_col_mut(j0.into());
+        w.rb_mut().get_mut(k0.., j0).copy_from(a.rb().get(k0.., k0));
+        let (w_left, w_right) = w.rb_mut().get_mut(k0.., ..).split_at_col_mut(j0);
 
         let w_row = w_left.rb().row(0);
         let w_col = w_right.col_mut(0);
         crate::linalg::matmul::matmul(
             w_col.as_mat_mut(),
             Accum::Add,
-            a.rb().submatrix_range((k0, n), (0usize, k0)),
+            a.rb().get(k0..n, ..k0),
             w_row.rb().transpose().as_mat(),
             -one(),
             par,
@@ -214,20 +207,16 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
             } else {
                 let imax = imax.unwrap();
                 z!(
-                    w.rb_mut().subrows_range_mut((k0, imax)).col_mut(j1),
-                    a.rb().row(imax).subcols_range((k0, imax)).transpose(),
+                    w.rb_mut().get_mut(k0..imax, j1),
+                    a.rb().get(imax, k0..imax).transpose(),
                 )
                 .for_each(|uz!(dst, src)| *dst = conj(src));
 
                 w.rb_mut()
-                    .subrows_range_mut((imax, n))
-                    .col_mut(j1)
-                    .copy_from(a.rb().subrows_range((imax, n)).col(imax));
+                    .get_mut(imax.., j1)
+                    .copy_from(a.rb().get(imax.., imax));
 
-                let (w_left, w_right) = w
-                    .rb_mut()
-                    .subrows_range_mut((k0, n))
-                    .split_at_col_mut(j1.into());
+                let (w_left, w_right) = w.rb_mut().get_mut(k0.., ..).split_at_col_mut(j1);
 
                 let w_row = w_left.rb().row(imax - k).subcols(0, k);
                 let w_col = w_right.col_mut(0);
@@ -235,7 +224,7 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
                 crate::linalg::matmul::matmul(
                     w_col.as_mat_mut(),
                     Accum::Add,
-                    a.rb().submatrix_range((k0, n), (0usize, k0)),
+                    a.rb().get(k0.., ..k0),
                     w_row.rb().transpose().as_mat(),
                     -one(),
                     par,
@@ -243,15 +232,15 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
                 make_real(w.rb_mut(), (imax, j1));
 
                 let rowmax = max(
-                    best_score(w.rb().subrows_range((k0, imax)).col(j1)),
-                    best_score(w.rb().subrows_range((imax + 1, n)).col(j1)),
+                    best_score(w.rb().get(k0..imax, j1)),
+                    best_score(w.rb().get(imax + 1.., j1)),
                 );
 
                 if abs_akk >= (alpha * colmax) * (colmax / rowmax) {
                     kp = k0;
                 } else if abs(real(w[(imax, j1)])) >= alpha * rowmax {
                     kp = imax;
-                    assign_col(w.rb_mut().subrows_range_mut((k0, n)), j0, j1);
+                    assign_col(w.rb_mut().get_mut(k0.., ..), j0, j1);
                 } else {
                     kp = imax;
                     k_step = 2;
@@ -270,17 +259,14 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
                 for j in kk + 1..kp {
                     a[(kp, j)] = conj(a[(j, kk)]);
                 }
-                assign_col(a.rb_mut().subrows_range_mut((kp + 1, n)), kp, kk);
+                assign_col(a.rb_mut().get_mut(kp + 1.., ..), kp, kk);
 
                 swap_rows_idx(a.rb_mut().split_at_col_mut(k0).0, kk, kp);
                 swap_rows_idx(w.rb_mut().split_at_col_mut(jk + 1).0, kk, kp);
             }
 
             if k_step == 1 {
-                a.rb_mut()
-                    .subrows_range_mut((k0, n))
-                    .col_mut(k0)
-                    .copy_from(w.rb().subrows_range((k0, n)).col(j0));
+                a.rb_mut().get_mut(k0.., k0).copy_from(w.rb().get(k0.., j0));
 
                 let mut d11 = real(w[(k0, j0)]);
                 if has_eps {
@@ -304,10 +290,9 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
                 a[(k0, k0)] = from_real(d11);
                 let d11 = recip(d11);
 
-                let x = a.rb_mut().subrows_range_mut((k0 + 1, n)).col_mut(k0);
+                let x = a.rb_mut().get_mut(k0 + 1.., k0);
                 z!(x).for_each(|uz!(x)| *x = mul_real(x, d11));
-                z!(w.rb_mut().subrows_range_mut((k0 + 1, n)).col_mut(j0))
-                    .for_each(|uz!(x)| *x = conj(x));
+                z!(w.rb_mut().get_mut(k0 + 1.., j0)).for_each(|uz!(x)| *x = conj(x));
             } else {
                 let k1 = k + 1;
 
@@ -389,11 +374,8 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
                     a[(j, k1)] = wkp1;
                 }
 
-                z!(w.rb_mut().subrows_range_mut((k1, n)).col_mut(j0))
-                    .for_each(|uz!(x)| *x = conj(x));
-
-                z!(w.rb_mut().subrows_range_mut((k1 + 1, n)).col_mut(j1))
-                    .for_each(|uz!(x)| *x = conj(x));
+                z!(w.rb_mut().get_mut(k1.., j0)).for_each(|uz!(x)| *x = conj(x));
+                z!(w.rb_mut().get_mut(k1 + 1.., j1)).for_each(|uz!(x)| *x = conj(x));
             }
         }
 
@@ -411,14 +393,14 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
     let k0 = n.checked_idx_inc(k);
     let j0 = nb.checked_idx_inc(k);
 
-    let (a_left, mut a_right) = a.rb_mut().subrows_range_mut((k0, n)).split_at_col_mut(k0);
+    let (a_left, mut a_right) = a.rb_mut().get_mut(k0.., ..).split_at_col_mut(k0);
     triangular::matmul(
         a_right.rb_mut(),
         BlockStructure::TriangularLower,
         Accum::Add,
         a_left.rb(),
         BlockStructure::Rectangular,
-        w.rb().submatrix_range((k0, n), (0usize, j0)).transpose(),
+        w.rb().get(k0.., ..j0).transpose(),
         BlockStructure::Rectangular,
         -one(),
         par,
@@ -441,7 +423,7 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
         j -= 1;
 
         if jp != jj {
-            swap_rows_idx(a.rb_mut().subcols_range_mut((0usize, j + 1)), jp, jj);
+            swap_rows_idx(a.rb_mut().get_mut(.., ..j + 1), jp, jj);
         }
         if j == 0 {
             return (k, pivot_count, dynamic_regularization_count);
@@ -515,8 +497,8 @@ fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(
                     // let (l![imax_end], _) = N.split(l![imax.next()..], AFTER_K1);
 
                     let rowmax = max(
-                        best_score(a.rb().row(imax).subcols_range((k0, imax)).transpose()),
-                        best_score(a.rb().col(imax).subrows_range((imax, n))),
+                        best_score(a.rb().get(imax, k0..imax).transpose()),
+                        best_score(a.rb().get(imax.., imax)),
                     );
 
                     if abs_akk >= (alpha * colmax) * (colmax / rowmax) {
@@ -537,7 +519,7 @@ fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(
                 let k1 = k + 1;
 
                 pivot_count += 1;
-                swap_cols_idx(a.rb_mut().subrows_range_mut((kp + 1, n)), kk, kp);
+                swap_cols_idx(a.rb_mut().get_mut(kp + 1.., ..), kk, kp);
                 for j in kk + 1..kp {
                     swap_elems_conj(a.rb_mut(), (j, kk), (kp, j));
                 }
@@ -581,8 +563,7 @@ fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(
                     }
                     make_real(a.rb_mut(), (j, j));
                 }
-                z!(a.rb_mut().col_mut(k0).subrows_range_mut((k0 + 1, n)))
-                    .for_each(|uz!(x)| *x = mul_real(x, d11));
+                z!(a.rb_mut().get_mut(k0 + 1.., k0)).for_each(|uz!(x)| *x = mul_real(x, d11));
             } else {
                 let k1 = k + 1;
                 let d21 = abs(a[(k1, k0)]);
@@ -704,10 +685,7 @@ fn convert<'N, I: Index, T: ComplexField>(
     let mut i = 0;
     while let Some(i0) = N.try_check(i) {
         guards!(head);
-        let a = a
-            .rb_mut()
-            .subcols_range_mut((IdxInc::ZERO, i0))
-            .bind_c(head);
+        let a = a.rb_mut().get_mut(.., IdxInc::ZERO..i0.into()).bind_c(head);
 
         let p = pivots[i0].to_signed().sx();
         if (p as isize) < 0 {

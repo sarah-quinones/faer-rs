@@ -1,6 +1,13 @@
 use crate::internal_prelude::*;
 use core::ptr::NonNull;
 
+pub trait ColIndex<RowRange> {
+    type Target;
+
+    fn get(this: Self, row: RowRange) -> Self::Target;
+    unsafe fn get_unchecked(this: Self, row: RowRange) -> Self::Target;
+}
+
 struct ColView<T: ?Sized, Rows, RStride> {
     ptr: NonNull<T>,
     nrows: Rows,
@@ -14,6 +21,8 @@ impl<T: ?Sized, Rows: Copy, RStride: Copy> Clone for ColView<T, Rows, RStride> {
         *self
     }
 }
+
+mod col_index;
 
 pub(crate) mod colmut;
 pub(crate) mod colown;

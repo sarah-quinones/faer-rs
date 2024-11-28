@@ -1,5 +1,14 @@
 use crate::{internal_prelude::*, Shape};
 
+pub trait RowIndex<ColRange> {
+    type Target;
+
+    fn get(this: Self, col: ColRange) -> Self::Target;
+    unsafe fn get_unchecked(this: Self, col: ColRange) -> Self::Target;
+}
+
+mod row_index;
+
 pub(crate) mod rowmut;
 pub(crate) mod rowown;
 pub(crate) mod rowref;

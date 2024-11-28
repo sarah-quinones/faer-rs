@@ -430,14 +430,14 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
 
     #[inline]
     #[track_caller]
-    pub fn at(self, row: Idx<Rows>, col: Idx<Cols>) -> &'a T {
+    pub(crate) fn at(self, row: Idx<Rows>, col: Idx<Cols>) -> &'a T {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { self.at_unchecked(row, col) }
     }
 
     #[inline]
     #[track_caller]
-    pub fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> T
+    pub(crate) fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> T
     where
         T: Clone,
     {
@@ -446,7 +446,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
 
     #[inline]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, row: Idx<Rows>, col: Idx<Cols>) -> &'a T {
+    pub(crate) unsafe fn at_unchecked(self, row: Idx<Rows>, col: Idx<Cols>) -> &'a T {
         &*self.ptr_inbounds_at(row, col)
     }
 
@@ -563,83 +563,6 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
                 self.ptr_at(Rows::start(), col_start),
                 self.nrows(),
                 ncols,
-                rs,
-                cs,
-            )
-        }
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn submatrix_range(
-        self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> MatRef<'a, T, usize, usize, RStride, CStride> {
-        let rows = rows.0.into()..rows.1.into();
-        let cols = cols.0.into()..cols.1.into();
-        assert!(all(
-            rows.start <= self.nrows(),
-            cols.start <= self.ncols(),
-            rows.end <= self.nrows(),
-            cols.end <= self.ncols()
-        ));
-
-        let rs = self.row_stride();
-        let cs = self.col_stride();
-
-        unsafe {
-            MatRef::from_raw_parts(
-                self.ptr_at(rows.start, cols.start),
-                rows.end.unbound().saturating_sub(rows.start.unbound()),
-                cols.end.unbound().saturating_sub(cols.start.unbound()),
-                rs,
-                cs,
-            )
-        }
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn subrows_range(
-        self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> MatRef<'a, T, usize, Cols, RStride, CStride> {
-        let rows = rows.0.into()..rows.1.into();
-
-        assert!(all(rows.start <= self.nrows(), rows.end <= self.nrows()));
-
-        let rs = self.row_stride();
-        let cs = self.col_stride();
-
-        unsafe {
-            MatRef::from_raw_parts(
-                self.ptr_at(rows.start, Cols::start()),
-                rows.end.unbound().saturating_sub(rows.start.unbound()),
-                self.ncols(),
-                rs,
-                cs,
-            )
-        }
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn subcols_range(
-        self,
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> MatRef<'a, T, Rows, usize, RStride, CStride> {
-        let cols = cols.0.into()..cols.1.into();
-        assert!(all(cols.start <= self.ncols(), cols.end <= self.ncols()));
-
-        let rs = self.row_stride();
-        let cs = self.col_stride();
-
-        unsafe {
-            MatRef::from_raw_parts(
-                self.ptr_at(Rows::start(), cols.start),
-                self.nrows(),
-                cols.end.unbound().saturating_sub(cols.start.unbound()),
                 rs,
                 cs,
             )
@@ -1141,6 +1064,38 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
             conj(val)
         } else {
             val
+        }
+    }
+
+    #[track_caller]
+    #[inline]
+    pub fn get<RowRange, ColRange>(
+        self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::Target
+    where
+        MatRef<'a, T, Rows, Cols, RStride, CStride>: MatIndex<RowRange, ColRange>,
+    {
+        <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::get(
+            self, row, col,
+        )
+    }
+
+    #[track_caller]
+    #[inline]
+    pub unsafe fn get_unchecked<RowRange, ColRange>(
+        self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::Target
+    where
+        MatRef<'a, T, Rows, Cols, RStride, CStride>: MatIndex<RowRange, ColRange>,
+    {
+        unsafe {
+            <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::get_unchecked(
+            self, row, col,
+            )
         }
     }
 

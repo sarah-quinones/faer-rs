@@ -453,7 +453,7 @@ pub fn qr_in_place<'out, I: Index, T: ComplexField>(
             H[(j, j)] = copy(H[(0, j)]);
         }
 
-        let A = A.rb().subcols(j, blocksize).subrows_range((j, A.nrows()));
+        let A = A.rb().get(j.., j..j + blocksize);
 
         householder::upgrade_householder_factor(H.rb_mut(), A, blocksize, 1, par);
         j += blocksize;

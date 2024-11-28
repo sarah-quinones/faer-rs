@@ -1,3 +1,4 @@
+use super::RowIndex;
 use crate::{
     internal_prelude::*,
     utils::bound::{Array, Dim, Partition},
@@ -145,14 +146,38 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
     }
 
     #[inline(always)]
-    pub fn at(self, col: Idx<Cols>) -> &'a T {
+    pub(crate) fn at(self, col: Idx<Cols>) -> &'a T {
         assert!(all(col < self.ncols()));
         unsafe { self.at_unchecked(col) }
     }
 
     #[inline(always)]
-    pub unsafe fn at_unchecked(self, col: Idx<Cols>) -> &'a T {
+    pub(crate) unsafe fn at_unchecked(self, col: Idx<Cols>) -> &'a T {
         &*self.ptr_inbounds_at(col)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn get<ColRange>(
+        self,
+        col: ColRange,
+    ) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+    where
+        RowRef<'a, T, Cols, CStride>: RowIndex<ColRange>,
+    {
+        <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get(self, col)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn get_unchecked<ColRange>(
+        self,
+        col: ColRange,
+    ) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+    where
+        RowRef<'a, T, Cols, CStride>: RowIndex<ColRange>,
+    {
+        unsafe { <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(self, col) }
     }
 
     #[inline]
@@ -173,25 +198,6 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
         }
         let cs = self.col_stride();
         unsafe { RowRef::from_raw_parts(self.ptr_at(col_start), ncols, cs) }
-    }
-
-    #[inline]
-    pub fn subcols_range(
-        self,
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> RowRef<'a, T, usize, CStride> {
-        let cols = cols.0.into()..cols.1.into();
-        assert!(all(cols.start <= self.ncols()));
-
-        let cs = self.col_stride();
-
-        unsafe {
-            RowRef::from_raw_parts(
-                self.ptr_at(cols.start),
-                cols.end.unbound().saturating_sub(cols.start.unbound()),
-                cs,
-            )
-        }
     }
 
     #[inline]

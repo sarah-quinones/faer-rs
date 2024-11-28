@@ -449,7 +449,7 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 
             let (mut A00, A01, mut A10, mut A11) = A
                 .rb_mut()
-                .submatrix_range_mut((j, n), (j, n))
+                .get_mut(j.., j..)
                 .split_at_mut(blocksize, blocksize);
 
             let mut D0 = D.rb_mut().subcols_mut(j, blocksize);

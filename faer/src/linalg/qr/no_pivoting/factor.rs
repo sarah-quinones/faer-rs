@@ -120,11 +120,7 @@ fn qr_in_place_blocked<T: ComplexField>(
         let blocksize = Ord::min(blocksize, size - j);
         let sub_blocksize = Ord::min(blocksize, sub_blocksize);
 
-        let mut A = A
-            .rb_mut()
-            .subcols_range_mut((j, n))
-            .subrows_range_mut((j, m));
-
+        let mut A = A.rb_mut().get_mut(j.., j..);
         let mut H = H.rb_mut().submatrix_mut(0, j, blocksize, blocksize);
 
         qr_in_place_blocked(

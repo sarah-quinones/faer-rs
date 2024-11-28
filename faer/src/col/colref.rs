@@ -1,4 +1,4 @@
-use super::ColView;
+use super::{ColIndex, ColView};
 use crate::{
     internal_prelude::*,
     utils::bound::{Array, Dim, Partition},
@@ -177,15 +177,39 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 
     #[inline(always)]
     #[track_caller]
-    pub fn at(self, row: Idx<Rows>) -> &'a T {
+    pub(crate) fn at(self, row: Idx<Rows>) -> &'a T {
         assert!(all(row < self.nrows()));
         unsafe { self.at_unchecked(row) }
     }
 
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, row: Idx<Rows>) -> &'a T {
+    pub(crate) unsafe fn at_unchecked(self, row: Idx<Rows>) -> &'a T {
         &*self.ptr_inbounds_at(row)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn get<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
+    where
+        ColRef<'a, T, Rows, RStride>: ColIndex<RowRange>,
+    {
+        <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::get(self, row)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn get_unchecked<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
+    where
+        ColRef<'a, T, Rows, RStride>: ColIndex<RowRange>,
+    {
+        unsafe { <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::get_unchecked(self, row) }
     }
 
     #[inline]
@@ -208,26 +232,6 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
         let rs = self.row_stride();
 
         unsafe { ColRef::from_raw_parts(self.ptr_at(row_start), nrows, rs) }
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn subrows_range(
-        self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> ColRef<'a, T, usize, RStride> {
-        let rows = rows.0.into()..rows.1.into();
-        assert!(all(rows.start <= self.nrows()));
-
-        let rs = self.row_stride();
-
-        unsafe {
-            ColRef::from_raw_parts(
-                self.ptr_at(rows.start),
-                rows.end.unbound().saturating_sub(rows.start.unbound()),
-                rs,
-            )
-        }
     }
 
     #[inline]

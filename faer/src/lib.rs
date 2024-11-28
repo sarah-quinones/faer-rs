@@ -88,17 +88,6 @@ macro_rules! with_dim {
         ::generativity::make_guard!($name);
         let $name = $crate::utils::bound::Dim::new(__val, $name);
     };
-
-    ($value: expr $(,)?) => {
-        $crate::utils::bound::Dim::new($value, $crate::unique!())
-    };
-}
-
-#[macro_export]
-macro_rules! unique {
-    () => {
-        unsafe { $crate::hacks::make_guard_pair(&$crate::hacks::Id::new()).1 }
-    };
 }
 
 #[macro_export]
@@ -608,5 +597,48 @@ impl<T, P: Default> Auto<T> for P {
     #[inline]
     fn auto() -> Self {
         P::default()
+    }
+}
+
+mod into_range {
+    use super::*;
+
+    pub trait IntoRange<I> {
+        type Len<N: Shape>: Shape;
+
+        fn into_range(self, min: I, max: I) -> core::ops::Range<I>;
+    }
+
+    impl<I> IntoRange<I> for core::ops::Range<I> {
+        type Len<N: Shape> = usize;
+
+        #[inline]
+        fn into_range(self, _: I, _: I) -> core::ops::Range<I> {
+            self
+        }
+    }
+    impl<I> IntoRange<I> for core::ops::RangeFrom<I> {
+        type Len<N: Shape> = usize;
+
+        #[inline]
+        fn into_range(self, _: I, max: I) -> core::ops::Range<I> {
+            self.start..max
+        }
+    }
+    impl<I> IntoRange<I> for core::ops::RangeTo<I> {
+        type Len<N: Shape> = usize;
+
+        #[inline]
+        fn into_range(self, min: I, _: I) -> core::ops::Range<I> {
+            min..self.end
+        }
+    }
+    impl<I> IntoRange<I> for core::ops::RangeFull {
+        type Len<N: Shape> = N;
+
+        #[inline]
+        fn into_range(self, min: I, max: I) -> core::ops::Range<I> {
+            min..max
+        }
     }
 }

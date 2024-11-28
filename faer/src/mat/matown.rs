@@ -711,16 +711,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
         self.as_ref().adjoint()
     }
 
-    #[inline(always)]
-    pub fn at(&self, row: Idx<Rows>, col: Idx<Cols>) -> &'_ T {
-        self.as_ref().at(row, col)
-    }
-
-    #[inline(always)]
-    pub unsafe fn at_unchecked(&self, row: Idx<Rows>, col: Idx<Cols>) -> &'_ T {
-        self.as_ref().at_unchecked(row, col)
-    }
-
     #[inline]
     pub fn reverse_rows(&self) -> MatRef<'_, T, Rows, Cols> {
         self.as_ref().reverse_rows()
@@ -755,31 +745,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     #[inline]
     pub fn subcols<H: Shape>(&self, col_start: IdxInc<Cols>, ncols: H) -> MatRef<'_, T, Rows, H> {
         self.as_ref().subcols(col_start, ncols)
-    }
-
-    #[inline]
-    pub fn submatrix_range(
-        &self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> MatRef<'_, T, usize, usize> {
-        self.as_ref().submatrix_range(rows, cols)
-    }
-
-    #[inline]
-    pub fn subrows_range(
-        &self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> MatRef<'_, T, usize, Cols> {
-        self.as_ref().subrows_range(rows)
-    }
-
-    #[inline]
-    pub fn subcols_range(
-        &self,
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> MatRef<'_, T, Rows, usize> {
-        self.as_ref().subcols_range(cols)
     }
 
     #[inline]
@@ -943,6 +908,70 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     {
         self.as_ref().norm_l2()
     }
+
+    #[track_caller]
+    #[inline]
+    pub fn get<RowRange, ColRange>(
+        &self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatRef<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
+    {
+        <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get(self.as_ref(), row, col)
+    }
+
+    #[track_caller]
+    #[inline]
+    pub unsafe fn get_unchecked<RowRange, ColRange>(
+        &self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatRef<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
+    {
+        unsafe {
+            <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get_unchecked(
+                self.as_ref(),
+                row,
+                col,
+            )
+        }
+    }
+
+    #[track_caller]
+    #[inline]
+    pub fn get_mut<RowRange, ColRange>(
+        &mut self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatMut<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
+    {
+        <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get(self.as_mut(), row, col)
+    }
+
+    #[track_caller]
+    #[inline]
+    pub unsafe fn get_mut_unchecked<RowRange, ColRange>(
+        &mut self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatMut<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
+    {
+        unsafe {
+            <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get_unchecked(
+                self.as_mut(),
+                row,
+                col,
+            )
+        }
+    }
 }
 
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
@@ -1024,17 +1053,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
         self.as_mut().adjoint_mut()
     }
 
-    #[inline(always)]
-    #[track_caller]
-    pub fn at_mut(&mut self, row: Idx<Rows>, col: Idx<Cols>) -> &'_ mut T {
-        self.as_mut().at_mut(row, col)
-    }
-
-    #[inline(always)]
-    pub unsafe fn at_mut_unchecked(&mut self, row: Idx<Rows>, col: Idx<Cols>) -> &'_ mut T {
-        self.as_mut().at_mut_unchecked(row, col)
-    }
-
     #[inline]
     pub fn reverse_rows_mut(&mut self) -> MatMut<'_, T, Rows, Cols> {
         self.as_mut().reverse_rows_mut()
@@ -1078,31 +1096,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
         ncols: H,
     ) -> MatMut<'_, T, Rows, H> {
         self.as_mut().subcols_mut(col_start, ncols)
-    }
-
-    #[inline]
-    pub fn submatrix_range_mut(
-        &mut self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> MatMut<'_, T, usize, usize> {
-        self.as_mut().submatrix_range_mut(rows, cols)
-    }
-
-    #[inline]
-    pub fn subrows_range_mut(
-        &mut self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> MatMut<'_, T, usize, Cols> {
-        self.as_mut().subrows_range_mut(rows)
-    }
-
-    #[inline]
-    pub fn subcols_range_mut(
-        &mut self,
-        cols: (impl Into<IdxInc<Cols>>, impl Into<IdxInc<Cols>>),
-    ) -> MatMut<'_, T, Rows, usize> {
-        self.as_mut().subcols_range_mut(cols)
     }
 
     #[inline]

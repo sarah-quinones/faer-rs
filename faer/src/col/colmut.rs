@@ -1,4 +1,4 @@
-use super::ColView;
+use super::{ColIndex, ColView};
 use crate::{
     internal_prelude::*,
     mat::matmut::SyncCell,
@@ -152,14 +152,33 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
         self.into_const().adjoint()
     }
 
+    #[track_caller]
     #[inline(always)]
-    pub fn at(self, row: Idx<Rows>) -> &'a T {
-        self.into_const().at(row)
+    pub fn get<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
+    where
+        ColRef<'a, T, Rows, RStride>: ColIndex<RowRange>,
+    {
+        <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::get(self.into_const(), row)
     }
 
+    #[track_caller]
     #[inline(always)]
-    pub unsafe fn at_unchecked(self, row: Idx<Rows>) -> &'a T {
-        self.into_const().at_unchecked(row)
+    pub unsafe fn get_unchecked<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
+    where
+        ColRef<'a, T, Rows, RStride>: ColIndex<RowRange>,
+    {
+        unsafe {
+            <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::get_unchecked(
+                self.into_const(),
+                row,
+            )
+        }
     }
 
     #[inline]
@@ -170,14 +189,6 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
     #[inline]
     pub fn subrows<V: Shape>(self, row_start: IdxInc<Rows>, nrows: V) -> ColRef<'a, T, V, RStride> {
         self.into_const().subrows(row_start, nrows)
-    }
-
-    #[inline]
-    pub fn subrows_range(
-        self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> ColRef<'a, T, usize, RStride> {
-        self.into_const().subrows_range(rows)
     }
 
     #[inline]
@@ -348,15 +359,39 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 
     #[inline(always)]
     #[track_caller]
-    pub fn at_mut(self, row: Idx<Rows>) -> &'a mut T {
+    pub(crate) fn at_mut(self, row: Idx<Rows>) -> &'a mut T {
         assert!(all(row < self.nrows()));
         unsafe { self.at_mut_unchecked(row) }
     }
 
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_mut_unchecked(self, row: Idx<Rows>) -> &'a mut T {
+    pub(crate) unsafe fn at_mut_unchecked(self, row: Idx<Rows>) -> &'a mut T {
         &mut *self.ptr_inbounds_at_mut(row)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn get_mut<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <ColMut<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
+    where
+        ColMut<'a, T, Rows, RStride>: ColIndex<RowRange>,
+    {
+        <ColMut<'a, T, Rows, RStride> as ColIndex<RowRange>>::get(self, row)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn get_mut_unchecked<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <ColMut<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
+    where
+        ColMut<'a, T, Rows, RStride>: ColIndex<RowRange>,
+    {
+        unsafe { <ColMut<'a, T, Rows, RStride> as ColIndex<RowRange>>::get_unchecked(self, row) }
     }
 
     #[inline]
@@ -372,15 +407,6 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
         nrows: V,
     ) -> ColMut<'a, T, V, RStride> {
         unsafe { self.into_const().subrows(row_start, nrows).const_cast() }
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn subrows_range_mut(
-        self,
-        rows: (impl Into<IdxInc<Rows>>, impl Into<IdxInc<Rows>>),
-    ) -> ColMut<'a, T, usize, RStride> {
-        unsafe { self.into_const().subrows_range(rows).const_cast() }
     }
 
     #[inline]
@@ -594,95 +620,5 @@ impl<T, Rows: Shape, CStride: Stride> IndexMut<Idx<Rows>> for ColMut<'_, T, Rows
     #[inline]
     fn index_mut(&mut self, row: Idx<Rows>) -> &mut Self::Output {
         self.rb_mut().at_mut(row)
-    }
-}
-
-mod bound_range {
-    use super::*;
-    use crate::utils::bound::Segment;
-
-    // single segment
-
-    impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
-        #[inline]
-        pub fn row_segment_mut<'scope, 'TOP>(
-            self,
-            first: Segment<'scope, 'ROWS, 'TOP>,
-        ) -> ColMut<'a, T, Dim<'TOP>, RStride> {
-            unsafe {
-                ColMut::from_raw_parts_mut(
-                    self.ptr_at_mut(first.start().local()),
-                    first.len(),
-                    self.row_stride(),
-                )
-            }
-        }
-    }
-    impl<'ROWS, 'a, T, RStride: Stride> ColRef<'a, T, Dim<'ROWS>, RStride> {
-        #[inline]
-        pub fn row_segment<'scope, 'TOP>(
-            self,
-            first: Segment<'scope, 'ROWS, 'TOP>,
-        ) -> ColRef<'a, T, Dim<'TOP>, RStride> {
-            unsafe {
-                ColRef::from_raw_parts(
-                    self.ptr_at(first.start().local()),
-                    first.len(),
-                    self.row_stride(),
-                )
-            }
-        }
-    }
-
-    impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
-        #[inline]
-        pub fn row_segment<'scope, 'TOP>(
-            self,
-            first: Segment<'scope, 'ROWS, 'TOP>,
-        ) -> ColRef<'a, T, Dim<'TOP>, RStride> {
-            unsafe {
-                ColRef::from_raw_parts(
-                    self.ptr_at(first.start().local()),
-                    first.len(),
-                    self.row_stride(),
-                )
-            }
-        }
-    }
-}
-
-mod bound_any_range {
-    use super::*;
-    use crate::variadics::*;
-
-    impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
-        #[inline]
-        pub fn row_segments_mut<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
-            self,
-            segments: S,
-            disjoint: S::Disjoint,
-        ) -> S::ColMutSegments<T, RStride> {
-            S::col_mut_segments(segments, self, disjoint)
-        }
-    }
-
-    impl<'ROWS, 'a, T, RStride: Stride> ColRef<'a, T, Dim<'ROWS>, RStride> {
-        #[inline]
-        pub fn row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
-            self,
-            segments: S,
-        ) -> S::ColRefSegments<T, RStride> {
-            S::col_ref_segments(segments, self)
-        }
-    }
-
-    impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
-        #[inline]
-        pub fn row_segments<'scope, S: RowSplit<'scope, 'ROWS, 'a>>(
-            self,
-            segments: S,
-        ) -> S::ColRefSegments<T, RStride> {
-            S::col_ref_segments(segments, self.into_const())
-        }
     }
 }

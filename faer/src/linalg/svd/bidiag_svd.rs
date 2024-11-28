@@ -737,21 +737,11 @@ fn compute_svd_of_m<T: RealField>(
         mus.rb().as_row_shape(N),
     );
 
-    for (idx, diag) in diag
-        .rb_mut()
-        .subrows_range_mut((0usize, actual_n))
-        .iter_mut()
-        .enumerate()
-    {
+    for (idx, diag) in diag.rb_mut().get_mut(..actual_n).iter_mut().enumerate() {
         *diag = copy(s[actual_n - idx - 1]);
     }
 
-    for (idx, diag) in diag
-        .rb_mut()
-        .subrows_range_mut((actual_n, n.end()))
-        .iter_mut()
-        .enumerate()
-    {
+    for (idx, diag) in diag.rb_mut().get_mut(actual_n..).iter_mut().enumerate() {
         *diag = copy(s[actual_n + idx]);
     }
 }
@@ -1010,10 +1000,7 @@ fn deflate<T: RealField>(
     let mut jacobi_0i = 0;
     let mut jacobi_ij = 0;
 
-    let (max_diag, max_col0) = (
-        diag.rb().subrows_range((first + 1, n)).norm_max(),
-        col0.norm_max(),
-    );
+    let (max_diag, max_col0) = (diag.rb().get(first + 1..).norm_max(), col0.norm_max());
     let mx = max(max_diag, max_col0);
 
     let eps = eps::<T>();
