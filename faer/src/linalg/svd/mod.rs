@@ -548,7 +548,7 @@ pub fn svd_scratch<T: ComplexField>(
 
 #[math]
 pub fn svd<T: ComplexField>(
-    matrix: MatRef<'_, T>,
+    A: MatRef<'_, T>,
     s: ColMut<'_, T>,
     u: Option<MatMut<'_, T>>,
     v: Option<MatMut<'_, T>>,
@@ -556,20 +556,20 @@ pub fn svd<T: ComplexField>(
     stack: &mut DynStack,
     params: SvdParams,
 ) -> Result<(), SvdError> {
-    let (m, n) = matrix.shape();
+    let (m, n) = A.shape();
     let size = Ord::min(m, n);
     assert!(s.nrows() == size);
 
     if let Some(u) = u.rb() {
         assert!(all(
-            u.nrows() == matrix.nrows(),
-            any(u.ncols() == matrix.nrows(), u.ncols() == size),
+            u.nrows() == A.nrows(),
+            any(u.ncols() == A.nrows(), u.ncols() == size),
         ));
     }
     if let Some(v) = v.rb() {
         assert!(all(
-            v.nrows() == matrix.ncols(),
-            any(v.ncols() == matrix.ncols(), v.ncols() == size),
+            v.nrows() == A.ncols(),
+            any(v.ncols() == A.ncols(), v.ncols() == size),
         ));
     }
 
@@ -589,7 +589,7 @@ pub fn svd<T: ComplexField>(
 
     let mut u = u;
     let mut v = v;
-    let mut matrix = matrix;
+    let mut matrix = A;
     let do_transpose = n > m;
     if do_transpose {
         matrix = matrix.transpose();

@@ -3970,7 +3970,7 @@ mod test {
 
     #[test]
     fn test_scalar_mul() {
-        use crate::scale;
+        use crate::Scale as scale;
 
         let (A, _) = matrices();
         let k = 3.0;

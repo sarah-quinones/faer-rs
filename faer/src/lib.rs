@@ -524,7 +524,7 @@ pub mod prelude {
     use super::*;
 
     pub use super::Par;
-    pub use crate::{c32, c64, mat};
+    pub use crate::{c32, c64, mat, Scale};
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};
@@ -535,12 +535,8 @@ pub mod prelude {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct Scale<T>(pub T);
-
-#[inline]
-pub fn scale<T>(value: T) -> Scale<T> {
-    Scale(value)
-}
 
 /// 0: Disable
 /// 1: None

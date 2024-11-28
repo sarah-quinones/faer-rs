@@ -1,7 +1,7 @@
 use super::*;
 
-mod complex_schur;
-mod real_schur;
+pub(crate) mod complex_schur;
+pub(crate) mod real_schur;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SchurParams {
@@ -32,7 +32,7 @@ impl<T: ComplexField> Auto<T> for SchurParams {
     }
 }
 
-fn multishift_qr_scratch<T: ComplexField>(
+pub fn multishift_qr_scratch<T: ComplexField>(
     n: usize,
     nh: usize,
     want_t: bool,
