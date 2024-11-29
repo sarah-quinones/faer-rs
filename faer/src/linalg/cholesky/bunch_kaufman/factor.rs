@@ -743,7 +743,7 @@ pub struct BunchKaufmanInfo {
 #[track_caller]
 #[math]
 pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
-    matrix: MatMut<'_, T>,
+    A: MatMut<'_, T>,
     subdiag: ColMut<'_, T>,
     regularization: BunchKaufmanRegularization<'_, T>,
     perm: &'out mut [I],
@@ -755,17 +755,17 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
     let truncate = <I::Signed as SignedIndex>::truncate;
     let mut regularization = regularization;
 
-    let n = matrix.nrows();
+    let n = A.nrows();
     assert!(all(
-        matrix.nrows() == matrix.ncols(),
+        A.nrows() == A.ncols(),
         subdiag.nrows() == n,
         perm.len() == n,
         perm_inv.len() == n
     ));
 
     #[cfg(feature = "perf-warn")]
-    if matrix.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(CHOLESKY_WARN) {
-        if matrix.col_stride().unsigned_abs() == 1 {
+    if A.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(CHOLESKY_WARN) {
+        if A.col_stride().unsigned_abs() == 1 {
             log::warn!(target: "faer_perf", "Bunch-Kaufman decomposition prefers column-major
     matrix. Found row-major matrix.");
         } else {
@@ -775,7 +775,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
     }
 
     let _ = par;
-    let mut matrix = matrix;
+    let mut matrix = A;
 
     let alpha = mul_pow2(
         one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0)),

@@ -1,6 +1,9 @@
 pub mod factor;
 pub mod solve;
 
+pub mod inverse;
+pub mod reconstruct;
+
 #[cfg(test)]
 mod tests {
     use super::*;

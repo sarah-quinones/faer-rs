@@ -77,9 +77,9 @@ mod tests {
 
         let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * (n as f64));
 
-        let mut A_inv = Mat::zeros(n, n);
+        let mut A_rec = Mat::zeros(n, n);
         reconstruct::reconstruct(
-            A_inv.as_mut(),
+            A_rec.as_mut(),
             L.as_ref(),
             Par::Seq,
             DynStack::new(&mut GlobalMemBuffer::new(
@@ -89,10 +89,10 @@ mod tests {
 
         for j in 0..n {
             for i in 0..j {
-                A_inv[(i, j)] = A_inv[(j, i)].conj();
+                A_rec[(i, j)] = A_rec[(j, i)].conj();
             }
         }
 
-        assert!(A_inv ~ A);
+        assert!(A_rec ~ A);
     }
 }

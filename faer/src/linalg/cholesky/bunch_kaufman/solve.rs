@@ -1,8 +1,7 @@
+use crate::{assert, internal_prelude::*, perm::permute_rows};
 use linalg::triangular_solve::{
     solve_unit_lower_triangular_in_place_with_conj, solve_unit_upper_triangular_in_place_with_conj,
 };
-
-use crate::{assert, internal_prelude::*, perm::permute_rows};
 
 /// Solving a linear system using the decomposition.
 
@@ -49,7 +48,8 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
     let k = rhs.ncols();
 
     assert!(all(
-        LB.nrows() == LB.ncols(),
+        LB.nrows() == n,
+        LB.ncols() == n,
         rhs.nrows() == n,
         subdiagonal.nrows() == n,
         perm.len() == n
