@@ -30,18 +30,16 @@
 
 use crate::{
     assert,
+    internal_prelude::*,
     linalg::{
         matmul::{
             dot, matmul, matmul_with_conj,
             triangular::{self, BlockStructure},
         },
-        triangular_solve as solve,
+        triangular_solve,
     },
     utils::{simd::SimdCtx, thread::join_raw},
-    ContiguousFwd, Stride,
 };
-
-use crate::internal_prelude::*;
 
 /// Computes the Householder reflection $I - \frac{v v^H}{\tau}$ such that when multiplied by $x$
 /// from the left, The result is $\beta e_0$. $\tau$ and $\beta$ are returned and $\tau$ is
@@ -51,9 +49,9 @@ use crate::internal_prelude::*;
 /// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
 #[math]
 #[inline]
-pub fn make_householder_in_place<M: Shape, T: ComplexField>(
+pub fn make_householder_in_place<T: ComplexField>(
     head: &mut T,
-    tail: ColMut<'_, T, M>,
+    tail: ColMut<'_, T>,
 ) -> (T, Option<T>) {
     let tail_norm = tail.norm_l2();
 
@@ -525,14 +523,14 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 
             // [T^-1|T^-*] × essentials* × tmp
             if forward {
-                solve::solve_lower_triangular_in_place_with_conj(
+                triangular_solve::solve_lower_triangular_in_place_with_conj(
                     householder_factor.transpose(),
                     Conj::Yes.compose(conj_lhs),
                     tmp.rb_mut(),
                     inner_parallelism,
                 );
             } else {
-                solve::solve_upper_triangular_in_place_with_conj(
+                triangular_solve::solve_upper_triangular_in_place_with_conj(
                     householder_factor,
                     Conj::No.compose(conj_lhs),
                     tmp.rb_mut(),
@@ -585,16 +583,11 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 /// Computes the product of the matrix, multiplied by the given block Householder transformation,
 /// and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_on_the_right_in_place_with_conj<
-    T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
->(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
+pub fn apply_block_householder_on_the_right_in_place_with_conj<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -611,16 +604,11 @@ pub fn apply_block_householder_on_the_right_in_place_with_conj<
 /// Computes the product of the matrix, multiplied by the transpose of the given block Householder
 /// transformation, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<
-    M: Shape,
-    N: Shape,
-    K: Shape,
-    T: ComplexField,
->(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
+pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -637,16 +625,11 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<
 /// Computes the product of the given block Householder transformation, multiplied by `matrix`, and
 /// stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_on_the_left_in_place_with_conj<
-    T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
->(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
+pub fn apply_block_householder_on_the_left_in_place_with_conj<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -671,25 +654,17 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<
 /// Computes the product of the transpose of the given block Householder transformation, multiplied
 /// by `matrix`, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<
-    T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
->(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, N, N, impl Stride, impl Stride>,
+pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    make_guard!(M);
-    make_guard!(N);
-    make_guard!(K);
-    let M = householder_basis.nrows().bind(M);
-    let N = householder_basis.ncols().bind(N);
-    let K = matrix.ncols().bind(K);
+    with_dim!(M, householder_basis.nrows());
+    with_dim!(N, householder_basis.ncols());
+    with_dim!(K, matrix.ncols());
 
     apply_block_householder_on_the_left_in_place_generic(
         householder_basis.as_shape(M, N).as_dyn_stride(),
@@ -706,95 +681,52 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
-    T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
-    B: Shape,
->(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, B, N, impl Stride, impl Stride>,
+pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'B, T: ComplexField>(
-        householder_basis: MatRef<'_, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, T, Dim<'B>, Dim<'N>>,
-        conj_lhs: Conj,
-        matrix: MatMut<'_, T, Dim<'M>, Dim<'K>>,
-        par: Par,
-        stack: &mut DynStack,
-    ) {
-        let mut matrix = matrix;
-        let mut stack = stack;
+    let mut matrix = matrix;
+    let mut stack = stack;
+    let m = householder_basis.nrows();
+    let n = householder_basis.ncols();
 
-        assert!(*householder_factor.nrows() > 0);
-        let M = householder_basis.nrows();
-        let N = householder_basis.ncols();
+    assert!(all(
+        householder_factor.nrows() > 0,
+        householder_factor.ncols() == Ord::min(m, n),
+    ));
 
-        let size = householder_factor.ncols();
+    let size = householder_factor.ncols();
 
-        let mut j = size.end();
+    let mut j = size;
 
-        let mut blocksize = *size % *householder_factor.nrows();
-        if blocksize == 0 {
-            blocksize = *householder_factor.nrows();
-        }
-
-        while *j > 0 {
-            let j_prev = size.idx(*j - blocksize);
-            blocksize = *householder_factor.nrows();
-
-            {
-                let jn = N.checked_idx_inc(*j);
-                let jn_prev = N.checked_idx_inc(*j_prev);
-                let jm = M.checked_idx_inc(*j_prev);
-
-                let essentials = householder_basis.get(jm.., jn_prev..jn);
-
-                let householder = householder_factor
-                    .get(.., j_prev.into()..j.into())
-                    .subrows(IdxInc::ZERO, *j - *j_prev);
-
-                let matrix = matrix.rb_mut().get_mut(jm.., ..);
-                make_guard!(M);
-                make_guard!(N);
-                let M = essentials.nrows().bind(M);
-                let N = essentials.ncols().bind(N);
-
-                apply_block_householder_on_the_left_in_place_with_conj(
-                    essentials.as_shape(M, N),
-                    householder.as_shape(N, N),
-                    conj_lhs,
-                    matrix.as_row_shape_mut(M),
-                    par,
-                    stack.rb_mut(),
-                );
-            }
-
-            j = j_prev.to_incl();
-        }
+    let mut blocksize = size % householder_factor.nrows();
+    if blocksize == 0 {
+        blocksize = householder_factor.nrows();
     }
-    make_guard!(M);
-    make_guard!(N);
-    make_guard!(K);
-    make_guard!(B);
-    let M = householder_basis.nrows().bind(M);
-    let N = householder_basis.ncols().bind(N);
-    let B = householder_factor.nrows().bind(B);
-    let K = matrix.ncols().bind(K);
-    imp(
-        householder_basis.as_dyn_stride().as_shape(M, N),
-        householder_factor.as_dyn_stride().as_shape(B, N),
-        conj_lhs,
-        matrix.as_dyn_stride_mut().as_shape_mut(M, K),
-        par,
-        stack,
-    )
+
+    while j > 0 {
+        let j_prev = j - blocksize;
+        blocksize = householder_factor.nrows();
+
+        let essentials = householder_basis.get(j_prev.., j_prev..j);
+        let householder = householder_factor.get(.., j_prev..j).subrows(0, j - j_prev);
+        let matrix = matrix.rb_mut().get_mut(j_prev.., ..);
+
+        apply_block_householder_on_the_left_in_place_with_conj(
+            essentials,
+            householder,
+            conj_lhs,
+            matrix,
+            par,
+            stack.rb_mut(),
+        );
+
+        j = j_prev;
+    }
 }
 
 /// Computes the product of the transpose of a sequence block Householder transformations given by
@@ -803,104 +735,61 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<
 #[track_caller]
 pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj<
     T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
-    B: Shape,
 >(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, B, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T, M, K, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    #[track_caller]
-    pub fn imp<'M, 'N, 'K, 'B, T: ComplexField>(
-        householder_basis: MatRef<'_, T, Dim<'M>, Dim<'N>>,
-        householder_factor: MatRef<'_, T, Dim<'B>, Dim<'N>>,
-        conj_lhs: Conj,
-        matrix: MatMut<'_, T, Dim<'M>, Dim<'K>>,
-        par: Par,
-        stack: &mut DynStack,
-    ) {
-        let mut matrix = matrix;
-        let mut stack = stack;
+    let mut matrix = matrix;
+    let mut stack = stack;
 
-        let blocksize = householder_factor.nrows();
+    let blocksize = householder_factor.nrows();
 
-        assert!(blocksize.unbound() > 0);
-        let M = householder_basis.nrows();
-        let N = householder_basis.ncols();
+    let m = householder_basis.nrows();
+    let n = householder_basis.ncols();
 
-        let size = householder_factor.ncols();
+    assert!(all(
+        householder_factor.nrows() > 0,
+        householder_factor.ncols() == Ord::min(m, n),
+    ));
 
-        let mut J = Dim::start();
+    let size = householder_factor.ncols();
 
-        while let Some(j) = size.try_check(*J) {
-            let j_next = size.advance(j, *blocksize);
+    let mut j = 0;
+    while j < size {
+        let blocksize = Ord::min(blocksize, size - j);
 
-            {
-                let jn = N.checked_idx_inc(*j);
-                let jn_next = N.checked_idx_inc(*j_next);
-                let jm = M.checked_idx_inc(*jn);
+        let essentials = householder_basis.get(j.., j..j + blocksize);
+        let householder = householder_factor
+            .get(.., j..j + blocksize)
+            .subrows(0, blocksize);
 
-                let essentials = householder_basis.get(jm.., jn..jn_next);
-                let householder = householder_factor
-                    .get(.., j.into()..j_next)
-                    .subrows(IdxInc::ZERO, *j_next - *jn);
+        let matrix = matrix.rb_mut().get_mut(j.., ..);
 
-                let matrix = matrix.rb_mut().get_mut(jm.., ..);
-                make_guard!(M);
-                make_guard!(N);
-                let M = essentials.nrows().bind(M);
-                let N = essentials.ncols().bind(N);
+        apply_block_householder_transpose_on_the_left_in_place_with_conj(
+            essentials,
+            householder,
+            conj_lhs,
+            matrix,
+            par,
+            stack.rb_mut(),
+        );
 
-                apply_block_householder_transpose_on_the_left_in_place_with_conj(
-                    essentials.as_shape(M, N),
-                    householder.as_shape(N, N),
-                    conj_lhs,
-                    matrix.as_row_shape_mut(M),
-                    par,
-                    stack.rb_mut(),
-                );
-            }
-
-            J = j_next;
-        }
+        j += blocksize;
     }
-    make_guard!(M);
-    make_guard!(N);
-    make_guard!(K);
-    make_guard!(B);
-    let M = householder_basis.nrows().bind(M);
-    let N = householder_basis.ncols().bind(N);
-    let B = householder_factor.nrows().bind(B);
-    let K = matrix.ncols().bind(K);
-    imp(
-        householder_basis.as_dyn_stride().as_shape(M, N),
-        householder_factor.as_dyn_stride().as_shape(B, N),
-        conj_lhs,
-        matrix.as_dyn_stride_mut().as_shape_mut(M, K),
-        par,
-        stack,
-    )
 }
 
 /// Computes the product of `matrix`, multiplied by a sequence of block Householder transformations
 /// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<
-    T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
-    H: Shape,
->(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, H, N, impl Stride, impl Stride>,
+pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -920,15 +809,11 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<
 #[track_caller]
 pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj<
     T: ComplexField,
-    M: Shape,
-    N: Shape,
-    K: Shape,
-    H: Shape,
 >(
-    householder_basis: MatRef<'_, T, M, N, impl Stride, impl Stride>,
-    householder_factor: MatRef<'_, T, H, N, impl Stride, impl Stride>,
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T, K, M, impl Stride, impl Stride>,
+    matrix: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
