@@ -425,8 +425,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
     }
 
     #[inline]
-    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<RhsT, Cols>)
-    where
+    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsRowRef<T = RhsT, Cols = Cols>,
+    ) where
         T: ComplexField,
     {
         self.rb_mut()
@@ -528,6 +530,7 @@ impl<T, Cols: Shape, RStride: Stride> Index<Idx<Cols>> for RowRef<'_, T, Cols, R
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, col: Idx<Cols>) -> &Self::Output {
         self.at(col)
     }
@@ -537,6 +540,7 @@ impl<T, Cols: Shape, RStride: Stride> Index<Idx<Cols>> for RowMut<'_, T, Cols, R
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, col: Idx<Cols>) -> &Self::Output {
         self.rb().at(col)
     }
@@ -544,6 +548,7 @@ impl<T, Cols: Shape, RStride: Stride> Index<Idx<Cols>> for RowMut<'_, T, Cols, R
 
 impl<T, Cols: Shape, RStride: Stride> IndexMut<Idx<Cols>> for RowMut<'_, T, Cols, RStride> {
     #[inline]
+    #[track_caller]
     fn index_mut(&mut self, col: Idx<Cols>) -> &mut Self::Output {
         self.rb_mut().at_mut(col)
     }

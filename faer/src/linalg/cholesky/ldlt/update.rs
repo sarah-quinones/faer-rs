@@ -372,7 +372,7 @@ impl<T: ComplexField> RankRUpdate<'_, T> {
 
                     *alpha = from_real(real(*alpha) - new_d * abs2(*beta));
                     *d = from_real(new_d);
-                    *p = -p;
+                    *p = -*p;
                 }
 
                 let mut L_col = L_col.rb_mut().get_mut(j + 1..);

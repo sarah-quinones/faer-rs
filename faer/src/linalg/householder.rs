@@ -551,7 +551,7 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
                 tmp.rb(),
                 BlockStructure::Rectangular,
                 Conj::No,
-                -one(),
+                -one::<T>(),
                 inner_parallelism,
             );
             matmul_with_conj(
@@ -561,7 +561,7 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
                 Conj::No.compose(conj_lhs),
                 tmp.rb(),
                 Conj::No,
-                -one(),
+                -one::<T>(),
                 inner_parallelism,
             );
         };

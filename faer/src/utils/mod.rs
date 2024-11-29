@@ -2,7 +2,6 @@ pub mod bound;
 pub mod slice;
 
 pub mod thread {
-
     use crate::*;
 
     /// Executes the two operations, possibly in parallel, while splitting the amount of parallelism

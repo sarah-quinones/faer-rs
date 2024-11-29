@@ -34,8 +34,12 @@ pub mod dot {
             rhs: ColRef<T, Dim<'K>>,
             conj_rhs: Conj,
         ) -> T {
-            if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
-                inner_prod_slice::<T>(lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
+            if const { T::SIMD_CAPABILITIES.is_simd() } {
+                if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
+                    inner_prod_slice::<T>(lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
+                } else {
+                    inner_prod_schoolbook(lhs, conj_lhs, rhs, conj_rhs)
+                }
             } else {
                 inner_prod_schoolbook(lhs, conj_lhs, rhs, conj_rhs)
             }

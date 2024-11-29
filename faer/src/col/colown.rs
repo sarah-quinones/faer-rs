@@ -120,6 +120,7 @@ impl<T, Rows: Shape> Index<Idx<Rows>> for Col<T, Rows> {
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, row: Idx<Rows>) -> &Self::Output {
         self.as_ref().at(row)
     }
@@ -127,6 +128,7 @@ impl<T, Rows: Shape> Index<Idx<Rows>> for Col<T, Rows> {
 
 impl<T, Rows: Shape> IndexMut<Idx<Rows>> for Col<T, Rows> {
     #[inline]
+    #[track_caller]
     fn index_mut(&mut self, row: Idx<Rows>) -> &mut Self::Output {
         self.as_mut().at_mut(row)
     }

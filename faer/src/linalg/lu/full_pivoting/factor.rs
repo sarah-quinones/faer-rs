@@ -405,7 +405,7 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
                 Accum::Add,
                 lhs.as_mat(),
                 rhs.as_mat(),
-                -one(),
+                -one::<T>(),
                 Par::Seq,
             );
             best_in_matrix(dst.rb())
@@ -416,7 +416,7 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
             Accum::Add,
             lhs.as_mat(),
             rhs.as_mat(),
-            -one(),
+            -one::<T>(),
             Par::Seq,
         );
         best_in_matrix(dst.rb())

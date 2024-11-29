@@ -168,7 +168,7 @@ fn simd_cholesky_row_batch<'N, T: ComplexField, S: Simd>(
                 if sign == 1 && small_or_negative {
                     diag = copy(delta);
                     count += 1;
-                } else if sign == -1 && minus_small_or_positive {
+                } else if sign == -1i8 && minus_small_or_positive {
                     diag = neg(delta);
                 } else {
                     if small_or_negative && minus_small_or_positive {
@@ -382,7 +382,7 @@ fn cholesky_fallback<T: ComplexField>(
             if sign == 1 && small_or_negative {
                 diag = copy(delta);
                 count += 1;
-            } else if sign == -1 && minus_small_or_positive {
+            } else if sign == -1i8 && minus_small_or_positive {
                 diag = neg(delta);
             } else {
                 if small_or_negative && minus_small_or_positive {
@@ -516,7 +516,7 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
                 BlockStructure::Rectangular,
                 L10xD0.adjoint(),
                 BlockStructure::Rectangular,
-                -one(),
+                -one::<T>(),
                 par,
             );
 

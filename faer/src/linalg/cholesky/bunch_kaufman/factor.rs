@@ -173,7 +173,7 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
             Accum::Add,
             a.rb().get(k0..n, ..k0),
             w_row.rb().transpose().as_mat(),
-            -one(),
+            -one::<T>(),
             par,
         );
         make_real(w.rb_mut(), (k0, j0));
@@ -226,7 +226,7 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
                     Accum::Add,
                     a.rb().get(k0.., ..k0),
                     w_row.rb().transpose().as_mat(),
-                    -one(),
+                    -one::<T>(),
                     par,
                 );
                 make_real(w.rb_mut(), (imax, j1));
@@ -402,7 +402,7 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
         BlockStructure::Rectangular,
         w.rb().get(k0.., ..j0).transpose(),
         BlockStructure::Rectangular,
-        -one(),
+        -one::<T>(),
         par,
     );
 

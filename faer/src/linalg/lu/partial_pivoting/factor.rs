@@ -63,7 +63,7 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(
             Accum::Add,
             A10.as_mat(),
             A01.as_mat(),
-            -one(),
+            -one::<T>(),
             Par::Seq,
         );
     }
@@ -122,7 +122,14 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(
             );
         }
 
-        linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one(), par);
+        linalg::matmul::matmul(
+            A11.rb_mut(),
+            Accum::Add,
+            A10.rb(),
+            A01.rb(),
+            -one::<T>(),
+            par,
+        );
 
         n_trans += lu_in_place_recursion(
             A.rb_mut().get_mut(blocksize..m, ..),
@@ -235,7 +242,7 @@ pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
 }
 
 pub fn lu_in_place<'out, I: Index, T: ComplexField>(
-    matrix: MatMut<'_, T>,
+    A: MatMut<'_, T>,
     perm: &'out mut [I],
     perm_inv: &'out mut [I],
     par: Par,
@@ -246,20 +253,18 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
     let truncate = I::truncate;
 
     #[cfg(feature = "perf-warn")]
-    if (matrix.col_stride().unsigned_abs() == 1 || matrix.row_stride().unsigned_abs() != 1)
+    if (A.col_stride().unsigned_abs() == 1 || A.row_stride().unsigned_abs() != 1)
         && crate::__perf_warn!(LU_WARN)
     {
         log::warn!(target: "faer_perf", "LU with partial pivoting prefers column-major or row-major matrix. Found matrix with generic strides.");
     }
 
-    let mut matrix = matrix;
+    let mut matrix = A;
     let mut stack = stack;
     let m = matrix.nrows();
     let n = matrix.ncols();
 
     let size = Ord::min(n, m);
-
-    // let (l![left, right], (disjoint, ..)) = n.split(l![..n.idx_inc(size), ..], FULL_COLS);
 
     for i in 0..m {
         let p = &mut perm[i];

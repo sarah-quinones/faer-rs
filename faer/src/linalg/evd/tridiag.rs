@@ -315,7 +315,7 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
         BlockStructure::Rectangular,
         ry2.rb().adjoint().as_mat(),
         BlockStructure::Rectangular,
-        -one(),
+        -one::<T>(),
         par,
     );
     matmul::triangular::matmul(
@@ -326,7 +326,7 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
         BlockStructure::Rectangular,
         u1.rb().adjoint().as_mat(),
         BlockStructure::Rectangular,
-        -one(),
+        -one::<T>(),
         par,
     );
     matmul::matmul(
@@ -334,7 +334,7 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
         Accum::Add,
         u01.as_mat(),
         ry2.rb().adjoint().as_mat(),
-        -one(),
+        -one::<T>(),
         par,
     );
     matmul::matmul(
@@ -342,7 +342,7 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
         Accum::Add,
         rz21.rb().as_mat(),
         u1.adjoint().as_mat(),
-        -one(),
+        -one::<T>(),
         par,
     );
 

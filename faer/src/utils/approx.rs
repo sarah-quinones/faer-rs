@@ -2,12 +2,16 @@ use crate::internal_prelude::*;
 use core::ops::Mul;
 use faer_traits::Real;
 
+extern crate alloc;
+
 pub struct ApproxEq<T: ComplexField> {
     pub abs_tol: Real<T>,
     pub rel_tol: Real<T>,
 }
 
 pub struct CwiseMat<Cmp>(pub Cmp);
+pub struct CwiseCol<Cmp>(pub Cmp);
+pub struct CwiseRow<Cmp>(pub Cmp);
 
 impl<T: ComplexField> ApproxEq<T> {
     #[math]
@@ -35,12 +39,23 @@ impl<T: ComplexField> Mul<Real<T>> for ApproxEq<T> {
 
 #[derive(Copy, Clone, Debug)]
 pub struct ApproxEqError;
-extern crate alloc;
 
 #[derive(Clone, Debug)]
 pub enum CwiseMatError<Rows: Shape, Cols: Shape, Error> {
     DimMismatch,
     Elements(alloc::vec::Vec<(crate::Idx<Rows>, crate::Idx<Cols>, Error)>),
+}
+
+#[derive(Clone, Debug)]
+pub enum CwiseColError<Rows: Shape, Error> {
+    DimMismatch,
+    Elements(alloc::vec::Vec<(crate::Idx<Rows>, Error)>),
+}
+
+#[derive(Clone, Debug)]
+pub enum CwiseRowError<Cols: Shape, Error> {
+    DimMismatch,
+    Elements(alloc::vec::Vec<(crate::Idx<Cols>, Error)>),
 }
 
 impl<
@@ -54,6 +69,30 @@ impl<
     > equator::CmpError<CwiseMat<Cmp>, L, R> for CwiseMat<Cmp>
 {
     type Error = CwiseMatError<Rows, Cols, Error>;
+}
+
+impl<
+        T: ComplexField,
+        Rows: Shape,
+        L: AsColRef<T = T, Rows = Rows>,
+        R: AsColRef<T = T, Rows = Rows>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
+    > equator::CmpError<CwiseCol<Cmp>, L, R> for CwiseCol<Cmp>
+{
+    type Error = CwiseColError<Rows, Error>;
+}
+
+impl<
+        T: ComplexField,
+        Cols: Shape,
+        L: AsRowRef<T = T, Cols = Cols>,
+        R: AsRowRef<T = T, Cols = Cols>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
+    > equator::CmpError<CwiseRow<Cmp>, L, R> for CwiseRow<Cmp>
+{
+    type Error = CwiseRowError<Cols, Error>;
 }
 
 impl<T: ComplexField> equator::CmpError<ApproxEq<T>, T, T> for ApproxEq<T> {
@@ -186,6 +225,147 @@ impl<
 impl<
         T: ComplexField,
         Rows: Shape,
+        L: AsColRef<T = T, Rows = Rows>,
+        R: AsColRef<T = T, Rows = Rows>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
+    > equator::CmpDisplay<CwiseCol<Cmp>, L, R> for CwiseColError<Rows, Error>
+{
+    #[math]
+    fn fmt(
+        &self,
+        cmp: &CwiseCol<Cmp>,
+        lhs: &L,
+        lhs_source: &str,
+        _: &dyn core::fmt::Debug,
+        rhs: &R,
+        rhs_source: &str,
+        _: &dyn core::fmt::Debug,
+        f: &mut core::fmt::Formatter,
+    ) -> core::fmt::Result {
+        let lhs = lhs.as_col_ref();
+        let rhs = rhs.as_col_ref();
+        match self {
+            Self::DimMismatch => {
+                let lhs_nrows = lhs.nrows();
+                let rhs_nrows = rhs.nrows();
+
+                writeln!(f, "Assertion failed: {lhs_source} ~ {rhs_source}\n")?;
+                write!(f, "- {lhs_source} = Col[{lhs_nrows:?}]\n")?;
+                write!(f, "- {rhs_source} = Col[{rhs_nrows:?}]")?;
+            }
+
+            Self::Elements(indices) => {
+                let mut prefix = "";
+
+                let mut count = 0;
+                for (i, e) in indices {
+                    if count >= 10 {
+                        write!(
+                            f,
+                            "\n\n... ({} mismatches omitted)\n\n",
+                            indices.len() - count,
+                        )?;
+                        break;
+                    }
+                    count += 1;
+
+                    let i = *i;
+                    let lhs = lhs.at(i).clone();
+                    let rhs = rhs.at(i).clone();
+
+                    e.fmt(
+                        &cmp.0,
+                        &lhs,
+                        &alloc::format!("{prefix}{lhs_source} at {i:?}"),
+                        crate::hacks::hijack_debug(&lhs),
+                        &rhs,
+                        &alloc::format!("{rhs_source} at {i:?}"),
+                        crate::hacks::hijack_debug(&rhs),
+                        f,
+                    )?;
+                    write!(f, "\n\n")?;
+                    prefix = "__skip_prologue"
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<
+        T: ComplexField,
+        Cols: Shape,
+        L: AsRowRef<T = T, Cols = Cols>,
+        R: AsRowRef<T = T, Cols = Cols>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
+    > equator::CmpDisplay<CwiseRow<Cmp>, L, R> for CwiseRowError<Cols, Error>
+{
+    #[math]
+    fn fmt(
+        &self,
+        cmp: &CwiseRow<Cmp>,
+        lhs: &L,
+        lhs_source: &str,
+        _: &dyn core::fmt::Debug,
+        rhs: &R,
+        rhs_source: &str,
+        _: &dyn core::fmt::Debug,
+        f: &mut core::fmt::Formatter,
+    ) -> core::fmt::Result {
+        let lhs = lhs.as_row_ref();
+        let rhs = rhs.as_row_ref();
+        match self {
+            Self::DimMismatch => {
+                let lhs_ncols = lhs.ncols();
+                let rhs_ncols = rhs.ncols();
+
+                writeln!(f, "Assertion failed: {lhs_source} ~ {rhs_source}\n")?;
+                write!(f, "- {lhs_source} = Row[{lhs_ncols:?}]\n")?;
+                write!(f, "- {rhs_source} = Row[{rhs_ncols:?}]")?;
+            }
+
+            Self::Elements(indices) => {
+                let mut prefix = "";
+
+                let mut count = 0;
+                for (i, e) in indices {
+                    if count >= 10 {
+                        write!(
+                            f,
+                            "\n\n... ({} mismatches omitted)\n\n",
+                            indices.len() - count,
+                        )?;
+                        break;
+                    }
+                    count += 1;
+
+                    let j = *i;
+                    let lhs = lhs.at(j).clone();
+                    let rhs = rhs.at(j).clone();
+
+                    e.fmt(
+                        &cmp.0,
+                        &lhs,
+                        &alloc::format!("{prefix}{lhs_source} at {j:?}"),
+                        crate::hacks::hijack_debug(&lhs),
+                        &rhs,
+                        &alloc::format!("{rhs_source} at {j:?}"),
+                        crate::hacks::hijack_debug(&rhs),
+                        f,
+                    )?;
+                    write!(f, "\n\n")?;
+                    prefix = "__skip_prologue"
+                }
+            }
+        }
+        Ok(())
+    }
+}
+impl<
+        T: ComplexField,
+        Rows: Shape,
         Cols: Shape,
         L: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
         R: AsMatRef<T = T, Rows = Rows, Cols = Cols>,
@@ -217,6 +397,74 @@ impl<
             Ok(())
         } else {
             Err(CwiseMatError::Elements(indices))
+        }
+    }
+}
+
+impl<
+        T: ComplexField,
+        Rows: Shape,
+        L: AsColRef<T = T, Rows = Rows>,
+        R: AsColRef<T = T, Rows = Rows>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
+    > equator::Cmp<L, R> for CwiseCol<Cmp>
+{
+    fn test(&self, lhs: &L, rhs: &R) -> Result<(), Self::Error> {
+        let lhs = lhs.as_col_ref();
+        let rhs = rhs.as_col_ref();
+
+        if lhs.nrows() != rhs.nrows() || lhs.ncols() != rhs.ncols() {
+            return Err(CwiseColError::DimMismatch);
+        }
+
+        let mut indices = alloc::vec::Vec::new();
+        for i in 0..lhs.nrows().unbound() {
+            let i = lhs.nrows().checked_idx(i);
+
+            if let Err(err) = self.0.test(&lhs.at(i).clone(), &rhs.at(i).clone()) {
+                indices.push((i, err));
+            }
+        }
+
+        if indices.is_empty() {
+            Ok(())
+        } else {
+            Err(CwiseColError::Elements(indices))
+        }
+    }
+}
+
+impl<
+        T: ComplexField,
+        Cols: Shape,
+        L: AsRowRef<T = T, Cols = Cols>,
+        R: AsRowRef<T = T, Cols = Cols>,
+        Error: equator::CmpDisplay<Cmp, T, T>,
+        Cmp: equator::Cmp<T, T, Error = Error>,
+    > equator::Cmp<L, R> for CwiseRow<Cmp>
+{
+    fn test(&self, lhs: &L, rhs: &R) -> Result<(), Self::Error> {
+        let lhs = lhs.as_row_ref();
+        let rhs = rhs.as_row_ref();
+
+        if lhs.ncols() != rhs.ncols() {
+            return Err(CwiseRowError::DimMismatch);
+        }
+
+        let mut indices = alloc::vec::Vec::new();
+        for j in 0..lhs.ncols().unbound() {
+            let j = lhs.ncols().checked_idx(j);
+
+            if let Err(err) = self.0.test(&lhs.at(j).clone(), &rhs.at(j).clone()) {
+                indices.push((j, err));
+            }
+        }
+
+        if indices.is_empty() {
+            Ok(())
+        } else {
+            Err(CwiseRowError::Elements(indices))
         }
     }
 }

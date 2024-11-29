@@ -32,42 +32,54 @@ pub use colmut::ColMut;
 pub use colown::Col;
 pub use colref::ColRef;
 
-pub trait AsColMut<T, Rows: Shape> {
-    fn as_col_mut(&mut self) -> ColMut<T, Rows>;
+pub trait AsColMut: AsColRef {
+    fn as_col_mut(&mut self) -> ColMut<Self::T, Self::Rows>;
 }
-pub trait AsColRef<T, Rows: Shape> {
-    fn as_col_ref(&self) -> ColRef<T, Rows>;
+pub trait AsColRef {
+    type T;
+    type Rows: Shape;
+
+    fn as_col_ref(&self) -> ColRef<Self::T, Self::Rows>;
 }
 
-impl<T, Rows: Shape, RStride: Stride> AsColRef<T, Rows> for ColRef<'_, T, Rows, RStride> {
+impl<T, Rows: Shape, RStride: Stride> AsColRef for ColRef<'_, T, Rows, RStride> {
+    type T = T;
+    type Rows = Rows;
+
     #[inline]
     fn as_col_ref(&self) -> ColRef<T, Rows> {
         self.as_dyn_stride()
     }
 }
 
-impl<T, Rows: Shape, RStride: Stride> AsColRef<T, Rows> for ColMut<'_, T, Rows, RStride> {
+impl<T, Rows: Shape, RStride: Stride> AsColRef for ColMut<'_, T, Rows, RStride> {
+    type T = T;
+    type Rows = Rows;
+
     #[inline]
     fn as_col_ref(&self) -> ColRef<T, Rows> {
         self.rb().as_dyn_stride()
     }
 }
 
-impl<T, Rows: Shape, RStride: Stride> AsColMut<T, Rows> for ColMut<'_, T, Rows, RStride> {
+impl<T, Rows: Shape, RStride: Stride> AsColMut for ColMut<'_, T, Rows, RStride> {
     #[inline]
     fn as_col_mut(&mut self) -> ColMut<T, Rows> {
         self.rb_mut().as_dyn_stride_mut()
     }
 }
 
-impl<T, Rows: Shape> AsColRef<T, Rows> for Col<T, Rows> {
+impl<T, Rows: Shape> AsColRef for Col<T, Rows> {
+    type T = T;
+    type Rows = Rows;
+
     #[inline]
     fn as_col_ref(&self) -> ColRef<T, Rows> {
         self.as_dyn_stride()
     }
 }
 
-impl<T, Rows: Shape> AsColMut<T, Rows> for Col<T, Rows> {
+impl<T, Rows: Shape> AsColMut for Col<T, Rows> {
     #[inline]
     fn as_col_mut(&mut self) -> ColMut<T, Rows> {
         self.as_dyn_stride_mut()

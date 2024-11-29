@@ -317,7 +317,7 @@ fn bidiag_fused_op_fallback<T: ComplexField>(
         Accum::Add,
         up.as_mat(),
         y.rb().as_mat(),
-        -one(),
+        -one::<T>(),
         Par::Seq,
     );
     matmul(
@@ -325,7 +325,7 @@ fn bidiag_fused_op_fallback<T: ComplexField>(
         Accum::Add,
         z.as_mat(),
         vp.as_mat(),
-        -one(),
+        -one::<T>(),
         Par::Seq,
     );
     matmul(

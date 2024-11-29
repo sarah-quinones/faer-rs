@@ -81,7 +81,7 @@ fn invert_lower_triangular_impl<'N, T: ComplexField>(
         BlockStructure::Rectangular,
         dst_tl.rb(),
         BlockStructure::TriangularLower,
-        -one(),
+        -one::<T>(),
         parallelism,
     );
     linalg::triangular_solve::solve_lower_triangular_in_place(src_br, dst_bl, parallelism);
@@ -122,7 +122,7 @@ fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(
         BlockStructure::Rectangular,
         dst_tl.rb(),
         BlockStructure::UnitTriangularLower,
-        -one(),
+        -one::<T>(),
         parallelism,
     );
     linalg::triangular_solve::solve_unit_lower_triangular_in_place(src_br, dst_bl, parallelism);

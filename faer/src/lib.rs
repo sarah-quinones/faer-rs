@@ -133,14 +133,46 @@ macro_rules! mat {
 
     ($([$($v:expr),* $(,)?] ),* $(,)?) => {
         {
-            let data = ::core::mem::ManuallyDrop::new($crate::__transpose_impl!([] $($($v),* ;)*));
-            let data = &*data;
-            let ncols = data.len();
-            let nrows = (*data.get(0).unwrap()).len();
+            let __data = ::core::mem::ManuallyDrop::new($crate::__transpose_impl!([] $($($v),* ;)*));
+            let __data = &*__data;
+            let __ncols = __data.len();
+            let __nrows = (*__data.get(0).unwrap()).len();
 
             #[allow(unused_unsafe)]
             unsafe {
-                $crate::mat::Mat::from_fn(nrows, ncols, |i, j| ::core::ptr::from_ref(&data[j][i]).read())
+                $crate::mat::Mat::from_fn(__nrows, __ncols, |i, j| ::core::ptr::from_ref(&__data[j][i]).read())
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! col {
+    ($($v: expr),* $(,)?) => {
+        {
+            let __data = ::core::mem::ManuallyDrop::new([$($v,)*]);
+            let __data = &*__data;
+            let __len = __data.len();
+
+            #[allow(unused_unsafe)]
+            unsafe {
+                $crate::col::Col::from_fn(__len, |i| ::core::ptr::from_ref(&__data[i]).read())
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! row {
+    ($($v: expr),* $(,)?) => {
+        {
+            let __data = ::core::mem::ManuallyDrop::new([$($v,)*]);
+            let __data = &*__data;
+            let __len = __data.len();
+
+            #[allow(unused_unsafe)]
+            unsafe {
+                $crate::row::Row::from_fn(__len, |i| ::core::ptr::from_ref(&__data[i]).read())
             }
         }
     };
@@ -485,6 +517,8 @@ mod internal_prelude {
         variadics::{l, L},
         Auto, NonExhaustive,
     };
+
+    pub use num_complex::Complex;
 
     pub use faer_macros::math;
     pub use faer_traits::{

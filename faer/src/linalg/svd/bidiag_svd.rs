@@ -212,7 +212,7 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
     let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) = if shift == left {
         (
             zero(),
-            -infinity(),
+            -infinity::<T>(),
             if last {
                 right - left
             } else {
@@ -571,7 +571,7 @@ pub(super) fn qr_algorithm<T: RealField>(
         let d = diag.rb_mut().at_mut(j);
 
         if *d < zero() {
-            *d = -d;
+            *d = -*d;
             if let Some(mut v) = v.rb_mut() {
                 for i in 0..n {
                     v[(i, j)] = -v[(i, j)];
@@ -803,7 +803,7 @@ fn compute_singular_vectors<'N, T: RealField>(
         }
 
         if let Some(mut v) = v {
-            v[outer_perm[n.idx(0)]] = -one();
+            v[outer_perm[n.idx(0)]] = -one::<T>();
             for &i in &perm[1..] {
                 v[outer_perm[i]] =
                     ((diag[i] * zhat[i]) / ((diag[i] - shift) - mu)) / (diag[i] + (shift + mu));

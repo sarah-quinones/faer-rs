@@ -599,6 +599,7 @@ impl<T, Rows: Shape, Cols: Shape> Index<(Idx<Rows>, Idx<Cols>)> for Mat<T, Rows,
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &Self::Output {
         self.as_ref().at(row, col)
     }
@@ -606,6 +607,7 @@ impl<T, Rows: Shape, Cols: Shape> Index<(Idx<Rows>, Idx<Cols>)> for Mat<T, Rows,
 
 impl<T, Rows: Shape, Cols: Shape> IndexMut<(Idx<Rows>, Idx<Cols>)> for Mat<T, Rows, Cols> {
     #[inline]
+    #[track_caller]
     fn index_mut(&mut self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &mut Self::Output {
         self.as_mut().at_mut(row, col)
     }
@@ -971,6 +973,22 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
                 col,
             )
         }
+    }
+
+    #[inline]
+    pub fn cloned(&self) -> Mat<T, Rows, Cols>
+    where
+        T: Clone,
+    {
+        self.as_ref().cloned()
+    }
+
+    #[inline]
+    pub fn to_owned(&self) -> Mat<T::Canonical, Rows, Cols>
+    where
+        T: Conjugate,
+    {
+        self.as_ref().to_owned()
     }
 }
 

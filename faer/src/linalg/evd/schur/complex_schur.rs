@@ -298,7 +298,8 @@ fn aggressive_early_deflation<T: ComplexField>(
     let n = a.nrows();
     let nw_max = (n - 3) / 3;
     let eps = eps::<T::Real>();
-    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
+    let n_T = from_f64::<T::Real>(n as f64);
+    let small_num = min_positive::<T::Real>() / eps * n_T;
     let jw = Ord::min(Ord::min(nw, ihi - ilo), nw_max);
     let kwtop = ihi - jw;
     let mut s_spike = if kwtop == ilo {
@@ -663,19 +664,14 @@ fn schur_swap<T: ComplexField>(mut a: MatMut<'_, T>, q: Option<MatMut<'_, T>>, j
     a.write(j1, j1, t00);
     a.write(j0, j0, t11);
     if j2 < n {
-        let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-        let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
-        rot.adjoint().apply_on_the_left_in_place((row1, row2));
+        rot.adjoint()
+            .apply_on_the_left_in_place(a.rb_mut().get_mut(.., j2..).two_rows_mut(j0, j1));
     }
     if j0 > 0 {
-        let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-        let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-        rot.apply_on_the_right_in_place((col1, col2));
+        rot.apply_on_the_right_in_place(a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1));
     }
     if let Some(q) = q {
-        let col1 = unsafe { q.rb().col(j0).const_cast() };
-        let col2 = unsafe { q.rb().col(j1).const_cast() };
-        rot.apply_on_the_right_in_place((col1, col2));
+        rot.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
     }
     0
 }
@@ -1045,7 +1041,8 @@ fn introduce_bulges<T: ComplexField>(
 ) {
     let n = a.nrows();
     let eps = eps::<T::Real>();
-    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
+    let n_T = from_f64::<T::Real>(n as f64);
+    let small_num = min_positive::<T::Real>() / eps * n_T;
     let n_block = Ord::min(n_block_desired, ihi - ilo);
     let mut istart_m = ilo;
     let mut istop_m = ilo + n_block;
@@ -1281,7 +1278,8 @@ fn move_bulges_down<T: ComplexField>(
 ) {
     let n = a.nrows();
     let eps = eps::<T::Real>();
-    let small_num = min_positive::<T::Real>() / eps * from_f64::<T::Real>(n as f64);
+    let n_T = from_f64::<T::Real>(n as f64);
+    let small_num = min_positive::<T::Real>() / eps * n_T;
     while *i_pos_block + n_block_desired < ihi {
         let n_pos = Ord::min(
             n_block_desired - n_shifts,

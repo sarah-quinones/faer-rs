@@ -12,9 +12,9 @@ use crate::{assert, internal_prelude::*, perm::permute_rows};
 pub fn solve_in_place_scratch<I: Index, T: ComplexField>(
     dim: usize,
     rhs_ncols: usize,
-    parallelism: Par,
+    par: Par,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = parallelism;
+    let _ = par;
     temp_mat_scratch::<T>(dim, rhs_ncols)
 }
 
@@ -37,49 +37,49 @@ pub fn solve_in_place_scratch<I: Index, T: ComplexField>(
 #[track_caller]
 #[math]
 pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
-    lb_factors: MatRef<'_, T>,
-    subdiag: ColRef<'_, T>,
-    conj_lb: Conj,
+    LB: MatRef<'_, T>,
+    subdiagonal: ColRef<'_, T>,
+    conj_LB: Conj,
     perm: PermRef<'_, I>,
     rhs: MatMut<'_, T>,
-    parallelism: Par,
+    par: Par,
     stack: &mut DynStack,
 ) {
-    let n = lb_factors.nrows();
+    let n = LB.nrows();
     let k = rhs.ncols();
 
     assert!(all(
-        lb_factors.nrows() == lb_factors.ncols(),
+        LB.nrows() == LB.ncols(),
         rhs.nrows() == n,
-        subdiag.nrows() == n,
+        subdiagonal.nrows() == n,
         perm.len() == n
     ));
 
-    let a = lb_factors;
-    let par = parallelism;
-    let not_conj = conj_lb.compose(Conj::Yes);
+    let a = LB;
+    let par = par;
+    let not_conj = conj_LB.compose(Conj::Yes);
 
     let mut rhs = rhs;
     let mut x = unsafe { temp_mat_uninit::<T, _, _>(n, k, stack).0 };
     let mut x = x.as_mat_mut();
 
     permute_rows(x.rb_mut(), rhs.rb(), perm);
-    solve_unit_lower_triangular_in_place_with_conj(a, conj_lb, x.rb_mut(), par);
+    solve_unit_lower_triangular_in_place_with_conj(a, conj_LB, x.rb_mut(), par);
 
     let mut i = 0;
     while i < n {
         let i0 = i;
         let i1 = i + 1;
 
-        if subdiag[i] == zero() {
+        if subdiagonal[i] == zero() {
             let d_inv = recip(real(a[(i, i)]));
             for j in 0..k {
                 x[(i, j)] = mul_real(x[(i, j)], d_inv);
             }
             i += 1;
         } else {
-            let mut akp1k = copy(subdiag[i0]);
-            if matches!(conj_lb, Conj::Yes) {
+            let mut akp1k = copy(subdiagonal[i0]);
+            if matches!(conj_LB, Conj::Yes) {
                 akp1k = conj(akp1k);
             }
             akp1k = recip(akp1k);
@@ -112,4 +112,25 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 
     solve_unit_upper_triangular_in_place_with_conj(a.transpose(), not_conj, x.rb_mut(), par);
     permute_rows(rhs.rb_mut(), x.rb(), perm.inverse());
+}
+
+#[track_caller]
+#[math]
+pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+    LB: MatRef<'_, C>,
+    subdiagonal: ColRef<'_, C>,
+    perm: PermRef<'_, I>,
+    rhs: MatMut<'_, T>,
+    par: Par,
+    stack: &mut DynStack,
+) {
+    solve_in_place_with_conj(
+        LB.canonical(),
+        subdiagonal.canonical(),
+        Conj::get::<C>(),
+        perm,
+        rhs,
+        par,
+        stack,
+    );
 }

@@ -485,7 +485,7 @@ fn divide_and_conquer_recurse<T: RealField>(
 
     z0.copy_from(u0.rb().row(n1 - 1).transpose());
     if rho < zero() {
-        z!(z1.rb_mut(), u1.rb().row(0).transpose()).for_each(|uz!(z, u)| *z = -u);
+        z!(z1.rb_mut(), u1.rb().row(0).transpose()).for_each(|uz!(z, u)| *z = -*u);
     } else {
         z1.copy_from(u1.rb().row(0).transpose());
     }

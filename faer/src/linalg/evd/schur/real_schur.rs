@@ -422,19 +422,18 @@ pub fn schur_swap<T: RealField>(
         a.write(j1, j1, t00);
         a.write(j0, j0, t11);
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
-            rot.apply_on_the_right_in_place((row1.transpose_mut(), row2.transpose_mut()));
+            rot.apply_on_the_right_in_place(
+                a.rb_mut()
+                    .transpose_mut()
+                    .get_mut(j2.., ..)
+                    .two_cols_mut(j0, j1),
+            );
         }
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-            rot.apply_on_the_right_in_place((col1, col2));
+            rot.apply_on_the_right_in_place(a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1));
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast() };
-            let col2 = unsafe { q.rb().col(j1).const_cast() };
-            rot.apply_on_the_right_in_place((col1, col2));
+            rot.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
         }
     }
     if n1 == 1 && n2 == 2 {
@@ -664,19 +663,18 @@ pub fn schur_swap<T: RealField>(
         a.write(j1, j0, a10);
         a.write(j1, j1, a11);
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
-            rot.apply_on_the_right_in_place((row1.transpose_mut(), row2.transpose_mut()));
+            rot.apply_on_the_right_in_place(
+                a.rb_mut()
+                    .transpose_mut()
+                    .get_mut(j2.., ..)
+                    .two_cols_mut(j0, j1),
+            );
         }
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-            rot.apply_on_the_right_in_place((col1, col2));
+            rot.apply_on_the_right_in_place(a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1));
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast() };
-            let col2 = unsafe { q.rb().col(j1).const_cast() };
-            rot.apply_on_the_right_in_place((col1, col2));
+            rot.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
         }
     }
     if n1 == 2 {
@@ -695,19 +693,18 @@ pub fn schur_swap<T: RealField>(
         a.write(j1, j0, a10);
         a.write(j1, j1, a11);
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
-            rot.apply_on_the_right_in_place((row1.transpose_mut(), row2.transpose_mut()));
+            rot.apply_on_the_right_in_place(
+                a.rb_mut()
+                    .transpose_mut()
+                    .get_mut(j2.., ..)
+                    .two_cols_mut(j0, j1),
+            );
         }
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-            rot.apply_on_the_right_in_place((col1, col2));
+            rot.apply_on_the_right_in_place(a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1));
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast() };
-            let col2 = unsafe { q.rb().col(j1).const_cast() };
-            rot.apply_on_the_right_in_place((col1, col2));
+            rot.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
         }
     }
     0
@@ -2358,40 +2355,21 @@ pub fn lahqr<T: RealField>(
                 w_im.write(istart + 1, s2_im);
                 if want_t {
                     if istart + 2 < istop_m {
-                        let x = unsafe {
-                            a.rb()
-                                .row(istart)
-                                .subcols(istart + 2, istop_m - (istart + 2))
-                                .const_cast()
+                        rot.apply_on_the_right_in_place(
+                            a.rb_mut()
                                 .transpose_mut()
-                        };
-                        let y = unsafe {
-                            a.rb()
-                                .row(istart + 1)
-                                .subcols(istart + 2, istop_m - (istart + 2))
-                                .const_cast()
-                                .transpose_mut()
-                        };
-                        rot.apply_on_the_right_in_place((x, y));
+                                .get_mut(istart + 2..istop_m, ..)
+                                .two_cols_mut(istart, istart + 1),
+                        );
                     }
-                    let x = unsafe {
-                        a.rb()
-                            .col(istart)
-                            .subrows(istart_m, istart - istart_m)
-                            .const_cast()
-                    };
-                    let y = unsafe {
-                        a.rb()
-                            .col(istart + 1)
-                            .subrows(istart_m, istart - istart_m)
-                            .const_cast()
-                    };
-                    rot.apply_on_the_right_in_place((x, y));
+                    rot.apply_on_the_right_in_place(
+                        a.rb_mut()
+                            .get_mut(istart_m..istart, ..)
+                            .two_cols_mut(istart, istart + 1),
+                    );
                 }
                 if let Some(z) = z.rb_mut() {
-                    let x = unsafe { z.rb().col(istart).const_cast() };
-                    let y = unsafe { z.rb().col(istart + 1).const_cast() };
-                    rot.apply_on_the_right_in_place((x, y));
+                    rot.apply_on_the_right_in_place(z.two_cols_mut(istart, istart + 1));
                 }
                 k_defl = 0;
                 istop = istart;

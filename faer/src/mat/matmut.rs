@@ -618,6 +618,22 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
             )
         }
     }
+
+    #[inline]
+    pub fn cloned(self) -> Mat<T, Rows, Cols>
+    where
+        T: Clone,
+    {
+        self.rb().cloned()
+    }
+
+    #[inline]
+    pub fn to_owned(self) -> Mat<T::Canonical, Rows, Cols>
+    where
+        T: Conjugate,
+    {
+        self.rb().to_owned()
+    }
 }
 
 impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
@@ -1550,6 +1566,7 @@ impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> Index<(Idx<R
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &Self::Output {
         self.rb().at(row, col)
     }
@@ -1559,6 +1576,7 @@ impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IndexMut<(Id
     for MatMut<'_, T, Rows, Cols, RStride, CStride>
 {
     #[inline]
+    #[track_caller]
     fn index_mut(&mut self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &mut Self::Output {
         self.rb_mut().at_mut(row, col)
     }

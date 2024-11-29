@@ -1,5 +1,6 @@
 use super::*;
-use crate::internal_prelude::DiagRef;
+use crate::{internal_prelude::DiagRef, Idx};
+use core::ops::{Index, IndexMut};
 
 /// Diagonal mutable matrix view.
 pub struct DiagMut<'a, T, N = usize, Stride = isize> {
@@ -70,5 +71,33 @@ impl<'a, T, N: Copy, Stride: Copy> IntoConst for DiagMut<'a, T, N, Stride> {
         DiagRef {
             inner: self.inner.into_const(),
         }
+    }
+}
+
+impl<T, Rows: Shape, CStride: Stride> Index<Idx<Rows>> for DiagRef<'_, T, Rows, CStride> {
+    type Output = T;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, row: Idx<Rows>) -> &Self::Output {
+        self.inner.at(row)
+    }
+}
+
+impl<T, Rows: Shape, CStride: Stride> Index<Idx<Rows>> for DiagMut<'_, T, Rows, CStride> {
+    type Output = T;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, row: Idx<Rows>) -> &Self::Output {
+        self.rb().inner.at(row)
+    }
+}
+
+impl<T, Rows: Shape, CStride: Stride> IndexMut<Idx<Rows>> for DiagMut<'_, T, Rows, CStride> {
+    #[inline]
+    #[track_caller]
+    fn index_mut(&mut self, row: Idx<Rows>) -> &mut Self::Output {
+        self.inner.rb_mut().at_mut(row)
     }
 }

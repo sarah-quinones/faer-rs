@@ -249,7 +249,7 @@ fn hessenberg_fused_op_fallback<T: ComplexField>(
         Accum::Add,
         l0.as_mat(),
         r0.as_mat(),
-        -one(),
+        -one::<T>(),
         Par::Seq,
     );
     matmul(
@@ -257,7 +257,7 @@ fn hessenberg_fused_op_fallback<T: ComplexField>(
         Accum::Add,
         l1.as_mat(),
         r1.as_mat().conjugate(),
-        -one(),
+        -one::<T>(),
         Par::Seq,
     );
 
@@ -476,7 +476,7 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(
                 Accum::Add,
                 w0.rb().col(0).as_mat(),
                 u2.adjoint().as_mat(),
-                -from_real(tau_inv),
+                -from_real::<T>(&tau_inv),
                 par,
             );
 
@@ -560,7 +560,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
             Accum::Add,
             Z0,
             x0.rb().as_mat(),
-            -one(),
+            -one::<T>(),
             par,
         );
 
@@ -606,7 +606,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
                 BlockStructure::StrictTriangularLower,
                 x0.rb().as_mat(),
                 BlockStructure::Rectangular,
-                -one(),
+                -one::<T>(),
                 par,
             );
             *A11 = *A11 - dot::inner_prod(U10, Conj::No, x0.rb(), Conj::No);
@@ -615,7 +615,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
                 Accum::Add,
                 U20,
                 x0.rb().as_mat(),
-                -one(),
+                -one::<T>(),
                 par,
             );
         }
@@ -760,10 +760,17 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(
                 BlockStructure::Rectangular,
                 U1.adjoint(),
                 BlockStructure::StrictTriangularUpper,
-                -one(),
+                -one::<T>(),
                 par,
             );
-            matmul::matmul(A02.rb_mut(), Accum::Add, X0.rb(), U2.adjoint(), -one(), par);
+            matmul::matmul(
+                A02.rb_mut(),
+                Accum::Add,
+                X0.rb(),
+                U2.adjoint(),
+                -one::<T>(),
+                par,
+            );
 
             triangular_solve::solve_lower_triangular_in_place(
                 T1.transpose(),
@@ -776,8 +783,22 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(
                 par,
             );
 
-            matmul::matmul(A12.rb_mut(), Accum::Add, Z1.rb(), U2.adjoint(), -one(), par);
-            matmul::matmul(A22.rb_mut(), Accum::Add, Z2.rb(), U2.adjoint(), -one(), par);
+            matmul::matmul(
+                A12.rb_mut(),
+                Accum::Add,
+                Z1.rb(),
+                U2.adjoint(),
+                -one::<T>(),
+                par,
+            );
+            matmul::matmul(
+                A22.rb_mut(),
+                Accum::Add,
+                Z2.rb(),
+                U2.adjoint(),
+                -one::<T>(),
+                par,
+            );
 
             let mut X = X2.rb_mut().transpose_mut();
 
@@ -804,10 +825,10 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(
                 BlockStructure::StrictTriangularLower,
                 X.rb(),
                 BlockStructure::Rectangular,
-                -one(),
+                -one::<T>(),
                 par,
             );
-            matmul::matmul(A22.rb_mut(), Accum::Add, U2, X.rb(), -one(), par);
+            matmul::matmul(A22.rb_mut(), Accum::Add, U2, X.rb(), -one::<T>(), par);
         }
 
         let n = n - j;

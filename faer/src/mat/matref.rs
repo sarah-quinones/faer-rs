@@ -1185,6 +1185,7 @@ impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> Index<(Idx<R
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &Self::Output {
         self.at(row, col)
     }

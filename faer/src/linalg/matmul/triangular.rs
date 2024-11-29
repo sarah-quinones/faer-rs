@@ -16,6 +16,15 @@ pub(crate) enum DiagonalKind {
     Generic,
 }
 
+#[inline]
+fn pointer_offset<T>(ptr: *const T) -> usize {
+    if const { size_of::<T>().is_power_of_two() && size_of::<T>() <= 64 } {
+        ptr.align_offset(64).wrapping_neg() % 16
+    } else {
+        0
+    }
+}
+
 #[faer_macros::math]
 fn copy_lower<'N, T: ComplexField>(
     dst: MatMut<'_, T, Dim<'N>, Dim<'N>>,
@@ -84,14 +93,14 @@ fn copy_upper<'N, T: ComplexField>(
 }
 
 #[repr(align(64))]
-struct Storage<T>([T; 16 * 16]);
+struct Storage<T>([T; 32 * 16]);
 
 macro_rules! stack_mat_16x16 {
-    ($name: ident, $n: expr, $rs: expr, $cs: expr,  $T: ty $(,)?) => {
+    ($name: ident, $n: expr, $offset: expr, $rs: expr, $cs: expr,  $T: ty $(,)?) => {
         let mut __tmp = core::mem::MaybeUninit::<Storage<$T>>::uninit();
         let __stack = DynStack::new_any(core::slice::from_mut(&mut __tmp));
-        let mut $name = unsafe { temp_mat_uninit($n, $n, __stack) }.0;
-        let mut $name = $name.as_mat_mut();
+        let mut $name = unsafe { temp_mat_uninit(32, $n, __stack) }.0;
+        let mut $name = $name.as_mat_mut().subrows_mut($offset, $n);
         if $cs.unsigned_abs() == 1 {
             $name = $name.transpose_mut();
             if $cs == 1 {
@@ -136,7 +145,14 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16!(temp_rhs, N, rhs.row_stride(), rhs.col_stride(), T);
+                stack_mat_16x16!(
+                    temp_rhs,
+                    N,
+                    pointer_offset(rhs.as_ptr()),
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    T
+                );
 
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
@@ -238,9 +254,30 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16!(temp_dst, N, dst.row_stride(), dst.col_stride(), T);
-                stack_mat_16x16!(temp_lhs, N, lhs.row_stride(), lhs.col_stride(), T);
-                stack_mat_16x16!(temp_rhs, N, rhs.row_stride(), rhs.col_stride(), T);
+                stack_mat_16x16!(
+                    temp_dst,
+                    N,
+                    pointer_offset(dst.as_ptr()),
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    T
+                );
+                stack_mat_16x16!(
+                    temp_lhs,
+                    N,
+                    pointer_offset(lhs.as_ptr()),
+                    lhs.row_stride(),
+                    lhs.col_stride(),
+                    T
+                );
+                stack_mat_16x16!(
+                    temp_rhs,
+                    N,
+                    pointer_offset(rhs.as_ptr()),
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    T
+                );
 
                 copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -350,8 +387,22 @@ fn upper_x_lower_impl_unchecked<'N, T: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16!(temp_lhs, N, lhs.row_stride(), lhs.col_stride(), T);
-                stack_mat_16x16!(temp_rhs, N, rhs.row_stride(), rhs.col_stride(), T);
+                stack_mat_16x16!(
+                    temp_lhs,
+                    N,
+                    pointer_offset(lhs.as_ptr()),
+                    lhs.row_stride(),
+                    lhs.col_stride(),
+                    T
+                );
+                stack_mat_16x16!(
+                    temp_rhs,
+                    N,
+                    pointer_offset(rhs.as_ptr()),
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    T
+                );
 
                 copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -487,9 +538,30 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16!(temp_dst, N, dst.row_stride(), dst.col_stride(), T);
-                stack_mat_16x16!(temp_lhs, N, lhs.row_stride(), lhs.col_stride(), T);
-                stack_mat_16x16!(temp_rhs, N, rhs.row_stride(), rhs.col_stride(), T);
+                stack_mat_16x16!(
+                    temp_dst,
+                    N,
+                    pointer_offset(dst.as_ptr()),
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    T
+                );
+                stack_mat_16x16!(
+                    temp_lhs,
+                    N,
+                    pointer_offset(lhs.as_ptr()),
+                    lhs.row_stride(),
+                    lhs.col_stride(),
+                    T
+                );
+                stack_mat_16x16!(
+                    temp_rhs,
+                    N,
+                    pointer_offset(rhs.as_ptr()),
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    T
+                );
 
                 copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -613,7 +685,14 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16!(temp_dst, N, dst.row_stride(), dst.col_stride(), T);
+                stack_mat_16x16!(
+                    temp_dst,
+                    N,
+                    pointer_offset(dst.as_ptr()),
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    T
+                );
 
                 super::matmul_with_conj(
                     temp_dst.rb_mut(),
@@ -713,8 +792,22 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16!(temp_dst, N, dst.row_stride(), dst.col_stride(), T);
-                stack_mat_16x16!(temp_rhs, N, rhs.row_stride(), rhs.col_stride(), T);
+                stack_mat_16x16!(
+                    temp_dst,
+                    N,
+                    pointer_offset(dst.as_ptr()),
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    T
+                );
+                stack_mat_16x16!(
+                    temp_rhs,
+                    N,
+                    pointer_offset(rhs.as_ptr()),
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    T
+                );
 
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
                 super::matmul_with_conj(

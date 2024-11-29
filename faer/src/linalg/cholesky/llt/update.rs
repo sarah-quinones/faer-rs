@@ -410,7 +410,7 @@ impl<T: ComplexField> RankRUpdate<'_, T> {
 
                     *gamma = from_real(new_d * d_inv);
                     *beta = mul_real(alpha_conj_p, new_d_inv);
-                    *p = mul_real(-p, d_inv);
+                    *p = mul_real(-*p, d_inv);
 
                     *alpha = from_real(real(*alpha) - abs2(*beta));
                     *d = from_real(new_d);

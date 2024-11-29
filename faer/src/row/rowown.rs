@@ -105,6 +105,7 @@ impl<T, Cols: Shape> Index<Idx<Cols>> for Row<T, Cols> {
     type Output = T;
 
     #[inline]
+    #[track_caller]
     fn index(&self, col: Idx<Cols>) -> &Self::Output {
         self.as_ref().at(col)
     }
@@ -112,6 +113,7 @@ impl<T, Cols: Shape> Index<Idx<Cols>> for Row<T, Cols> {
 
 impl<T, Cols: Shape> IndexMut<Idx<Cols>> for Row<T, Cols> {
     #[inline]
+    #[track_caller]
     fn index_mut(&mut self, col: Idx<Cols>) -> &mut Self::Output {
         self.as_mut().at_mut(col)
     }
@@ -390,8 +392,10 @@ impl<T, Cols: Shape> Row<T, Cols> {
     }
 
     #[inline]
-    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<RhsT, Cols>)
-    where
+    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsRowRef<T = RhsT, Cols = Cols>,
+    ) where
         T: ComplexField,
     {
         self.as_mut().copy_from(other)

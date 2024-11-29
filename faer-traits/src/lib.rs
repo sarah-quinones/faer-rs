@@ -9,105 +9,132 @@ pub mod math_utils {
     use crate::{abs_impl, ByRef, ComplexField, RealField};
 
     #[inline(always)]
+    #[must_use]
     pub fn eps<T: RealField>() -> T {
         T::Real::epsilon_impl()
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn nbits<T: ComplexField>() -> usize {
         T::Real::nbits_impl()
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn min_positive<T: RealField>() -> T {
         T::min_positive_impl()
     }
     #[inline(always)]
+    #[must_use]
     pub fn max_positive<T: RealField>() -> T {
         T::max_positive_impl()
     }
     #[inline(always)]
+    #[must_use]
     pub fn sqrt_min_positive<T: RealField>() -> T {
         T::sqrt_min_positive_impl()
     }
     #[inline(always)]
+    #[must_use]
     pub fn sqrt_max_positive<T: RealField>() -> T {
         T::sqrt_max_positive_impl()
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn zero<T: ComplexField>() -> T {
         T::zero_impl()
     }
     #[inline(always)]
+    #[must_use]
     pub fn one<T: ComplexField>() -> T {
         T::one_impl()
     }
     #[inline(always)]
+    #[must_use]
     pub fn nan<T: ComplexField>() -> T {
         T::nan_impl()
     }
     #[inline(always)]
+    #[must_use]
     pub fn infinity<T: ComplexField>() -> T {
         T::infinity_impl()
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn real<T: ComplexField>(value: &T) -> T::Real {
         T::real_part_impl((value).by_ref())
     }
     #[inline(always)]
+    #[must_use]
     pub fn imag<T: ComplexField>(value: &T) -> T::Real {
         T::imag_part_impl((value).by_ref())
     }
     #[inline(always)]
-    pub fn neg<T: NegByRef<Output = T>>(value: &T) -> T {
+    #[track_caller]
+    #[must_use]
+    pub fn neg<T: NegByRef>(value: &T) -> T::Output {
         value.neg_by_ref()
     }
     #[inline(always)]
+    #[must_use]
     pub fn copy<T: ComplexField>(value: &T) -> T {
         T::copy_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn conj<T: ComplexField>(value: &T) -> T {
         T::conj_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[track_caller]
+    #[must_use]
     pub fn add<T: AddByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
         lhs.add_by_ref(rhs)
     }
     #[inline(always)]
     #[track_caller]
+    #[must_use]
     pub fn sub<T: SubByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
         lhs.sub_by_ref(rhs)
     }
     #[inline(always)]
+    #[track_caller]
+    #[must_use]
     pub fn mul<T: MulByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
         lhs.mul_by_ref(rhs)
     }
     #[inline(always)]
+    #[track_caller]
+    #[must_use]
     pub fn div<T: DivByRef<U>, U>(lhs: &T, rhs: &U) -> T::Output {
         lhs.div_by_ref(rhs)
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn mul_real<T: ComplexField>(lhs: &T, rhs: &T::Real) -> T {
         T::mul_real_impl((lhs).by_ref(), (rhs).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn mul_pow2<T: ComplexField>(lhs: &T, rhs: &T::Real) -> T {
         T::mul_real_impl((lhs).by_ref(), (rhs).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn abs1<T: ComplexField>(value: &T) -> T::Real {
         T::abs1_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn absmax<T: ComplexField>(value: &T) -> T::Real {
         if const { T::IS_REAL } {
             T::abs1_impl(value)
@@ -120,21 +147,25 @@ pub mod math_utils {
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn abs<T: ComplexField>(value: &T) -> T::Real {
         T::abs_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn hypot<T: RealField>(lhs: &T, rhs: &T) -> T {
         abs_impl::<T::Real>(lhs.clone(), rhs.clone())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn abs2<T: ComplexField>(value: &T) -> T::Real {
         T::abs2_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn max<T: RealField>(lhs: &T, rhs: &T) -> T {
         if lhs > rhs {
             copy(lhs)
@@ -143,6 +174,7 @@ pub mod math_utils {
         }
     }
     #[inline(always)]
+    #[must_use]
     pub fn min<T: RealField>(lhs: &T, rhs: &T) -> T {
         if lhs < rhs {
             copy(lhs)
@@ -152,30 +184,36 @@ pub mod math_utils {
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn is_nan<T: ComplexField>(value: &T) -> bool {
         T::is_nan_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn is_finite<T: ComplexField>(value: &T) -> bool {
         T::is_finite_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn sqrt<T: ComplexField>(value: &T) -> T {
         T::sqrt_impl((value).by_ref())
     }
     #[inline(always)]
+    #[must_use]
     pub fn recip<T: ComplexField>(value: &T) -> T {
         T::recip_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn from_real<T: ComplexField>(value: &T::Real) -> T {
         T::from_real_impl((value).by_ref())
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn from_f64<T: ComplexField>(value: f64) -> T {
         T::from_f64_impl(value)
     }
@@ -211,6 +249,7 @@ where
     type Output = Output;
 
     #[inline]
+    #[track_caller]
     fn add_by_ref(&self, rhs: &Rhs) -> Self::Output {
         self + rhs
     }
@@ -234,6 +273,7 @@ where
     type Output = Output;
 
     #[inline]
+    #[track_caller]
     fn mul_by_ref(&self, rhs: &Rhs) -> Self::Output {
         self * rhs
     }
@@ -245,6 +285,7 @@ where
     type Output = Output;
 
     #[inline]
+    #[track_caller]
     fn div_by_ref(&self, rhs: &Rhs) -> Self::Output {
         self / rhs
     }
@@ -257,6 +298,7 @@ where
     type Output = Output;
 
     #[inline]
+    #[track_caller]
     fn neg_by_ref(&self) -> Self::Output {
         -self
     }
