@@ -50,7 +50,7 @@ fn invert_unit_lower_triangular_impl_small<'N, T: ComplexField>(
 fn invert_lower_triangular_impl<'N, T: ComplexField>(
     dst: MatMut<'_, T, Dim<'N>, Dim<'N>>,
     src: MatRef<'_, T, Dim<'N>, Dim<'N>>,
-    parallelism: Par,
+    par: Par,
 ) {
     // m must be equal to n
     let N = dst.ncols();
@@ -68,9 +68,9 @@ fn invert_lower_triangular_impl<'N, T: ComplexField>(
     let (src_tl, _, src_bl, src_br) = { src.split_with(mid, mid) };
 
     join_raw(
-        |parallelism| invert_lower_triangular_impl(dst_tl.rb_mut(), src_tl, parallelism),
-        |parallelism| invert_lower_triangular_impl(dst_br.rb_mut(), src_br, parallelism),
-        parallelism,
+        |par| invert_lower_triangular_impl(dst_tl.rb_mut(), src_tl, par),
+        |par| invert_lower_triangular_impl(dst_br.rb_mut(), src_br, par),
+        par,
     );
 
     linalg::matmul::triangular::matmul(
@@ -82,16 +82,16 @@ fn invert_lower_triangular_impl<'N, T: ComplexField>(
         dst_tl.rb(),
         BlockStructure::TriangularLower,
         -one::<T>(),
-        parallelism,
+        par,
     );
-    linalg::triangular_solve::solve_lower_triangular_in_place(src_br, dst_bl, parallelism);
+    linalg::triangular_solve::solve_lower_triangular_in_place(src_br, dst_bl, par);
 }
 
 #[math]
 fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(
     dst: MatMut<'_, T, Dim<'N>, Dim<'N>>,
     src: MatRef<'_, T, Dim<'N>, Dim<'N>>,
-    parallelism: Par,
+    par: Par,
 ) {
     // m must be equal to n
     let N = dst.ncols();
@@ -109,9 +109,9 @@ fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(
     let (src_tl, _, src_bl, src_br) = { src.split_with(mid, mid) };
 
     join_raw(
-        |parallelism| invert_unit_lower_triangular_impl(dst_tl.rb_mut(), src_tl, parallelism),
-        |parallelism| invert_unit_lower_triangular_impl(dst_br.rb_mut(), src_br, parallelism),
-        parallelism,
+        |par| invert_unit_lower_triangular_impl(dst_tl.rb_mut(), src_tl, par),
+        |par| invert_unit_lower_triangular_impl(dst_br.rb_mut(), src_br, par),
+        par,
     );
 
     linalg::matmul::triangular::matmul(
@@ -123,9 +123,9 @@ fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(
         dst_tl.rb(),
         BlockStructure::UnitTriangularLower,
         -one::<T>(),
-        parallelism,
+        par,
     );
-    linalg::triangular_solve::solve_unit_lower_triangular_in_place(src_br, dst_bl, parallelism);
+    linalg::triangular_solve::solve_unit_lower_triangular_in_place(src_br, dst_bl, par);
 }
 
 /// Computes the inverse of the lower triangular matrix `src` (with implicit unit
@@ -138,7 +138,7 @@ fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(
 pub fn invert_unit_lower_triangular<T: ComplexField, N: Shape>(
     dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
-    parallelism: Par,
+    par: Par,
 ) {
     Assert!(all(
         dst.nrows() == src.nrows(),
@@ -151,7 +151,7 @@ pub fn invert_unit_lower_triangular<T: ComplexField, N: Shape>(
     invert_unit_lower_triangular_impl(
         dst.as_shape_mut(N, N).as_dyn_stride_mut(),
         src.as_shape(N, N).as_dyn_stride(),
-        parallelism,
+        par,
     )
 }
 
@@ -165,7 +165,7 @@ pub fn invert_unit_lower_triangular<T: ComplexField, N: Shape>(
 pub fn invert_lower_triangular<T: ComplexField, N: Shape>(
     dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
-    parallelism: Par,
+    par: Par,
 ) {
     Assert!(all(
         dst.nrows() == src.nrows(),
@@ -178,7 +178,7 @@ pub fn invert_lower_triangular<T: ComplexField, N: Shape>(
     invert_lower_triangular_impl(
         dst.as_shape_mut(N, N).as_dyn_stride_mut(),
         src.as_shape(N, N).as_dyn_stride(),
-        parallelism,
+        par,
     )
 }
 
@@ -192,12 +192,12 @@ pub fn invert_lower_triangular<T: ComplexField, N: Shape>(
 pub fn invert_unit_upper_triangular<T: ComplexField, N: Shape>(
     dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
-    parallelism: Par,
+    par: Par,
 ) {
     invert_unit_lower_triangular(
         dst.reverse_rows_and_cols_mut(),
         src.reverse_rows_and_cols(),
-        parallelism,
+        par,
     )
 }
 
@@ -211,12 +211,12 @@ pub fn invert_unit_upper_triangular<T: ComplexField, N: Shape>(
 pub fn invert_upper_triangular<T: ComplexField, N: Shape>(
     dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
     src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
-    parallelism: Par,
+    par: Par,
 ) {
     invert_lower_triangular(
         dst.reverse_rows_and_cols_mut(),
         src.reverse_rows_and_cols(),
-        parallelism,
+        par,
     )
 }
 
