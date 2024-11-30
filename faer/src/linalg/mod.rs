@@ -50,6 +50,7 @@ impl<'a, T: ComplexField, Rows: Shape, Cols: Shape> AsMatRef for DynMat<'a, T, R
     type T = T;
     type Rows = Rows;
     type Cols = Cols;
+    type Owned = Mat<T, Rows, Cols>;
 
     fn as_mat_ref(&self) -> crate::mat::MatRef<T, Rows, Cols> {
         unsafe {

@@ -5,7 +5,7 @@ use crate::{
     mat::{MatMut, MatRef},
     row::RowRef,
     utils::{bound::Dim, simd::SimdCtx},
-    Conj, ContiguousFwd, Par, Shape, Stride,
+    Conj, ContiguousFwd, Par, Shape,
 };
 use dyn_stack::{DynStack, GlobalMemBuffer};
 use equator::assert;
@@ -789,13 +789,18 @@ pub fn matmul<
     N: Shape,
     K: Shape,
 >(
-    dst: MatMut<'_, T, M, N, impl Stride, impl Stride>,
+    dst: impl AsMatMut<T = T, Rows = M, Cols = N>,
     beta: Accum,
-    lhs: MatRef<'_, LhsT, M, K, impl Stride, impl Stride>,
-    rhs: MatRef<'_, RhsT, K, N, impl Stride, impl Stride>,
+    lhs: impl AsMatRef<T = LhsT, Rows = M, Cols = K>,
+    rhs: impl AsMatRef<T = RhsT, Rows = K, Cols = N>,
     alpha: T,
     par: Par,
 ) {
+    let mut dst = dst;
+    let dst = dst.as_mat_mut();
+    let lhs = lhs.as_mat_ref();
+    let rhs = rhs.as_mat_ref();
+
     precondition(
         dst.nrows(),
         dst.ncols(),
@@ -827,15 +832,20 @@ pub fn matmul<
 #[track_caller]
 #[inline]
 pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
-    dst: MatMut<'_, T, M, N, impl Stride, impl Stride>,
+    dst: impl AsMatMut<T = T, Rows = M, Cols = N>,
     beta: Accum,
-    lhs: MatRef<'_, T, M, K, impl Stride, impl Stride>,
+    lhs: impl AsMatRef<T = T, Rows = M, Cols = K>,
     conj_lhs: Conj,
-    rhs: MatRef<'_, T, K, N, impl Stride, impl Stride>,
+    rhs: impl AsMatRef<T = T, Rows = K, Cols = N>,
     conj_rhs: Conj,
     alpha: T,
     par: Par,
 ) {
+    let mut dst = dst;
+    let dst = dst.as_mat_mut();
+    let lhs = lhs.as_mat_ref();
+    let rhs = rhs.as_mat_ref();
+
     precondition(
         dst.nrows(),
         dst.ncols(),

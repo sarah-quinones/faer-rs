@@ -228,6 +228,10 @@ mod seal {
     impl<I: crate::Index> Seal for crate::utils::bound::Idx<'_, I> {}
     impl<I: crate::Index> Seal for crate::utils::bound::IdxInc<'_, I> {}
     impl<I: crate::Index> Seal for crate::utils::bound::MaybeIdx<'_, I> {}
+    impl<I: crate::Index> Seal for crate::utils::bound::IdxIncOne<I> {}
+    impl<I: crate::Index> Seal for crate::utils::bound::MaybeIdxOne<I> {}
+    impl Seal for crate::utils::bound::One {}
+    impl Seal for crate::utils::bound::Zero {}
 }
 
 /// Sealed trait for types that can be created from "unbound" values, as long as their
@@ -258,6 +262,9 @@ pub trait ShapeIdx {
     /// Either an index or a negative value.
     type MaybeIdx<I: Index>: Unbind<I::Signed> + Ord + Eq;
 }
+
+pub struct Unit;
+pub struct Any;
 
 /// Matrix dimension.
 pub trait Shape:
@@ -541,11 +548,11 @@ mod internal_prelude {
     pub use faer_traits::{ComplexImpl, ComplexImplConj};
 
     pub(crate) use crate::{
-        col::{AsColMut, AsColRef, Col, ColMut, ColRef},
+        col::{Col, ColMut, ColRef},
         diag::{Diag, DiagMut, DiagRef},
         hacks::transmute,
         linalg::{self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed},
-        mat::{AsMatMut, AsMatRef, Mat, MatMut, MatRef},
+        mat::{AsMat, AsMatMut, AsMatRef, Mat, MatMut, MatRef},
         perm::{Perm, PermRef},
         prelude::*,
         row::{AsRowMut, AsRowRef, Row, RowMut, RowRef},
@@ -561,7 +568,7 @@ mod internal_prelude {
 
     pub use faer_macros::math;
     pub use faer_traits::{
-        math_utils::*, ComplexField, Conjugate, Index, RealField, SignedIndex, SimdArch,
+        math_utils::*, ComplexField, Conjugate, Index, Real, RealField, SignedIndex, SimdArch,
     };
 
     #[inline]
@@ -585,8 +592,7 @@ mod internal_prelude {
 pub mod prelude {
     use super::*;
 
-    pub use super::Par;
-    pub use crate::{c32, c64, mat, Scale};
+    pub use super::{c32, c64, mat, Par, Scale};
     pub use col::{Col, ColMut, ColRef};
     pub use mat::{Mat, MatMut, MatRef};
     pub use row::{Row, RowMut, RowRef};

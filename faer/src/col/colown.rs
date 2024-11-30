@@ -1,8 +1,7 @@
+use super::{AsColRef, ColIndex};
 use crate::{internal_prelude::*, Idx, IdxInc, TryReserveError};
 use core::ops::{Index, IndexMut};
 use faer_traits::Real;
-
-use super::ColIndex;
 
 #[derive(Clone)]
 pub struct Col<T, Rows: Shape = usize> {

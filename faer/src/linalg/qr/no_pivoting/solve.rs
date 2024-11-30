@@ -59,7 +59,7 @@ pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(
         Q_basis.nrows() >= Q_basis.ncols(),
         Q_coeff.ncols() == size,
         R.nrows() >= size,
-        R.ncols() == size,
+        R.ncols() == n,
     ));
 
     let mut rhs = rhs;

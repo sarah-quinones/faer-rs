@@ -296,22 +296,22 @@ fn lahqr_shiftcolumn<T: RealField>(h: MatRef<'_, T>, mut v: ColMut<'_, T>, s1: (
     if n == 2 {
         let s = abs(h[(0, 0)] - s2.0) + abs(s2.1) + abs(h[(1, 0)]);
         if s == zero() {
-            v.write(0, zero());
-            v.write(1, zero());
+            v[0] = zero();
+            v[1] = zero();
         } else {
             let h10s = h[(1, 0)] / s;
             let v0 = h10s * h[(0, 1)] + (h[(0, 0)] - s1.0) * ((h[(0, 0)] - s2.0) / s)
                 - s1.1 * (s2.1 / s);
             let v1 = h10s * (h[(0, 0)] + h[(1, 1)] - s1.0 - s2.0);
-            v.write(0, v0);
-            v.write(1, v1);
+            v[0] = v0;
+            v[1] = v1;
         }
     } else {
         let s = abs(h[(0, 0)] - s2.0) + abs(s2.1) + abs(h[(1, 0)]) + abs(h[(2, 0)]);
         if s == zero() {
-            v.write(0, zero());
-            v.write(1, zero());
-            v.write(2, zero());
+            v[0] = zero();
+            v[1] = zero();
+            v[2] = zero();
         } else {
             let h10s = h[(1, 0)] / s;
             let h20s = h[(2, 0)] / s;
@@ -320,9 +320,9 @@ fn lahqr_shiftcolumn<T: RealField>(h: MatRef<'_, T>, mut v: ColMut<'_, T>, s1: (
                 + h[(0, 2)] * h20s;
             let v1 = h10s * ((h[(0, 0)] + h[(1, 1)]) - s1.0 - s2.0) + h[(1, 2)] * h20s;
             let v2 = h20s * ((h[(0, 0)] + h[(2, 2)]) - s1.0 - s2.0) + h[(2, 1)] * h10s;
-            v.write(0, v0);
-            v.write(1, v1);
-            v.write(2, v2);
+            v[0] = v0;
+            v[1] = v1;
+            v[2] = v2;
         }
     }
 }

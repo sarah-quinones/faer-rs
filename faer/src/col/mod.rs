@@ -1,4 +1,7 @@
-use crate::internal_prelude::*;
+use crate::{
+    internal_prelude::*,
+    utils::bound::{One, Zero},
+};
 use core::ptr::NonNull;
 
 pub trait ColIndex<RowRange> {
@@ -31,82 +34,88 @@ pub(crate) mod colref;
 pub use colmut::ColMut;
 pub use colown::Col;
 pub use colref::ColRef;
+use mat::AsMat;
 
 pub trait AsColMut: AsColRef {
-    fn as_col_mut(&mut self) -> ColMut<Self::T, Self::Rows>;
+    fn as_col_mut(&mut self) -> ColMut<'_, Self::T, Self::Rows>;
 }
-pub trait AsColRef {
-    type T;
-    type Rows: Shape;
-
-    fn as_col_ref(&self) -> ColRef<Self::T, Self::Rows>;
+pub trait AsColRef: AsMatRef<Cols = One> {
+    fn as_col_ref(&self) -> ColRef<'_, Self::T, Self::Rows>;
 }
 
-impl<T, Rows: Shape, RStride: Stride> AsColRef for ColRef<'_, T, Rows, RStride> {
+impl<M: AsMatRef<Cols = One>> AsColRef for M {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, Self::T, Self::Rows> {
+        self.as_mat_ref().col(Zero)
+    }
+}
+
+impl<M: AsMatMut<Cols = One>> AsColMut for M {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMut<'_, Self::T, Self::Rows> {
+        self.as_mat_mut().col_mut(Zero)
+    }
+}
+
+impl<T, Rows: Shape, Rs: Stride> AsMatRef for ColRef<'_, T, Rows, Rs> {
     type T = T;
     type Rows = Rows;
+    type Cols = One;
+    type Owned = Col<T, Rows>;
 
     #[inline]
-    fn as_col_ref(&self) -> ColRef<T, Rows> {
-        self.as_dyn_stride()
+    fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+        self.as_dyn_stride().as_mat().as_col_shape(One)
     }
 }
 
-impl<T, Rows: Shape, RStride: Stride> AsColRef for ColMut<'_, T, Rows, RStride> {
+impl<T, Rows: Shape, Rs: Stride> AsMatRef for ColMut<'_, T, Rows, Rs> {
     type T = T;
     type Rows = Rows;
+    type Cols = One;
+    type Owned = Col<T, Rows>;
 
     #[inline]
-    fn as_col_ref(&self) -> ColRef<T, Rows> {
-        self.rb().as_dyn_stride()
+    fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+        self.rb().as_dyn_stride().as_mat().as_col_shape(One)
     }
 }
 
-impl<T, Rows: Shape, RStride: Stride> AsColMut for ColMut<'_, T, Rows, RStride> {
-    #[inline]
-    fn as_col_mut(&mut self) -> ColMut<T, Rows> {
-        self.rb_mut().as_dyn_stride_mut()
-    }
-}
-
-impl<T, Rows: Shape> AsColRef for Col<T, Rows> {
+impl<T, Rows: Shape> AsMatRef for Col<T, Rows> {
     type T = T;
     type Rows = Rows;
+    type Cols = One;
+    type Owned = Col<T, Rows>;
 
     #[inline]
-    fn as_col_ref(&self) -> ColRef<T, Rows> {
-        self.as_dyn_stride()
+    fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+        self.as_dyn_stride().as_mat().as_col_shape(One)
     }
 }
 
-impl<T, Rows: Shape> AsColMut for Col<T, Rows> {
+impl<T, Rows: Shape, Rs: Stride> AsMatMut for ColMut<'_, T, Rows, Rs> {
     #[inline]
-    fn as_col_mut(&mut self) -> ColMut<T, Rows> {
-        self.as_dyn_stride_mut()
+    fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols> {
+        self.rb_mut()
+            .as_dyn_stride_mut()
+            .as_mat_mut()
+            .as_col_shape_mut(One)
     }
 }
 
-impl<M: AsColRef> AsColRef for &M {
-    type T = M::T;
-    type Rows = M::Rows;
-
+impl<T, Rows: Shape> AsMatMut for Col<T, Rows> {
     #[inline]
-    fn as_col_ref(&self) -> ColRef<Self::T, Self::Rows> {
-        (**self).as_col_ref()
+    fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols> {
+        self.as_dyn_stride_mut().as_mat_mut().as_col_shape_mut(One)
     }
 }
-impl<M: AsColRef> AsColRef for &mut M {
-    type T = M::T;
-    type Rows = M::Rows;
 
+impl<T, Rows: Shape> AsMat<T> for Col<T, Rows> {
     #[inline]
-    fn as_col_ref(&self) -> ColRef<Self::T, Self::Rows> {
-        (**self).as_col_ref()
-    }
-}
-impl<M: AsColMut> AsColMut for &mut M {
-    #[inline]
-    fn as_col_mut(&mut self) -> ColMut<Self::T, Self::Rows> {
-        (**self).as_col_mut()
+    fn zeros(rows: Rows, _: One) -> Self
+    where
+        T: ComplexField,
+    {
+        Col::zeros(rows)
     }
 }

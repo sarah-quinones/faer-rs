@@ -4,7 +4,7 @@ use faer_traits::ComplexConj;
 use num_complex::Complex;
 
 /// Obtain a TypeId for T without `T: 'static`
-/// credit goes to: https://github.com/thomcc
+/// credit goes to: <https://github.com/thomcc>
 #[inline(always)]
 pub fn nonstatic_typeid<T: ?Sized>() -> core::any::TypeId {
     trait NonStaticAny {

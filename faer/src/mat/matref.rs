@@ -1084,6 +1084,34 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
 
     #[track_caller]
     #[inline]
+    pub fn get_r<RowRange>(
+        self,
+        row: RowRange,
+    ) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, core::ops::RangeFull>>::Target
+    where
+        MatRef<'a, T, Rows, Cols, RStride, CStride>: MatIndex<RowRange, core::ops::RangeFull>,
+    {
+        <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, core::ops::RangeFull>>::get(
+            self, row, ..,
+        )
+    }
+
+    #[track_caller]
+    #[inline]
+    pub fn get_c< ColRange>(
+        self,
+        col: ColRange,
+    ) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<core::ops::RangeFull, ColRange>>::Target
+    where
+        MatRef<'a, T, Rows, Cols, RStride, CStride>: MatIndex<core::ops::RangeFull, ColRange>,
+    {
+        <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<core::ops::RangeFull, ColRange>>::get(
+            self, .., col,
+        )
+    }
+
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked<RowRange, ColRange>(
         self,
         row: RowRange,

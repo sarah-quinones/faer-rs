@@ -1013,18 +1013,23 @@ fn precondition<M: Shape, N: Shape, K: Shape>(
 #[track_caller]
 #[inline]
 pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
-    dst: MatMut<'_, T, M, N, impl Stride, impl Stride>,
+    dst: impl AsMatMut<T = T, Rows = M, Cols = N>,
     dst_structure: BlockStructure,
     beta: Accum,
-    lhs: MatRef<'_, T, M, K, impl Stride, impl Stride>,
+    lhs: impl AsMatRef<T = T, Rows = M, Cols = K>,
     lhs_structure: BlockStructure,
     conj_lhs: Conj,
-    rhs: MatRef<'_, T, K, N, impl Stride, impl Stride>,
+    rhs: impl AsMatRef<T = T, Rows = K, Cols = N>,
     rhs_structure: BlockStructure,
     conj_rhs: Conj,
     alpha: T,
     par: Par,
 ) {
+    let mut dst = dst;
+    let dst = dst.as_mat_mut();
+    let lhs = lhs.as_mat_ref();
+    let rhs = rhs.as_mat_ref();
+
     precondition(
         dst.nrows(),
         dst.ncols(),
@@ -1069,16 +1074,21 @@ pub fn matmul<
     N: Shape,
     K: Shape,
 >(
-    dst: MatMut<'_, T, M, N, impl Stride, impl Stride>,
+    dst: impl AsMatMut<T = T, Rows = M, Cols = N>,
     dst_structure: BlockStructure,
     beta: Accum,
-    lhs: MatRef<'_, LhsT, M, K, impl Stride, impl Stride>,
+    lhs: impl AsMatRef<T = LhsT, Rows = M, Cols = K>,
     lhs_structure: BlockStructure,
-    rhs: MatRef<'_, RhsT, K, N, impl Stride, impl Stride>,
+    rhs: impl AsMatRef<T = RhsT, Rows = K, Cols = N>,
     rhs_structure: BlockStructure,
     alpha: T,
     par: Par,
 ) {
+    let mut dst = dst;
+    let dst = dst.as_mat_mut();
+    let lhs = lhs.as_mat_ref();
+    let rhs = rhs.as_mat_ref();
+
     precondition(
         dst.nrows(),
         dst.ncols(),

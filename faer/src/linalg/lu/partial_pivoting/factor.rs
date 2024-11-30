@@ -179,14 +179,18 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(
             use rayon::prelude::*;
             rayon::join(
                 || {
-                    A_left
-                        .par_col_partition_mut(left_threads)
-                        .for_each(|A| swap(A))
+                    if A_left.ncols() > 0 {
+                        A_left
+                            .par_col_partition_mut(left_threads)
+                            .for_each(|A| swap(A))
+                    }
                 },
                 || {
-                    A_right
-                        .par_col_partition_mut(right_threads)
-                        .for_each(|A| swap(A))
+                    if A_right.ncols() > 0 {
+                        A_right
+                            .par_col_partition_mut(right_threads)
+                            .for_each(|A| swap(A))
+                    }
                 },
             );
         }

@@ -1,4 +1,4 @@
-use super::{ColIndex, ColView};
+use super::{AsColRef, ColIndex, ColView};
 use crate::{
     internal_prelude::*,
     mat::matmut::SyncCell,

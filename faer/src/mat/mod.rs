@@ -1,6 +1,6 @@
 use crate::{Shape, Stride, Unbind};
 use core::{marker::PhantomData, ptr::NonNull};
-use faer_traits::Conjugate;
+use faer_traits::{ComplexField, Conjugate};
 use reborrow::*;
 
 pub(crate) struct MatView<T: ?Sized, Rows, Cols, RStride, CStride> {
@@ -49,13 +49,81 @@ pub use matmut::MatMut;
 pub use matown::Mat;
 pub use matref::MatRef;
 
+pub(crate) mod hidden {
+    use super::*;
+
+    pub trait Mat<T, Rows: Shape = usize, Cols: Shape = usize>:
+        AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = super::Mat<T, Rows, Cols>>
+    {
+    }
+
+    impl<
+            T,
+            Rows: Shape,
+            Cols: Shape,
+            M: AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = super::Mat<T, Rows, Cols>>,
+        > Mat<T, Rows, Cols> for M
+    {
+    }
+}
+
+pub(crate) type MatExt<T, Rows = usize, Cols = usize> = dyn hidden::Mat<T, Rows, Cols>;
+
+impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core::ops::Deref
+    for MatRef<'a, T, Rows, Cols, Rs, Cs>
+{
+    type Target = dyn 'a + hidden::Mat<T, Rows, Cols>;
+
+    fn deref(&self) -> &Self::Target {
+        self as &(dyn 'a + hidden::Mat<T, Rows, Cols>)
+    }
+}
+
+impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core::ops::Deref
+    for MatMut<'a, T, Rows, Cols, Rs, Cs>
+{
+    type Target = dyn 'a + hidden::Mat<T, Rows, Cols>;
+
+    fn deref(&self) -> &Self::Target {
+        self as &(dyn 'a + hidden::Mat<T, Rows, Cols>)
+    }
+}
+
+impl<T: ComplexField, Rows: Shape, Cols: Shape> core::ops::Deref for Mat<T, Rows, Cols> {
+    type Target = dyn hidden::Mat<T, Rows, Cols>;
+
+    fn deref<'a>(&'a self) -> &'a Self::Target {
+        // UNSAFETY: not 100% sure if this is fine
+        unsafe {
+            core::mem::transmute::<
+                &'a (dyn 'a + hidden::Mat<T, Rows, Cols>),
+                &'a (dyn 'static + hidden::Mat<T, Rows, Cols>),
+            >(self as &'a (dyn 'a + hidden::Mat<T, Rows, Cols>))
+        }
+    }
+}
+
 pub trait AsMatMut: AsMatRef {
     fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols>;
 }
+
+pub trait AsMat<T>: AsMatMut {
+    fn zeros(rows: Self::Rows, cols: Self::Cols) -> Self
+    where
+        T: ComplexField;
+}
+
 pub trait AsMatRef {
     type T;
     type Rows: Shape;
     type Cols: Shape;
+    type Owned: AsMat<
+        Self::T,
+        T = Self::T,
+        Rows = Self::Rows,
+        Cols = Self::Cols,
+        Owned = Self::Owned,
+    >;
 
     fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols>;
 }
@@ -64,6 +132,7 @@ impl<M: AsMatRef> AsMatRef for &M {
     type T = M::T;
     type Rows = M::Rows;
     type Cols = M::Cols;
+    type Owned = M::Owned;
 
     #[inline]
     fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
@@ -74,6 +143,7 @@ impl<M: AsMatRef> AsMatRef for &mut M {
     type T = M::T;
     type Rows = M::Rows;
     type Cols = M::Cols;
+    type Owned = M::Owned;
 
     #[inline]
     fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
@@ -93,6 +163,7 @@ impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> AsMatRef
     type T = T;
     type Rows = Rows;
     type Cols = Cols;
+    type Owned = Mat<T, Rows, Cols>;
 
     #[inline]
     fn as_mat_ref(&self) -> MatRef<T, Rows, Cols> {
@@ -106,6 +177,7 @@ impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> AsMatRef
     type T = T;
     type Rows = Rows;
     type Cols = Cols;
+    type Owned = Mat<T, Rows, Cols>;
 
     #[inline]
     fn as_mat_ref(&self) -> MatRef<T, Rows, Cols> {
@@ -126,10 +198,21 @@ impl<T, Rows: Shape, Cols: Shape> AsMatRef for Mat<T, Rows, Cols> {
     type T = T;
     type Rows = Rows;
     type Cols = Cols;
+    type Owned = Mat<T, Rows, Cols>;
 
     #[inline]
     fn as_mat_ref(&self) -> MatRef<T, Rows, Cols> {
         self.as_dyn_stride()
+    }
+}
+
+impl<T, Rows: Shape, Cols: Shape> AsMat<T> for Mat<T, Rows, Cols> {
+    #[inline]
+    fn zeros(rows: Rows, cols: Cols) -> Self
+    where
+        T: ComplexField,
+    {
+        Mat::zeros(rows, cols)
     }
 }
 

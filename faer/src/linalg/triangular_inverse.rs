@@ -135,9 +135,9 @@ fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_unit_lower_triangular<T: ComplexField, N: Shape>(
-    dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
-    src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
+pub fn invert_unit_lower_triangular<T: ComplexField>(
+    dst: MatMut<'_, T>,
+    src: MatRef<'_, T>,
     par: Par,
 ) {
     Assert!(all(
@@ -162,11 +162,7 @@ pub fn invert_unit_lower_triangular<T: ComplexField, N: Shape>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_lower_triangular<T: ComplexField, N: Shape>(
-    dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
-    src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
-    par: Par,
-) {
+pub fn invert_lower_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, par: Par) {
     Assert!(all(
         dst.nrows() == src.nrows(),
         dst.ncols() == src.ncols(),
@@ -189,9 +185,9 @@ pub fn invert_lower_triangular<T: ComplexField, N: Shape>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_unit_upper_triangular<T: ComplexField, N: Shape>(
-    dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
-    src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
+pub fn invert_unit_upper_triangular<T: ComplexField>(
+    dst: MatMut<'_, T>,
+    src: MatRef<'_, T>,
     par: Par,
 ) {
     invert_unit_lower_triangular(
@@ -208,11 +204,7 @@ pub fn invert_unit_upper_triangular<T: ComplexField, N: Shape>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_upper_triangular<T: ComplexField, N: Shape>(
-    dst: MatMut<'_, T, N, N, impl Stride, impl Stride>,
-    src: MatRef<'_, T, N, N, impl Stride, impl Stride>,
-    par: Par,
-) {
+pub fn invert_upper_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, par: Par) {
     invert_lower_triangular(
         dst.reverse_rows_and_cols_mut(),
         src.reverse_rows_and_cols(),

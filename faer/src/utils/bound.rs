@@ -841,3 +841,114 @@ impl<'n, T> core::ops::IndexMut<Idx<'n>> for Array<'n, T> {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct One;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Zero;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IdxIncOne<I: Index = usize> {
+    inner: I,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MaybeIdxOne<I: Index = usize> {
+    inner: I,
+}
+
+impl<I: Index> Unbind<I> for IdxIncOne<I> {
+    #[inline]
+    unsafe fn new_unbound(idx: I) -> Self {
+        Self { inner: idx }
+    }
+    #[inline]
+    fn unbound(self) -> I {
+        self.inner
+    }
+}
+
+impl<I: Index> Unbind<I::Signed> for MaybeIdxOne<I> {
+    #[inline]
+    unsafe fn new_unbound(idx: I::Signed) -> Self {
+        Self {
+            inner: I::from_signed(idx),
+        }
+    }
+    #[inline]
+    fn unbound(self) -> I::Signed {
+        self.inner.to_signed()
+    }
+}
+
+impl<I: Index> Unbind<I> for Zero {
+    #[inline]
+    unsafe fn new_unbound(idx: I) -> Self {
+        equator::debug_assert!(idx.zx() == 0);
+        Zero
+    }
+    #[inline]
+    fn unbound(self) -> I {
+        I::truncate(0)
+    }
+}
+
+impl Unbind for One {
+    #[inline]
+    unsafe fn new_unbound(idx: usize) -> Self {
+        equator::debug_assert!(idx == 1);
+        One
+    }
+    #[inline]
+    fn unbound(self) -> usize {
+        1
+    }
+}
+
+impl<I: Index> From<Zero> for IdxIncOne<I> {
+    fn from(_: Zero) -> Self {
+        Self {
+            inner: I::truncate(0),
+        }
+    }
+}
+
+impl ShapeIdx for One {
+    type Idx<I: Index> = Zero;
+    type IdxInc<I: Index> = IdxIncOne<I>;
+    type MaybeIdx<I: Index> = MaybeIdxOne<I>;
+}
+
+impl PartialEq<One> for IdxIncOne {
+    #[inline]
+    fn eq(&self, _: &One) -> bool {
+        self.inner == 1
+    }
+}
+impl PartialOrd<One> for IdxIncOne {
+    #[inline]
+    fn partial_cmp(&self, _: &One) -> Option<core::cmp::Ordering> {
+        if self.inner == 1 {
+            Some(core::cmp::Ordering::Equal)
+        } else {
+            Some(core::cmp::Ordering::Less)
+        }
+    }
+}
+
+impl PartialEq<One> for Zero {
+    #[inline]
+    fn eq(&self, _: &One) -> bool {
+        false
+    }
+}
+impl PartialOrd<One> for Zero {
+    #[inline]
+    fn partial_cmp(&self, _: &One) -> Option<core::cmp::Ordering> {
+        Some(core::cmp::Ordering::Less)
+    }
+}
+impl Shape for One {
+    const IS_BOUND: bool = true;
+}
