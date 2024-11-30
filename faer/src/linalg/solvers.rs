@@ -160,7 +160,7 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
     }
 }
 
-impl<C: Conjugate> crate::mat::MatExt<C> {
+impl<C: Conjugate> dyn crate::mat::MatExt<C> {
     #[track_caller]
     pub fn partial_piv_lu(&self) -> PartialPivLu<C::Canonical> {
         PartialPivLu::new(self.as_mat_ref())
@@ -285,7 +285,7 @@ impl<C: Conjugate> crate::mat::MatExt<C> {
     }
 }
 
-impl<T: RealField> crate::mat::MatExt<T> {
+impl<T: RealField> dyn crate::mat::MatExt<T> {
     #[track_caller]
     pub fn eigen_from_real(&self) -> Result<Eigen<T>, EvdError> {
         Eigen::new_from_real(self.as_mat_ref())
@@ -331,7 +331,7 @@ impl<T: RealField> crate::mat::MatExt<T> {
     }
 }
 
-impl<T: RealField> crate::mat::MatExt<Complex<T>> {
+impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> {
     #[track_caller]
     pub fn eigen(&self) -> Result<Eigen<T>, EvdError> {
         Eigen::new(self.as_mat_ref())

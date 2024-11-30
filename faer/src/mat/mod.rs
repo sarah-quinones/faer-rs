@@ -49,56 +49,50 @@ pub use matmut::MatMut;
 pub use matown::Mat;
 pub use matref::MatRef;
 
-pub(crate) mod hidden {
-    use super::*;
-
-    pub trait Mat<T, Rows: Shape = usize, Cols: Shape = usize>:
-        AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = super::Mat<T, Rows, Cols>>
-    {
-    }
-
-    impl<
-            T,
-            Rows: Shape,
-            Cols: Shape,
-            M: AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = super::Mat<T, Rows, Cols>>,
-        > Mat<T, Rows, Cols> for M
-    {
-    }
+pub trait MatExt<T, Rows: Shape = usize, Cols: Shape = usize>:
+    AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = Mat<T, Rows, Cols>>
+{
 }
 
-pub(crate) type MatExt<T, Rows = usize, Cols = usize> = dyn hidden::Mat<T, Rows, Cols>;
+impl<
+        T,
+        Rows: Shape,
+        Cols: Shape,
+        M: AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = Mat<T, Rows, Cols>>,
+    > MatExt<T, Rows, Cols> for M
+{
+}
 
 impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core::ops::Deref
     for MatRef<'a, T, Rows, Cols, Rs, Cs>
 {
-    type Target = dyn 'a + hidden::Mat<T, Rows, Cols>;
+    type Target = dyn 'a + MatExt<T, Rows, Cols>;
 
     fn deref(&self) -> &Self::Target {
-        self as &(dyn 'a + hidden::Mat<T, Rows, Cols>)
+        self as &(dyn 'a + MatExt<T, Rows, Cols>)
     }
 }
 
 impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core::ops::Deref
     for MatMut<'a, T, Rows, Cols, Rs, Cs>
 {
-    type Target = dyn 'a + hidden::Mat<T, Rows, Cols>;
+    type Target = dyn 'a + MatExt<T, Rows, Cols>;
 
     fn deref(&self) -> &Self::Target {
-        self as &(dyn 'a + hidden::Mat<T, Rows, Cols>)
+        self as &(dyn 'a + MatExt<T, Rows, Cols>)
     }
 }
 
 impl<T: ComplexField, Rows: Shape, Cols: Shape> core::ops::Deref for Mat<T, Rows, Cols> {
-    type Target = dyn hidden::Mat<T, Rows, Cols>;
+    type Target = dyn MatExt<T, Rows, Cols>;
 
     fn deref<'a>(&'a self) -> &'a Self::Target {
         // UNSAFETY: not 100% sure if this is fine
         unsafe {
             core::mem::transmute::<
-                &'a (dyn 'a + hidden::Mat<T, Rows, Cols>),
-                &'a (dyn 'static + hidden::Mat<T, Rows, Cols>),
-            >(self as &'a (dyn 'a + hidden::Mat<T, Rows, Cols>))
+                &'a (dyn 'a + MatExt<T, Rows, Cols>),
+                &'a (dyn 'static + MatExt<T, Rows, Cols>),
+            >(self as &'a (dyn 'a + MatExt<T, Rows, Cols>))
         }
     }
 }
