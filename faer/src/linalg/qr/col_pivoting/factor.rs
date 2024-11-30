@@ -1,5 +1,5 @@
 use crate::{assert, internal_prelude::*, perm::swap_cols_idx, utils::thread::par_split_indices};
-use faer_traits::{Real, RealMarker};
+use faer_traits::{Real, RealReg};
 use linalg::{householder, matmul::dot};
 use pulp::Simd;
 
@@ -13,17 +13,17 @@ fn update_col_and_norm2_simd<'M, T: ComplexField, S: Simd>(
 ) -> Real<T> {
     let mut A = A;
 
-    let mut sml0 = RealMarker(simd.zero());
-    let mut sml1 = RealMarker(simd.zero());
-    let mut sml2 = RealMarker(simd.zero());
+    let mut sml0 = RealReg(simd.zero());
+    let mut sml1 = RealReg(simd.zero());
+    let mut sml2 = RealReg(simd.zero());
 
-    let mut med0 = RealMarker(simd.zero());
-    let mut med1 = RealMarker(simd.zero());
-    let mut med2 = RealMarker(simd.zero());
+    let mut med0 = RealReg(simd.zero());
+    let mut med1 = RealReg(simd.zero());
+    let mut med2 = RealReg(simd.zero());
 
-    let mut big0 = RealMarker(simd.zero());
-    let mut big1 = RealMarker(simd.zero());
-    let mut big2 = RealMarker(simd.zero());
+    let mut big0 = RealReg(simd.zero());
+    let mut big1 = RealReg(simd.zero());
+    let mut big2 = RealReg(simd.zero());
 
     let (head, body3, body1, tail) = simd.batch_indices::<3>();
 
@@ -174,13 +174,17 @@ fn update_mat_and_best_norm2_simd<T: ComplexField>(
 
     with_dim!(M, A.nrows());
     with_dim!(N, A.ncols());
-    T::Arch::default().dispatch(Impl {
-        A: A.as_shape_mut(M, N),
-        lhs: lhs.as_row_shape(M),
-        rhs: rhs.as_col_shape_mut(N),
-        tau_inv,
-        align,
-    })
+    dispatch!(
+        Impl {
+            A: A.as_shape_mut(M, N),
+            lhs: lhs.as_row_shape(M),
+            rhs: rhs.as_col_shape_mut(N),
+            tau_inv,
+            align,
+        },
+        Impl,
+        T
+    )
 }
 
 #[math]
@@ -395,12 +399,12 @@ pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
-    parallelism: Par,
+    par: Par,
     params: ColPivQrParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = nrows;
     let _ = ncols;
-    let _ = parallelism;
+    let _ = par;
     let _ = blocksize;
     let _ = &params;
     Ok(StackReq::default())
@@ -418,7 +422,7 @@ pub struct ColPivQrInfo {
 #[math]
 pub fn qr_in_place<'out, I: Index, T: ComplexField>(
     A: MatMut<'_, T>,
-    H: MatMut<'_, T>,
+    Q_coeff: MatMut<'_, T>,
     col_perm: &'out mut [I],
     col_perm_inv: &'out mut [I],
     par: Par,
@@ -426,7 +430,7 @@ pub fn qr_in_place<'out, I: Index, T: ComplexField>(
     params: ColPivQrParams,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
     let mut A = A;
-    let mut H = H;
+    let mut H = Q_coeff;
     let size = H.ncols();
     let blocksize = H.nrows();
 

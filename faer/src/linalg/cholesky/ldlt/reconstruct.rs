@@ -13,7 +13,8 @@ pub fn reconstruct_scratch<T: ComplexField>(
 #[math]
 pub fn reconstruct<T: ComplexField>(
     out: MatMut<'_, T>,
-    LD: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    D: DiagRef<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -24,8 +25,9 @@ pub fn reconstruct<T: ComplexField>(
     assert!(all(
         out.nrows() == n,
         out.ncols() == n,
-        LD.nrows() == n,
-        LD.ncols() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        D.dim() == n,
     ));
 
     let (mut LxD, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
@@ -33,10 +35,11 @@ pub fn reconstruct<T: ComplexField>(
     {
         with_dim!(N, n);
         let mut LxD = LxD.rb_mut().as_shape_mut(N, N);
-        let L = LD.as_shape(N, N);
+        let L = L.as_shape(N, N);
+        let D = D.as_shape(N);
 
         for j in N.indices() {
-            let d = copy(L[(j, j)]);
+            let d = copy(D[j]);
 
             LxD[(j, j)] = copy(d);
             for i in j.next().to(N.end()) {
@@ -53,7 +56,7 @@ pub fn reconstruct<T: ComplexField>(
         Accum::Replace,
         LxD,
         BlockStructure::TriangularLower,
-        LD.adjoint(),
+        L.adjoint(),
         BlockStructure::UnitTriangularUpper,
         one(),
         par,
@@ -101,6 +104,7 @@ mod tests {
         reconstruct::reconstruct(
             A_rec.as_mut(),
             L.as_ref(),
+            L.diagonal(),
             Par::Seq,
             DynStack::new(&mut GlobalMemBuffer::new(
                 reconstruct::reconstruct_scratch::<c64>(n, Par::Seq).unwrap(),

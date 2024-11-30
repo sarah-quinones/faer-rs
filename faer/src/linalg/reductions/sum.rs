@@ -57,7 +57,7 @@ fn sum_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) ->
         }
     }
 
-    T::Arch::default().dispatch(Impl { data })
+    dispatch!(Impl { data }, Impl, T)
 }
 
 #[math]

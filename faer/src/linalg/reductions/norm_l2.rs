@@ -1,4 +1,4 @@
-use faer_traits::RealMarker;
+use faer_traits::RealReg;
 use num_complex::Complex;
 
 use super::LINEAR_IMPL_THRESHOLD;
@@ -23,12 +23,12 @@ fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
             let sml = simd.splat_real(&sqrt_min_positive());
             let big = simd.splat_real(&sqrt_max_positive());
 
-            let mut acc0_sml = RealMarker(zero);
-            let mut acc1_sml = RealMarker(zero);
-            let mut acc0_med = RealMarker(zero);
-            let mut acc1_med = RealMarker(zero);
-            let mut acc0_big = RealMarker(zero);
-            let mut acc1_big = RealMarker(zero);
+            let mut acc0_sml = RealReg(zero);
+            let mut acc1_sml = RealReg(zero);
+            let mut acc0_med = RealReg(zero);
+            let mut acc1_med = RealReg(zero);
+            let mut acc0_big = RealReg(zero);
+            let mut acc1_big = RealReg(zero);
 
             let (head, body2, body1, tail) = simd.batch_indices::<2>();
 
@@ -67,9 +67,9 @@ fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
                 acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
             }
 
-            acc0_sml = RealMarker(simd.add(acc0_sml.0, acc1_sml.0));
-            acc0_big = RealMarker(simd.add(acc0_big.0, acc1_big.0));
-            acc0_med = RealMarker(simd.add(acc0_med.0, acc1_med.0));
+            acc0_sml = RealReg(simd.add(acc0_sml.0, acc1_sml.0));
+            acc0_big = RealReg(simd.add(acc0_big.0, acc1_big.0));
+            acc0_med = RealReg(simd.add(acc0_med.0, acc1_med.0));
 
             [
                 simd.reduce_sum_real(acc0_sml),
@@ -79,7 +79,7 @@ fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
         }
     }
 
-    T::Arch::default().dispatch(Impl { data })
+    dispatch!(Impl { data }, Impl, T)
 }
 
 #[math]

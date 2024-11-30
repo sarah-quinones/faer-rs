@@ -7,7 +7,7 @@ pub mod reconstruct;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert, c64, internal_prelude::*, stats::prelude::*, Col, Mat};
+    use crate::{assert, c64, internal_prelude::*, stats::prelude::*};
     use dyn_stack::GlobalMemBuffer;
     use factor::BunchKaufmanParams;
     use num_complex::ComplexFloat;
@@ -33,7 +33,7 @@ mod tests {
             .rand::<Mat<f64>>(rng);
 
             let mut ldl = a.clone();
-            let mut subdiag = Col::<f64>::zeros(n);
+            let mut subdiag = Diag::<f64>::zeros(n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
@@ -59,6 +59,7 @@ mod tests {
             let mut x = rhs.clone();
             solve::solve_in_place_with_conj(
                 ldl.as_ref(),
+                ldl.diagonal(),
                 subdiag.as_ref(),
                 Conj::No,
                 perm.rb(),
@@ -101,7 +102,7 @@ mod tests {
             .rand::<Mat<c64>>(rng);
 
             let mut ldl = a.clone();
-            let mut subdiag = Col::<c64>::zeros(n);
+            let mut subdiag = Diag::<c64>::zeros(n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
@@ -131,6 +132,7 @@ mod tests {
             );
             solve::solve_in_place_with_conj(
                 ldl.as_ref(),
+                ldl.diagonal(),
                 subdiag.as_ref(),
                 Conj::Yes,
                 perm.rb(),

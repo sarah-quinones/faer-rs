@@ -1297,16 +1297,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     }
 
     #[inline]
-    pub fn copy_from_triangular_lower_with<RhsT: Conjugate<Canonical = T>>(
-        &mut self,
-        other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
-    ) where
-        T: ComplexField,
-    {
-        self.as_mut().copy_from_triangular_lower(other)
-    }
-
-    #[inline]
     pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
         &mut self,
         other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
@@ -1317,12 +1307,54 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
     }
 
     #[inline]
+    pub fn copy_from_triangular_lower<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
+    ) where
+        T: ComplexField,
+    {
+        self.as_mut().copy_from_triangular_lower(other)
+    }
+
+    #[inline]
     pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(
         &mut self,
         other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
     ) where
         T: ComplexField,
     {
-        self.as_mut().copy_from(other)
+        self.as_mut().copy_from_strict_triangular_lower(other)
+    }
+
+    #[inline]
+    pub fn copy_from_triangular_upper<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
+    ) where
+        T: ComplexField,
+    {
+        self.as_mut().copy_from_triangular_upper(other)
+    }
+
+    #[inline]
+    pub fn copy_from_strict_triangular_upper<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>,
+    ) where
+        T: ComplexField,
+    {
+        self.as_mut().copy_from_strict_triangular_upper(other)
+    }
+}
+
+impl<T, Dim: Shape> Mat<T, Dim, Dim> {
+    #[inline]
+    pub fn diagonal(&self) -> DiagRef<'_, T, Dim, isize> {
+        self.as_ref().diagonal()
+    }
+
+    #[inline]
+    pub fn diagonal_mut(&mut self) -> DiagMut<'_, T, Dim, isize> {
+        self.as_mut().diagonal_mut()
     }
 }

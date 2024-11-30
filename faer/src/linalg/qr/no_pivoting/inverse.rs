@@ -14,30 +14,35 @@ pub fn inverse_scratch<T: ComplexField>(
 #[track_caller]
 pub fn inverse<T: ComplexField>(
     out: MatMut<'_, T>,
-    QR: MatRef<'_, T>,
-    H: MatRef<'_, T>,
+    Q_basis: MatRef<'_, T>,
+    Q_coeff: MatRef<'_, T>,
+    R: MatRef<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
     // A = Q R
     // A^-1 = R^-1 Q^-1
 
-    let n = QR.ncols();
+    let n = Q_basis.ncols();
+    let blocksize = Q_coeff.nrows();
     assert!(all(
-        QR.nrows() == n,
-        QR.ncols() == n,
+        blocksize > 0,
+        Q_basis.nrows() == n,
+        Q_basis.ncols() == n,
+        Q_coeff.ncols() == n,
+        R.nrows() == n,
+        R.ncols() == n,
         out.nrows() == n,
         out.ncols() == n,
-        H.ncols() == n,
     ));
 
     let mut out = out;
     out.fill(zero());
-    linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), QR, par);
+    linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), R, par);
 
     linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(
-        QR,
-        H,
+        Q_basis,
+        Q_coeff,
         Conj::Yes,
         out.rb_mut(),
         par,
@@ -64,11 +69,11 @@ mod tests {
         .rand::<Mat<c64>>(rng);
 
         let mut QR = A.to_owned();
-        let mut H = Mat::zeros(4, n);
+        let mut Q_coeff = Mat::zeros(4, n);
 
         factor::qr_in_place(
             QR.as_mut(),
-            H.as_mut(),
+            Q_coeff.as_mut(),
             Par::Seq,
             DynStack::new(&mut {
                 GlobalMemBuffer::new(
@@ -84,7 +89,8 @@ mod tests {
         inverse::inverse(
             A_inv.as_mut(),
             QR.as_ref(),
-            H.as_ref(),
+            Q_coeff.as_ref(),
+            QR.as_ref(),
             Par::Seq,
             DynStack::new(&mut GlobalMemBuffer::new(
                 inverse::inverse_scratch::<c64>(n, 4, Par::Seq).unwrap(),

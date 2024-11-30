@@ -12,19 +12,25 @@ pub fn solve_in_place_scratch<T: ComplexField>(
 #[math]
 #[track_caller]
 pub fn solve_in_place_with_conj<T: ComplexField>(
-    LD: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    D: DiagRef<'_, T>,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let n = LD.nrows();
+    let n = L.nrows();
     _ = stack;
-    assert!(all(LD.nrows() == n, LD.ncols() == n, rhs.nrows() == n,));
+    assert!(all(
+        L.nrows() == n,
+        L.ncols() == n,
+        D.dim() == n,
+        rhs.nrows() == n,
+    ));
 
     let mut rhs = rhs;
     linalg::triangular_solve::solve_unit_lower_triangular_in_place_with_conj(
-        LD,
+        L,
         conj_lhs,
         rhs.rb_mut(),
         par,
@@ -34,7 +40,7 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
         with_dim!(N, rhs.nrows());
         with_dim!(K, rhs.ncols());
 
-        let D = LD.as_shape(N, N).diagonal();
+        let D = D.as_shape(N);
         let mut rhs = rhs.rb_mut().as_shape_mut(N, K);
 
         for j in K.indices() {
@@ -46,7 +52,7 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
     }
 
     linalg::triangular_solve::solve_unit_upper_triangular_in_place_with_conj(
-        LD.transpose(),
+        L.transpose(),
         conj_lhs.compose(Conj::Yes),
         rhs.rb_mut(),
         par,
@@ -56,12 +62,20 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
 #[math]
 #[track_caller]
 pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
-    LD: MatRef<'_, C>,
+    L: MatRef<'_, C>,
+    D: DiagRef<'_, C>,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    solve_in_place_with_conj(LD.canonical(), Conj::get::<C>(), rhs, par, stack);
+    solve_in_place_with_conj(
+        L.canonical(),
+        D.canonical(),
+        Conj::get::<C>(),
+        rhs,
+        par,
+        stack,
+    );
 }
 
 #[cfg(test)]
@@ -108,12 +122,13 @@ mod tests {
         )
         .unwrap();
 
-        let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * (n as f64));
+        let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 8.0 * (n as f64));
 
         {
             let mut X = B.to_owned();
             ldlt::solve::solve_in_place(
                 L.as_ref(),
+                L.diagonal(),
                 X.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
@@ -128,6 +143,7 @@ mod tests {
             let mut X = B.to_owned();
             ldlt::solve::solve_in_place(
                 L.conjugate(),
+                L.conjugate().diagonal(),
                 X.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(

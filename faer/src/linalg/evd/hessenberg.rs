@@ -214,18 +214,22 @@ fn hessenberg_fused_op_simd<T: ComplexField>(
     with_dim!(M, A.nrows());
     with_dim!(N, A.ncols());
 
-    T::Arch::default().dispatch(Impl {
-        A: A.as_shape_mut(M, N),
-        l_out: l_out.as_col_shape_mut(N),
-        r_out: r_out.as_row_shape_mut(M),
-        l_in: l_in.as_col_shape(M),
-        r_in: r_in.as_row_shape(N),
-        l0: l0.as_row_shape(M),
-        l1: l1.as_row_shape(M),
-        r0: r0.as_col_shape(N),
-        r1: r1.as_col_shape(N),
-        align,
-    })
+    dispatch!(
+        Impl {
+            A: A.as_shape_mut(M, N),
+            l_out: l_out.as_col_shape_mut(N),
+            r_out: r_out.as_row_shape_mut(M),
+            l_in: l_in.as_col_shape(M),
+            r_in: r_in.as_row_shape(N),
+            l0: l0.as_row_shape(M),
+            l1: l1.as_row_shape(M),
+            r0: r0.as_col_shape(N),
+            r1: r1.as_col_shape(N),
+            align,
+        },
+        Impl,
+        T
+    )
 }
 
 #[math]

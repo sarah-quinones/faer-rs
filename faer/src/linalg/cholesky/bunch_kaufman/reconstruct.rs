@@ -13,19 +13,21 @@ pub fn reconstruct_scratch<I: Index, T: ComplexField>(
 #[math]
 pub fn reconstruct<I: Index, T: ComplexField>(
     out: MatMut<'_, T>,
-    LB: MatRef<'_, T>,
-    subdiagonal: ColRef<'_, T>,
+    L: MatRef<'_, T>,
+    diagonal: DiagRef<'_, T>,
+    subdiagonal: DiagRef<'_, T>,
     perm: PermRef<'_, I>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let n = LB.nrows();
+    let n = L.nrows();
     assert!(all(
         out.nrows() == n,
         out.ncols() == n,
-        LB.nrows() == n,
-        LB.ncols() == n,
-        subdiagonal.nrows() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        diagonal.dim() == n,
+        subdiagonal.dim() == n,
         perm.len() == n,
     ));
 
@@ -36,12 +38,12 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 
     out.fill(zero());
     out.rb_mut().diagonal_mut().fill(one());
-    out.copy_from_strict_triangular_lower(LB);
+    out.copy_from_strict_triangular_lower(L);
 
     let mut j = 0;
     while j < n {
         if s[j] == zero() {
-            let d = real(LB[(j, j)]);
+            let d = real(L[(j, j)]);
 
             for i in 0..n {
                 out[(i, j)] = mul_real(out[(i, j)], d);
@@ -50,8 +52,8 @@ pub fn reconstruct<I: Index, T: ComplexField>(
             j += 1;
         } else {
             let akp1k = copy(s[j]);
-            let ak = real(LB[(j, j)]);
-            let akp1 = real(LB[(j + 1, j + 1)]);
+            let ak = real(L[(j, j)]);
+            let akp1 = real(L[(j + 1, j + 1)]);
 
             for i in 0..n {
                 let xk = copy(out[(i, j)]);
@@ -69,7 +71,7 @@ pub fn reconstruct<I: Index, T: ComplexField>(
         tmp.rb_mut(),
         BlockStructure::TriangularLower,
         Accum::Replace,
-        LB,
+        L,
         BlockStructure::UnitTriangularLower,
         out.rb().adjoint(),
         BlockStructure::Rectangular,
@@ -117,7 +119,7 @@ mod tests {
 
         let A = &A + A.adjoint();
         let mut LB = A.to_owned();
-        let mut subdiag = Col::zeros(n);
+        let mut subdiag = Diag::zeros(n);
         let perm_fwd = &mut *vec![0usize; n];
         let perm_bwd = &mut *vec![0usize; n];
 
@@ -143,6 +145,7 @@ mod tests {
         reconstruct::reconstruct(
             A_rec.as_mut(),
             LB.as_ref(),
+            LB.diagonal(),
             subdiag.as_ref(),
             perm,
             Par::Seq,

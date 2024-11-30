@@ -360,8 +360,6 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
         N.unbound(),
         T::SIMD_CAPABILITIES.is_simd(),
     ) {
-        let arch = T::Arch::default();
-
         struct ApplyOnLeft<'a, 'TAIL, 'K, T: ComplexField, const CONJ: bool> {
             tau_inv: &'a T,
             essential: ColRef<'a, T, Dim<'TAIL>, ContiguousFwd>,
@@ -446,19 +444,31 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
         let tau_inv: T = from_real(recip(real(householder_factor[(N0, N0)])));
 
         if const { T::IS_REAL } || matches!(conj_lhs, Conj::No) {
-            arch.dispatch(ApplyOnLeft::<_, false> {
-                tau_inv: &tau_inv,
-                essential,
-                rhs,
-                rhs0,
-            });
+            type Apply<'a, 'TAIL, 'K, T> = ApplyOnLeft<'a, 'TAIL, 'K, T, false>;
+
+            dispatch!(
+                Apply {
+                    tau_inv: &tau_inv,
+                    essential,
+                    rhs,
+                    rhs0,
+                },
+                Apply,
+                T
+            );
         } else {
-            arch.dispatch(ApplyOnLeft::<_, true> {
-                tau_inv: &tau_inv,
-                essential,
-                rhs,
-                rhs0,
-            });
+            type Apply<'a, 'TAIL, 'K, T> = ApplyOnLeft<'a, 'TAIL, 'K, T, true>;
+
+            dispatch!(
+                Apply {
+                    tau_inv: &tau_inv,
+                    essential,
+                    rhs,
+                    rhs0,
+                },
+                Apply,
+                T
+            );
         }
     } else {
         let (essentials_top, essentials_bot) = householder_basis.split_rows_with(midpoint);

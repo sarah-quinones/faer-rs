@@ -465,15 +465,19 @@ fn bidiag_fused_op_simd<'M, 'N, T: ComplexField>(
     with_dim!(M, A22.nrows());
     with_dim!(N, A22.ncols());
 
-    T::Arch::default().dispatch(Impl {
-        A22: A22.as_shape_mut(M, N),
-        u: u.as_row_shape(M),
-        up: up.as_row_shape(M),
-        z: z.as_row_shape(M),
-        y: y.as_col_shape_mut(N),
-        vp: vp.as_col_shape(N),
-        align,
-    })
+    dispatch!(
+        Impl {
+            A22: A22.as_shape_mut(M, N),
+            u: u.as_row_shape(M),
+            up: up.as_row_shape(M),
+            z: z.as_row_shape(M),
+            y: y.as_col_shape_mut(N),
+            vp: vp.as_col_shape(N),
+            align,
+        },
+        Impl,
+        T
+    )
 }
 
 #[cfg(test)]

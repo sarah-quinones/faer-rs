@@ -13,13 +13,14 @@ pub fn reconstruct_scratch<I: Index, T: ComplexField>(
 #[track_caller]
 pub fn reconstruct<I: Index, T: ComplexField>(
     out: MatMut<'_, T>,
-    LU: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    U: MatRef<'_, T>,
     row_perm: PermRef<'_, I>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let m = LU.nrows();
-    let n = LU.ncols();
+    let m = L.nrows();
+    let n = U.ncols();
     let size = Ord::min(m, n);
     assert!(all(out.nrows() == m, out.ncols() == n, row_perm.len() == m));
 
@@ -31,9 +32,9 @@ pub fn reconstruct<I: Index, T: ComplexField>(
         tmp.rb_mut().get_mut(..size, ..size),
         BlockStructure::Rectangular,
         Accum::Replace,
-        LU.get(..size, ..size),
+        L.get(..size, ..size),
         BlockStructure::UnitTriangularLower,
-        LU.get(..size, ..size),
+        U.get(..size, ..size),
         BlockStructure::TriangularUpper,
         one(),
         par,
@@ -44,9 +45,9 @@ pub fn reconstruct<I: Index, T: ComplexField>(
             tmp.rb_mut().get_mut(size.., ..size),
             BlockStructure::Rectangular,
             Accum::Replace,
-            LU.get(size.., ..size),
+            L.get(size.., ..size),
             BlockStructure::Rectangular,
-            LU.get(..size, ..size),
+            U.get(..size, ..size),
             BlockStructure::TriangularUpper,
             one(),
             par,
@@ -57,9 +58,9 @@ pub fn reconstruct<I: Index, T: ComplexField>(
             tmp.rb_mut().get_mut(..size, size..),
             BlockStructure::Rectangular,
             Accum::Replace,
-            LU.get(..size, ..size),
+            L.get(..size, ..size),
             BlockStructure::UnitTriangularLower,
-            LU.get(..size, size..),
+            U.get(..size, size..),
             BlockStructure::Rectangular,
             one(),
             par,
@@ -110,6 +111,7 @@ mod tests {
             let mut A_rec = Mat::zeros(m, n);
             reconstruct::reconstruct(
                 A_rec.as_mut(),
+                LU.as_ref(),
                 LU.as_ref(),
                 perm,
                 Par::Seq,

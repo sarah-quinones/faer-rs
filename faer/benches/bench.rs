@@ -1,39 +1,33 @@
 #![allow(non_snake_case)]
 
 use diol::prelude::*;
-use faer::{stats::prelude::*, Mat, Row};
+use faer::{auto, prelude::*, stats::prelude::*};
 use reborrow::*;
 
 fn bench_new(bencher: Bencher, n: usize) {
     let rng = &mut StdRng::seed_from_u64(0);
 
-    let a = CwiseMatDistribution {
+    let A = CwiseMatDistribution {
         nrows: n,
         ncols: n,
         dist: StandardNormal,
     }
     .rand::<Mat<f64>>(rng);
 
-    let a = &a * &a.transpose();
+    let ref A = &A * &A.adjoint();
 
-    let mut l = a.clone();
-    let mut l = l.as_mut();
-    let mut d = Row::<f64>::zeros(n);
-    let mut d = d.as_mut();
+    let mut LD = A.clone();
+    let mut LD = LD.as_mut();
 
     bencher.bench(|| {
-        l.copy_from(a.as_ref());
+        LD.copy_from(A);
 
-        let mut full_l = l.rb_mut();
-        let mut d = d.rb_mut();
-        _ = faer::linalg::cholesky::ldlt::factor::simd_cholesky(
-            full_l.as_mut(),
-            d.as_mut(),
-            false,
-            false,
-            0.0,
-            0.0,
-            None,
+        _ = faer::linalg::cholesky::ldlt::factor::cholesky_in_place(
+            LD.rb_mut(),
+            Default::default(),
+            Par::Seq,
+            dyn_stack::DynStack::new(&mut []),
+            auto!(f64),
         );
     });
 }

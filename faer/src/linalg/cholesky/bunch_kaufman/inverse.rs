@@ -12,19 +12,21 @@ pub fn inverse_scratch<I: Index, T: ComplexField>(
 #[math]
 pub fn inverse<I: Index, T: ComplexField>(
     out: MatMut<'_, T>,
-    LB: MatRef<'_, T>,
-    subdiagonal: ColRef<'_, T>,
+    L: MatRef<'_, T>,
+    diagonal: DiagRef<'_, T>,
+    subdiagonal: DiagRef<'_, T>,
     perm: PermRef<'_, I>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let n = LB.nrows();
+    let n = L.nrows();
     assert!(all(
         out.nrows() == n,
         out.ncols() == n,
-        LB.nrows() == n,
-        LB.ncols() == n,
-        subdiagonal.nrows() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        diagonal.dim() == n,
+        subdiagonal.dim() == n,
         perm.len() == n,
     ));
 
@@ -32,5 +34,5 @@ pub fn inverse<I: Index, T: ComplexField>(
     out.fill(zero());
     out.rb_mut().diagonal_mut().fill(one());
 
-    super::solve::solve_in_place(LB, subdiagonal, perm, out.rb_mut(), par, stack);
+    super::solve::solve_in_place(L, diagonal, subdiagonal, perm, out.rb_mut(), par, stack);
 }

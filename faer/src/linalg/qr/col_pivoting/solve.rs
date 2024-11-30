@@ -47,22 +47,24 @@ pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(
 
 #[track_caller]
 pub fn solve_lstsq_in_place_with_conj<I: Index, T: ComplexField>(
-    QR: MatRef<'_, T>,
-    H: MatRef<'_, T>,
+    Q_basis: MatRef<'_, T>,
+    Q_coeff: MatRef<'_, T>,
+    R: MatRef<'_, T>,
     col_perm: PermRef<'_, I>,
     conj_QR: Conj,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let m = QR.nrows();
-    let n = QR.ncols();
+    let m = Q_basis.nrows();
+    let n = Q_basis.ncols();
     let size = Ord::min(m, n);
     let mut rhs = rhs;
 
     linalg::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj(
-        QR,
-        H,
+        Q_basis,
+        Q_coeff,
+        R,
         conj_QR,
         rhs.rb_mut(),
         par,
@@ -74,16 +76,18 @@ pub fn solve_lstsq_in_place_with_conj<I: Index, T: ComplexField>(
 
 #[track_caller]
 pub fn solve_lstsq_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
-    QR: MatRef<'_, C>,
-    H: MatRef<'_, C>,
+    Q_basis: MatRef<'_, C>,
+    Q_coeff: MatRef<'_, C>,
+    R: MatRef<'_, C>,
     col_perm: PermRef<'_, I>,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
     solve_lstsq_in_place_with_conj(
-        QR.canonical(),
-        H.canonical(),
+        Q_basis.canonical(),
+        Q_coeff.canonical(),
+        R.canonical(),
         col_perm,
         Conj::get::<C>(),
         rhs,
@@ -94,39 +98,45 @@ pub fn solve_lstsq_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = 
 
 #[track_caller]
 pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
-    QR: MatRef<'_, T>,
-    H: MatRef<'_, T>,
+    Q_basis: MatRef<'_, T>,
+    Q_coeff: MatRef<'_, T>,
+    R: MatRef<'_, T>,
     col_perm: PermRef<'_, I>,
     conj_QR: Conj,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let n = QR.nrows();
-    let blocksize = H.nrows();
+    let n = Q_basis.nrows();
+    let blocksize = Q_coeff.nrows();
+
     assert!(all(
-        QR.ncols() == n,
-        QR.nrows() == n,
+        blocksize > 0,
         rhs.nrows() == n,
-        H.ncols() == n,
-        H.nrows() == blocksize,
+        Q_basis.nrows() == n,
+        Q_basis.ncols() == n,
+        Q_coeff.ncols() == n,
+        R.nrows() == n,
+        R.ncols() == n,
     ));
 
-    solve_lstsq_in_place_with_conj(QR, H, col_perm, conj_QR, rhs, par, stack);
+    solve_lstsq_in_place_with_conj(Q_basis, Q_coeff, R, col_perm, conj_QR, rhs, par, stack);
 }
 
 #[track_caller]
 pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
-    QR: MatRef<'_, C>,
-    H: MatRef<'_, C>,
+    Q_basis: MatRef<'_, C>,
+    Q_coeff: MatRef<'_, C>,
+    R: MatRef<'_, C>,
     col_perm: PermRef<'_, I>,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
     solve_in_place_with_conj(
-        QR.canonical(),
-        H.canonical(),
+        Q_basis.canonical(),
+        Q_coeff.canonical(),
+        R.canonical(),
         col_perm,
         Conj::get::<C>(),
         rhs,
@@ -137,45 +147,50 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 
 #[track_caller]
 pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
-    QR: MatRef<'_, T>,
-    H: MatRef<'_, T>,
+    Q_basis: MatRef<'_, T>,
+    Q_coeff: MatRef<'_, T>,
+    R: MatRef<'_, T>,
     col_perm: PermRef<'_, I>,
     conj_QR: Conj,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let n = QR.nrows();
-    let blocksize = H.nrows();
+    let n = Q_basis.nrows();
+    let blocksize = Q_coeff.nrows();
 
     assert!(all(
-        QR.ncols() == n,
-        QR.nrows() == n,
+        blocksize > 0,
         rhs.nrows() == n,
-        H.ncols() == n,
-        H.nrows() == blocksize,
+        Q_basis.nrows() == n,
+        Q_basis.ncols() == n,
+        Q_coeff.ncols() == n,
+        R.nrows() == n,
+        R.ncols() == n,
     ));
 
     let mut rhs = rhs;
 
     crate::perm::permute_rows_in_place(rhs.rb_mut(), col_perm, stack);
     linalg::qr::no_pivoting::solve::solve_transpose_in_place_with_conj(
-        QR, H, conj_QR, rhs, par, stack,
+        Q_basis, Q_coeff, R, conj_QR, rhs, par, stack,
     );
 }
 
 #[track_caller]
 pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
-    QR: MatRef<'_, C>,
-    H: MatRef<'_, C>,
+    Q_basis: MatRef<'_, C>,
+    Q_coeff: MatRef<'_, C>,
+    R: MatRef<'_, C>,
     col_perm: PermRef<'_, I>,
     rhs: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
     solve_transpose_in_place_with_conj(
-        QR.canonical(),
-        H.canonical(),
+        Q_basis.canonical(),
+        Q_coeff.canonical(),
+        R.canonical(),
         col_perm,
         Conj::get::<C>(),
         rhs,
@@ -213,14 +228,14 @@ mod tests {
         .rand::<Mat<c64>>(rng);
 
         let mut QR = A.to_owned();
-        let mut H = Mat::zeros(4, n);
+        let mut Q_coeff = Mat::zeros(4, n);
 
         let col_perm_fwd = &mut *vec![0usize; n];
         let col_perm_bwd = &mut *vec![0usize; n];
 
         let (_, col_perm) = factor::qr_in_place(
             QR.as_mut(),
-            H.as_mut(),
+            Q_coeff.as_mut(),
             col_perm_fwd,
             col_perm_bwd,
             Par::Seq,
@@ -236,7 +251,8 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_lstsq_in_place(
                 QR.as_ref(),
-                H.as_ref(),
+                Q_coeff.as_ref(),
+                QR.as_ref(),
                 col_perm,
                 X.as_mut(),
                 Par::Seq,
@@ -255,7 +271,8 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_lstsq_in_place(
                 QR.conjugate(),
-                H.conjugate(),
+                Q_coeff.conjugate(),
+                QR.conjugate(),
                 col_perm,
                 X.as_mut(),
                 Par::Seq,
@@ -291,14 +308,14 @@ mod tests {
         .rand::<Mat<c64>>(rng);
 
         let mut QR = A.to_owned();
-        let mut H = Mat::zeros(4, n);
+        let mut Q_coeff = Mat::zeros(4, n);
 
         let col_perm_fwd = &mut *vec![0usize; n];
         let col_perm_bwd = &mut *vec![0usize; n];
 
         let (_, col_perm) = factor::qr_in_place(
             QR.as_mut(),
-            H.as_mut(),
+            Q_coeff.as_mut(),
             col_perm_fwd,
             col_perm_bwd,
             Par::Seq,
@@ -314,7 +331,8 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_in_place(
                 QR.as_ref(),
-                H.as_ref(),
+                Q_coeff.as_ref(),
+                QR.as_ref(),
                 col_perm,
                 X.as_mut(),
                 Par::Seq,
@@ -330,7 +348,8 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_in_place(
                 QR.conjugate(),
-                H.conjugate(),
+                Q_coeff.conjugate(),
+                QR.conjugate(),
                 col_perm,
                 X.as_mut(),
                 Par::Seq,
@@ -346,7 +365,8 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_transpose_in_place(
                 QR.as_ref(),
-                H.as_ref(),
+                Q_coeff.as_ref(),
+                QR.as_ref(),
                 col_perm,
                 X.as_mut(),
                 Par::Seq,
@@ -363,7 +383,8 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_transpose_in_place(
                 QR.conjugate(),
-                H.conjugate(),
+                Q_coeff.conjugate(),
+                QR.conjugate(),
                 col_perm,
                 X.as_mut(),
                 Par::Seq,

@@ -225,19 +225,23 @@ fn tridiag_fused_op_simd<T: ComplexField>(
     with_dim!(M, A.nrows());
     with_dim!(N, A.ncols());
 
-    T::Arch::default().dispatch(Impl {
-        A: A.as_shape_mut(M, N),
-        y2: y2.as_row_shape_mut(N),
-        z2: z2.as_row_shape_mut(M),
-        ry2: ry2.as_row_shape(N),
-        rz2: rz2.as_row_shape(M),
-        u0: u0.as_row_shape(M),
-        u1: u1.as_row_shape(N),
-        u2: u2.as_row_shape(N),
-        v2: v2.as_row_shape(M),
-        f,
-        align,
-    })
+    dispatch!(
+        Impl {
+            A: A.as_shape_mut(M, N),
+            y2: y2.as_row_shape_mut(N),
+            z2: z2.as_row_shape_mut(M),
+            ry2: ry2.as_row_shape(N),
+            rz2: rz2.as_row_shape(M),
+            u0: u0.as_row_shape(M),
+            u1: u1.as_row_shape(N),
+            u2: u2.as_row_shape(N),
+            v2: v2.as_row_shape(M),
+            f,
+            align,
+        },
+        Impl,
+        T
+    )
 }
 
 #[math]

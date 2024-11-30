@@ -206,3 +206,5 @@ pub mod evd;
 pub mod svd;
 
 mod mat_ops;
+
+pub mod solvers;

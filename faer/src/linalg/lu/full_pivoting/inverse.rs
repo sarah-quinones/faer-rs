@@ -12,7 +12,8 @@ pub fn inverse_scratch<I: Index, T: ComplexField>(
 #[track_caller]
 pub fn inverse<I: Index, T: ComplexField>(
     out: MatMut<'_, T>,
-    LU: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    U: MatRef<'_, T>,
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     par: Par,
@@ -21,10 +22,12 @@ pub fn inverse<I: Index, T: ComplexField>(
     // A = P^-1 L U Q
     // A^-1 = Q^-1 U^-1 L^-1 P
 
-    let n = LU.ncols();
+    let n = L.ncols();
     assert!(all(
-        LU.nrows() == n,
-        LU.ncols() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        U.nrows() == n,
+        U.ncols() == n,
         out.nrows() == n,
         out.ncols() == n,
         row_perm.len() == n,
@@ -34,8 +37,8 @@ pub fn inverse<I: Index, T: ComplexField>(
     let mut tmp = tmp.as_mat_mut();
     let mut out = out;
 
-    linalg::triangular_inverse::invert_unit_lower_triangular(out.rb_mut(), LU, par);
-    linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), LU, par);
+    linalg::triangular_inverse::invert_unit_lower_triangular(out.rb_mut(), L, par);
+    linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), U, par);
 
     linalg::matmul::triangular::matmul(
         tmp.rb_mut(),
@@ -109,6 +112,7 @@ mod tests {
         let mut A_inv = Mat::zeros(n, n);
         inverse::inverse(
             A_inv.as_mut(),
+            LU.as_ref(),
             LU.as_ref(),
             row_perm,
             col_perm,

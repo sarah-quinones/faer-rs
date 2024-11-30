@@ -1,4 +1,4 @@
-use faer_traits::RealMarker;
+use faer_traits::RealReg;
 use num_complex::Complex;
 
 use super::LINEAR_IMPL_THRESHOLD;
@@ -20,10 +20,10 @@ fn norm_l2_sqr_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, Contiguous
 
             let zero = simd.splat(&zero());
 
-            let mut acc0 = RealMarker(zero);
-            let mut acc1 = RealMarker(zero);
-            let mut acc2 = RealMarker(zero);
-            let mut acc3 = RealMarker(zero);
+            let mut acc0 = RealReg(zero);
+            let mut acc1 = RealReg(zero);
+            let mut acc2 = RealReg(zero);
+            let mut acc3 = RealReg(zero);
 
             let (head, body4, body1, tail) = simd.batch_indices::<4>();
             if let Some(i0) = head {
@@ -50,15 +50,15 @@ fn norm_l2_sqr_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, Contiguous
                 acc0 = simd.abs2_add(x0, acc0);
             }
 
-            acc0 = RealMarker(simd.add(acc0.0, acc1.0));
-            acc2 = RealMarker(simd.add(acc2.0, acc3.0));
-            acc0 = RealMarker(simd.add(acc0.0, acc2.0));
+            acc0 = RealReg(simd.add(acc0.0, acc1.0));
+            acc2 = RealReg(simd.add(acc2.0, acc3.0));
+            acc0 = RealReg(simd.add(acc0.0, acc2.0));
 
             simd.reduce_sum_real(acc0)
         }
     }
 
-    T::Arch::default().dispatch(Impl { data })
+    dispatch!(Impl { data }, Impl, T)
 }
 
 #[math]

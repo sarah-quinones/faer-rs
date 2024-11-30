@@ -10,7 +10,8 @@ pub fn inverse_scratch<T: ComplexField>(dim: usize, par: Par) -> Result<StackReq
 #[math]
 pub fn inverse<T: ComplexField>(
     out: MatMut<'_, T>,
-    LD: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    D: DiagRef<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
@@ -23,22 +24,23 @@ pub fn inverse<T: ComplexField>(
     assert!(all(
         out.nrows() == n,
         out.ncols() == n,
-        LD.nrows() == n,
-        LD.ncols() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        D.dim() == n,
     ));
 
     let (mut L_inv, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
     let mut L_inv = L_inv.as_mat_mut();
 
-    linalg::triangular_inverse::invert_unit_lower_triangular(L_inv.rb_mut(), LD, par);
+    linalg::triangular_inverse::invert_unit_lower_triangular(L_inv.rb_mut(), L, par);
 
     {
         with_dim!(N, n);
         let mut L_inv = L_inv.rb_mut().as_shape_mut(N, N);
-        let LD = LD.as_shape(N, N);
+        let D = D.as_shape(N);
 
         for j in N.indices() {
-            let d = recip(real(LD[(j, j)]));
+            let d = recip(real(D[j]));
             L_inv[(j, j)] = from_real(d);
         }
 
@@ -106,6 +108,7 @@ mod tests {
         inverse::inverse(
             A_inv.as_mut(),
             L.as_ref(),
+            L.diagonal(),
             Par::Seq,
             DynStack::new(&mut GlobalMemBuffer::new(
                 inverse::inverse_scratch::<c64>(n, Par::Seq).unwrap(),

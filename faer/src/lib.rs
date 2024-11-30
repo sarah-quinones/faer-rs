@@ -11,6 +11,36 @@ macro_rules! auto {
     };
 }
 
+macro_rules! dispatch {
+    ($imp: expr, $ty: ident, $T: ty $(,)?) => {
+        if const { <$T>::IS_NATIVE_C32 } {
+            unsafe {
+                transmute(
+                    <ComplexImpl<f32> as ComplexField>::Arch::default().dispatch(transmute::<
+                        _,
+                        $ty<ComplexImpl<f32>>,
+                    >(
+                        $imp
+                    )),
+                )
+            }
+        } else if const { <$T>::IS_NATIVE_C64 } {
+            unsafe {
+                transmute(
+                    <ComplexImpl<f64> as ComplexField>::Arch::default().dispatch(transmute::<
+                        _,
+                        $ty<ComplexImpl<f64>>,
+                    >(
+                        $imp
+                    )),
+                )
+            }
+        } else {
+            <$T>::Arch::default().dispatch($imp)
+        }
+    };
+}
+
 macro_rules! stack_mat {
     ($name: ident, $m: expr, $n: expr, $M: expr, $N: expr, $T: ty $(,)?) => {
         let mut __tmp = {
@@ -430,6 +460,12 @@ pub enum Accum {
     Add,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Side {
+    Lower,
+    Upper,
+}
+
 impl Conj {
     #[inline]
     pub const fn is_conj(self) -> bool {
@@ -502,9 +538,12 @@ pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
+    pub use faer_traits::{ComplexImpl, ComplexImplConj};
+
     pub(crate) use crate::{
         col::{AsColMut, AsColRef, Col, ColMut, ColRef},
         diag::{Diag, DiagMut, DiagRef},
+        hacks::transmute,
         linalg::{self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed},
         mat::{AsMatMut, AsMatRef, Mat, MatMut, MatRef},
         perm::{Perm, PermRef},
@@ -515,7 +554,7 @@ mod internal_prelude {
             simd::SimdCtx,
         },
         variadics::{l, L},
-        Auto, NonExhaustive,
+        Auto, NonExhaustive, Side,
     };
 
     pub use num_complex::Complex;

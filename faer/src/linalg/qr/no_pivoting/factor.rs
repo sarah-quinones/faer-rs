@@ -169,15 +169,15 @@ fn qr_in_place_blocked<T: ComplexField>(
 #[track_caller]
 pub fn qr_in_place<T: ComplexField>(
     A: MatMut<'_, T>,
-    H: MatMut<'_, T>,
+    Q_coeff: MatMut<'_, T>,
     par: Par,
     stack: &mut DynStack,
     params: QrParams,
 ) {
-    let blocksize = H.nrows();
+    let blocksize = Q_coeff.nrows();
     assert!(all(
         blocksize > 0,
-        H.ncols() == Ord::min(A.nrows(), A.ncols()),
+        Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),
     ));
 
     #[cfg(feature = "perf-warn")]
@@ -189,7 +189,7 @@ pub fn qr_in_place<T: ComplexField>(
         }
     }
 
-    qr_in_place_blocked(A, H, par, stack, params);
+    qr_in_place_blocked(A, Q_coeff, par, stack, params);
 }
 
 /// Computes the size and alignment of required workspace for performing a QR

@@ -119,17 +119,18 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 #[math]
 pub fn self_adjoint_evd<T: ComplexField>(
     A: MatRef<'_, T>,
-    s: ColMut<'_, T>,
+    s: DiagMut<'_, T>,
     u: Option<MatMut<'_, T>>,
     par: Par,
     stack: &mut DynStack,
     params: SelfAdjointEvdParams,
 ) -> Result<(), EvdError> {
     let n = A.nrows();
-    assert!(all(A.nrows() == A.ncols(), s.nrows() == n));
+    assert!(all(A.nrows() == A.ncols(), s.dim() == n));
     if let Some(u) = u.rb() {
         assert!(all(u.nrows() == n, u.ncols() == n));
     }
+    let s = s.column_vector_mut();
 
     if n == 0 {
         return Ok(());
@@ -419,7 +420,7 @@ fn dot2x2<T: RealField>(
 }
 
 #[math]
-fn evd_from_real_schur<T: RealField>(
+fn evd_from_real_schur_imp<T: RealField>(
     A: MatRef<'_, T>,
     V: MatMut<'_, T>,
     par: Par,
@@ -504,7 +505,7 @@ fn evd_from_real_schur<T: RealField>(
 }
 
 #[math]
-fn evd_from_cplx_schur<T: ComplexField>(
+fn evd_from_cplx_schur_imp<T: ComplexField>(
     A: MatRef<'_, T>,
     conj_A: Conj,
     V: MatMut<'_, T>,
@@ -1052,14 +1053,14 @@ fn evd_imp<T: ComplexField>(
         let mut X = X.as_mat_mut();
 
         if const { T::IS_REAL } {
-            evd_from_real_schur::<T::Real>(
+            evd_from_real_schur_imp::<T::Real>(
                 unsafe { core::mem::transmute(H) },
                 unsafe { core::mem::transmute(X.rb_mut()) },
                 par,
                 params.evd_from_schur,
             );
         } else {
-            evd_from_cplx_schur::<T>(H, Conj::No, X.rb_mut(), par, params.evd_from_schur);
+            evd_from_cplx_schur_imp::<T>(H, Conj::No, X.rb_mut(), par, params.evd_from_schur);
         }
 
         linalg::matmul::triangular::matmul(
@@ -1080,14 +1081,14 @@ fn evd_imp<T: ComplexField>(
         let mut X = X.as_mat_mut().reverse_rows_mut();
 
         if const { T::IS_REAL } {
-            evd_from_real_schur::<T::Real>(
+            evd_from_real_schur_imp::<T::Real>(
                 unsafe { core::mem::transmute(H.transpose().reverse_rows_and_cols()) },
                 unsafe { core::mem::transmute(X.rb_mut()) },
                 par,
                 params.evd_from_schur,
             );
         } else {
-            evd_from_cplx_schur::<T>(
+            evd_from_cplx_schur_imp::<T>(
                 H.transpose().reverse_rows_and_cols(),
                 Conj::Yes,
                 X.rb_mut(),
@@ -1113,17 +1114,17 @@ fn evd_imp<T: ComplexField>(
 }
 
 #[track_caller]
-pub fn evd_cplx<T: ComplexField>(
-    A: MatRef<'_, T>,
-    s: ColMut<'_, T>,
-    u_left: Option<MatMut<'_, T>>,
-    u_right: Option<MatMut<'_, T>>,
+pub fn evd_cplx<T: RealField>(
+    A: MatRef<'_, Complex<T>>,
+    s: DiagMut<'_, Complex<T>>,
+    u_left: Option<MatMut<'_, Complex<T>>>,
+    u_right: Option<MatMut<'_, Complex<T>>>,
     par: Par,
     stack: &mut DynStack,
     params: EvdParams,
 ) -> Result<(), EvdError> {
     let n = A.nrows();
-    assert!(all(A.nrows() == n, A.ncols() == n, s.nrows() == n));
+    assert!(all(A.nrows() == n, A.ncols() == n, s.dim() == n));
     if let Some(u) = u_left.rb() {
         assert!(all(u.nrows() == n, u.ncols() == n));
     }
@@ -1131,14 +1132,23 @@ pub fn evd_cplx<T: ComplexField>(
         assert!(all(u.nrows() == n, u.ncols() == n));
     }
 
-    evd_imp(A, s, None, u_left, u_right, par, stack, params)
+    evd_imp(
+        A,
+        s.column_vector_mut(),
+        None,
+        u_left,
+        u_right,
+        par,
+        stack,
+        params,
+    )
 }
 
 #[track_caller]
 pub fn evd_real<T: RealField>(
     A: MatRef<'_, T>,
-    s_re: ColMut<'_, T>,
-    s_im: ColMut<'_, T>,
+    s_re: DiagMut<'_, T>,
+    s_im: DiagMut<'_, T>,
     u_left: Option<MatMut<'_, T>>,
     u_right: Option<MatMut<'_, T>>,
     par: Par,
@@ -1149,8 +1159,8 @@ pub fn evd_real<T: RealField>(
     assert!(all(
         A.nrows() == n,
         A.ncols() == n,
-        s_re.nrows() == n,
-        s_im.nrows() == n
+        s_re.dim() == n,
+        s_im.dim() == n
     ));
     if let Some(u) = u_left.rb() {
         assert!(all(u.nrows() == n, u.ncols() == n));
@@ -1159,7 +1169,16 @@ pub fn evd_real<T: RealField>(
         assert!(all(u.nrows() == n, u.ncols() == n));
     }
 
-    evd_imp(A, s_re, Some(s_im), u_left, u_right, par, stack, params)
+    evd_imp(
+        A,
+        s_re.column_vector_mut(),
+        Some(s_im.column_vector_mut()),
+        u_left,
+        u_right,
+        par,
+        stack,
+        params,
+    )
 }
 
 #[cfg(test)]
@@ -1190,7 +1209,7 @@ mod general_tests {
 
             evd_cplx(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut(),
+                s.as_mut().diagonal_mut(),
                 Some(ul.as_mut()),
                 Some(ur.as_mut()),
                 Par::Seq,
@@ -1228,8 +1247,8 @@ mod general_tests {
         use faer_traits::math_utils::*;
         let approx_eq = CwiseMat(ApproxEq::<f64>::eps() * sqrt(&from_f64(8.0 * n as f64)));
 
-        let mut s_re = Col::zeros(n);
-        let mut s_im = Col::zeros(n);
+        let mut s_re = Diag::zeros(n);
+        let mut s_im = Diag::zeros(n);
         {
             let mut ul = Mat::zeros(n, n);
             let mut ur = Mat::zeros(n, n);
@@ -1346,7 +1365,7 @@ mod self_adjoint_tests {
 
             self_adjoint_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut(),
+                s.as_mut().diagonal_mut(),
                 Some(u.as_mut()),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
@@ -1366,7 +1385,7 @@ mod self_adjoint_tests {
 
             self_adjoint_evd(
                 mat.as_ref(),
-                s2.as_mut().diagonal_mut().column_vector_mut(),
+                s2.as_mut().diagonal_mut(),
                 None,
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(

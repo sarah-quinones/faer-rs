@@ -15,22 +15,34 @@ pub fn reconstruct_scratch<T: ComplexField>(
 #[track_caller]
 pub fn reconstruct<T: ComplexField>(
     out: MatMut<'_, T>,
-    QR: MatRef<'_, T>,
-    H: MatRef<'_, T>,
+    Q_basis: MatRef<'_, T>,
+    Q_coeff: MatRef<'_, T>,
+    R: MatRef<'_, T>,
     par: Par,
     stack: &mut DynStack,
 ) {
-    let (m, n) = QR.shape();
+    let m = Q_basis.nrows();
+    let n = R.ncols();
     let size = Ord::min(m, n);
-    assert!(all(out.nrows() == m, out.ncols() == n, H.ncols() == size));
+    assert!(all(
+        out.nrows() == m,
+        out.ncols() == n,
+        Q_basis.nrows() == m,
+        Q_basis.ncols() == size,
+        Q_coeff.ncols() == size,
+        R.nrows() == size,
+        R.ncols() == n,
+    ));
 
     let mut out = out;
     out.fill(zero());
-    out.copy_from_triangular_upper(QR);
+    out.rb_mut()
+        .get_mut(..size, ..n)
+        .copy_from_triangular_upper(R);
 
     linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
-        QR,
-        H,
+        Q_basis,
+        Q_coeff,
         Conj::No,
         out.rb_mut(),
         par,
@@ -55,13 +67,14 @@ mod tests {
                 dist: ComplexDistribution::new(StandardNormal, StandardNormal),
             }
             .rand::<Mat<c64>>(rng);
+            let size = Ord::min(m, n);
 
             let mut QR = A.to_owned();
-            let mut H = Mat::zeros(4, Ord::min(m, n));
+            let mut Q_coeff = Mat::zeros(4, size);
 
             factor::qr_in_place(
                 QR.as_mut(),
-                H.as_mut(),
+                Q_coeff.as_mut(),
                 Par::Seq,
                 DynStack::new(&mut {
                     GlobalMemBuffer::new(
@@ -76,8 +89,9 @@ mod tests {
             let mut A_rec = Mat::zeros(m, n);
             reconstruct::reconstruct(
                 A_rec.as_mut(),
-                QR.as_ref(),
-                H.as_ref(),
+                QR.get(.., ..size),
+                Q_coeff.as_ref(),
+                QR.get(..size, ..),
                 Par::Seq,
                 DynStack::new(&mut GlobalMemBuffer::new(
                     reconstruct::reconstruct_scratch::<c64>(m, n, 4, Par::Seq).unwrap(),

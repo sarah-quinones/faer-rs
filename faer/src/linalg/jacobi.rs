@@ -264,7 +264,7 @@ impl<T: ComplexField> JacobiRotation<T> {
                 x.rb_mut().try_as_row_major_mut(),
                 y.rb_mut().try_as_row_major_mut(),
             ) {
-                T::Arch::default().dispatch(Impl { this: self, x, y });
+                dispatch!(Impl { this: self, x, y }, Impl, T);
                 return;
             }
         }

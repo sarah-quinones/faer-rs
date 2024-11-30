@@ -4,6 +4,7 @@ use faer_traits::Real;
 
 use super::RowIndex;
 
+#[derive(Clone)]
 pub struct Row<T, Cols: Shape = usize> {
     trans: Col<T, Cols>,
 }
@@ -23,6 +24,26 @@ impl<T, Cols: Shape> Row<T, Cols> {
     {
         Self {
             trans: Col::zeros(ncols),
+        }
+    }
+
+    #[inline]
+    pub fn ones(ncols: Cols) -> Self
+    where
+        T: ComplexField,
+    {
+        Self {
+            trans: Col::ones(ncols),
+        }
+    }
+
+    #[inline]
+    pub fn full(ncols: Cols, value: T) -> Self
+    where
+        T: Clone,
+    {
+        Self {
+            trans: Col::full(ncols, value),
         }
     }
 

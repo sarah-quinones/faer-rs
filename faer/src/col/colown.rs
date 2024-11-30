@@ -4,6 +4,7 @@ use faer_traits::Real;
 
 use super::ColIndex;
 
+#[derive(Clone)]
 pub struct Col<T, Rows: Shape = usize> {
     column: Mat<T, Rows, usize>,
 }
@@ -29,6 +30,26 @@ impl<T, Rows: Shape> Col<T, Rows> {
     {
         Self {
             column: Mat::zeros(nrows, 1),
+        }
+    }
+
+    #[inline]
+    pub fn ones(nrows: Rows) -> Self
+    where
+        T: ComplexField,
+    {
+        Self {
+            column: Mat::ones(nrows, 1),
+        }
+    }
+
+    #[inline]
+    pub fn full(nrows: Rows, value: T) -> Self
+    where
+        T: Clone,
+    {
+        Self {
+            column: Mat::full(nrows, 1, value),
         }
     }
 
@@ -439,5 +460,16 @@ impl<T, Rows: Shape> Col<T, Rows> {
     #[inline]
     pub fn as_diagonal_mut(&mut self) -> DiagMut<'_, T, Rows> {
         self.as_mut().as_diagonal_mut()
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
+        &mut self,
+        rhs: impl AsColRef<T = RhsT, Rows = Rows>,
+    ) where
+        T: ComplexField,
+    {
+        self.as_mut().copy_from(rhs)
     }
 }

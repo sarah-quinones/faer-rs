@@ -85,3 +85,28 @@ impl<T, Rows: Shape> AsColMut for Col<T, Rows> {
         self.as_dyn_stride_mut()
     }
 }
+
+impl<M: AsColRef> AsColRef for &M {
+    type T = M::T;
+    type Rows = M::Rows;
+
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<Self::T, Self::Rows> {
+        (**self).as_col_ref()
+    }
+}
+impl<M: AsColRef> AsColRef for &mut M {
+    type T = M::T;
+    type Rows = M::Rows;
+
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<Self::T, Self::Rows> {
+        (**self).as_col_ref()
+    }
+}
+impl<M: AsColMut> AsColMut for &mut M {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMut<Self::T, Self::Rows> {
+        (**self).as_col_mut()
+    }
+}

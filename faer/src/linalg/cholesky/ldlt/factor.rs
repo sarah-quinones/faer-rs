@@ -271,7 +271,7 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
     Ok(count)
 }
 
-pub fn simd_cholesky<T: ComplexField>(
+fn simd_cholesky<T: ComplexField>(
     A: MatMut<'_, T>,
     D: RowMut<'_, T>,
 
@@ -317,15 +317,19 @@ pub fn simd_cholesky<T: ComplexField>(
     let mut A = A;
     if const { T::SIMD_CAPABILITIES.is_simd() } {
         if let Some(A) = A.rb_mut().try_as_col_major_mut() {
-            T::Arch::default().dispatch(Impl {
-                A,
-                D,
-                is_llt,
-                regularize,
-                eps,
-                delta,
-                signs,
-            })
+            dispatch!(
+                Impl {
+                    A,
+                    D,
+                    is_llt,
+                    regularize,
+                    eps,
+                    delta,
+                    signs,
+                },
+                Impl,
+                T
+            )
         } else {
             cholesky_fallback(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
         }
@@ -436,7 +440,7 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 ) -> Result<usize, usize> {
     let n = A.ncols();
     if n <= recursion_threshold {
-        cholesky_fallback(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
+        simd_cholesky(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
     } else {
         let mut count = 0;
         let blocksize = Ord::min(n.next_power_of_two() / 2, blocksize);

@@ -24,7 +24,8 @@ pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(
 
 #[track_caller]
 pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
-    LU: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    U: MatRef<'_, T>,
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     conj_LU: Conj,
@@ -36,11 +37,13 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
     // P^-1 LU Q = A
     // A^-1 = Q^-1 U^-1 L^-1 P
 
-    let n = LU.nrows();
+    let n = L.nrows();
 
     assert!(all(
-        LU.nrows() == n,
-        LU.ncols() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        U.nrows() == n,
+        U.ncols() == n,
         row_perm.len() == n,
         col_perm.len() == n,
         rhs.nrows() == n,
@@ -49,13 +52,13 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
     let mut rhs = rhs;
     permute_rows_in_place(rhs.rb_mut(), row_perm, stack);
     linalg::triangular_solve::solve_unit_lower_triangular_in_place_with_conj(
-        LU,
+        L,
         conj_LU,
         rhs.rb_mut(),
         par,
     );
     linalg::triangular_solve::solve_upper_triangular_in_place_with_conj(
-        LU,
+        U,
         conj_LU,
         rhs.rb_mut(),
         par,
@@ -65,7 +68,8 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 
 #[track_caller]
 pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
-    LU: MatRef<'_, T>,
+    L: MatRef<'_, T>,
+    U: MatRef<'_, T>,
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     conj_LU: Conj,
@@ -77,11 +81,13 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
     // A^-1 = Q^-1 U^-1 L^-1 P
     // A^-T = P^-1 L^-T U^-T Q
 
-    let n = LU.nrows();
+    let n = L.nrows();
 
     assert!(all(
-        LU.nrows() == n,
-        LU.ncols() == n,
+        L.nrows() == n,
+        L.ncols() == n,
+        U.nrows() == n,
+        U.ncols() == n,
         row_perm.len() == n,
         col_perm.len() == n,
         rhs.nrows() == n,
@@ -90,13 +96,13 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
     let mut rhs = rhs;
     permute_rows_in_place(rhs.rb_mut(), col_perm, stack);
     linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(
-        LU.transpose(),
+        U.transpose(),
         conj_LU,
         rhs.rb_mut(),
         par,
     );
     linalg::triangular_solve::solve_unit_upper_triangular_in_place_with_conj(
-        LU.transpose(),
+        L.transpose(),
         conj_LU,
         rhs.rb_mut(),
         par,
@@ -106,7 +112,8 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
 
 #[track_caller]
 pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
-    LU: MatRef<'_, C>,
+    L: MatRef<'_, C>,
+    U: MatRef<'_, C>,
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     rhs: MatMut<'_, T>,
@@ -114,7 +121,8 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
     stack: &mut DynStack,
 ) {
     solve_in_place_with_conj(
-        LU.canonical(),
+        L.canonical(),
+        U.canonical(),
         row_perm,
         col_perm,
         Conj::get::<C>(),
@@ -126,7 +134,8 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 
 #[track_caller]
 pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
-    LU: MatRef<'_, C>,
+    L: MatRef<'_, C>,
+    U: MatRef<'_, C>,
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     rhs: MatMut<'_, T>,
@@ -134,7 +143,8 @@ pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonica
     stack: &mut DynStack,
 ) {
     solve_transpose_in_place_with_conj(
-        LU.canonical(),
+        L.canonical(),
+        U.canonical(),
         row_perm,
         col_perm,
         Conj::get::<C>(),
@@ -198,21 +208,6 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_in_place(
                 LU.as_ref(),
-                row_perm,
-                col_perm,
-                X.as_mut(),
-                Par::Seq,
-                DynStack::new(&mut GlobalMemBuffer::new(
-                    solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap(),
-                )),
-            );
-
-            assert!(&A * &X ~ B);
-        }
-
-        {
-            let mut X = B.to_owned();
-            solve::solve_in_place(
                 LU.as_ref(),
                 row_perm,
                 col_perm,
@@ -225,9 +220,11 @@ mod tests {
 
             assert!(&A * &X ~ B);
         }
+
         {
             let mut X = B.to_owned();
             solve::solve_transpose_in_place(
+                LU.as_ref(),
                 LU.as_ref(),
                 row_perm,
                 col_perm,
@@ -244,6 +241,7 @@ mod tests {
             let mut X = B.to_owned();
             solve::solve_in_place(
                 LU.conjugate(),
+                LU.conjugate(),
                 row_perm,
                 col_perm,
                 X.as_mut(),
@@ -258,6 +256,7 @@ mod tests {
         {
             let mut X = B.to_owned();
             solve::solve_transpose_in_place(
+                LU.conjugate(),
                 LU.conjugate(),
                 row_perm,
                 col_perm,

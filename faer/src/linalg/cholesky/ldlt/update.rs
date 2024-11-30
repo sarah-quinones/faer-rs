@@ -199,13 +199,17 @@ fn rank_update_step_simd<T: ComplexField>(
     with_dim!(N, W.nrows());
     with_dim!(R, W.ncols());
 
-    T::Arch::default().dispatch(Impl {
-        L: L.as_row_shape_mut(N),
-        W: W.as_shape_mut(N, R),
-        p: p.as_row_shape(R),
-        beta: beta.as_row_shape(R),
-        align_offset,
-    })
+    dispatch!(
+        Impl {
+            L: L.as_row_shape_mut(N),
+            W: W.as_shape_mut(N, R),
+            p: p.as_row_shape(R),
+            beta: beta.as_row_shape(R),
+            align_offset,
+        },
+        Impl,
+        T
+    )
 }
 
 #[math]

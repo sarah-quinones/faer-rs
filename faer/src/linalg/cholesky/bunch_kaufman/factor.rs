@@ -744,7 +744,7 @@ pub struct BunchKaufmanInfo {
 #[math]
 pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
     A: MatMut<'_, T>,
-    subdiag: ColMut<'_, T>,
+    subdiag: DiagMut<'_, T>,
     regularization: BunchKaufmanRegularization<'_, T>,
     perm: &'out mut [I],
     perm_inv: &'out mut [I],
@@ -758,7 +758,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
     let n = A.nrows();
     assert!(all(
         A.nrows() == A.ncols(),
-        subdiag.nrows() == n,
+        subdiag.dim() == n,
         perm.len() == n,
         perm_inv.len() == n
     ));
@@ -849,7 +849,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
     convert(
         matrix.rb_mut().as_shape_mut(N, N),
         Array::from_mut(pivots, N),
-        subdiag.as_row_shape_mut(N),
+        subdiag.column_vector_mut().as_row_shape_mut(N),
     );
 
     for (i, p) in perm.iter_mut().enumerate() {

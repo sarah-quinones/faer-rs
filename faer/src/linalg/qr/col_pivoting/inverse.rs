@@ -18,8 +18,9 @@ pub fn inverse_scratch<I: Index, T: ComplexField>(
 #[track_caller]
 pub fn inverse<I: Index, T: ComplexField>(
     out: MatMut<'_, T>,
-    QR: MatRef<'_, T>,
-    H: MatRef<'_, T>,
+    Q_basis: MatRef<'_, T>,
+    Q_coeff: MatRef<'_, T>,
+    R: MatRef<'_, T>,
     col_perm: PermRef<'_, I>,
     par: Par,
     stack: &mut DynStack,
@@ -27,21 +28,26 @@ pub fn inverse<I: Index, T: ComplexField>(
     // A P^-1 = Q R
     // A^-1 = P^-1 R^-1 Q^-1
 
-    let n = QR.ncols();
+    let n = Q_basis.ncols();
+    let blocksize = Q_coeff.nrows();
     assert!(all(
-        QR.nrows() == n,
-        QR.ncols() == n,
+        blocksize > 0,
+        Q_basis.nrows() == n,
+        Q_basis.ncols() == n,
+        Q_coeff.ncols() == n,
+        R.nrows() == n,
+        R.ncols() == n,
         out.nrows() == n,
         out.ncols() == n,
-        H.ncols() == n,
+        col_perm.len() == n,
     ));
 
     let mut out = out;
     out.fill(zero());
-    linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), QR, par);
+    linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), R, par);
     linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(
-        QR,
-        H,
+        Q_basis,
+        Q_coeff,
         Conj::Yes,
         out.rb_mut(),
         par,
@@ -95,6 +101,7 @@ mod tests {
             A_inv.as_mut(),
             QR.as_ref(),
             H.as_ref(),
+            QR.as_ref(),
             col_perm,
             Par::Seq,
             DynStack::new(&mut GlobalMemBuffer::new(

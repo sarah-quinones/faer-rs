@@ -404,7 +404,7 @@ pub struct SimdCtxCopy<T: ComplexField, S: Simd>(pub T::SimdCtx<S>);
 
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct RealMarker<T>(pub T);
+pub struct RealReg<T>(pub T);
 
 impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     #[inline(always)]
@@ -423,8 +423,8 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     }
 
     #[inline(always)]
-    pub fn splat_real(&self, value: &T::Real) -> RealMarker<T::SimdVec<S>> {
-        RealMarker(unsafe {
+    pub fn splat_real(&self, value: &T::Real) -> RealReg<T::SimdVec<S>> {
+        RealReg(unsafe {
             core::mem::transmute_copy(&T::simd_splat_real(&self.0, (value).by_ref()))
         })
     }
@@ -454,25 +454,25 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
         unsafe { core::mem::transmute_copy(&T::simd_conj(&self.0, value)) }
     }
     #[inline(always)]
-    pub fn abs1(&self, value: T::SimdVec<S>) -> RealMarker<T::SimdVec<S>> {
+    pub fn abs1(&self, value: T::SimdVec<S>) -> RealReg<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs1(&self.0, value)) })
+        RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs1(&self.0, value)) })
     }
     #[inline(always)]
-    pub fn abs_max(&self, value: T::SimdVec<S>) -> RealMarker<T::SimdVec<S>> {
+    pub fn abs_max(&self, value: T::SimdVec<S>) -> RealReg<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs_max(&self.0, value)) })
+        RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs_max(&self.0, value)) })
     }
 
     #[inline(always)]
-    pub fn mul_real(&self, lhs: T::SimdVec<S>, rhs: RealMarker<T::SimdVec<S>>) -> T::SimdVec<S> {
+    pub fn mul_real(&self, lhs: T::SimdVec<S>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdVec<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_mul_real(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn mul_pow2(&self, lhs: T::SimdVec<S>, rhs: RealMarker<T::SimdVec<S>>) -> T::SimdVec<S> {
+    pub fn mul_pow2(&self, lhs: T::SimdVec<S>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdVec<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_mul_pow2(&self.0, lhs, rhs)) }
@@ -519,20 +519,20 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     }
 
     #[inline(always)]
-    pub fn abs2(&self, value: T::SimdVec<S>) -> RealMarker<T::SimdVec<S>> {
+    pub fn abs2(&self, value: T::SimdVec<S>) -> RealReg<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
-        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs2(&self.0, value)) })
+        RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs2(&self.0, value)) })
     }
 
     #[inline(always)]
     pub fn abs2_add(
         &self,
         value: T::SimdVec<S>,
-        acc: RealMarker<T::SimdVec<S>>,
-    ) -> RealMarker<T::SimdVec<S>> {
+        acc: RealReg<T::SimdVec<S>>,
+    ) -> RealReg<T::SimdVec<S>> {
         let value = unsafe { core::mem::transmute_copy(&value) };
         let acc = unsafe { core::mem::transmute_copy(&acc) };
-        RealMarker(unsafe { core::mem::transmute_copy(&T::simd_abs2_add(&self.0, value, acc)) })
+        RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs2_add(&self.0, value, acc)) })
     }
 
     #[inline(always)]
@@ -541,14 +541,14 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
         unsafe { core::mem::transmute_copy(&T::simd_reduce_sum(&self.0, value)) }
     }
     #[inline(always)]
-    pub fn reduce_max(&self, value: RealMarker<T::SimdVec<S>>) -> T {
+    pub fn reduce_max(&self, value: RealReg<T::SimdVec<S>>) -> T {
         let value = unsafe { core::mem::transmute_copy(&value) };
         unsafe { core::mem::transmute_copy(&T::simd_reduce_max(&self.0, value)) }
     }
 
     #[faer_macros::math]
     #[inline(always)]
-    pub fn reduce_sum_real(&self, value: RealMarker<T::SimdVec<S>>) -> Real<T> {
+    pub fn reduce_sum_real(&self, value: RealReg<T::SimdVec<S>>) -> Real<T> {
         let value = T::simd_reduce_sum(&self.0, value.0);
         if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
             add(real(value), imag(value))
@@ -558,7 +558,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     }
     #[faer_macros::math]
     #[inline(always)]
-    pub fn reduce_max_real(&self, value: RealMarker<T::SimdVec<S>>) -> Real<T> {
+    pub fn reduce_max_real(&self, value: RealReg<T::SimdVec<S>>) -> Real<T> {
         let value = T::simd_reduce_max(&self.0, value.0);
         if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
             max(real(value), imag(value))
@@ -570,52 +570,36 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
     #[inline(always)]
     pub fn max(
         &self,
-        lhs: RealMarker<T::SimdVec<S>>,
-        rhs: RealMarker<T::SimdVec<S>>,
-    ) -> RealMarker<T::SimdVec<S>> {
+        lhs: RealReg<T::SimdVec<S>>,
+        rhs: RealReg<T::SimdVec<S>>,
+    ) -> RealReg<T::SimdVec<S>> {
         let cmp = self.gt(lhs, rhs);
-        RealMarker(self.select(cmp, lhs.0, rhs.0))
+        RealReg(self.select(cmp, lhs.0, rhs.0))
     }
 
     #[inline(always)]
-    pub fn lt(
-        &self,
-        lhs: RealMarker<T::SimdVec<S>>,
-        rhs: RealMarker<T::SimdVec<S>>,
-    ) -> T::SimdMask<S> {
+    pub fn lt(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_less_than(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn gt(
-        &self,
-        lhs: RealMarker<T::SimdVec<S>>,
-        rhs: RealMarker<T::SimdVec<S>>,
-    ) -> T::SimdMask<S> {
+    pub fn gt(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_greater_than(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn le(
-        &self,
-        lhs: RealMarker<T::SimdVec<S>>,
-        rhs: RealMarker<T::SimdVec<S>>,
-    ) -> T::SimdMask<S> {
+    pub fn le(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_less_than_or_equal(&self.0, lhs, rhs)) }
     }
 
     #[inline(always)]
-    pub fn ge(
-        &self,
-        lhs: RealMarker<T::SimdVec<S>>,
-        rhs: RealMarker<T::SimdVec<S>>,
-    ) -> T::SimdMask<S> {
+    pub fn ge(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
         let lhs = unsafe { core::mem::transmute_copy(&lhs) };
         let rhs = unsafe { core::mem::transmute_copy(&rhs) };
         unsafe { core::mem::transmute_copy(&T::simd_greater_than_or_equal(&self.0, lhs, rhs)) }
@@ -693,7 +677,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 pub unsafe trait Conjugate {
     const IS_CANONICAL: bool;
 
-    type Conj: Conjugate;
+    type Conj: Conjugate<Conj = Self, Canonical = Self::Canonical>;
     type Canonical: Conjugate<Canonical = Self::Canonical> + ComplexField;
 }
 
@@ -910,36 +894,15 @@ pub trait Index:
     fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
         Self::Signed::sum_nonnegative(bytemuck::cast_slice(slice)).map(Self::from_signed)
     }
-
-    const IOTA: &[Self; 32];
-    const COMPLEX_IOTA: &[Self; 32];
 }
 
 impl Index for u32 {
     type FixedWidth = u32;
     type Signed = i32;
-
-    const IOTA: &[Self; 32] = &[
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31u32,
-    ];
-    const COMPLEX_IOTA: &[Self; 32] = &[
-        0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
-        14, 14, 15, 15u32,
-    ];
 }
 impl Index for u64 {
     type FixedWidth = u64;
     type Signed = i64;
-
-    const IOTA: &[Self; 32] = &[
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31u64,
-    ];
-    const COMPLEX_IOTA: &[Self; 32] = &[
-        0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
-        14, 14, 15, 15u64,
-    ];
 }
 
 impl Index for usize {
@@ -947,16 +910,6 @@ impl Index for usize {
     type FixedWidth = u32;
     #[cfg(target_pointer_width = "64")]
     type FixedWidth = u64;
-
-    const IOTA: &[Self; 32] = &[
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31usize,
-    ];
-    const COMPLEX_IOTA: &[Self; 32] = &[
-        0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
-        14, 14, 15, 15usize,
-    ];
-
     type Signed = isize;
 }
 
@@ -966,20 +919,12 @@ unsafe impl<T: RealField> Conjugate for T {
     type Canonical = T;
 }
 
-pub trait EnableComplex: Sized + RealField + Default {}
-
-unsafe impl<T> Conjugate for Complex<T>
-where
-    Complex<T>: ComplexField,
-{
+unsafe impl<T: RealField> Conjugate for Complex<T> {
     const IS_CANONICAL: bool = true;
     type Conj = ComplexConj<T>;
     type Canonical = Complex<T>;
 }
-unsafe impl<T> Conjugate for ComplexConj<T>
-where
-    Complex<T>: ComplexField,
-{
+unsafe impl<T: RealField> Conjugate for ComplexConj<T> {
     const IS_CANONICAL: bool = false;
     type Conj = Complex<T>;
     type Canonical = Complex<T>;
@@ -2022,8 +1967,10 @@ impl RealField for f64 {
     }
 }
 
-impl<T: EnableComplex> ComplexField for Complex<T> {
+impl<T: RealField> ComplexField for Complex<T> {
     const IS_REAL: bool = false;
+    const IS_NATIVE_C32: bool = T::IS_NATIVE_F32;
+    const IS_NATIVE_C64: bool = T::IS_NATIVE_F64;
 
     type Arch = T::Arch;
     type SimdCtx<S: Simd> = T::SimdCtx<S>;
@@ -2518,9 +2465,93 @@ impl<T: EnableComplex> ComplexField for Complex<T> {
     }
 }
 
-impl ComplexField for Complex<f32> {
+#[repr(transparent)]
+#[doc(hidden)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct ComplexImpl<T>(Complex<T>);
+
+#[repr(transparent)]
+#[doc(hidden)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct ComplexImplConj<T>(Complex<T>);
+
+unsafe impl Conjugate for ComplexImpl<f32> {
+    const IS_CANONICAL: bool = true;
+
+    type Conj = ComplexImplConj<f32>;
+    type Canonical = ComplexImpl<f32>;
+}
+unsafe impl Conjugate for ComplexImplConj<f32> {
+    const IS_CANONICAL: bool = false;
+
+    type Conj = ComplexImpl<f32>;
+    type Canonical = ComplexImpl<f32>;
+}
+unsafe impl Conjugate for ComplexImpl<f64> {
+    const IS_CANONICAL: bool = true;
+
+    type Conj = ComplexImplConj<f64>;
+    type Canonical = ComplexImpl<f64>;
+}
+unsafe impl Conjugate for ComplexImplConj<f64> {
+    const IS_CANONICAL: bool = false;
+
+    type Conj = ComplexImpl<f64>;
+    type Canonical = ComplexImpl<f64>;
+}
+
+impl<T: RealField> core::ops::Neg for &ComplexImpl<T> {
+    type Output = ComplexImpl<T>;
+
+    #[inline]
+    fn neg(self) -> Self::Output {
+        use math_utils::*;
+
+        ComplexImpl(neg(&self.0))
+    }
+}
+impl<T: RealField> core::ops::Add<&ComplexImpl<T>> for &ComplexImpl<T> {
+    type Output = ComplexImpl<T>;
+
+    #[inline]
+    fn add(self, rhs: &ComplexImpl<T>) -> Self::Output {
+        use math_utils::*;
+
+        ComplexImpl(add(&self.0, &rhs.0))
+    }
+}
+impl<T: RealField> core::ops::Sub<&ComplexImpl<T>> for &ComplexImpl<T> {
+    type Output = ComplexImpl<T>;
+
+    #[inline]
+    fn sub(self, rhs: &ComplexImpl<T>) -> Self::Output {
+        use math_utils::*;
+
+        ComplexImpl(sub(&self.0, &rhs.0))
+    }
+}
+impl<T: RealField> core::ops::Mul<&ComplexImpl<T>> for &ComplexImpl<T> {
+    type Output = ComplexImpl<T>;
+
+    #[inline]
+    fn mul(self, rhs: &ComplexImpl<T>) -> Self::Output {
+        use math_utils::*;
+
+        ComplexImpl(mul(&self.0, &rhs.0))
+    }
+}
+
+impl<T> From<Complex<T>> for ComplexImpl<T> {
+    #[inline]
+    fn from(value: Complex<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl ComplexField for ComplexImpl<f32> {
     const IS_REAL: bool = false;
     const SIMD_ABS_SPLIT_REAL_IMAG: bool = true;
+    const IS_NATIVE_C32: bool = true;
 
     type Arch = pulp::Arch;
     type SimdCtx<S: Simd> = S;
@@ -2540,6 +2571,7 @@ impl ComplexField for Complex<f32> {
             re: f32::zero_impl(),
             im: f32::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -2548,6 +2580,7 @@ impl ComplexField for Complex<f32> {
             re: f32::one_impl(),
             im: f32::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -2556,6 +2589,7 @@ impl ComplexField for Complex<f32> {
             re: f32::nan_impl(),
             im: f32::nan_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -2564,6 +2598,7 @@ impl ComplexField for Complex<f32> {
             re: f32::infinity_impl(),
             im: f32::infinity_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -2572,6 +2607,7 @@ impl ComplexField for Complex<f32> {
             re: real.clone(),
             im: f32::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -2580,16 +2616,17 @@ impl ComplexField for Complex<f32> {
             re: f32::from_f64_impl(real),
             im: f32::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
     fn real_part_impl(value: &Self) -> Self::Real {
-        value.re.clone()
+        value.0.re.clone()
     }
 
     #[inline]
     fn imag_part_impl(value: &Self) -> Self::Real {
-        value.im.clone()
+        value.0.im.clone()
     }
 
     #[inline]
@@ -2599,63 +2636,66 @@ impl ComplexField for Complex<f32> {
 
     #[inline]
     fn conj_impl(value: &Self) -> Self {
-        Self {
-            re: value.re.clone(),
-            im: value.im.neg_by_ref(),
+        Complex {
+            re: value.0.re.clone(),
+            im: value.0.im.neg_by_ref(),
         }
+        .into()
     }
 
     #[inline]
     fn recip_impl(value: &Self) -> Self {
-        let (re, im) = recip_impl(value.re.clone(), value.im.clone());
-        Complex { re, im }
+        let (re, im) = recip_impl(value.0.re.clone(), value.0.im.clone());
+        Complex { re, im }.into()
     }
 
     #[inline]
     fn sqrt_impl(value: &Self) -> Self {
-        let (re, im) = sqrt_impl(value.re.clone(), value.im.clone());
-        Complex { re, im }
+        let (re, im) = sqrt_impl(value.0.re.clone(), value.0.im.clone());
+        Complex { re, im }.into()
     }
 
     #[inline]
     fn abs_impl(value: &Self) -> Self::Real {
-        abs_impl(value.re.clone(), value.im.clone())
+        abs_impl(value.0.re.clone(), value.0.im.clone())
     }
 
     #[inline]
     #[faer_macros::math]
     fn abs1_impl(value: &Self) -> Self::Real {
-        abs1(value.re) + abs1(value.im)
+        abs1(value.0.re) + abs1(value.0.im)
     }
 
     #[inline]
     #[faer_macros::math]
     fn abs2_impl(value: &Self) -> Self::Real {
-        abs2(value.re) + abs2(value.im)
+        abs2(value.0.re) + abs2(value.0.im)
     }
 
     #[inline]
     #[faer_macros::math]
     fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: lhs.re * *rhs,
-            im: lhs.im * *rhs,
+            re: lhs.0.re * *rhs,
+            im: lhs.0.im * *rhs,
         }
+        .into()
     }
 
     #[inline]
     #[faer_macros::math]
     fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: mul_pow2(lhs.re, rhs),
-            im: mul_pow2(lhs.im, rhs),
+            re: mul_pow2(lhs.0.re, rhs),
+            im: mul_pow2(lhs.0.im, rhs),
         }
+        .into()
     }
 
     #[inline]
     #[faer_macros::math]
     fn is_finite_impl(value: &Self) -> bool {
-        is_finite(value.re) && is_finite(value.im)
+        is_finite(value.0.re) && is_finite(value.0.im)
     }
 
     #[inline(always)]
@@ -2670,7 +2710,7 @@ impl ComplexField for Complex<f32> {
 
     #[inline(always)]
     fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
-        ctx.splat_c32s(*value)
+        ctx.splat_c32s(value.0)
     }
 
     #[inline(always)]
@@ -2839,12 +2879,12 @@ impl ComplexField for Complex<f32> {
 
     #[inline(always)]
     fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
-        ctx.reduce_sum_c32s(value)
+        ctx.reduce_sum_c32s(value).into()
     }
 
     #[inline(always)]
     fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
-        ctx.reduce_max_c32s(value)
+        ctx.reduce_max_c32s(value).into()
     }
 
     #[inline(always)]
@@ -3009,9 +3049,10 @@ impl ComplexField for Complex<f32> {
     }
 }
 
-impl ComplexField for Complex<f64> {
+impl ComplexField for ComplexImpl<f64> {
     const IS_REAL: bool = false;
     const SIMD_ABS_SPLIT_REAL_IMAG: bool = true;
+    const IS_NATIVE_C64: bool = true;
 
     type Arch = pulp::Arch;
     type SimdCtx<S: Simd> = S;
@@ -3031,6 +3072,7 @@ impl ComplexField for Complex<f64> {
             re: f64::zero_impl(),
             im: f64::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -3039,6 +3081,7 @@ impl ComplexField for Complex<f64> {
             re: f64::one_impl(),
             im: f64::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -3047,6 +3090,7 @@ impl ComplexField for Complex<f64> {
             re: f64::nan_impl(),
             im: f64::nan_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -3055,6 +3099,7 @@ impl ComplexField for Complex<f64> {
             re: f64::infinity_impl(),
             im: f64::infinity_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -3063,6 +3108,7 @@ impl ComplexField for Complex<f64> {
             re: real.clone(),
             im: f64::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
@@ -3071,16 +3117,17 @@ impl ComplexField for Complex<f64> {
             re: f64::from_f64_impl(real),
             im: f64::zero_impl(),
         }
+        .into()
     }
 
     #[inline]
     fn real_part_impl(value: &Self) -> Self::Real {
-        value.re.clone()
+        value.0.re.clone()
     }
 
     #[inline]
     fn imag_part_impl(value: &Self) -> Self::Real {
-        value.im.clone()
+        value.0.im.clone()
     }
 
     #[inline]
@@ -3090,63 +3137,66 @@ impl ComplexField for Complex<f64> {
 
     #[inline]
     fn conj_impl(value: &Self) -> Self {
-        Self {
-            re: value.re.clone(),
-            im: value.im.neg_by_ref(),
+        Complex {
+            re: value.0.re.clone(),
+            im: value.0.im.neg_by_ref(),
         }
+        .into()
     }
 
     #[inline]
     fn recip_impl(value: &Self) -> Self {
-        let (re, im) = recip_impl(value.re.clone(), value.im.clone());
-        Complex { re, im }
+        let (re, im) = recip_impl(value.0.re.clone(), value.0.im.clone());
+        Complex { re, im }.into()
     }
 
     #[inline]
     fn sqrt_impl(value: &Self) -> Self {
-        let (re, im) = sqrt_impl(value.re.clone(), value.im.clone());
-        Complex { re, im }
+        let (re, im) = sqrt_impl(value.0.re.clone(), value.0.im.clone());
+        Complex { re, im }.into()
     }
 
     #[inline]
     fn abs_impl(value: &Self) -> Self::Real {
-        abs_impl(value.re.clone(), value.im.clone())
+        abs_impl(value.0.re.clone(), value.0.im.clone())
     }
 
     #[inline]
     #[faer_macros::math]
     fn abs1_impl(value: &Self) -> Self::Real {
-        abs1(value.re) + abs1(value.im)
+        abs1(value.0.re) + abs1(value.0.im)
     }
 
     #[inline]
     #[faer_macros::math]
     fn abs2_impl(value: &Self) -> Self::Real {
-        abs2(value.re) + abs2(value.im)
+        abs2(value.0.re) + abs2(value.0.im)
     }
 
     #[inline]
     #[faer_macros::math]
     fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: lhs.re * *rhs,
-            im: lhs.im * *rhs,
+            re: lhs.0.re * *rhs,
+            im: lhs.0.im * *rhs,
         }
+        .into()
     }
 
     #[inline]
     #[faer_macros::math]
     fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self {
         Complex {
-            re: mul_pow2(lhs.re, rhs),
-            im: mul_pow2(lhs.im, rhs),
+            re: mul_pow2(lhs.0.re, rhs),
+            im: mul_pow2(lhs.0.im, rhs),
         }
+        .into()
     }
 
     #[inline]
     #[faer_macros::math]
     fn is_finite_impl(value: &Self) -> bool {
-        is_finite(value.re) && is_finite(value.im)
+        is_finite(value.0.re) && is_finite(value.0.im)
     }
 
     #[inline(always)]
@@ -3161,7 +3211,7 @@ impl ComplexField for Complex<f64> {
 
     #[inline(always)]
     fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
-        ctx.splat_c64s(*value)
+        ctx.splat_c64s(value.0)
     }
 
     #[inline(always)]
@@ -3330,12 +3380,12 @@ impl ComplexField for Complex<f64> {
 
     #[inline(always)]
     fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
-        ctx.reduce_sum_c64s(value)
+        ctx.reduce_sum_c64s(value).into()
     }
 
     #[inline(always)]
     fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
-        ctx.reduce_max_c64s(value)
+        ctx.reduce_max_c64s(value).into()
     }
 
     #[inline(always)]

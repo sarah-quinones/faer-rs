@@ -60,6 +60,33 @@ pub trait AsMatRef {
     fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols>;
 }
 
+impl<M: AsMatRef> AsMatRef for &M {
+    type T = M::T;
+    type Rows = M::Rows;
+    type Cols = M::Cols;
+
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+        (**self).as_mat_ref()
+    }
+}
+impl<M: AsMatRef> AsMatRef for &mut M {
+    type T = M::T;
+    type Rows = M::Rows;
+    type Cols = M::Cols;
+
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+        (**self).as_mat_ref()
+    }
+}
+impl<M: AsMatMut> AsMatMut for &mut M {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols> {
+        (**self).as_mat_mut()
+    }
+}
+
 impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> AsMatRef
     for MatRef<'_, T, Rows, Cols, RStride, CStride>
 {

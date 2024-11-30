@@ -549,7 +549,7 @@ pub fn svd_scratch<T: ComplexField>(
 #[math]
 pub fn svd<T: ComplexField>(
     A: MatRef<'_, T>,
-    s: ColMut<'_, T>,
+    s: DiagMut<'_, T>,
     u: Option<MatMut<'_, T>>,
     v: Option<MatMut<'_, T>>,
     par: Par,
@@ -558,7 +558,8 @@ pub fn svd<T: ComplexField>(
 ) -> Result<(), SvdError> {
     let (m, n) = A.shape();
     let size = Ord::min(m, n);
-    assert!(s.nrows() == size);
+    assert!(s.dim() == size);
+    let s = s.column_vector_mut();
 
     if let Some(u) = u.rb() {
         assert!(all(
@@ -796,7 +797,7 @@ mod tests {
 
             svd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut(),
+                s.as_mut().diagonal_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 Par::Seq,
@@ -827,7 +828,7 @@ mod tests {
         {
             svd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut(),
+                s.as_mut().diagonal_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 Par::Seq,
@@ -855,7 +856,7 @@ mod tests {
 
             svd(
                 mat.as_ref(),
-                s2.as_mut().diagonal_mut().column_vector_mut(),
+                s2.as_mut().diagonal_mut(),
                 Some(u2.as_mut()),
                 None,
                 Par::Seq,
@@ -884,7 +885,7 @@ mod tests {
 
             svd(
                 mat.as_ref(),
-                s2.as_mut().diagonal_mut().column_vector_mut(),
+                s2.as_mut().diagonal_mut(),
                 None,
                 Some(v2.as_mut()),
                 Par::Seq,
@@ -911,7 +912,7 @@ mod tests {
 
             svd(
                 mat.as_ref(),
-                s2.as_mut().diagonal_mut().column_vector_mut(),
+                s2.as_mut().diagonal_mut(),
                 None,
                 None,
                 Par::Seq,

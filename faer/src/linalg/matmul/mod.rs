@@ -94,13 +94,17 @@ pub mod dot {
             }
         }
 
-        T::Arch::default().dispatch(Impl::<_> {
-            len,
-            lhs,
-            rhs,
-            conj_lhs,
-            conj_rhs,
-        })
+        dispatch!(
+            Impl {
+                len,
+                lhs,
+                rhs,
+                conj_lhs,
+                conj_rhs,
+            },
+            Impl,
+            T
+        )
     }
 
     #[inline(always)]
@@ -316,15 +320,19 @@ mod matvec_rowmajor {
                     }
                 }
 
-                T::Arch::default().dispatch(Impl {
-                    dst,
-                    beta,
-                    lhs,
-                    conj_lhs,
-                    rhs,
-                    conj_rhs,
-                    alpha,
-                });
+                dispatch!(
+                    Impl {
+                        dst,
+                        beta,
+                        lhs,
+                        conj_lhs,
+                        rhs,
+                        conj_rhs,
+                        alpha,
+                    },
+                    Impl,
+                    T
+                );
             }
             #[cfg(feature = "rayon")]
             Par::Rayon(nthreads) => {
@@ -465,15 +473,19 @@ mod matvec_colmajor {
                     }
                 }
 
-                T::Arch::default().dispatch(Impl {
-                    dst,
-                    lhs,
-                    conj_lhs,
-                    rhs,
-                    conj_rhs,
-                    beta,
-                    alpha,
-                })
+                dispatch!(
+                    Impl {
+                        dst,
+                        lhs,
+                        conj_lhs,
+                        rhs,
+                        conj_rhs,
+                        beta,
+                        alpha,
+                    },
+                    Impl,
+                    T
+                )
             }
             #[cfg(feature = "rayon")]
             Par::Rayon(nthreads) => {

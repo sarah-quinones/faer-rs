@@ -1,4 +1,4 @@
-use faer_traits::{Real, RealMarker};
+use faer_traits::{Real, RealReg};
 use linalg::matmul::matmul;
 use pulp::Simd;
 
@@ -11,15 +11,15 @@ use crate::{
 #[inline(always)]
 fn best_value<T: ComplexField, S: Simd>(
     simd: &SimdCtx<T, S>,
-    best_value: RealMarker<T::SimdVec<S>>,
+    best_value: RealReg<T::SimdVec<S>>,
     best_indices: T::SimdIndex<S>,
     value: T::SimdVec<S>,
     indices: T::SimdIndex<S>,
-) -> (RealMarker<T::SimdVec<S>>, T::SimdIndex<S>) {
+) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
     let value = simd.abs1(value);
     let is_better = simd.gt(value, best_value);
     (
-        RealMarker(simd.select(is_better, value.0, best_value.0)),
+        RealReg(simd.select(is_better, value.0, best_value.0)),
         simd.iselect(is_better, indices, best_indices),
     )
 }
@@ -27,14 +27,14 @@ fn best_value<T: ComplexField, S: Simd>(
 #[inline(always)]
 fn best_score<T: ComplexField, S: Simd>(
     simd: &SimdCtx<T, S>,
-    best_score: RealMarker<T::SimdVec<S>>,
+    best_score: RealReg<T::SimdVec<S>>,
     best_indices: T::SimdIndex<S>,
-    score: RealMarker<T::SimdVec<S>>,
+    score: RealReg<T::SimdVec<S>>,
     indices: T::SimdIndex<S>,
-) -> (RealMarker<T::SimdVec<S>>, T::SimdIndex<S>) {
+) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
     let is_better = simd.gt(score, best_score);
     (
-        RealMarker(simd.select(is_better, score.0, best_score.0)),
+        RealReg(simd.select(is_better, score.0, best_score.0)),
         simd.iselect(is_better, indices, best_indices),
     )
 }
@@ -42,16 +42,16 @@ fn best_score<T: ComplexField, S: Simd>(
 #[inline(always)]
 fn best_score_2d<T: ComplexField, S: Simd>(
     simd: &SimdCtx<T, S>,
-    best_score: RealMarker<T::SimdVec<S>>,
+    best_score: RealReg<T::SimdVec<S>>,
     best_row: T::SimdIndex<S>,
     best_col: T::SimdIndex<S>,
-    score: RealMarker<T::SimdVec<S>>,
+    score: RealReg<T::SimdVec<S>>,
     row: T::SimdIndex<S>,
     col: T::SimdIndex<S>,
-) -> (RealMarker<T::SimdVec<S>>, T::SimdIndex<S>, T::SimdIndex<S>) {
+) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>, T::SimdIndex<S>) {
     let is_better = simd.gt(score, best_score);
     (
-        RealMarker(simd.select(is_better, score.0, best_score.0)),
+        RealReg(simd.select(is_better, score.0, best_score.0)),
         simd.iselect(is_better, row, best_row),
         simd.iselect(is_better, col, best_col),
     )
@@ -61,7 +61,7 @@ fn best_score_2d<T: ComplexField, S: Simd>(
 #[math]
 fn reduce_2d<T: ComplexField, S: Simd>(
     simd: &SimdCtx<T, S>,
-    best_values: RealMarker<T::SimdVec<S>>,
+    best_values: RealReg<T::SimdVec<S>>,
     best_row: T::SimdIndex<S>,
     best_col: T::SimdIndex<S>,
 ) -> (usize, usize, Real<T>) {
@@ -84,7 +84,7 @@ fn reduce_2d<T: ComplexField, S: Simd>(
 fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
     simd: SimdCtx<'M, T, S>,
     data: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
-) -> (RealMarker<T::SimdVec<S>>, T::SimdIndex<S>) {
+) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
     let (head, body4, body1, tail) = simd.batch_indices::<4>();
 
     let iota = T::simd_iota(&simd.0);
@@ -149,7 +149,7 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
     data: ColMut<'_, T, Dim<'M>, ContiguousFwd>,
     lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
     rhs: T,
-) -> (RealMarker<T::SimdVec<S>>, T::SimdIndex<S>) {
+) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
     let mut data = data;
 
     let (head, body4, body1, tail) = simd.batch_indices::<3>();
@@ -283,9 +283,13 @@ fn best_in_mat_simd<T: ComplexField>(
 
     with_dim!(M, data.nrows());
     with_dim!(N, data.ncols());
-    T::Arch::default().dispatch(Impl {
-        data: data.as_shape(M, N),
-    })
+    dispatch!(
+        Impl {
+            data: data.as_shape(M, N),
+        },
+        Impl,
+        T
+    )
 }
 
 #[inline(always)]
@@ -344,13 +348,16 @@ fn update_and_best_in_mat_simd<T: ComplexField>(
 
     with_dim!(M, data.nrows());
     with_dim!(N, data.ncols());
-
-    T::Arch::default().dispatch(Impl {
-        data: data.as_shape_mut(M, N),
-        lhs: lhs.as_row_shape(M),
-        rhs: rhs.as_col_shape(N),
-        align,
-    })
+    dispatch!(
+        Impl {
+            data: data.as_shape_mut(M, N),
+            lhs: lhs.as_row_shape(M),
+            rhs: rhs.as_col_shape(N),
+            align,
+        },
+        Impl,
+        T
+    )
 }
 
 #[math]
