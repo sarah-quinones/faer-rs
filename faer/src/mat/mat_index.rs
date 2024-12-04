@@ -1,110 +1,68 @@
 use super::*;
-use crate::{assert, debug_assert, internal_prelude::*, into_range::IntoRange, Idx, IdxInc};
+use crate::internal_prelude::*;
+use crate::into_range::IntoRange;
+use crate::{Idx, IdxInc, assert, debug_assert};
 
-impl<
-        'a,
-        R: Shape,
-        C: Shape,
-        T,
-        Rs: Stride,
-        Cs: Stride,
-        RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>,
-        ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>,
-    > MatIndex<RowRange, ColRange> for MatRef<'a, T, R, C, Rs, Cs>
+impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>> MatIndex<RowRange, ColRange>
+	for MatRef<'a, T, R, C, Rs, Cs>
 {
-    type Target = MatRef<'a, T, RowRange::Len<R>, ColRange::Len<C>, Rs, Cs>;
+	type Target = MatRef<'a, T, RowRange::Len<R>, ColRange::Len<C>, Rs, Cs>;
 
-    #[track_caller]
-    #[inline]
-    fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
-        let row = row.into_range(R::start(), this.nrows().end());
-        let col = col.into_range(C::start(), this.ncols().end());
-        assert!(all(
-            row.start <= row.end,
-            row.end <= this.nrows(),
-            col.start <= col.end,
-            col.end <= this.ncols(),
-        ));
-        let nrows =
-            unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-        let ncols =
-            unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
+	#[track_caller]
+	#[inline]
+	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
+		let row = row.into_range(R::start(), this.nrows().end());
+		let col = col.into_range(C::start(), this.ncols().end());
+		assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
+		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
+		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
 
-        this.submatrix(row.start, col.start, nrows, ncols)
-    }
+		this.submatrix(row.start, col.start, nrows, ncols)
+	}
 
-    #[track_caller]
-    #[inline]
-    unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
-        let row = row.into_range(R::start(), this.nrows().end());
-        let col = col.into_range(C::start(), this.ncols().end());
+	#[track_caller]
+	#[inline]
+	unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
+		let row = row.into_range(R::start(), this.nrows().end());
+		let col = col.into_range(C::start(), this.ncols().end());
 
-        debug_assert!(all(
-            row.start <= row.end,
-            row.end <= this.nrows(),
-            col.start <= col.end,
-            col.end <= this.ncols(),
-        ));
-        let nrows =
-            unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-        let ncols =
-            unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
+		debug_assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
+		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
+		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
 
-        this.submatrix(row.start, col.start, nrows, ncols)
-    }
+		this.submatrix(row.start, col.start, nrows, ncols)
+	}
 }
 
-impl<
-        'a,
-        R: Shape,
-        C: Shape,
-        T,
-        Rs: Stride,
-        Cs: Stride,
-        RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>,
-        ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>,
-    > MatIndex<RowRange, ColRange> for MatMut<'a, T, R, C, Rs, Cs>
+impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>> MatIndex<RowRange, ColRange>
+	for MatMut<'a, T, R, C, Rs, Cs>
 {
-    type Target = MatMut<'a, T, RowRange::Len<R>, ColRange::Len<C>, Rs, Cs>;
+	type Target = MatMut<'a, T, RowRange::Len<R>, ColRange::Len<C>, Rs, Cs>;
 
-    #[track_caller]
-    #[inline]
-    fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
-        let row = row.into_range(R::start(), this.nrows().end());
-        let col = col.into_range(C::start(), this.ncols().end());
-        assert!(all(
-            row.start <= row.end,
-            row.end <= this.nrows(),
-            col.start <= col.end,
-            col.end <= this.ncols(),
-        ));
+	#[track_caller]
+	#[inline]
+	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
+		let row = row.into_range(R::start(), this.nrows().end());
+		let col = col.into_range(C::start(), this.ncols().end());
+		assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
 
-        let nrows =
-            unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-        let ncols =
-            unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
-        this.submatrix_mut(row.start, col.start, nrows, ncols)
-    }
+		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
+		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
+		this.submatrix_mut(row.start, col.start, nrows, ncols)
+	}
 
-    #[track_caller]
-    #[inline]
-    unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
-        let row = row.into_range(R::start(), this.nrows().end());
-        let col = col.into_range(C::start(), this.ncols().end());
+	#[track_caller]
+	#[inline]
+	unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
+		let row = row.into_range(R::start(), this.nrows().end());
+		let col = col.into_range(C::start(), this.ncols().end());
 
-        debug_assert!(all(
-            row.start <= row.end,
-            row.end <= this.nrows(),
-            col.start <= col.end,
-            col.end <= this.ncols(),
-        ));
+		debug_assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
 
-        let nrows =
-            unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-        let ncols =
-            unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
-        this.submatrix_mut(row.start, col.start, nrows, ncols)
-    }
+		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
+		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
+		this.submatrix_mut(row.start, col.start, nrows, ncols)
+	}
 }
 
 macro_rules! row_impl {

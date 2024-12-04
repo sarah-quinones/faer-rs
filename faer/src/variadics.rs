@@ -55,40 +55,39 @@ pub struct Nil;
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
 pub struct Cons<Head, Tail> {
-    /// first element.
-    pub head: Head,
-    /// variadic tuple of the remaining elements.
-    pub tail: Tail,
+	/// first element.
+	pub head: Head,
+	/// variadic tuple of the remaining elements.
+	pub tail: Tail,
 }
 
 impl DebugList for Nil {
-    fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>) {
-        _ = this;
-        _ = debug;
-    }
+	fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>) {
+		_ = this;
+		_ = debug;
+	}
 }
 impl<Head: fmt::Debug, Tail: DebugList> DebugList for Cons<Head, Tail> {
-    fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>) {
-        debug.entry(&this.head);
-        Tail::push_debug(&this.tail, debug)
-    }
+	fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>) {
+		debug.entry(&this.head);
+		Tail::push_debug(&this.tail, debug)
+	}
 }
 
 impl fmt::Debug for Nil {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().finish()
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_list().finish()
+	}
 }
 impl<Head: fmt::Debug, Tail: DebugList> fmt::Debug for Cons<Head, Tail> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut debug = f.debug_list();
-        <Cons<Head, Tail> as DebugList>::push_debug(self, &mut debug);
-        debug.finish()
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let mut debug = f.debug_list();
+		<Cons<Head, Tail> as DebugList>::push_debug(self, &mut debug);
+		debug.finish()
+	}
 }
 
 trait DebugList {
-    fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>);
+	fn push_debug(this: &Self, debug: &mut fmt::DebugList<'_, '_>);
 }
-pub use l;
-pub use L;
+pub use {L, l};
