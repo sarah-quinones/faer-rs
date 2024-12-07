@@ -12,7 +12,7 @@ use generativity::Guard;
 
 pub struct ColMut<'a, T, Rows = usize, RStride = isize> {
 	pub(super) imp: ColView<T, Rows, RStride>,
-	pub(super) __marker: PhantomData<(&'a mut T, &'a Rows)>,
+	pub(super) __marker: PhantomData<&'a mut T>,
 }
 
 impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for ColMut<'_, T, Rows, RStride> {
@@ -181,7 +181,10 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	}
 
 	#[inline]
-	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T> {
+	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
+	where
+		Rows: 'a,
+	{
 		self.into_const().iter()
 	}
 
@@ -190,6 +193,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
 	where
 		T: Sync,
+		Rows: 'a,
 	{
 		self.into_const().par_iter()
 	}
@@ -200,6 +204,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	pub fn par_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, T, usize, RStride>>
 	where
 		T: Sync,
+		Rows: 'a,
 	{
 		self.into_const().par_partition(count)
 	}
@@ -378,7 +383,10 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	}
 
 	#[inline]
-	pub fn iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a mut T> {
+	pub fn iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a mut T>
+	where
+		Rows: 'a,
+	{
 		let this = self.into_const();
 		Rows::indices(Rows::start(), this.nrows().end()).map(move |j| unsafe { this.const_cast().at_mut_unchecked(j) })
 	}
@@ -388,6 +396,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	pub fn par_iter_mut(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a mut T>
 	where
 		T: Send,
+		Rows: 'a,
 	{
 		unsafe {
 			let this = self.as_type::<SyncCell<T>>().into_const();
@@ -406,6 +415,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	pub fn par_partition_mut(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColMut<'a, T, usize, RStride>>
 	where
 		T: Send,
+		Rows: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_partition(count).map(|col| col.const_cast().as_type::<T>()) }

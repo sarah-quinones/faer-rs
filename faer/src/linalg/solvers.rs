@@ -194,6 +194,7 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> {
 		SelfAdjointEigen::new(self.as_mat_ref(), side)
 	}
 
+	#[azucar::infer]
 	#[track_caller]
 	pub fn self_adjoint_eigenvalues(&self, side: Side) -> Result<Vec<Real<C>>, EvdError> {
 		#[track_caller]
@@ -213,9 +214,9 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> {
 				None,
 				par,
 				DynStack::new(&mut GlobalMemBuffer::new(
-					linalg::evd::self_adjoint_evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::No, par, auto!(T)).unwrap(),
+					linalg::evd::self_adjoint_evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::No, par, _).unwrap(),
 				)),
-				auto!(T),
+				_,
 			)?;
 
 			Ok(s.column_vector().iter().map(|x| real(x)).collect())
@@ -224,6 +225,7 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> {
 		imp(self.as_mat_ref().canonical(), side)
 	}
 
+	#[azucar::infer]
 	pub fn singular_values(&self, side: Side) -> Result<Vec<Real<C>>, SvdError> {
 		pub fn imp<T: ComplexField>(mut A: MatRef<'_, T>, side: Side) -> Result<Vec<T::Real>, SvdError> {
 			if side == Side::Upper {
@@ -242,9 +244,9 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> {
 				None,
 				par,
 				DynStack::new(&mut GlobalMemBuffer::new(
-					linalg::svd::svd_scratch::<T>(m, n, linalg::svd::ComputeSvdVectors::No, linalg::svd::ComputeSvdVectors::No, par, auto!(T)).unwrap(),
+					linalg::svd::svd_scratch::<T>(m, n, linalg::svd::ComputeSvdVectors::No, linalg::svd::ComputeSvdVectors::No, par, _).unwrap(),
 				)),
-				auto!(T),
+				_,
 			)?;
 
 			Ok(s.column_vector().iter().map(|x| real(x)).collect())
@@ -261,6 +263,7 @@ impl<T: RealField> dyn crate::mat::MatExt<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	pub fn eigenvalues_from_real(&self) -> Result<Vec<Complex<T>>, EvdError> {
 		let par = get_global_parallelism();
 
@@ -279,9 +282,9 @@ impl<T: RealField> dyn crate::mat::MatExt<T> {
 			None,
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::No, par, auto!(T)).unwrap(),
+				linalg::evd::evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::No, par, _).unwrap(),
 			)),
-			auto!(T),
+			_,
 		)?;
 
 		Ok(s_re
@@ -300,6 +303,7 @@ impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	pub fn eigenvalues(&self) -> Result<Vec<Complex<T>>, EvdError> {
 		let par = get_global_parallelism();
 
@@ -316,9 +320,9 @@ impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> {
 			None,
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::No, par, auto!(T)).unwrap(),
+				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::No, par, _).unwrap(),
 			)),
-			auto!(T),
+			_,
 		)?;
 
 		Ok(s.column_vector().iter().cloned().collect())
@@ -414,16 +418,17 @@ impl<T: ComplexField> Llt<T> {
 		Self::new_imp(L)
 	}
 
+	#[azucar::infer]
 	#[track_caller]
 	fn new_imp(mut L: Mat<T>) -> Result<Self, LltError> {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
 
-		let mut mem = GlobalMemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, auto!(T)).unwrap());
+		let mut mem = GlobalMemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, _).unwrap());
 		let stack = DynStack::new(&mut mem);
 
-		linalg::cholesky::llt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, auto!(T))?;
+		linalg::cholesky::llt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, _)?;
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 
 		Ok(Self { L })
@@ -450,16 +455,17 @@ impl<T: ComplexField> Ldlt<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(mut L: Mat<T>) -> Result<Self, LdltError> {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
 		let mut D = Diag::zeros(n);
 
-		let mut mem = GlobalMemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, auto!(T)).unwrap());
+		let mut mem = GlobalMemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, par, _).unwrap());
 		let stack = DynStack::new(&mut mem);
 
-		linalg::cholesky::ldlt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, auto!(T))?;
+		linalg::cholesky::ldlt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, _)?;
 
 		D.copy_from(L.diagonal());
 		L.diagonal_mut().fill(one());
@@ -492,6 +498,7 @@ impl<T: ComplexField> Lblt<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(mut L: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -502,10 +509,10 @@ impl<T: ComplexField> Lblt<T> {
 		let mut perm_fwd = vec![0usize; n];
 		let mut perm_bwd = vec![0usize; n];
 
-		let mut mem = GlobalMemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, auto!(T)).unwrap());
+		let mut mem = GlobalMemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(n, par, _).unwrap());
 		let stack = DynStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(L.as_mut(), subdiag.as_mut(), Default::default(), &mut perm_fwd, &mut perm_bwd, par, stack, auto!(T));
+		linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(L.as_mut(), subdiag.as_mut(), Default::default(), &mut perm_fwd, &mut perm_bwd, par, stack, _);
 
 		diag.copy_from(L.diagonal());
 		L.diagonal_mut().fill(one());
@@ -572,6 +579,7 @@ impl<T: ComplexField> PartialPivLu<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(mut LU: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -584,10 +592,8 @@ impl<T: ComplexField> PartialPivLu<T> {
 			&mut row_perm_fwd,
 			&mut row_perm_bwd,
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, auto!(T)).unwrap(),
-			)),
-			auto!(T),
+			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _).unwrap())),
+			_,
 		);
 
 		let (L, U) = split_LU(LU);
@@ -620,6 +626,7 @@ impl<T: ComplexField> FullPivLu<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(mut LU: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -636,10 +643,8 @@ impl<T: ComplexField> FullPivLu<T> {
 			&mut col_perm_fwd,
 			&mut col_perm_bwd,
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, auto!(T)).unwrap(),
-			)),
-			auto!(T),
+			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _).unwrap())),
+			_,
 		);
 
 		let (L, U) = split_LU(LU);
@@ -677,6 +682,7 @@ impl<T: ComplexField> Qr<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(mut QR: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -690,10 +696,8 @@ impl<T: ComplexField> Qr<T> {
 			QR.as_mut(),
 			Q_coeff.as_mut(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(m, n, blocksize, par, auto!(T)).unwrap(),
-			)),
-			auto!(T),
+			DynStack::new(&mut GlobalMemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(m, n, blocksize, par, _).unwrap())),
+			_,
 		);
 
 		let (Q_basis, R) = split_LU(QR);
@@ -722,6 +726,7 @@ impl<T: ComplexField> ColPivQr<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(mut QR: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -741,9 +746,9 @@ impl<T: ComplexField> ColPivQr<T> {
 			&mut col_perm_bwd,
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(m, n, blocksize, par, auto!(T)).unwrap(),
+				linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(m, n, blocksize, par, _).unwrap(),
 			)),
-			auto!(T),
+			_,
 		);
 
 		let (Q_basis, R) = split_LU(QR);
@@ -785,6 +790,7 @@ impl<T: ComplexField> Svd<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(A: MatRef<'_, T>, conj: Conj, thin: bool) -> Result<Self, SvdError> {
 		let par = get_global_parallelism();
 
@@ -803,8 +809,8 @@ impl<T: ComplexField> Svd<T> {
 			Some(U.as_mut()),
 			Some(V.as_mut()),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::svd::svd_scratch::<T>(m, n, compute, compute, par, auto!(T)).unwrap())),
-			auto!(T),
+			DynStack::new(&mut GlobalMemBuffer::new(linalg::svd::svd_scratch::<T>(m, n, compute, compute, par, _).unwrap())),
+			_,
 		)?;
 
 		if conj == Conj::Yes {
@@ -848,6 +854,7 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	fn new_imp(A: MatRef<'_, T>, conj: Conj) -> Result<Self, EvdError> {
 		let par = get_global_parallelism();
 
@@ -862,9 +869,9 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 			Some(U.as_mut()),
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::self_adjoint_evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::Yes, par, auto!(T)).unwrap(),
+				linalg::evd::self_adjoint_evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::Yes, par, _).unwrap(),
 			)),
-			auto!(T),
+			_,
 		)?;
 
 		if conj == Conj::Yes {
@@ -895,6 +902,7 @@ impl<T: RealField> Eigen<T> {
 	}
 
 	#[track_caller]
+	#[azucar::infer]
 	pub fn new_from_real(A: MatRef<'_, T>) -> Result<Self, EvdError> {
 		assert!(A.nrows() == A.ncols());
 
@@ -914,9 +922,9 @@ impl<T: RealField> Eigen<T> {
 			Some(U_real.as_mut()),
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::Yes, par, auto!(T)).unwrap(),
+				linalg::evd::evd_scratch::<T>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::Yes, par, _).unwrap(),
 			)),
-			auto!(T),
+			_,
 		)?;
 
 		let mut U = Mat::zeros(n, n);
@@ -948,6 +956,7 @@ impl<T: RealField> Eigen<T> {
 		Ok(Self { U, S })
 	}
 
+	#[azucar::infer]
 	fn new_imp(A: MatRef<'_, Complex<T>>, conj: Conj) -> Result<Self, EvdError> {
 		let par = get_global_parallelism();
 
@@ -963,9 +972,9 @@ impl<T: RealField> Eigen<T> {
 			Some(U.as_mut()),
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::Yes, par, auto!(T)).unwrap(),
+				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::Yes, par, _).unwrap(),
 			)),
-			auto!(T),
+			_,
 		)?;
 
 		if conj == Conj::Yes {

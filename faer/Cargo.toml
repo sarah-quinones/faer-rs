@@ -15,6 +15,7 @@ log = { version = "0.4.22", optional = true }
 dyn-stack = { path = "../../dynstack" }
 pulp = { path = "../../pulp/pulp" }
 equator = { path = "../../equator/equator" }
+azucar = { path = "../../azucar/azucar" }
 
 gemm = { version = "0.18.0", default-features = false }
 rand = "0.8.5"
@@ -24,7 +25,6 @@ faer-macros = { path = "../faer-macros" }
 rand_distr = "0.4.3"
 libm = "0.2.8"
 num-traits = "0.2.19"
-azucar = { path = "../../azucar/azucar" }
 
 [features]
 default = ["std", "rayon"]

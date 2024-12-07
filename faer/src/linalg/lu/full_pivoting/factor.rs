@@ -354,7 +354,8 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(mut dst: MatMut<'_, T>, l
 }
 
 #[math]
-fn lu_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, row_trans: &mut [usize], col_trans: &mut [usize], par: Par, transpose: bool, params: FullPivLuParams) -> usize {
+fn lu_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, row_trans: &mut [usize], col_trans: &mut [usize], par: Par, transpose: bool, params: Spec<FullPivLuParams, T>) -> usize {
+	let params = params.into_inner();
 	let mut n_trans = 0;
 
 	let (m, n) = A.shape();
@@ -459,8 +460,7 @@ fn lu_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, row_trans: &mut [usi
 /// LU factorization tuning parameters.
 #[derive(Copy, Clone, Debug)]
 pub struct FullPivLuParams {
-	/// At which size the parallelism should be disabled. `None` to automatically determine this
-	/// threshold.
+	/// threshold at which size the parallelism should be disabled.
 	pub par_threshold: usize,
 
 	pub non_exhaustive: NonExhaustive,
@@ -477,7 +477,7 @@ impl<T: ComplexField> Auto<T> for FullPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: FullPivLuParams) -> Result<StackReq, SizeOverflow> {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<FullPivLuParams, T>) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	let size = Ord::min(nrows, ncols);
@@ -497,7 +497,7 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	col_perm_inv: &'out mut [I],
 	par: Par,
 	stack: &mut DynStack,
-	params: FullPivLuParams,
+	params: Spec<FullPivLuParams, T>,
 ) -> (FullPivLuInfo, PermRef<'out, I>, PermRef<'out, I>) {
 	#[cfg(feature = "perf-warn")]
 	if (mat.col_stride().unsigned_abs() == 1 || mat.row_stride().unsigned_abs() != 1) && crate::__perf_warn!(LU_WARN) {
@@ -559,6 +559,7 @@ mod tests {
 	use dyn_stack::GlobalMemBuffer;
 
 	#[test]
+	#[azucar::infer]
 	fn test_flu() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -590,8 +591,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, auto!(c64)).unwrap())),
-					auto!(c64),
+					DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, _).unwrap())),
+					_,
 				);
 
 				let mut L = LU.as_ref().cloned();
@@ -641,8 +642,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, auto!(f64)).unwrap())),
-					auto!(f64),
+					DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, _).unwrap())),
+					_,
 				);
 
 				let mut L = LU.as_ref().cloned();

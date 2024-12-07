@@ -6,7 +6,6 @@ use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
 use faer_traits::*;
 
-#[macro_export]
 macro_rules! auto {
 	($ty: ty) => {
 		$crate::Auto::<$ty>::auto()
@@ -195,6 +194,7 @@ pub mod perm;
 pub mod row;
 
 pub mod linalg;
+pub mod sparse;
 
 pub trait Index: faer_traits::Index + seal::Seal {}
 impl<T: faer_traits::Index<Signed: seal::Seal> + seal::Seal> Index for T {}
@@ -519,7 +519,7 @@ mod internal_prelude {
 	pub(crate) use crate::utils::bound::{Array, Dim, Idx, IdxInc, MaybeIdx};
 	pub(crate) use crate::utils::simd::SimdCtx;
 	pub(crate) use crate::variadics::{L, l};
-	pub(crate) use crate::{Auto, NonExhaustive, Side};
+	pub(crate) use crate::{Auto, NonExhaustive, Side, Spec};
 
 	pub use num_complex::Complex;
 
@@ -625,10 +625,90 @@ pub trait Auto<T> {
 	fn auto() -> Self;
 }
 
-impl<T, P: Default> Auto<T> for P {
+pub struct Spec<Config, T> {
+	config: Config,
+	__marker: core::marker::PhantomData<fn() -> T>,
+}
+
+impl<Config, T> core::ops::Deref for Spec<Config, T> {
+	type Target = Config;
+
 	#[inline]
-	fn auto() -> Self {
-		P::default()
+	fn deref(&self) -> &Self::Target {
+		&self.config
+	}
+}
+
+impl<Config, T> core::ops::DerefMut for Spec<Config, T> {
+	#[inline]
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.config
+	}
+}
+
+impl<Config: Copy, T> Copy for Spec<Config, T> {}
+impl<Config: Clone, T> Clone for Spec<Config, T> {
+	#[inline]
+	fn clone(&self) -> Self {
+		Self::new(self.config.clone())
+	}
+}
+impl<Config: core::fmt::Debug, T> core::fmt::Debug for Spec<Config, T> {
+	#[inline]
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		self.config.fmt(f)
+	}
+}
+
+impl<Config, T> Spec<Config, T> {
+	#[inline]
+	pub fn new(config: Config) -> Self {
+		Spec {
+			config,
+			__marker: core::marker::PhantomData,
+		}
+	}
+
+	#[inline]
+	pub fn into_inner(self) -> Config {
+		self.config
+	}
+
+	#[inline]
+	pub fn as_ref(&self) -> &Config {
+		&self.config
+	}
+
+	#[inline]
+	pub fn as_mut(&mut self) -> &mut Config {
+		&mut self.config
+	}
+}
+
+impl<T, Config> From<Config> for Spec<Config, T> {
+	#[inline]
+	fn from(config: Config) -> Self {
+		Spec {
+			config,
+			__marker: core::marker::PhantomData,
+		}
+	}
+}
+
+impl<T, Config: Auto<T>> Default for Spec<Config, T> {
+	#[inline]
+	fn default() -> Self {
+		Spec {
+			config: Auto::<T>::auto(),
+			__marker: core::marker::PhantomData,
+		}
+	}
+}
+
+impl<T, Config: Auto<T>> azucar::Infer for Spec<Config, T> {
+	#[inline]
+	fn infer() -> Self {
+		Self::default()
 	}
 }
 
@@ -674,3 +754,5 @@ mod into_range {
 		}
 	}
 }
+
+mod sort;

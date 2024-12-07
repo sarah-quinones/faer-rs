@@ -75,14 +75,14 @@ pub enum ComputeEigenvectors {
 }
 
 #[math]
-pub fn self_adjoint_evd_scratch<T: ComplexField>(dim: usize, compute_u: ComputeEigenvectors, par: Par, params: SelfAdjointEvdParams) -> Result<StackReq, SizeOverflow> {
+pub fn self_adjoint_evd_scratch<T: ComplexField>(dim: usize, compute_u: ComputeEigenvectors, par: Par, params: Spec<SelfAdjointEvdParams, T>) -> Result<StackReq, SizeOverflow> {
 	let n = dim;
 	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
 
 	let prologue = StackReq::try_all_of([
 		temp_mat_scratch::<T>(n, n)?,
 		temp_mat_scratch::<T>(bs, n)?,
-		StackReq::try_any_of([tridiag::tridiag_in_place_scratch::<T>(n, par, params.tridiag)?])?,
+		StackReq::try_any_of([tridiag::tridiag_in_place_scratch::<T>(n, par, params.tridiag.into())?])?,
 		temp_mat_scratch::<T::Real>(n, 1)?.try_array(2)?,
 	])?;
 	if compute_u == ComputeEigenvectors::No {
@@ -105,7 +105,7 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(dim: usize, compute_u: ComputeE
 }
 
 #[math]
-pub fn self_adjoint_evd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u: Option<MatMut<'_, T>>, par: Par, stack: &mut DynStack, params: SelfAdjointEvdParams) -> Result<(), EvdError> {
+pub fn self_adjoint_evd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u: Option<MatMut<'_, T>>, par: Par, stack: &mut DynStack, params: Spec<SelfAdjointEvdParams, T>) -> Result<(), EvdError> {
 	let n = A.nrows();
 	assert!(all(A.nrows() == A.ncols(), s.dim() == n));
 	if let Some(u) = u.rb() {
@@ -138,7 +138,7 @@ pub fn self_adjoint_evd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u:
 	let mut householder = householder.as_mat_mut();
 
 	{
-		tridiag::tridiag_in_place(trid.rb_mut(), householder.rb_mut(), par, stack, params.tridiag);
+		tridiag::tridiag_in_place(trid.rb_mut(), householder.rb_mut(), par, stack, params.tridiag.into());
 	}
 
 	let trid = trid.rb();
@@ -687,7 +687,7 @@ fn solve_shifted_upper_triangular_system<T: ComplexField>(A: MatRef<'_, T>, conj
 	}
 }
 
-pub fn evd_scratch<T: ComplexField>(dim: usize, eigen_left: ComputeEigenvectors, eigen_right: ComputeEigenvectors, par: Par, params: EvdParams) -> Result<StackReq, SizeOverflow> {
+pub fn evd_scratch<T: ComplexField>(dim: usize, eigen_left: ComputeEigenvectors, eigen_right: ComputeEigenvectors, par: Par, params: Spec<EvdParams, T>) -> Result<StackReq, SizeOverflow> {
 	let n = dim;
 
 	if n == 0 {
@@ -707,7 +707,7 @@ pub fn evd_scratch<T: ComplexField>(dim: usize, eigen_left: ComputeEigenvectors,
 		H,
 		Z,
 		StackReq::try_any_of([
-			householder.try_and(hessenberg::hessenberg_in_place_scratch::<T>(n, bs, par, params.hessenberg)?.try_or(apply)?)?,
+			householder.try_and(hessenberg::hessenberg_in_place_scratch::<T>(n, bs, par, params.hessenberg.into())?.try_or(apply)?)?,
 			schur::multishift_qr_scratch::<T>(n, n, compute_eigen, compute_eigen, par, params.schur)?,
 			X,
 		])?,
@@ -755,7 +755,7 @@ fn evd_imp<T: ComplexField>(
 		let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
 		let mut householder = householder.as_mat_mut();
 
-		hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, params.hessenberg);
+		hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, params.hessenberg.into());
 
 		if let Some(mut Z) = Z.rb_mut() {
 			Z.fill(zero());
@@ -859,7 +859,7 @@ pub fn evd_cplx<T: RealField>(
 	u_right: Option<MatMut<'_, Complex<T>>>,
 	par: Par,
 	stack: &mut DynStack,
-	params: EvdParams,
+	params: Spec<EvdParams, Complex<T>>,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
 	assert!(all(A.nrows() == n, A.ncols() == n, s.dim() == n));
@@ -870,7 +870,7 @@ pub fn evd_cplx<T: RealField>(
 		assert!(all(u.nrows() == n, u.ncols() == n));
 	}
 
-	evd_imp(A, s.column_vector_mut(), None, u_left, u_right, par, stack, params)
+	evd_imp(A, s.column_vector_mut(), None, u_left, u_right, par, stack, params.into_inner())
 }
 
 #[track_caller]
@@ -882,7 +882,7 @@ pub fn evd_real<T: RealField>(
 	u_right: Option<MatMut<'_, T>>,
 	par: Par,
 	stack: &mut DynStack,
-	params: EvdParams,
+	params: Spec<EvdParams, T>,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
 	assert!(all(A.nrows() == n, A.ncols() == n, s_re.dim() == n, s_im.dim() == n));
@@ -893,7 +893,7 @@ pub fn evd_real<T: RealField>(
 		assert!(all(u.nrows() == n, u.ncols() == n));
 	}
 
-	evd_imp(A, s_re.column_vector_mut(), Some(s_im.column_vector_mut()), u_left, u_right, par, stack, params)
+	evd_imp(A, s_re.column_vector_mut(), Some(s_im.column_vector_mut()), u_left, u_right, par, stack, params.into_inner())
 }
 
 #[cfg(test)]
@@ -906,12 +906,12 @@ mod general_tests {
 
 	fn test_cplx_evd(mat: MatRef<'_, c64>) {
 		let n = mat.nrows();
-		let params = EvdParams {
+		let params = Spec::new(EvdParams {
 			hessenberg: auto!(c64),
 			schur: auto!(c64),
 			evd_from_schur: EvdFromSchurParams { recursion_threshold: 8, ..auto!(c64) },
 			..auto!(c64)
-		};
+		});
 
 		use faer_traits::math_utils::*;
 		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * sqrt(&from_f64(8.0 * n as f64)));
@@ -941,12 +941,12 @@ mod general_tests {
 
 	fn test_real_evd(mat: MatRef<'_, f64>) {
 		let n = mat.nrows();
-		let params = EvdParams {
+		let params = Spec::new(EvdParams {
 			hessenberg: auto!(f64),
 			schur: auto!(f64),
 			evd_from_schur: EvdFromSchurParams { recursion_threshold: 8, ..auto!(f64) },
 			..auto!(f64)
-		};
+		});
 
 		use faer_traits::math_utils::*;
 		let approx_eq = CwiseMat(ApproxEq::<f64>::eps() * sqrt(&from_f64(8.0 * n as f64)));
@@ -1050,7 +1050,7 @@ mod self_adjoint_tests {
 
 	fn test_self_adjoint_evd<T: ComplexField>(mat: MatRef<'_, T>) {
 		let n = mat.nrows();
-		let params = SelfAdjointEvdParams { recursion_threshold: 8, ..auto!(T) };
+		let params = Spec::new(SelfAdjointEvdParams { recursion_threshold: 8, ..auto!(T) });
 		use faer_traits::math_utils::*;
 		let approx_eq = CwiseMat(ApproxEq::<T>::eps() * sqrt(&from_f64(8.0 * n as f64)));
 

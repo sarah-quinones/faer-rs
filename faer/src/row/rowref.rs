@@ -196,7 +196,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	}
 
 	#[inline]
-	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T> {
+	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
+	where
+		Cols: 'a,
+	{
 		self.trans.iter()
 	}
 
@@ -205,6 +208,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
 	where
 		T: Sync,
+		Cols: 'a,
 	{
 		self.trans.par_iter()
 	}
@@ -215,6 +219,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	pub fn par_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, usize, CStride>>
 	where
 		T: Sync,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		self.transpose().par_partition(count).map(ColRef::transpose)

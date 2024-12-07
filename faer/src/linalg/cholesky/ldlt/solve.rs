@@ -49,6 +49,7 @@ mod tests {
 	use dyn_stack::GlobalMemBuffer;
 	use linalg::cholesky::ldlt;
 
+	#[azucar::infer]
 	#[test]
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -76,8 +77,8 @@ mod tests {
 			L.as_mut(),
 			Default::default(),
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, auto!(c64)).unwrap()) }),
-			auto!(c64),
+			DynStack::new(&mut { GlobalMemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap()) }),
+			_,
 		)
 		.unwrap();
 

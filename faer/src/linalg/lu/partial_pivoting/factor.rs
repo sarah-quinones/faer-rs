@@ -62,7 +62,8 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 }
 
 #[math]
-fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usize, end: usize, trans: &mut [I], par: Par, params: PartialPivLuParams) -> usize {
+fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usize, end: usize, trans: &mut [I], par: Par, params: Spec<PartialPivLuParams, T>) -> usize {
+	let params = params.into_inner();
 	let mut A = A;
 	let m = A.nrows();
 	let ncols = A.ncols();
@@ -79,7 +80,7 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usi
 
 	assert!(n <= m);
 
-	n_trans += lu_in_place_recursion(A.rb_mut().get_mut(.., start..end), 0, blocksize, &mut trans[..blocksize], par, params);
+	n_trans += lu_in_place_recursion(A.rb_mut().get_mut(.., start..end), 0, blocksize, &mut trans[..blocksize], par, params.into());
 
 	{
 		let mut A = A.rb_mut().get_mut(.., start..end);
@@ -93,7 +94,7 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usi
 
 		linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one::<T>(), par);
 
-		n_trans += lu_in_place_recursion(A.rb_mut().get_mut(blocksize..m, ..), blocksize, n, &mut trans[blocksize..n], par, params);
+		n_trans += lu_in_place_recursion(A.rb_mut().get_mut(blocksize..m, ..), blocksize, n, &mut trans[blocksize..n], par, params.into());
 	}
 
 	let swap = |mat: MatMut<'_, T>| {
@@ -182,7 +183,7 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: PartialPivLuParams) -> Result<StackReq, SizeOverflow> {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<PartialPivLuParams, T>) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	StackReq::try_new::<I>(Ord::min(nrows, ncols))
@@ -194,7 +195,7 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	perm_inv: &'out mut [I],
 	par: Par,
 	stack: &mut DynStack,
-	params: PartialPivLuParams,
+	params: Spec<PartialPivLuParams, T>,
 ) -> (PartialPivLuInfo, PermRef<'out, I>) {
 	let _ = &params;
 	let truncate = I::truncate;
@@ -253,6 +254,7 @@ mod tests {
 	use crate::{Mat, assert};
 
 	#[test]
+	#[azucar::infer]
 	fn test_plu() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -281,8 +283,8 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params).unwrap())),
-				params,
+				DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params.into()).unwrap())),
+				params.into(),
 			)
 			.1;
 
@@ -326,8 +328,8 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, auto!(f64)).unwrap())),
-				auto!(f64),
+				DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, _).unwrap())),
+				_,
 			)
 			.1;
 

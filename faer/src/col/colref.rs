@@ -10,7 +10,7 @@ use generativity::Guard;
 
 pub struct ColRef<'a, T, Rows = usize, RStride = isize> {
 	pub(super) imp: ColView<T, Rows, RStride>,
-	pub(super) __marker: PhantomData<(&'a T, &'a Rows)>,
+	pub(super) __marker: PhantomData<&'a T>,
 }
 
 impl<T, Rows: Copy, RStride: Copy> Copy for ColRef<'_, T, Rows, RStride> {}
@@ -224,7 +224,10 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	}
 
 	#[inline]
-	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T> {
+	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
+	where
+		Rows: 'a,
+	{
 		Rows::indices(Rows::start(), self.nrows().end()).map(move |j| unsafe { self.at_unchecked(j) })
 	}
 
@@ -233,6 +236,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
 	where
 		T: Sync,
+		Rows: 'a,
 	{
 		use rayon::prelude::*;
 		(0..self.nrows().unbound()).into_par_iter().map(move |j| unsafe { self.at_unchecked(Idx::<Rows>::new_unbound(j)) })
@@ -244,6 +248,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	pub fn par_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, T, usize, RStride>>
 	where
 		T: Sync,
+		Rows: 'a,
 	{
 		use rayon::prelude::*;
 

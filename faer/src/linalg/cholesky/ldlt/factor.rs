@@ -520,14 +520,16 @@ impl<T: ComplexField> Auto<T> for LdltParams {
 }
 
 #[inline]
-pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: LdltParams) -> Result<StackReq, SizeOverflow> {
+pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LdltParams, T>) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	temp_mat_scratch::<T>(dim, 1)
 }
 
 #[math]
-pub fn cholesky_in_place<T: ComplexField>(A: MatMut<'_, T>, regularization: LdltRegularization<'_, T>, par: Par, stack: &mut DynStack, params: LdltParams) -> Result<LdltInfo, LdltError> {
+pub fn cholesky_in_place<T: ComplexField>(A: MatMut<'_, T>, regularization: LdltRegularization<'_, T>, par: Par, stack: &mut DynStack, params: Spec<LdltParams, T>) -> Result<LdltInfo, LdltError> {
+	let params = params.into_inner();
+
 	let n = A.nrows();
 	let mut D = unsafe { temp_mat_uninit(n, 1, stack).0 };
 	let D = D.as_mat_mut();

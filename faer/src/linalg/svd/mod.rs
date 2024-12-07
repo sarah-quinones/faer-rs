@@ -74,7 +74,7 @@ fn svd_imp_scratch<T: ComplexField>(
 	let householder_left = temp_mat_scratch::<T>(householder_blocksize, n)?;
 	let householder_right = temp_mat_scratch::<T>(householder_blocksize, n)?;
 
-	let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag)?;
+	let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag.into())?;
 	let diag = temp_mat_scratch::<T>(n, 1)?;
 	let subdiag = diag;
 	let compute_ub = compute_v != ComputeSvdVectors::No;
@@ -298,7 +298,7 @@ fn svd_imp<T: ComplexField>(
 	let mut Hr = Hr.as_mat_mut();
 
 	bid.copy_from(matrix);
-	bidiag::bidiag_in_place(bid.rb_mut(), Hl.rb_mut(), Hr.rb_mut(), par, stack, params.bidiag);
+	bidiag::bidiag_in_place(bid.rb_mut(), Hl.rb_mut(), Hr.rb_mut(), par, stack, params.bidiag.into());
 
 	let (mut diag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
 	let (mut subdiag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
@@ -373,7 +373,8 @@ fn compute_squareish_svd<T: ComplexField>(
 	}
 }
 
-pub fn svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, compute_u: ComputeSvdVectors, compute_v: ComputeSvdVectors, par: Par, params: SvdParams) -> Result<StackReq, SizeOverflow> {
+pub fn svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, compute_u: ComputeSvdVectors, compute_v: ComputeSvdVectors, par: Par, params: Spec<SvdParams, T>) -> Result<StackReq, SizeOverflow> {
+	let params = params.into_inner();
 	let mut m = nrows;
 	let mut n = ncols;
 	let mut compute_u = compute_u;
@@ -410,7 +411,17 @@ pub fn svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, compute_u: Compu
 }
 
 #[math]
-pub fn svd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u: Option<MatMut<'_, T>>, v: Option<MatMut<'_, T>>, par: Par, stack: &mut DynStack, params: SvdParams) -> Result<(), SvdError> {
+pub fn svd<T: ComplexField>(
+	A: MatRef<'_, T>,
+	s: DiagMut<'_, T>,
+	u: Option<MatMut<'_, T>>,
+	v: Option<MatMut<'_, T>>,
+	par: Par,
+	stack: &mut DynStack,
+	params: Spec<SvdParams, T>,
+) -> Result<(), SvdError> {
+	let params = params.into_inner();
+
 	let (m, n) = A.shape();
 	let size = Ord::min(m, n);
 	assert!(s.dim() == size);
@@ -466,7 +477,7 @@ pub fn svd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u: Option<MatMu
 
 		{
 			qr.copy_from(matrix.rb());
-			linalg::qr::no_pivoting::factor::qr_in_place(qr.rb_mut(), householder.rb_mut(), par, stack, params.qr);
+			linalg::qr::no_pivoting::factor::qr_in_place(qr.rb_mut(), householder.rb_mut(), par, stack, params.qr.into());
 		}
 
 		{
@@ -567,11 +578,11 @@ mod tests {
 	#[track_caller]
 	fn test_svd<T: ComplexField>(mat: MatRef<'_, T>) {
 		let (m, n) = mat.shape();
-		let params = SvdParams {
+		let params = Spec::new(SvdParams {
 			recursion_threshold: 8,
 			qr_ratio_threshold: 1.0,
 			..auto!(T)
-		};
+		});
 		use faer_traits::math_utils::*;
 		let approx_eq = CwiseMat(ApproxEq::<T>::eps() * sqrt(&from_f64(8.0 * Ord::max(m, n) as f64)));
 

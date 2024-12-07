@@ -390,6 +390,7 @@ mod tests {
 	use crate::{Col, Mat, assert, c64};
 
 	#[test]
+	#[azucar::infer]
 	fn test_rank_update() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -433,10 +434,8 @@ mod tests {
 					L.rb_mut(),
 					default(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, auto!(c64)).unwrap(),
-					)),
-					auto!(c64),
+					DynStack::new(&mut GlobalMemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap())),
+					_,
 				)
 				.unwrap();
 

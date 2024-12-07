@@ -11,7 +11,7 @@ use matref::MatRef;
 
 pub struct MatMut<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> {
 	pub(super) imp: MatView<T, Rows, Cols, RStride, CStride>,
-	pub(super) __marker: PhantomData<(&'a mut T, &'a Rows, &'a Cols)>,
+	pub(super) __marker: PhantomData<&'a mut T>,
 }
 
 #[repr(transparent)]
@@ -284,12 +284,20 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	}
 
 	#[inline]
-	pub fn col_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColRef<'a, T, Rows, RStride>> {
+	pub fn col_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColRef<'a, T, Rows, RStride>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
 		self.into_const().col_iter()
 	}
 
 	#[inline]
-	pub fn row_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowRef<'a, T, Cols, CStride>> {
+	pub fn row_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowRef<'a, T, Cols, CStride>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
 		self.into_const().row_iter()
 	}
 
@@ -298,6 +306,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_col_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, T, Rows, RStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		self.into_const().par_col_iter()
 	}
@@ -307,6 +317,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_row_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, Cols, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		self.into_const().par_row_iter()
 	}
@@ -317,6 +329,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_col_chunks(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		self.into_const().par_col_chunks(chunk_size)
 	}
@@ -327,6 +341,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_col_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		self.into_const().par_col_partition(count)
 	}
@@ -337,6 +353,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_row_chunks(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		self.into_const().par_row_chunks(chunk_size)
 	}
@@ -347,6 +365,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_row_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		self.into_const().par_row_partition(count)
 	}
@@ -667,12 +687,20 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	}
 
 	#[inline]
-	pub fn col_iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColMut<'a, T, Rows, RStride>> {
+	pub fn col_iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColMut<'a, T, Rows, RStride>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
 		self.into_const().col_iter().map(|x| unsafe { x.const_cast() })
 	}
 
 	#[inline]
-	pub fn row_iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowMut<'a, T, Cols, CStride>> {
+	pub fn row_iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowMut<'a, T, Cols, CStride>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
 		self.into_const().row_iter().map(|x| unsafe { x.const_cast() })
 	}
 
@@ -686,6 +714,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_col_iter_mut(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColMut<'a, T, Rows, RStride>>
 	where
 		T: Send,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_col_iter().map(|x| x.const_cast()).map(|x| x.as_type()) }
@@ -696,6 +726,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_row_iter_mut(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowMut<'a, T, Cols, CStride>>
 	where
 		T: Send,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_row_iter().map(|x| x.const_cast()).map(|x| x.as_type()) }
@@ -707,6 +739,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_col_chunks_mut(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Send,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_col_chunks(chunk_size).map(|x| x.const_cast()).map(|x| x.as_type()) }
@@ -718,6 +752,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_col_partition_mut(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Send,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_col_partition(count).map(|x| x.const_cast()).map(|x| x.as_type()) }
@@ -729,6 +765,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_row_chunks_mut(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Send,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_row_chunks(chunk_size).map(|x| x.const_cast()).map(|x| x.as_type()) }
@@ -740,6 +778,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	pub fn par_row_partition_mut(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Send,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		unsafe { self.as_type::<SyncCell<T>>().into_const().par_row_partition(count).map(|x| x.const_cast()).map(|x| x.as_type()) }

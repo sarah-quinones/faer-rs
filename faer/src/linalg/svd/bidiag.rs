@@ -3,7 +3,7 @@ use crate::internal_prelude::*;
 use linalg::householder;
 use linalg::matmul::{dot, matmul};
 
-pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: BidiagParams) -> Result<StackReq, SizeOverflow> {
+pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<BidiagParams, T>) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	StackReq::try_all_of([temp_mat_scratch::<T>(nrows, 1)?, temp_mat_scratch::<T>(ncols, 1)?])
@@ -29,7 +29,8 @@ impl<T: ComplexField> Auto<T> for BidiagParams {
 #[azucar::index]
 #[azucar::reborrow]
 #[math]
-pub fn bidiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H_left: MatMut<'_, T>, H_right: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: BidiagParams) {
+pub fn bidiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H_left: MatMut<'_, T>, H_right: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<BidiagParams, T>) {
+	let params = params.into_inner();
 	let m = A.nrows();
 	let n = A.ncols();
 	let size = Ord::min(m, n);
@@ -381,6 +382,7 @@ mod tests {
 
 	#[azucar::index]
 	#[azucar::reborrow]
+	#[azucar::infer]
 	#[test]
 	fn test_bidiag_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -401,7 +403,7 @@ mod tests {
 			let mut Hr = Mat::zeros(br, size - 1);
 
 			let mut UV = A.clone();
-			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), auto!(f64));
+			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), _);
 
 			let mut A = A.clone();
 			let mut A = A.as_mut();
@@ -447,6 +449,7 @@ mod tests {
 
 	#[azucar::reborrow]
 	#[azucar::index]
+	#[azucar::infer]
 	#[test]
 	fn test_bidiag_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -467,7 +470,7 @@ mod tests {
 
 			let mut UV = A.clone();
 			let mut UV = UV.as_mut();
-			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), auto!(c64));
+			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), _);
 
 			let mut A = A.clone();
 			let mut A = A.as_mut();

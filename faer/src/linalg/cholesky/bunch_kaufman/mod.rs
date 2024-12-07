@@ -40,7 +40,7 @@ mod tests {
 			let mut perm = vec![0usize; n];
 			let mut perm_inv = vec![0; n];
 
-			let params = auto!(f64);
+			let params = Default::default();
 			let mut mem = GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params).unwrap());
 			let (_, perm) = factor::cholesky_in_place(ldl.as_mut(), subdiag.as_mut(), Default::default(), &mut perm, &mut perm_inv, Par::Seq, DynStack::new(&mut mem), params);
 
@@ -90,10 +90,19 @@ mod tests {
 			let params = BunchKaufmanParams {
 				pivoting: factor::PivotingStrategy::Diagonal,
 				blocksize: 4,
-				..auto!(c32)
+				..auto!(c64)
 			};
-			let mut mem = GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params).unwrap());
-			let (_, perm) = factor::cholesky_in_place(ldl.as_mut(), subdiag.as_mut(), Default::default(), &mut perm, &mut perm_inv, Par::Seq, DynStack::new(&mut mem), params);
+			let mut mem = GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()).unwrap());
+			let (_, perm) = factor::cholesky_in_place(
+				ldl.as_mut(),
+				subdiag.as_mut(),
+				Default::default(),
+				&mut perm,
+				&mut perm_inv,
+				Par::Seq,
+				DynStack::new(&mut mem),
+				params.into(),
+			);
 
 			let mut x = rhs.clone();
 			let mut mem = GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq).unwrap());

@@ -26,7 +26,8 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 	}
 }
 
-pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: HessenbergParams) -> Result<StackReq, SizeOverflow> {
+pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> Result<StackReq, SizeOverflow> {
+	let params = params.into_inner();
 	let _ = par;
 	let n = dim;
 	if n * n < params.blocking_threshold {
@@ -517,7 +518,8 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(A: MatMut<'_, T>, Z: MatMut<'_, T
 }
 
 #[track_caller]
-pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: HessenbergParams) {
+pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<HessenbergParams, T>) {
+	let params = params.into_inner();
 	assert!(all(A.nrows() == A.ncols(), H.ncols() == A.ncols().saturating_sub(1)));
 
 	let n = A.nrows().unbound();
@@ -652,9 +654,8 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 
 #[cfg(test)]
 mod tests {
-	use std::mem::MaybeUninit;
-
 	use dyn_stack::GlobalMemBuffer;
+	use std::mem::MaybeUninit;
 
 	use super::*;
 	use crate::stats::prelude::*;
@@ -662,6 +663,7 @@ mod tests {
 	use crate::{Mat, assert, c64};
 
 	#[test]
+	#[azucar::infer]
 	fn test_hessenberg_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -718,6 +720,7 @@ mod tests {
 	}
 
 	#[test]
+	#[azucar::infer]
 	fn test_hessenberg_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -735,10 +738,13 @@ mod tests {
 
 				let mut V = A.clone();
 				let mut V = V.as_mut();
-				hessenberg_rearranged_unblocked(V.rb_mut(), H.as_mut(), par, DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]), HessenbergParams {
-					par_threshold: 0,
-					..auto!(c64)
-				});
+				hessenberg_rearranged_unblocked(
+					V.rb_mut(),
+					H.as_mut(),
+					par,
+					DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
+					HessenbergParams { par_threshold: 0, ..auto!(c64) }.into(),
+				);
 
 				let mut A = A.clone();
 				let mut A = A.as_mut();
@@ -779,6 +785,7 @@ mod tests {
 	}
 
 	#[test]
+	#[azucar::infer]
 	fn test_hessenberg_cplx_gqvdg() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -797,10 +804,13 @@ mod tests {
 
 				let mut V = A.clone();
 				let mut V = V.as_mut();
-				hessenberg_gqvdg_blocked(V.rb_mut(), H.as_mut(), par, DynStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]), HessenbergParams {
-					par_threshold: 0,
-					..auto!(c64)
-				});
+				hessenberg_gqvdg_blocked(
+					V.rb_mut(),
+					H.as_mut(),
+					par,
+					DynStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]),
+					HessenbergParams { par_threshold: 0, ..auto!(c64) }.into(),
+				);
 
 				let mut A = A.clone();
 				let mut A = A.as_mut();

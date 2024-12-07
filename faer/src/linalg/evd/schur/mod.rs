@@ -43,7 +43,7 @@ pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool,
 	let nw_max = (n - 3) / 3;
 
 	StackReq::try_any_of([
-		hessenberg::hessenberg_in_place_scratch::<T>(nw_max, 1, parallelism, auto!(T))?,
+		hessenberg::hessenberg_in_place_scratch::<T>(nw_max, 1, parallelism, Default::default())?,
 		linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(nw_max, nw_max, nw_max)?,
 		linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(nw_max, nw_max, nw_max)?,
 		temp_mat_scratch::<T>(3, nsr)?,

@@ -35,6 +35,7 @@ mod tests {
 	use linalg::cholesky::llt;
 
 	#[test]
+	#[azucar::infer]
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let n = 50;
@@ -61,8 +62,8 @@ mod tests {
 			L.as_mut(),
 			Default::default(),
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, auto!(c64)).unwrap()) }),
-			auto!(c64),
+			DynStack::new(&mut { GlobalMemBuffer::new(llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap()) }),
+			_,
 		)
 		.unwrap();
 

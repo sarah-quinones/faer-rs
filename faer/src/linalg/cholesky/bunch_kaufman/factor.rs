@@ -650,7 +650,8 @@ fn convert<'N, I: Index, T: ComplexField>(mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>
 
 /// Computes the size and alignment of required workspace for performing a Cholesky
 /// decomposition with Bunch-Kaufman pivoting.
-pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: BunchKaufmanParams) -> Result<StackReq, SizeOverflow> {
+pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<BunchKaufmanParams, T>) -> Result<StackReq, SizeOverflow> {
+	let params = params.into_inner();
 	let _ = par;
 	let mut bs = params.blocksize;
 	if bs < 2 || dim <= bs {
@@ -691,8 +692,10 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	perm_inv: &'out mut [I],
 	par: Par,
 	stack: &mut DynStack,
-	params: BunchKaufmanParams,
+	params: Spec<BunchKaufmanParams, T>,
 ) -> (BunchKaufmanInfo, PermRef<'out, I>) {
+	let params = params.into_inner();
+
 	let truncate = <I::Signed as SignedIndex>::truncate;
 	let mut regularization = regularization;
 

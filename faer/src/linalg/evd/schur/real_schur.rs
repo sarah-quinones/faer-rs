@@ -856,7 +856,7 @@ fn aggressive_early_deflation<T: RealField>(
 				householder.rb_mut().as_mat_mut().transpose_mut(),
 				par,
 				stack.rb_mut(),
-				auto!(T),
+				Default::default(),
 			);
 			apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 				tw.rb().submatrix(1, 0, ns - 1, ns - 1),

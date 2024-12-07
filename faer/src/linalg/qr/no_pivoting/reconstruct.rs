@@ -38,6 +38,7 @@ mod tests {
 	use linalg::qr::no_pivoting::*;
 
 	#[test]
+	#[azucar::infer]
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		for (m, n) in [(100, 50), (50, 100)] {
@@ -56,8 +57,8 @@ mod tests {
 				QR.as_mut(),
 				Q_coeff.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut { GlobalMemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, auto!(c64)).unwrap()) }),
-				auto!(c64),
+				DynStack::new(&mut { GlobalMemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, _).unwrap()) }),
+				_,
 			);
 
 			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * (n as f64));

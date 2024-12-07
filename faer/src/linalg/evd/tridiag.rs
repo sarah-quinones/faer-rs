@@ -23,7 +23,7 @@ impl<T: ComplexField> Auto<T> for TridiagParams {
 	}
 }
 
-pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: TridiagParams) -> Result<StackReq, SizeOverflow> {
+pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<TridiagParams, T>) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	StackReq::try_all_of([temp_mat_scratch::<T>(dim, 1)?.try_array(2)?, temp_mat_scratch::<T>(dim, par.degree())?])
@@ -362,7 +362,8 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 
 #[azucar::reborrow]
 #[math]
-pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: TridiagParams) {
+pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<TridiagParams, T>) {
+	let params = params.into_inner();
 	let mut A = A;
 	let mut H = H;
 	let mut par = par;
@@ -587,6 +588,7 @@ mod tests {
 	use dyn_stack::GlobalMemBuffer;
 
 	#[azucar::reborrow]
+	#[azucar::infer]
 	#[test]
 	fn test_tridiag_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -612,9 +614,9 @@ mod tests {
 				Par::Seq,
 				DynStack::new(&mut GlobalMemBuffer::new(StackReq::all_of([
 					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, b, n).unwrap(),
-					tridiag_in_place_scratch::<f64>(n, Par::Seq, auto!(f64)).unwrap(),
+					tridiag_in_place_scratch::<f64>(n, Par::Seq, _).unwrap(),
 				]))),
-				auto!(f64),
+				_,
 			);
 
 			let mut A = A.clone();
@@ -660,6 +662,7 @@ mod tests {
 	}
 
 	#[azucar::reborrow]
+	#[azucar::infer]
 	#[test]
 	fn test_tridiag_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -683,8 +686,8 @@ mod tests {
 				&mut V,
 				H.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(tridiag_in_place_scratch::<c64>(n, Par::Seq, auto!(c64)).unwrap())),
-				auto!(c64),
+				DynStack::new(&mut GlobalMemBuffer::new(tridiag_in_place_scratch::<c64>(n, Par::Seq, _).unwrap())),
+				_,
 			);
 
 			let mut A = A.clone();

@@ -49,7 +49,7 @@ pub trait MatExt<T, Rows: Shape = usize, Cols: Shape = usize>: AsMatRef<T = T, R
 
 impl<T, Rows: Shape, Cols: Shape, M: AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = Mat<T, Rows, Cols>>> MatExt<T, Rows, Cols> for M {}
 
-impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core::ops::Deref for MatRef<'a, T, Rows, Cols, Rs, Cs> {
+impl<'a, T: ComplexField, Rows: 'a + Shape, Cols: 'a + Shape, Rs: Stride, Cs: Stride> core::ops::Deref for MatRef<'a, T, Rows, Cols, Rs, Cs> {
 	type Target = dyn 'a + MatExt<T, Rows, Cols>;
 
 	fn deref(&self) -> &Self::Target {
@@ -57,7 +57,7 @@ impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core
 	}
 }
 
-impl<'a, T: ComplexField, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride> core::ops::Deref for MatMut<'a, T, Rows, Cols, Rs, Cs> {
+impl<'a, T: ComplexField, Rows: 'a + Shape, Cols: 'a + Shape, Rs: Stride, Cs: Stride> core::ops::Deref for MatMut<'a, T, Rows, Cols, Rs, Cs> {
 	type Target = dyn 'a + MatExt<T, Rows, Cols>;
 
 	fn deref(&self) -> &Self::Target {

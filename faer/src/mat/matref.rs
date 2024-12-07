@@ -13,7 +13,7 @@ use matown::Mat;
 
 pub struct MatRef<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> {
 	pub(super) imp: MatView<T, Rows, Cols, RStride, CStride>,
-	pub(super) __marker: PhantomData<(&'a T, &'a Rows, &'a Cols)>,
+	pub(super) __marker: PhantomData<&'a T>,
 }
 
 impl<T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> Copy for MatRef<'_, T, Rows, Cols, RStride, CStride> {}
@@ -469,12 +469,20 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	}
 
 	#[inline]
-	pub fn col_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColRef<'a, T, Rows, RStride>> {
+	pub fn col_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColRef<'a, T, Rows, RStride>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
 		Cols::indices(Cols::start(), self.ncols().end()).map(move |j| self.col(j))
 	}
 
 	#[inline]
-	pub fn row_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowRef<'a, T, Cols, CStride>> {
+	pub fn row_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowRef<'a, T, Cols, CStride>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
 		Rows::indices(Rows::start(), self.nrows().end()).map(move |i| self.row(i))
 	}
 
@@ -483,6 +491,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	pub fn par_col_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, T, Rows, RStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 
@@ -499,6 +509,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	pub fn par_row_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, Cols, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		self.transpose().par_col_iter().map(ColRef::transpose)
@@ -510,6 +522,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	pub fn par_col_chunks(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 
@@ -529,6 +543,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	pub fn par_col_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 
@@ -547,6 +563,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	pub fn par_row_chunks(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		self.transpose().par_col_chunks(chunk_size).map(MatRef::transpose)
@@ -558,6 +576,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	pub fn par_row_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Sync,
+		Rows: 'a,
+		Cols: 'a,
 	{
 		use rayon::prelude::*;
 		self.transpose().par_col_partition(count).map(MatRef::transpose)

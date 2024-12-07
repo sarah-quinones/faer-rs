@@ -53,6 +53,7 @@ mod tests {
 	use dyn_stack::GlobalMemBuffer;
 	use linalg::lu::partial_pivoting::*;
 
+	#[azucar::infer]
 	#[test]
 	fn test_inverse() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -73,8 +74,8 @@ mod tests {
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, auto!(c64)).unwrap()) }),
-			auto!(c64),
+			DynStack::new(&mut { GlobalMemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, _).unwrap()) }),
+			_,
 		);
 
 		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * (n as f64));

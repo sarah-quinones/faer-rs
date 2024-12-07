@@ -82,7 +82,9 @@ impl<T: ComplexField> Auto<T> for QrParams {
 }
 
 #[math]
-fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: QrParams) {
+fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<QrParams, T>) {
+	let params = params.into_inner();
+
 	let m = A.nrows();
 	let n = A.ncols();
 	let size = H.ncols();
@@ -106,7 +108,7 @@ fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par:
 		let mut A = A.rb_mut().get_mut(j.., j..);
 		let mut H = H.rb_mut().submatrix_mut(0, j, blocksize, blocksize);
 
-		qr_in_place_blocked(A.rb_mut().subcols_mut(0, blocksize), H.rb_mut().subrows_mut(0, sub_blocksize), par, stack, params);
+		qr_in_place_blocked(A.rb_mut().subcols_mut(0, blocksize), H.rb_mut().subrows_mut(0, sub_blocksize), par, stack, params.into());
 
 		let mut k = 0;
 		while k < blocksize {
@@ -137,7 +139,7 @@ fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par:
 }
 
 #[track_caller]
-pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: QrParams) {
+pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<QrParams, T>) {
 	let blocksize = Q_coeff.nrows();
 	assert!(all(blocksize > 0, Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),));
 
@@ -156,7 +158,7 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 /// Computes the size and alignment of required workspace for performing a QR
 /// decomposition with no pivoting.
 #[inline]
-pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: QrParams) -> Result<StackReq, SizeOverflow> {
+pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<QrParams, T>) -> Result<StackReq, SizeOverflow> {
 	let _ = par;
 	let _ = nrows;
 	let _ = &params;
@@ -172,6 +174,7 @@ mod tests {
 	use dyn_stack::GlobalMemBuffer;
 
 	#[test]
+	#[azucar::infer]
 	fn test_unblocked_qr() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -238,8 +241,8 @@ mod tests {
 					QR.as_mut(),
 					H.as_mut(),
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, auto!(c64)).unwrap())),
-					auto!(c64),
+					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, _).unwrap())),
+					_,
 				);
 
 				let mut Q = Mat::<c64>::zeros(n, n);
@@ -290,8 +293,8 @@ mod tests {
 					QR.as_mut(),
 					H.as_mut(),
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, auto!(c64)).unwrap())),
-					auto!(c64),
+					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, _).unwrap())),
+					_,
 				);
 
 				let mut Q = Mat::<c64, _, _>::zeros(m, m);

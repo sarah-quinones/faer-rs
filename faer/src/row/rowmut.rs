@@ -162,7 +162,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	}
 
 	#[inline]
-	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T> {
+	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
+	where
+		Cols: 'a,
+	{
 		self.trans.iter()
 	}
 
@@ -171,6 +174,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
 	where
 		T: Sync,
+		Cols: 'a,
 	{
 		self.trans.par_iter()
 	}
@@ -337,7 +341,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	}
 
 	#[inline]
-	pub fn iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a mut T> {
+	pub fn iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a mut T>
+	where
+		Cols: 'a,
+	{
 		self.trans.iter_mut()
 	}
 
@@ -346,6 +353,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	pub fn par_iter_mut(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a mut T>
 	where
 		T: Send,
+		Cols: 'a,
 	{
 		self.trans.par_iter_mut()
 	}
@@ -356,6 +364,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	pub fn par_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, usize, CStride>>
 	where
 		T: Sync,
+		Cols: 'a,
 	{
 		self.into_const().par_partition(count)
 	}
@@ -366,6 +375,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	pub fn par_partition_mut(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowMut<'a, T, usize, CStride>>
 	where
 		T: Send,
+		Cols: 'a,
 	{
 		use crate::mat::matmut::SyncCell;
 		use rayon::prelude::*;

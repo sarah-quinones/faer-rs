@@ -254,8 +254,9 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 	col_perm_inv: &'out mut [I],
 	par: Par,
 	stack: &mut DynStack,
-	params: ColPivQrParams,
+	params: Spec<ColPivQrParams, T>,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
+	let params = params.into_inner();
 	let mut A = A;
 	let mut H = H;
 	let mut par = par;
@@ -359,7 +360,7 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for performing a QR decomposition
 /// with column pivoting.
-pub fn qr_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: ColPivQrParams) -> Result<StackReq, SizeOverflow> {
+pub fn qr_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<ColPivQrParams, T>) -> Result<StackReq, SizeOverflow> {
 	let _ = nrows;
 	let _ = ncols;
 	let _ = par;
@@ -385,7 +386,7 @@ pub fn qr_in_place<'out, I: Index, T: ComplexField>(
 	col_perm_inv: &'out mut [I],
 	par: Par,
 	stack: &mut DynStack,
-	params: ColPivQrParams,
+	params: Spec<ColPivQrParams, T>,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
 	let mut A = A;
 	let mut H = Q_coeff;
@@ -421,6 +422,7 @@ mod tests {
 	use dyn_stack::GlobalMemBuffer;
 
 	#[test]
+	#[azucar::infer]
 	fn test_unblocked_qr() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -449,8 +451,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<usize, c64>(n, n, bs, par, auto!(c64)).unwrap())),
-					auto!(c64),
+					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<usize, c64>(n, n, bs, par, _).unwrap())),
+					_,
 				)
 				.1;
 
@@ -507,8 +509,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<usize, c64>(m, n, bs, par, auto!(c64)).unwrap())),
-					auto!(c64),
+					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<usize, c64>(m, n, bs, par, _).unwrap())),
+					_,
 				)
 				.1;
 

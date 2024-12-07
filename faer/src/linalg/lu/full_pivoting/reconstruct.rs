@@ -83,6 +83,7 @@ mod tests {
 	use linalg::lu::full_pivoting::*;
 
 	#[test]
+	#[azucar::infer]
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		for (m, n) in [(100, 50), (50, 100)] {
@@ -106,8 +107,8 @@ mod tests {
 				col_perm_fwd,
 				col_perm_bwd,
 				Par::Seq,
-				DynStack::new(&mut { GlobalMemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, auto!(c64)).unwrap()) }),
-				auto!(c64),
+				DynStack::new(&mut { GlobalMemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, _).unwrap()) }),
+				_,
 			);
 
 			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * (n as f64));
