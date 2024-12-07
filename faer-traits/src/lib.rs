@@ -233,7 +233,7 @@ pub trait DivByRef<Rhs = Self> {
 
 impl<Rhs, Lhs, Output> AddByRef<Rhs> for Lhs
 where
-	for<'a, 'b> &'a Lhs: core::ops::Add<&'b Rhs, Output = Output>,
+	for<'a> &'a Lhs: core::ops::Add<&'a Rhs, Output = Output>,
 {
 	type Output = Output;
 
@@ -245,7 +245,7 @@ where
 }
 impl<Rhs, Lhs, Output> SubByRef<Rhs> for Lhs
 where
-	for<'a, 'b> &'a Lhs: core::ops::Sub<&'b Rhs, Output = Output>,
+	for<'a> &'a Lhs: core::ops::Sub<&'a Rhs, Output = Output>,
 {
 	type Output = Output;
 
@@ -257,7 +257,7 @@ where
 }
 impl<Rhs, Lhs, Output> MulByRef<Rhs> for Lhs
 where
-	for<'a, 'b> &'a Lhs: core::ops::Mul<&'b Rhs, Output = Output>,
+	for<'a> &'a Lhs: core::ops::Mul<&'a Rhs, Output = Output>,
 {
 	type Output = Output;
 
@@ -269,7 +269,7 @@ where
 }
 impl<Rhs, Lhs, Output> DivByRef<Rhs> for Lhs
 where
-	for<'a, 'b> &'a Lhs: core::ops::Div<&'b Rhs, Output = Output>,
+	for<'a> &'a Lhs: core::ops::Div<&'a Rhs, Output = Output>,
 {
 	type Output = Output;
 
@@ -901,6 +901,13 @@ impl SimdArch for pulp::Arch {
 	#[inline]
 	fn dispatch<R>(self, f: impl pulp::WithSimd<Output = R>) -> R {
 		self.dispatch(f)
+	}
+}
+
+impl SimdArch for pulp::Scalar {
+	#[inline]
+	fn dispatch<R>(self, f: impl pulp::WithSimd<Output = R>) -> R {
+		f.with_simd(self)
 	}
 }
 
@@ -2044,7 +2051,7 @@ impl<T: RealField> ComplexField for Complex<T> {
 
 	#[inline(always)]
 	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		let n = const { size_of::<Self::SimdVec<S>>() / size_of::<Self>() };
+		let n = size_of::<Self::SimdVec<S>>() / size_of::<Self>();
 		let start = start.zx() * 2;
 		let end = end.zx() * 2;
 
@@ -2966,5 +2973,365 @@ impl ComplexField for ComplexImpl<f64> {
 	#[inline(always)]
 	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
 		ctx.mask_store_ptr_c64s(mask, ptr as _, values);
+	}
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Symbolic;
+
+impl core::ops::Add for Symbolic {
+	type Output = Self;
+
+	fn add(self, _: Self) -> Self {
+		Self
+	}
+}
+impl core::ops::Sub for Symbolic {
+	type Output = Self;
+
+	fn sub(self, _: Self) -> Self {
+		Self
+	}
+}
+impl core::ops::Mul for Symbolic {
+	type Output = Self;
+
+	fn mul(self, _: Self) -> Self {
+		Self
+	}
+}
+impl core::ops::Div for Symbolic {
+	type Output = Self;
+
+	fn div(self, _: Self) -> Self {
+		Self
+	}
+}
+impl core::ops::Neg for Symbolic {
+	type Output = Self;
+
+	fn neg(self) -> Self {
+		Self
+	}
+}
+
+impl core::ops::Add for &Symbolic {
+	type Output = Symbolic;
+
+	fn add(self, _: Self) -> Symbolic {
+		Symbolic
+	}
+}
+impl core::ops::Sub for &Symbolic {
+	type Output = Symbolic;
+
+	fn sub(self, _: Self) -> Symbolic {
+		Symbolic
+	}
+}
+impl core::ops::Mul for &Symbolic {
+	type Output = Symbolic;
+
+	fn mul(self, _: Self) -> Symbolic {
+		Symbolic
+	}
+}
+impl core::ops::Div for &Symbolic {
+	type Output = Symbolic;
+
+	fn div(self, _: Self) -> Symbolic {
+		Symbolic
+	}
+}
+impl core::ops::Neg for &Symbolic {
+	type Output = Symbolic;
+
+	fn neg(self) -> Symbolic {
+		Symbolic
+	}
+}
+
+impl core::ops::Rem for Symbolic {
+	type Output = Self;
+
+	fn rem(self, _: Self) -> Self {
+		Self
+	}
+}
+impl num_traits::Zero for Symbolic {
+	fn zero() -> Self {
+		Self
+	}
+
+	fn is_zero(&self) -> bool {
+		true
+	}
+}
+impl num_traits::One for Symbolic {
+	fn one() -> Self {
+		Self
+	}
+
+	fn is_one(&self) -> bool {
+		true
+	}
+}
+impl num_traits::Num for Symbolic {
+	type FromStrRadixErr = core::convert::Infallible;
+
+	fn from_str_radix(_: &str, _: u32) -> Result<Self, Self::FromStrRadixErr> {
+		Ok(Self)
+	}
+}
+
+impl Symbolic {
+	#[inline]
+	pub fn materialize(len: usize) -> &'static mut [Self] {
+		unsafe { core::slice::from_raw_parts_mut(core::ptr::NonNull::dangling().as_ptr(), len) }
+	}
+}
+
+impl RealField for Symbolic {
+	fn epsilon_impl() -> Self {
+		Self
+	}
+
+	fn nbits_impl() -> usize {
+		0
+	}
+
+	fn min_positive_impl() -> Self {
+		Self
+	}
+
+	fn max_positive_impl() -> Self {
+		Self
+	}
+
+	fn sqrt_min_positive_impl() -> Self {
+		Self
+	}
+
+	fn sqrt_max_positive_impl() -> Self {
+		Self
+	}
+}
+
+impl ComplexField for Symbolic {
+	type Arch = pulp::Scalar;
+	type Index = usize;
+	type Real = Self;
+	type SimdCtx<S: pulp::Simd> = S;
+	type SimdIndex<S: pulp::Simd> = ();
+	type SimdMask<S: pulp::Simd> = ();
+	type SimdMemMask<S: pulp::Simd> = ();
+	type SimdVec<S: pulp::Simd> = ();
+	type Unit = Self;
+
+	const IS_REAL: bool = true;
+	const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::Copy;
+
+	fn zero_impl() -> Self {
+		Self
+	}
+
+	fn one_impl() -> Self {
+		Self
+	}
+
+	fn nan_impl() -> Self {
+		Self
+	}
+
+	fn infinity_impl() -> Self {
+		Self
+	}
+
+	fn from_real_impl(_: &Self::Real) -> Self {
+		Self
+	}
+
+	fn from_f64_impl(_: f64) -> Self {
+		Self
+	}
+
+	fn real_part_impl(_: &Self) -> Self::Real {
+		Self
+	}
+
+	fn imag_part_impl(_: &Self) -> Self::Real {
+		Self
+	}
+
+	fn copy_impl(_: &Self) -> Self {
+		Self
+	}
+
+	fn conj_impl(_: &Self) -> Self {
+		Self
+	}
+
+	fn recip_impl(_: &Self) -> Self {
+		Self
+	}
+
+	fn sqrt_impl(_: &Self) -> Self {
+		Self
+	}
+
+	fn abs_impl(_: &Self) -> Self::Real {
+		Self
+	}
+
+	fn abs1_impl(_: &Self) -> Self::Real {
+		Self
+	}
+
+	fn abs2_impl(_: &Self) -> Self::Real {
+		Self
+	}
+
+	fn mul_real_impl(_: &Self, _: &Self::Real) -> Self {
+		Self
+	}
+
+	fn mul_pow2_impl(_: &Self, _: &Self::Real) -> Self {
+		Self
+	}
+
+	fn is_finite_impl(_: &Self) -> bool {
+		true
+	}
+
+	fn simd_ctx<S: pulp::Simd>(simd: S) -> Self::SimdCtx<S> {
+		simd
+	}
+
+	fn ctx_from_simd<S: pulp::Simd>(simd: &Self::SimdCtx<S>) -> S {
+		*simd
+	}
+
+	fn simd_mask_between<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::Index, _: Self::Index) -> Self::SimdMemMask<S> {
+		()
+	}
+
+	unsafe fn simd_mask_load_raw<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMemMask<S>, _: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	unsafe fn simd_mask_store_raw<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMemMask<S>, _: *mut Self::SimdVec<S>, _: Self::SimdVec<S>) {
+		()
+	}
+
+	fn simd_splat<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: &Self) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_splat_real<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: &Self::Real) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_sub<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_neg<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_conj<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_abs1<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_abs_max<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_mul_real<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_mul_pow2<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_mul<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_conj_mul<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_mul_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_conj_mul_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_abs2<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_abs2_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_reduce_sum<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self {
+		Self
+	}
+
+	fn simd_reduce_max<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self {
+		Self
+	}
+
+	fn simd_less_than<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_less_than_or_equal<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_greater_than<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_greater_than_or_equal<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_select<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		()
+	}
+
+	fn simd_index_select<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+		()
+	}
+
+	fn simd_index_splat<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::Index) -> Self::SimdIndex<S> {
+		()
+	}
+
+	fn simd_index_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+		()
+	}
+
+	fn simd_and_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_first_true_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>) -> usize {
+		0
 	}
 }

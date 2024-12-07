@@ -100,7 +100,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	pub fn new(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
 		core::assert!(const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
-		let stride = const { size_of::<T::SimdVec<S>>() / size_of::<T>() };
+		let stride = size_of::<T::SimdVec<S>>() / size_of::<T>();
 		Self {
 			ctx: simd,
 			len,
@@ -117,7 +117,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	pub fn new_align(simd: T::SimdCtx<S>, len: Dim<'N>, align_offset: usize) -> Self {
 		core::assert!(const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
-		let stride = const { size_of::<T::SimdVec<S>>() / size_of::<T>() };
+		let stride = size_of::<T::SimdVec<S>>() / size_of::<T>();
 		let align_offset = align_offset % stride;
 
 		if align_offset == 0 {
@@ -170,7 +170,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		crate::assert!(*len != 0);
 		let new_len = *len - 1;
 
-		let stride = const { size_of::<T::SimdVec<S>>() / size_of::<T>() };
+		let stride = size_of::<T::SimdVec<S>>() / size_of::<T>();
 		Self {
 			ctx: simd,
 			len,
@@ -203,7 +203,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	) {
 		macro_rules! stride {
 			() => {
-				const { size_of::<T::SimdVec<S>>() / size_of::<T>() }
+				size_of::<T::SimdVec<S>>() / size_of::<T>()
 			};
 		}
 
@@ -239,7 +239,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	) {
 		macro_rules! stride {
 			() => {
-				const { size_of::<T::SimdVec<S>>() / size_of::<T>() }
+				size_of::<T::SimdVec<S>>() / size_of::<T>()
 			};
 		}
 

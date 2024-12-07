@@ -188,8 +188,8 @@ fn assume_col_ptr<I: Index>(nrows: usize, ncols: usize, col_ptr: &[I], col_nnz: 
 	assert!(all(ncols <= I::Signed::MAX.zx(), nrows <= I::Signed::MAX.zx(),));
 	assert!(col_ptr.len() == ncols + 1);
 	assert!(col_ptr[ncols].zx() <= row_idx.len());
-	if let Some(nnz_per_row) = col_nnz {
-		assert!(nnz_per_row.len() == ncols);
+	if let Some(col_nnz) = col_nnz {
+		assert!(col_nnz.len() == ncols);
 	}
 }
 
@@ -250,7 +250,7 @@ fn check_row_idx_unsorted<I: Index>(nrows: usize, ncols: usize, col_ptr: &[I], c
 	_ = ncols;
 
 	if let Some(col_nnz) = col_nnz {
-		for (nnz, &c) in iter::zip(col_nnz, col_ptr) {
+		for (&nnz, &c) in iter::zip(col_nnz, col_ptr) {
 			let c = c.zx();
 			let nnz = nnz.zx();
 			for &i in &row_idx[c..c + nnz] {
@@ -314,7 +314,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 	}
 
 	#[inline]
-	pub fn into_parts(self) -> (Rows, Cols, &'a [I], Option<&'a [I]>, &'a [I]) {
+	pub fn parts(self) -> (Rows, Cols, &'a [I], Option<&'a [I]>, &'a [I]) {
 		(self.nrows, self.ncols, self.col_ptr, self.col_nnz, self.row_idx)
 	}
 
@@ -357,7 +357,8 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 
 	#[inline]
 	pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I, Rows, Cols>, FaerError> {
-		todo!()
+		let mat = SparseColMatRef::new(*self, Symbolic::materialize(self.row_idx.len()));
+		Ok(mat.to_row_major()?.symbolic)
 	}
 
 	#[inline]
@@ -501,6 +502,16 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 			col_nnz,
 			row_idx,
 		}
+	}
+
+	#[inline]
+	pub fn parts(&self) -> (Rows, Cols, &'_ [I], Option<&'_ [I]>, &'_ [I]) {
+		(self.nrows, self.ncols, &self.col_ptr, self.col_nnz.as_deref(), &self.row_idx)
+	}
+
+	#[inline]
+	pub fn into_parts(self) -> (Rows, Cols, alloc::vec::Vec<I>, Option<alloc::vec::Vec<I>>, alloc::vec::Vec<I>) {
+		(self.nrows, self.ncols, self.col_ptr, self.col_nnz, self.row_idx)
 	}
 
 	#[inline]
@@ -713,17 +724,39 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	#[inline]
 	pub fn to_row_major(&self) -> Result<SparseRowMat<I, T::Canonical, Rows, Cols>, FaerError>
 	where
-		T: Conjugate<Canonical: ComplexField>,
+		T: Conjugate,
 	{
-		todo!()
+		let max = self.row_idx().len();
+		let mut new_col_ptr = try_zeroed::<I>(self.nrows().unbound())?;
+		let mut new_row_idx = try_zeroed::<I>(max)?;
+		let mut new_val = try_collect(iter::repeat_n(zero::<T::Canonical>(), max))?;
+		let nnz = utils::transpose_dedup(
+			&mut new_val,
+			&mut new_col_ptr,
+			&mut new_row_idx,
+			*self,
+			DynStack::new(&mut dyn_stack::GlobalMemBuffer::try_new(utils::transpose_dedup_scratch::<I>(
+				self.nrows().unbound(),
+				self.ncols().unbound(),
+			)?)?),
+		)
+		.compute_nnz(); // O(1) since it's compressed
+
+		new_val.truncate(nnz);
+		new_row_idx.truncate(nnz);
+
+		Ok(SparseRowMat::new(
+			unsafe { SymbolicSparseRowMat::new_unchecked(self.nrows(), self.ncols(), new_col_ptr, None, new_row_idx) },
+			new_val,
+		))
 	}
 
 	#[inline]
 	pub fn to_dense(&self) -> Mat<T::Canonical, Rows, Cols>
 	where
-		T: Conjugate<Canonical: ComplexField>,
+		T: Conjugate,
 	{
-		fn imp<'ROWS, 'COLS, I: Index, T: Conjugate<Canonical: ComplexField>>(src: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>) -> Mat<T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
+		fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(src: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>) -> Mat<T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
 			let src = src.canonical();
 
 			let mut out = Mat::zeros(src.nrows(), src.ncols());
@@ -911,7 +944,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	#[inline]
 	pub fn to_row_major(&self) -> Result<SparseRowMat<I, T::Canonical, Rows, Cols>, FaerError>
 	where
-		T: Conjugate<Canonical: ComplexField>,
+		T: Conjugate,
 	{
 		self.rb().to_row_major()
 	}
@@ -919,7 +952,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	#[inline]
 	pub fn to_dense(&self) -> Mat<T::Canonical, Rows, Cols>
 	where
-		T: Conjugate<Canonical: ComplexField>,
+		T: Conjugate,
 	{
 		self.rb().to_dense()
 	}
@@ -1149,7 +1182,7 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	#[inline]
 	pub fn to_row_major(&self) -> Result<SparseRowMat<I, T::Canonical, Rows, Cols>, FaerError>
 	where
-		T: Conjugate<Canonical: ComplexField>,
+		T: Conjugate,
 	{
 		self.rb().to_row_major()
 	}
@@ -1157,7 +1190,7 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	#[inline]
 	pub fn to_dense(&self) -> Mat<T::Canonical, Rows, Cols>
 	where
-		T: Conjugate<Canonical: ComplexField>,
+		T: Conjugate,
 	{
 		self.rb().to_dense()
 	}
@@ -1217,6 +1250,7 @@ impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseColMatRef<
 		imp(self.as_shape(ROWS, COLS), f)
 	}
 }
+
 impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseColMat<I, Rows, Cols> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.rb().fmt(f)

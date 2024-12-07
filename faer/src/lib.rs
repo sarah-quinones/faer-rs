@@ -506,7 +506,7 @@ pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
-	pub use faer_traits::{ComplexImpl, ComplexImplConj};
+	pub use faer_traits::{ComplexImpl, ComplexImplConj, Symbolic};
 
 	pub(crate) use crate::col::{Col, ColMut, ColRef};
 	pub(crate) use crate::diag::{Diag, DiagMut, DiagRef};
