@@ -30,7 +30,14 @@ impl<T: ComplexField> Auto<T> for SchurParams {
 	}
 }
 
-pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool, want_z: bool, parallelism: Par, params: SchurParams) -> Result<StackReq, SizeOverflow> {
+pub fn multishift_qr_scratch<T: ComplexField>(
+	n: usize,
+	nh: usize,
+	want_t: bool,
+	want_z: bool,
+	parallelism: Par,
+	params: SchurParams,
+) -> Result<StackReq, SizeOverflow> {
 	let nsr = (params.recommended_shift_count)(n, nh);
 
 	let _ = want_t;

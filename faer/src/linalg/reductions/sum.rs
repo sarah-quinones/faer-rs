@@ -111,13 +111,25 @@ pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
 				if const { T::IS_NATIVE_C32 } {
 					let mat: MatRef<'_, Complex<f32>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
-						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(mat.as_ptr() as *const f32, 2 * mat.nrows(), mat.ncols(), ContiguousFwd, mat.col_stride().wrapping_mul(2))
+						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(
+							mat.as_ptr() as *const f32,
+							2 * mat.nrows(),
+							mat.ncols(),
+							ContiguousFwd,
+							mat.col_stride().wrapping_mul(2),
+						)
 					};
 					return unsafe { crate::hacks::coerce(sum_simd_pairwise_cols::<f32>(mat)) };
 				} else if const { T::IS_NATIVE_C64 } {
 					let mat: MatRef<'_, Complex<f64>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
-						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(mat.as_ptr() as *const f64, 2 * mat.nrows(), mat.ncols(), ContiguousFwd, mat.col_stride().wrapping_mul(2))
+						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(
+							mat.as_ptr() as *const f64,
+							2 * mat.nrows(),
+							mat.ncols(),
+							ContiguousFwd,
+							mat.col_stride().wrapping_mul(2),
+						)
 					};
 					return unsafe { crate::hacks::coerce(sum_simd_pairwise_cols::<f64>(mat)) };
 				} else {

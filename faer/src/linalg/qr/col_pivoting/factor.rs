@@ -9,7 +9,12 @@ use pulp::Simd;
 
 #[inline(always)]
 #[math]
-fn update_col_and_norm2_simd<'M, T: ComplexField, S: Simd>(simd: SimdCtx<'M, T, S>, A: ColMut<'_, T, Dim<'M>, ContiguousFwd>, lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>, rhs: T) -> Real<T> {
+fn update_col_and_norm2_simd<'M, T: ComplexField, S: Simd>(
+	simd: SimdCtx<'M, T, S>,
+	A: ColMut<'_, T, Dim<'M>, ContiguousFwd>,
+	lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+	rhs: T,
+) -> Real<T> {
 	let mut A = A;
 
 	let mut sml0 = RealReg(simd.zero());
@@ -140,7 +145,13 @@ fn update_mat_and_best_norm2_simd<T: ComplexField>(
 
 		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-			let Self { mut A, lhs, mut rhs, tau_inv, align } = self;
+			let Self {
+				mut A,
+				lhs,
+				mut rhs,
+				tau_inv,
+				align,
+			} = self;
 
 			let m = A.nrows();
 			let n = A.ncols();
@@ -182,7 +193,12 @@ fn update_mat_and_best_norm2_simd<T: ComplexField>(
 }
 
 #[math]
-fn update_mat_and_best_norm2_fallback<T: ComplexField>(A: MatMut<'_, T, usize, usize>, lhs: ColRef<'_, T, usize>, rhs: RowMut<'_, T, usize>, tau_inv: Real<T>) -> (usize, Real<T>) {
+fn update_mat_and_best_norm2_fallback<T: ComplexField>(
+	A: MatMut<'_, T, usize, usize>,
+	lhs: ColRef<'_, T, usize>,
+	rhs: RowMut<'_, T, usize>,
+	tau_inv: Real<T>,
+) -> (usize, Real<T>) {
 	let mut A = A;
 	let mut rhs = rhs;
 
@@ -209,7 +225,13 @@ fn update_mat_and_best_norm2_fallback<T: ComplexField>(A: MatMut<'_, T, usize, u
 }
 
 #[math]
-fn update_mat_and_best_norm2<T: ComplexField>(A: MatMut<'_, T, usize, usize>, lhs: ColRef<'_, T, usize>, rhs: RowMut<'_, T, usize>, tau_inv: Real<T>, align: usize) -> (usize, Real<T>) {
+fn update_mat_and_best_norm2<T: ComplexField>(
+	A: MatMut<'_, T, usize, usize>,
+	lhs: ColRef<'_, T, usize>,
+	rhs: RowMut<'_, T, usize>,
+	tau_inv: Real<T>,
+	align: usize,
+) -> (usize, Real<T>) {
 	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		let mut A = A;
 
@@ -355,12 +377,23 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 		col_perm_inv[col_perm[j].zx()] = I::truncate(j);
 	}
 
-	(ColPivQrInfo { transposition_count: n_trans }, unsafe { PermRef::new_unchecked(col_perm, col_perm_inv, n) })
+	(
+		ColPivQrInfo {
+			transposition_count: n_trans,
+		},
+		unsafe { PermRef::new_unchecked(col_perm, col_perm_inv, n) },
+	)
 }
 
 /// Computes the size and alignment of required workspace for performing a QR decomposition
 /// with column pivoting.
-pub fn qr_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<ColPivQrParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	blocksize: usize,
+	par: Par,
+	params: Spec<ColPivQrParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let _ = nrows;
 	let _ = ncols;
 	let _ = par;
@@ -430,7 +463,10 @@ mod tests {
 			for n in [2, 3, 4, 8, 16, 24, 32, 128, 255] {
 				let bs = 15;
 
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: n,
@@ -488,7 +524,10 @@ mod tests {
 				let bs = 15;
 				let size = Ord::min(m, n);
 
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: m,

@@ -8,7 +8,15 @@ pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> Resul
 
 #[track_caller]
 #[math]
-pub fn inverse<I: Index, T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, diagonal: DiagRef<'_, T>, subdiagonal: DiagRef<'_, T>, perm: PermRef<'_, I>, par: Par, stack: &mut DynStack) {
+pub fn inverse<I: Index, T: ComplexField>(
+	out: MatMut<'_, T>,
+	L: MatRef<'_, T>,
+	diagonal: DiagRef<'_, T>,
+	subdiagonal: DiagRef<'_, T>,
+	perm: PermRef<'_, I>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = L.nrows();
 	assert!(all(
 		out.nrows() == n,

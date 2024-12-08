@@ -1,18 +1,34 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn solve_lstsq_in_place_scratch<I: Index, T: ComplexField>(qr_nrows: usize, qr_ncols: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_lstsq_in_place_scratch<I: Index, T: ComplexField>(
+	qr_nrows: usize,
+	qr_ncols: usize,
+	qr_blocksize: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> Result<StackReq, SizeOverflow> {
 	StackReq::try_and(
 		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(qr_nrows, qr_ncols, qr_blocksize, rhs_ncols, par)?,
 		crate::perm::permute_rows_in_place_scratch::<I, T>(qr_ncols, rhs_ncols)?,
 	)
 }
 
-pub fn solve_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_in_place_scratch<I: Index, T: ComplexField>(
+	qr_dim: usize,
+	qr_blocksize: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> Result<StackReq, SizeOverflow> {
 	solve_lstsq_in_place_scratch::<I, T>(qr_dim, qr_dim, qr_blocksize, rhs_ncols, par)
 }
 
-pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(
+	qr_dim: usize,
+	qr_blocksize: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> Result<StackReq, SizeOverflow> {
 	StackReq::try_and(
 		linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(qr_dim, qr_blocksize, rhs_ncols, par)?,
 		crate::perm::permute_rows_in_place_scratch::<I, T>(qr_dim, rhs_ncols)?,
@@ -50,7 +66,16 @@ pub fn solve_lstsq_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = 
 	par: Par,
 	stack: &mut DynStack,
 ) {
-	solve_lstsq_in_place_with_conj(Q_basis.canonical(), Q_coeff.canonical(), R.canonical(), col_perm, Conj::get::<C>(), rhs, par, stack);
+	solve_lstsq_in_place_with_conj(
+		Q_basis.canonical(),
+		Q_coeff.canonical(),
+		R.canonical(),
+		col_perm,
+		Conj::get::<C>(),
+		rhs,
+		par,
+		stack,
+	);
 }
 
 #[track_caller]
@@ -90,7 +115,16 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	par: Par,
 	stack: &mut DynStack,
 ) {
-	solve_in_place_with_conj(Q_basis.canonical(), Q_coeff.canonical(), R.canonical(), col_perm, Conj::get::<C>(), rhs, par, stack);
+	solve_in_place_with_conj(
+		Q_basis.canonical(),
+		Q_coeff.canonical(),
+		R.canonical(),
+		col_perm,
+		Conj::get::<C>(),
+		rhs,
+		par,
+		stack,
+	);
 }
 
 #[track_caller]
@@ -133,7 +167,16 @@ pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonica
 	par: Par,
 	stack: &mut DynStack,
 ) {
-	solve_transpose_in_place_with_conj(Q_basis.canonical(), Q_coeff.canonical(), R.canonical(), col_perm, Conj::get::<C>(), rhs, par, stack);
+	solve_transpose_in_place_with_conj(
+		Q_basis.canonical(),
+		Q_coeff.canonical(),
+		R.canonical(),
+		col_perm,
+		Conj::get::<C>(),
+		rhs,
+		par,
+		stack,
+	);
 }
 
 #[cfg(test)]
@@ -179,7 +222,9 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(m, n, 4, Par::Seq, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				factor::qr_in_place_scratch::<usize, c64>(m, n, 4, Par::Seq, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -194,7 +239,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_lstsq_in_place_scratch::<usize, c64>(m, n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_lstsq_in_place_scratch::<usize, c64>(m, n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			let X = X.get(..n, ..);
@@ -211,7 +258,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_lstsq_in_place_scratch::<usize, c64>(m, n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_lstsq_in_place_scratch::<usize, c64>(m, n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			let X = X.get(..n, ..);
@@ -252,7 +301,9 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -267,7 +318,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(&A * &X ~ B);
@@ -282,7 +335,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.conjugate() * &X ~ B);
@@ -297,7 +352,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_transpose_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_transpose_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.transpose() * &X ~ B);
@@ -312,7 +369,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_transpose_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_transpose_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.adjoint() * &X ~ B);

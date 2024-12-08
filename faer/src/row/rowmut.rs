@@ -32,7 +32,9 @@ impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for RowMut<'a, T, Rows, RStride
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		RowRef { trans: self.trans.into_const() }
+		RowRef {
+			trans: self.trans.into_const(),
+		}
 	}
 }
 
@@ -186,12 +188,16 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 
 	#[inline]
 	pub fn as_diagonal(self) -> DiagRef<'a, T, Cols, CStride> {
-		DiagRef { inner: self.trans.into_const() }
+		DiagRef {
+			inner: self.trans.into_const(),
+		}
 	}
 
 	#[inline(always)]
 	pub unsafe fn const_cast(self) -> RowMut<'a, T, Cols, CStride> {
-		RowMut { trans: self.trans.const_cast() }
+		RowMut {
+			trans: self.trans.const_cast(),
+		}
 	}
 
 	#[inline]
@@ -379,7 +385,12 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	{
 		use crate::mat::matmut::SyncCell;
 		use rayon::prelude::*;
-		unsafe { self.as_type::<SyncCell<T>>().into_const().par_partition(count).map(|col| col.const_cast().as_type::<T>()) }
+		unsafe {
+			self.as_type::<SyncCell<T>>()
+				.into_const()
+				.par_partition(count)
+				.map(|col| col.const_cast().as_type::<T>())
+		}
 	}
 
 	pub(crate) unsafe fn as_type<U>(self) -> RowMut<'a, U, Cols, CStride> {
@@ -448,7 +459,10 @@ impl<'a, 'COLS, T> RowMut<'a, T, Dim<'COLS>, ContiguousFwd> {
 
 impl<'COLS, 'a, T, CStride: Stride> RowMut<'a, T, Dim<'COLS>, CStride> {
 	#[inline]
-	pub fn split_cols_with<'LEFT, 'RIGHT>(self, col: Partition<'LEFT, 'RIGHT, 'COLS>) -> (RowRef<'a, T, Dim<'LEFT>, CStride>, RowRef<'a, T, Dim<'RIGHT>, CStride>) {
+	pub fn split_cols_with<'LEFT, 'RIGHT>(
+		self,
+		col: Partition<'LEFT, 'RIGHT, 'COLS>,
+	) -> (RowRef<'a, T, Dim<'LEFT>, CStride>, RowRef<'a, T, Dim<'RIGHT>, CStride>) {
 		let (a, b) = self.split_at_col(col.midpoint());
 		(a.as_col_shape(col.head), b.as_col_shape(col.tail))
 	}
@@ -456,7 +470,10 @@ impl<'COLS, 'a, T, CStride: Stride> RowMut<'a, T, Dim<'COLS>, CStride> {
 
 impl<'COLS, 'a, T, CStride: Stride> RowMut<'a, T, Dim<'COLS>, CStride> {
 	#[inline]
-	pub fn split_cols_with_mut<'LEFT, 'RIGHT>(self, col: Partition<'LEFT, 'RIGHT, 'COLS>) -> (RowMut<'a, T, Dim<'LEFT>, CStride>, RowMut<'a, T, Dim<'RIGHT>, CStride>) {
+	pub fn split_cols_with_mut<'LEFT, 'RIGHT>(
+		self,
+		col: Partition<'LEFT, 'RIGHT, 'COLS>,
+	) -> (RowMut<'a, T, Dim<'LEFT>, CStride>, RowMut<'a, T, Dim<'RIGHT>, CStride>) {
 		let (a, b) = self.split_at_col_mut(col.midpoint());
 		(a.as_col_shape_mut(col.head), b.as_col_shape_mut(col.tail))
 	}

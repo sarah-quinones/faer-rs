@@ -95,7 +95,10 @@ impl visit_mut::VisitMut for MigrationCtx {
 
 			Expr::MethodCall(call) if call.method.to_string().starts_with("faer_") => {
 				if let Some(new_method) = self.0.get(&*call.method.to_string()).map(|x| &**x) {
-					*i = math_expr(&Ident::new(new_method, call.method.span()), std::iter::once(&*call.receiver).chain(call.args.iter()))
+					*i = math_expr(
+						&Ident::new(new_method, call.method.span()),
+						std::iter::once(&*call.receiver).chain(call.args.iter()),
+					)
 				}
 			},
 

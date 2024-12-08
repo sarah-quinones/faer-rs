@@ -57,10 +57,14 @@ fn accum_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: M
 
 	match beta {
 		Accum::Add => {
-			zipped!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(dst, src)| *dst = *dst + *src);
+			zipped!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(dst, src)| {
+				*dst = *dst + *src
+			});
 		},
 		Accum::Replace => {
-			zipped!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(dst, src)| *dst = copy(*src));
+			zipped!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(dst, src)| {
+				*dst = copy(*src)
+			});
 		},
 	}
 }
@@ -143,7 +147,19 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
 		{
 			join_raw(
 				|par| mat_x_lower_impl_unchecked(dst_left.rb_mut(), beta, lhs_left, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par),
-				|par| mat_x_lower_impl_unchecked(dst_right.rb_mut(), beta, lhs_right, rhs_bot_right, rhs_diag, alpha, conj_lhs, conj_rhs, par),
+				|par| {
+					mat_x_lower_impl_unchecked(
+						dst_right.rb_mut(),
+						beta,
+						lhs_right,
+						rhs_bot_right,
+						rhs_diag,
+						alpha,
+						conj_lhs,
+						conj_rhs,
+						par,
+					)
+				},
 				join_parallelism,
 			)
 		};
@@ -186,7 +202,16 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 				copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
-				super::matmul_with_conj(temp_dst.rb_mut(), Accum::Replace, temp_lhs.rb(), conj_lhs, temp_rhs.rb(), conj_rhs, alpha.clone(), par);
+				super::matmul_with_conj(
+					temp_dst.rb_mut(),
+					Accum::Replace,
+					temp_lhs.rb(),
+					conj_lhs,
+					temp_rhs.rb(),
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
 				accum_lower(dst, temp_dst.rb(), skip_diag, beta);
 			}
 		};
@@ -205,8 +230,30 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		// lhs_bot_right × rhs_bot_left  => dst_bot_left  | low × mat => mat | 1/2
 		// lhs_bot_right × rhs_bot_right => dst_bot_right | low × low => low |   X
 
-		lower_x_lower_into_lower_impl_unchecked(dst_top_left, beta, skip_diag, lhs_top_left, lhs_diag, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par);
-		mat_x_lower_impl_unchecked(dst_bot_left.rb_mut(), beta, lhs_bot_left, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par);
+		lower_x_lower_into_lower_impl_unchecked(
+			dst_top_left,
+			beta,
+			skip_diag,
+			lhs_top_left,
+			lhs_diag,
+			rhs_top_left,
+			rhs_diag,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		);
+		mat_x_lower_impl_unchecked(
+			dst_bot_left.rb_mut(),
+			beta,
+			lhs_bot_left,
+			rhs_top_left,
+			rhs_diag,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		);
 		mat_x_lower_impl_unchecked(
 			dst_bot_left.reverse_rows_and_cols_mut().transpose_mut(),
 			Accum::Add,
@@ -218,7 +265,19 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 			conj_lhs,
 			par,
 		);
-		lower_x_lower_into_lower_impl_unchecked(dst_bot_right, beta, skip_diag, lhs_bot_right, lhs_diag, rhs_bot_right, rhs_diag, alpha, conj_lhs, conj_rhs, par)
+		lower_x_lower_into_lower_impl_unchecked(
+			dst_bot_right,
+			beta,
+			skip_diag,
+			lhs_bot_right,
+			lhs_diag,
+			rhs_bot_right,
+			rhs_diag,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		)
 	}
 }
 
@@ -276,12 +335,44 @@ fn upper_x_lower_impl_unchecked<'N, T: ComplexField>(
 
 		join_raw(
 			|par| {
-				super::matmul_with_conj(dst_top_left.rb_mut(), beta, lhs_top_right, conj_lhs, rhs_bot_left, conj_rhs, alpha.clone(), par);
-				upper_x_lower_impl_unchecked(dst_top_left, Accum::Add, lhs_top_left, lhs_diag, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par)
+				super::matmul_with_conj(
+					dst_top_left.rb_mut(),
+					beta,
+					lhs_top_right,
+					conj_lhs,
+					rhs_bot_left,
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
+				upper_x_lower_impl_unchecked(
+					dst_top_left,
+					Accum::Add,
+					lhs_top_left,
+					lhs_diag,
+					rhs_top_left,
+					rhs_diag,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				)
 			},
 			|par| {
 				join_raw(
-					|par| mat_x_lower_impl_unchecked(dst_top_right, beta, lhs_top_right, rhs_bot_right, rhs_diag, alpha, conj_lhs, conj_rhs, par),
+					|par| {
+						mat_x_lower_impl_unchecked(
+							dst_top_right,
+							beta,
+							lhs_top_right,
+							rhs_bot_right,
+							rhs_diag,
+							alpha,
+							conj_lhs,
+							conj_rhs,
+							par,
+						)
+					},
 					|par| {
 						mat_x_lower_impl_unchecked(
 							dst_bot_left.transpose_mut(),
@@ -298,7 +389,18 @@ fn upper_x_lower_impl_unchecked<'N, T: ComplexField>(
 					par,
 				);
 
-				upper_x_lower_impl_unchecked(dst_bot_right, beta, lhs_bot_right, lhs_diag, rhs_bot_right, rhs_diag, alpha, conj_lhs, conj_rhs, par)
+				upper_x_lower_impl_unchecked(
+					dst_bot_right,
+					beta,
+					lhs_bot_right,
+					lhs_diag,
+					rhs_bot_right,
+					rhs_diag,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				)
 			},
 			par,
 		);
@@ -339,7 +441,16 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 				copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
-				super::matmul_with_conj(temp_dst.rb_mut(), Accum::Replace, temp_lhs.rb(), conj_lhs, temp_rhs.rb(), conj_rhs, alpha.clone(), par);
+				super::matmul_with_conj(
+					temp_dst.rb_mut(),
+					Accum::Replace,
+					temp_lhs.rb(),
+					conj_lhs,
+					temp_rhs.rb(),
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
 
 				accum_lower(dst, temp_dst.rb(), skip_diag, beta);
 			}
@@ -362,8 +473,30 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 
 		join_raw(
 			|par| {
-				mat_x_mat_into_lower_impl_unchecked(dst_top_left.rb_mut(), beta, skip_diag, lhs_top_right, rhs_bot_left, alpha, conj_lhs, conj_rhs, par);
-				upper_x_lower_into_lower_impl_unchecked(dst_top_left, Accum::Add, skip_diag, lhs_top_left, lhs_diag, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par)
+				mat_x_mat_into_lower_impl_unchecked(
+					dst_top_left.rb_mut(),
+					beta,
+					skip_diag,
+					lhs_top_right,
+					rhs_bot_left,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				);
+				upper_x_lower_into_lower_impl_unchecked(
+					dst_top_left,
+					Accum::Add,
+					skip_diag,
+					lhs_top_left,
+					lhs_diag,
+					rhs_top_left,
+					rhs_diag,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				)
 			},
 			|par| {
 				mat_x_lower_impl_unchecked(
@@ -377,7 +510,19 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 					conj_lhs,
 					par,
 				);
-				upper_x_lower_into_lower_impl_unchecked(dst_bot_right, beta, skip_diag, lhs_bot_right, lhs_diag, rhs_bot_right, rhs_diag, alpha, conj_lhs, conj_rhs, par)
+				upper_x_lower_into_lower_impl_unchecked(
+					dst_bot_right,
+					beta,
+					skip_diag,
+					lhs_bot_right,
+					lhs_diag,
+					rhs_bot_right,
+					rhs_diag,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				)
 			},
 			par,
 		);
@@ -471,7 +616,16 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 				stack_mat_16x16!(temp_rhs, N, pointer_offset(rhs.as_ptr()), rhs.row_stride(), rhs.col_stride(), T);
 
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
-				super::matmul_with_conj(temp_dst.rb_mut(), Accum::Replace, lhs, conj_lhs, temp_rhs.rb(), conj_rhs, alpha.clone(), par);
+				super::matmul_with_conj(
+					temp_dst.rb_mut(),
+					Accum::Replace,
+					lhs,
+					conj_lhs,
+					temp_rhs.rb(),
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
 				accum_lower(dst, temp_dst.rb(), skip_diag, beta);
 			}
 		};
@@ -492,12 +646,63 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		// lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => low | 1/2
 		// lhs_bot_left  × rhs_top_left  => dst_bot_left  | mat × low => mat | 1/2
 
-		super::matmul_with_conj(dst_bot_left.rb_mut(), beta, lhs_bot_right, conj_lhs, rhs_bot_left, conj_rhs, alpha.clone(), par);
-		mat_x_lower_into_lower_impl_unchecked(dst_bot_right, beta, skip_diag, lhs_bot_right, rhs_bot_right, rhs_diag, alpha, conj_lhs, conj_rhs, par);
+		super::matmul_with_conj(
+			dst_bot_left.rb_mut(),
+			beta,
+			lhs_bot_right,
+			conj_lhs,
+			rhs_bot_left,
+			conj_rhs,
+			alpha.clone(),
+			par,
+		);
+		mat_x_lower_into_lower_impl_unchecked(
+			dst_bot_right,
+			beta,
+			skip_diag,
+			lhs_bot_right,
+			rhs_bot_right,
+			rhs_diag,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		);
 
-		mat_x_lower_into_lower_impl_unchecked(dst_top_left.rb_mut(), beta, skip_diag, lhs_top_left, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par);
-		mat_x_mat_into_lower_impl_unchecked(dst_top_left, Accum::Add, skip_diag, lhs_top_right, rhs_bot_left, alpha, conj_lhs, conj_rhs, par);
-		mat_x_lower_impl_unchecked(dst_bot_left, Accum::Add, lhs_bot_left, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par);
+		mat_x_lower_into_lower_impl_unchecked(
+			dst_top_left.rb_mut(),
+			beta,
+			skip_diag,
+			lhs_top_left,
+			rhs_top_left,
+			rhs_diag,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		);
+		mat_x_mat_into_lower_impl_unchecked(
+			dst_top_left,
+			Accum::Add,
+			skip_diag,
+			lhs_top_right,
+			rhs_bot_left,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		);
+		mat_x_lower_impl_unchecked(
+			dst_bot_left,
+			Accum::Add,
+			lhs_bot_left,
+			rhs_top_left,
+			rhs_diag,
+			alpha,
+			conj_lhs,
+			conj_rhs,
+			par,
+		);
 	}
 }
 
@@ -780,7 +985,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 
 	let skip_diag = matches!(
 		acc_structure,
-		BlockStructure::StrictTriangularLower | BlockStructure::StrictTriangularUpper | BlockStructure::UnitTriangularLower | BlockStructure::UnitTriangularUpper
+		BlockStructure::StrictTriangularLower
+			| BlockStructure::StrictTriangularUpper
+			| BlockStructure::UnitTriangularLower
+			| BlockStructure::UnitTriangularUpper
 	);
 	let lhs_diag = lhs_structure.diag_kind();
 	let rhs_diag = rhs_structure.diag_kind();
@@ -792,7 +1000,17 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			debug_assert!(rhs_structure.is_lower());
 
 			if lhs_structure.is_dense() {
-				mat_x_lower_impl_unchecked(acc.as_shape_mut(M, N), beta, lhs.as_shape(M, N), rhs.as_shape(N, N), rhs_diag, alpha, conj_lhs, conj_rhs, par)
+				mat_x_lower_impl_unchecked(
+					acc.as_shape_mut(M, N),
+					beta,
+					lhs.as_shape(M, N),
+					rhs.as_shape(N, N),
+					rhs_diag,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				)
 			} else if lhs_structure.is_lower() {
 				clear_upper(acc.rb_mut(), true);
 				lower_x_lower_into_lower_impl_unchecked(
@@ -810,12 +1028,33 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 				);
 			} else {
 				debug_assert!(lhs_structure.is_upper());
-				upper_x_lower_impl_unchecked(acc.as_shape_mut(N, N), beta, lhs.as_shape(N, N), lhs_diag, rhs.as_shape(N, N), rhs_diag, alpha, conj_lhs, conj_rhs, par)
+				upper_x_lower_impl_unchecked(
+					acc.as_shape_mut(N, N),
+					beta,
+					lhs.as_shape(N, N),
+					lhs_diag,
+					rhs.as_shape(N, N),
+					rhs_diag,
+					alpha,
+					conj_lhs,
+					conj_rhs,
+					par,
+				)
 			}
 		}
 	} else if acc_structure.is_lower() {
 		if lhs_structure.is_dense() && rhs_structure.is_dense() {
-			mat_x_mat_into_lower_impl_unchecked(acc.as_shape_mut(N, N), beta, skip_diag, lhs.as_shape(N, K), rhs.as_shape(K, N), alpha, conj_lhs, conj_rhs, par)
+			mat_x_mat_into_lower_impl_unchecked(
+				acc.as_shape_mut(N, N),
+				beta,
+				skip_diag,
+				lhs.as_shape(N, K),
+				rhs.as_shape(K, N),
+				alpha,
+				conj_lhs,
+				conj_rhs,
+				par,
+			)
 		} else {
 			debug_assert!(rhs_structure.is_lower());
 			if lhs_structure.is_dense() {

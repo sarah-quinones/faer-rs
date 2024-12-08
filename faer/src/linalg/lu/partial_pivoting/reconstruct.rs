@@ -8,7 +8,14 @@ pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize
 }
 
 #[track_caller]
-pub fn reconstruct<I: Index, T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, U: MatRef<'_, T>, row_perm: PermRef<'_, I>, par: Par, stack: &mut DynStack) {
+pub fn reconstruct<I: Index, T: ComplexField>(
+	out: MatMut<'_, T>,
+	L: MatRef<'_, T>,
+	U: MatRef<'_, T>,
+	row_perm: PermRef<'_, I>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let m = L.nrows();
 	let n = U.ncols();
 	let size = Ord::min(m, n);
@@ -103,7 +110,9 @@ mod tests {
 				LU.as_ref(),
 				perm,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(m, n, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					reconstruct::reconstruct_scratch::<usize, c64>(m, n, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A_rec ~ A);

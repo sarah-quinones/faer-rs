@@ -10,7 +10,11 @@ use matref::MatRef;
 
 #[inline]
 pub fn align_for(size: usize, align: usize, needs_drop: bool) -> usize {
-	if needs_drop || !size.is_power_of_two() { align } else { Ord::max(align, 64) }
+	if needs_drop || !size.is_power_of_two() {
+		align
+	} else {
+		Ord::max(align, 64)
+	}
 }
 
 // CURSED: currently avoiding inlining to get noalias annotations in llvm
@@ -25,7 +29,10 @@ unsafe fn noalias_annotate<T, Rows: Shape, Cols: Shape>(
 	let ptr = iter.as_mut_ptr();
 	let iter = core::slice::from_raw_parts_mut(ptr, new_nrows.unbound() - old_nrows.unbound());
 
-	let mut guard = DropCol { ptr: ptr as *mut T, nrows: 0 };
+	let mut guard = DropCol {
+		ptr: ptr as *mut T,
+		nrows: 0,
+	};
 	for i in Rows::indices(old_nrows, new_nrows) {
 		let ptr = iter.as_mut_ptr().add(i.unbound()) as *mut T;
 		ptr.write((*f)(i, j));
@@ -78,7 +85,9 @@ impl<T> RawMatUnit<T> {
 		let align = align_for(size, prev_align, core::mem::needs_drop::<T>());
 
 		if align > size {
-			row_capacity = row_capacity.checked_next_multiple_of(align / size).ok_or(TryReserveError::CapacityOverflow)?;
+			row_capacity = row_capacity
+				.checked_next_multiple_of(align / size)
+				.ok_or(TryReserveError::CapacityOverflow)?;
 		}
 
 		let size = size
@@ -119,7 +128,12 @@ impl<T> Drop for RawMatUnit<T> {
 	#[inline]
 	fn drop(&mut self) {
 		if self.layout.size_bytes() > 0 {
-			unsafe { alloc::alloc::dealloc(self.ptr.as_ptr() as *mut u8, Layout::from_size_align_unchecked(self.layout.size_bytes(), self.layout.align_bytes())) };
+			unsafe {
+				alloc::alloc::dealloc(
+					self.ptr.as_ptr() as *mut u8,
+					Layout::from_size_align_unchecked(self.layout.size_bytes(), self.layout.align_bytes()),
+				)
+			};
 		}
 	}
 }
@@ -179,7 +193,16 @@ impl<T> RawMat<T> {
 			let new = new.as_ptr() as *mut u8;
 			let old = old.as_ptr() as *const u8;
 
-			unsafe { move_mat(new, old, nrows * size, ncols, (new_row_capacity * size) as isize, (old_row_capacity * size) as isize) };
+			unsafe {
+				move_mat(
+					new,
+					old,
+					nrows * size,
+					ncols,
+					(new_row_capacity * size) as isize,
+					(old_row_capacity * size) as isize,
+				)
+			};
 		};
 
 		*self = new;
@@ -299,7 +322,13 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		for j in Cols::indices(old_ncols, new_ncols) {
 			let old = ptr;
 
-			noalias_annotate::<T, Rows, Cols>(core::slice::from_raw_parts_mut(ptr as *mut _, new_nrows.unbound() - old_nrows.unbound()), new_nrows, old_nrows, f, j);
+			noalias_annotate::<T, Rows, Cols>(
+				core::slice::from_raw_parts_mut(ptr as *mut _, new_nrows.unbound() - old_nrows.unbound()),
+				new_nrows,
+				old_nrows,
+				f,
+				j,
+			);
 
 			col_guard.ncols += 1;
 			ptr = old.wrapping_add(stride);
@@ -339,7 +368,11 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	where
 		T: ComplexField,
 	{
-		Self::from_fn(nrows, ncols, |i, j| if i.unbound() == j.unbound() { T::one_impl() } else { T::zero_impl() })
+		Self::from_fn(
+			nrows,
+			ncols,
+			|i, j| if i.unbound() == j.unbound() { T::one_impl() } else { T::zero_impl() },
+		)
 	}
 
 	#[inline]
@@ -351,7 +384,8 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	pub fn try_reserve(&mut self, new_row_capacity: usize, new_col_capacity: usize) -> Result<(), TryReserveError> {
-		self.raw.try_reserve(self.nrows.unbound(), self.ncols.unbound(), new_row_capacity, new_col_capacity)
+		self.raw
+			.try_reserve(self.nrows.unbound(), self.ncols.unbound(), new_row_capacity, new_col_capacity)
 	}
 
 	#[track_caller]
@@ -376,12 +410,28 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			let mut f = f;
 
 			if new_nrows > this.nrows {
-				Self::init_with(this.raw.ptr.as_ptr(), this.nrows.end(), Cols::start(), new_nrows.end(), this.ncols.end(), this.raw.row_capacity, &mut f);
+				Self::init_with(
+					this.raw.ptr.as_ptr(),
+					this.nrows.end(),
+					Cols::start(),
+					new_nrows.end(),
+					this.ncols.end(),
+					this.raw.row_capacity,
+					&mut f,
+				);
 				this.nrows = new_nrows;
 			}
 
 			if new_ncols > this.ncols {
-				Self::init_with(this.raw.ptr.as_ptr(), Rows::start(), this.ncols.end(), new_nrows.end(), new_ncols.end(), this.raw.row_capacity, &mut f);
+				Self::init_with(
+					this.raw.ptr.as_ptr(),
+					Rows::start(),
+					this.ncols.end(),
+					new_nrows.end(),
+					new_ncols.end(),
+					this.raw.row_capacity,
+					&mut f,
+				);
 				this.ncols = new_ncols;
 			}
 		};
@@ -443,7 +493,15 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[inline]
 	pub fn as_ref(&self) -> MatRef<'_, T, Rows, Cols> {
-		unsafe { MatRef::from_raw_parts(self.raw.ptr.as_ptr() as *const T, self.nrows, self.ncols, 1, self.raw.row_capacity as isize) }
+		unsafe {
+			MatRef::from_raw_parts(
+				self.raw.ptr.as_ptr() as *const T,
+				self.nrows,
+				self.ncols,
+				1,
+				self.raw.row_capacity as isize,
+			)
+		}
 	}
 
 	#[inline]
@@ -520,7 +578,16 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
-	pub fn split_at(&self, row: IdxInc<Rows>, col: IdxInc<Cols>) -> (MatRef<'_, T, usize, usize>, MatRef<'_, T, usize, usize>, MatRef<'_, T, usize, usize>, MatRef<'_, T, usize, usize>) {
+	pub fn split_at(
+		&self,
+		row: IdxInc<Rows>,
+		col: IdxInc<Cols>,
+	) -> (
+		MatRef<'_, T, usize, usize>,
+		MatRef<'_, T, usize, usize>,
+		MatRef<'_, T, usize, usize>,
+		MatRef<'_, T, usize, usize>,
+	) {
 		self.as_ref().split_at(row, col)
 	}
 
@@ -748,7 +815,11 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[track_caller]
 	#[inline]
-	pub unsafe fn get_unchecked<RowRange, ColRange>(&self, row: RowRange, col: ColRange) -> <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
+	pub unsafe fn get_unchecked<RowRange, ColRange>(
+		&self,
+		row: RowRange,
+		col: ColRange,
+	) -> <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
 	where
 		for<'a> MatRef<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
 	{
@@ -766,7 +837,11 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[track_caller]
 	#[inline]
-	pub unsafe fn get_mut_unchecked<RowRange, ColRange>(&mut self, row: RowRange, col: ColRange) -> <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
+	pub unsafe fn get_mut_unchecked<RowRange, ColRange>(
+		&mut self,
+		row: RowRange,
+		col: ColRange,
+	) -> <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
 	where
 		for<'a> MatMut<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
 	{
@@ -809,7 +884,16 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
-	pub fn split_at_mut(&mut self, row: IdxInc<Rows>, col: IdxInc<Cols>) -> (MatMut<'_, T, usize, usize>, MatMut<'_, T, usize, usize>, MatMut<'_, T, usize, usize>, MatMut<'_, T, usize, usize>) {
+	pub fn split_at_mut(
+		&mut self,
+		row: IdxInc<Rows>,
+		col: IdxInc<Cols>,
+	) -> (
+		MatMut<'_, T, usize, usize>,
+		MatMut<'_, T, usize, usize>,
+		MatMut<'_, T, usize, usize>,
+		MatMut<'_, T, usize, usize>,
+	) {
 		self.as_mut().split_at_mut(row, col)
 	}
 

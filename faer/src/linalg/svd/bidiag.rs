@@ -3,7 +3,12 @@ use crate::internal_prelude::*;
 use linalg::householder;
 use linalg::matmul::{dot, matmul};
 
-pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<BidiagParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn bidiag_in_place_scratch<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+	params: Spec<BidiagParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	StackReq::try_all_of([temp_mat_scratch::<T>(nrows, 1)?, temp_mat_scratch::<T>(ncols, 1)?])
@@ -29,7 +34,14 @@ impl<T: ComplexField> Auto<T> for BidiagParams {
 #[azucar::index]
 #[azucar::reborrow]
 #[math]
-pub fn bidiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H_left: MatMut<'_, T>, H_right: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<BidiagParams, T>) {
+pub fn bidiag_in_place<T: ComplexField>(
+	A: MatMut<'_, T>,
+	H_left: MatMut<'_, T>,
+	H_right: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+	params: Spec<BidiagParams, T>,
+) {
 	let params = params.into_inner();
 	let m = A.nrows();
 	let n = A.ncols();
@@ -206,11 +218,24 @@ pub fn bidiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H_left: MatMut<'_, T>,
 #[azucar::index]
 #[azucar::reborrow]
 #[math]
-fn bidiag_fused_op<T: ComplexField>(A22: MatMut<'_, T>, u: ColRef<'_, T>, up: ColRef<'_, T>, z: ColRef<'_, T>, y: RowMut<'_, T>, vp: RowRef<'_, T>, align: usize) {
+fn bidiag_fused_op<T: ComplexField>(
+	A22: MatMut<'_, T>,
+	u: ColRef<'_, T>,
+	up: ColRef<'_, T>,
+	z: ColRef<'_, T>,
+	y: RowMut<'_, T>,
+	vp: RowRef<'_, T>,
+	align: usize,
+) {
 	let mut A22 = A22;
 
 	if const { T::SIMD_CAPABILITIES.is_simd() } {
-		if let (Some(A22), Some(u), Some(up), Some(z)) = ((&mut A22).try_as_col_major_mut(), u.try_as_col_major(), up.try_as_col_major(), z.try_as_col_major()) {
+		if let (Some(A22), Some(u), Some(up), Some(z)) = (
+			(&mut A22).try_as_col_major_mut(),
+			u.try_as_col_major(),
+			up.try_as_col_major(),
+			z.try_as_col_major(),
+		) {
 			bidiag_fused_op_simd(A22, u, up, z, y, vp, align);
 		} else {
 			bidiag_fused_op_fallback(A22, u, up, z, y, vp);
@@ -223,7 +248,14 @@ fn bidiag_fused_op<T: ComplexField>(A22: MatMut<'_, T>, u: ColRef<'_, T>, up: Co
 #[azucar::index]
 #[azucar::reborrow]
 #[math]
-fn bidiag_fused_op_fallback<T: ComplexField>(A22: MatMut<'_, T>, u: ColRef<'_, T>, up: ColRef<'_, T>, z: ColRef<'_, T>, y: RowMut<'_, T>, vp: RowRef<'_, T>) {
+fn bidiag_fused_op_fallback<T: ComplexField>(
+	A22: MatMut<'_, T>,
+	u: ColRef<'_, T>,
+	up: ColRef<'_, T>,
+	z: ColRef<'_, T>,
+	y: RowMut<'_, T>,
+	vp: RowRef<'_, T>,
+) {
 	let mut A22 = A22;
 	let mut y = y;
 
@@ -263,7 +295,15 @@ fn bidiag_fused_op_simd<'M, 'N, T: ComplexField>(
 
 		#[inline(always)]
 		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-			let Self { mut A22, u, up, z, mut y, vp, align } = self;
+			let Self {
+				mut A22,
+				u,
+				up,
+				z,
+				mut y,
+				vp,
+				align,
+			} = self;
 
 			let m = A22.nrows();
 			let n = A22.ncols();

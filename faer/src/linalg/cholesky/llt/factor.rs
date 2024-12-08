@@ -61,7 +61,13 @@ pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: 
 }
 
 #[math]
-pub fn cholesky_in_place<T: ComplexField>(A: MatMut<'_, T>, regularization: LltRegularization<T>, par: Par, stack: &mut DynStack, params: Spec<LltParams, T>) -> Result<LltInfo, LltError> {
+pub fn cholesky_in_place<T: ComplexField>(
+	A: MatMut<'_, T>,
+	regularization: LltRegularization<T>,
+	par: Par,
+	stack: &mut DynStack,
+	params: Spec<LltParams, T>,
+) -> Result<LltInfo, LltError> {
 	let params = params.into_inner();
 	let N = A.nrows();
 	let mut D = unsafe { temp_mat_uninit(N, 1, stack).0 };
@@ -79,7 +85,9 @@ pub fn cholesky_in_place<T: ComplexField>(A: MatMut<'_, T>, regularization: LltR
 		None,
 		par,
 	) {
-		Ok(count) => Ok(LltInfo { dynamic_regularization_count: count }),
+		Ok(count) => Ok(LltInfo {
+			dynamic_regularization_count: count,
+		}),
 		Err(index) => Err(LltError::NonPositivePivot { index }),
 	}
 }

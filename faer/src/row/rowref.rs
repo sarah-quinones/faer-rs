@@ -99,7 +99,12 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 
 		let top = self.as_ptr();
 		let bot = self.ptr_at(col);
-		unsafe { (RowRef::from_raw_parts(top, col.unbound(), rs), RowRef::from_raw_parts(bot, self.ncols().unbound() - col.unbound(), rs)) }
+		unsafe {
+			(
+				RowRef::from_raw_parts(top, col.unbound(), rs),
+				RowRef::from_raw_parts(bot, self.ncols().unbound() - col.unbound(), rs),
+			)
+		}
 	}
 
 	#[inline(always)]
@@ -112,7 +117,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	where
 		T: Conjugate,
 	{
-		RowRef { trans: self.trans.conjugate() }
+		RowRef {
+			trans: self.trans.conjugate(),
+		}
 	}
 
 	#[inline(always)]
@@ -120,7 +127,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	where
 		T: Conjugate,
 	{
-		RowRef { trans: self.trans.canonical() }
+		RowRef {
+			trans: self.trans.canonical(),
+		}
 	}
 
 	#[inline(always)]
@@ -162,7 +171,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 
 	#[inline]
 	pub fn reverse_cols(self) -> RowRef<'a, T, Cols, CStride::Rev> {
-		RowRef { trans: self.trans.reverse_rows() }
+		RowRef {
+			trans: self.trans.reverse_rows(),
+		}
 	}
 
 	#[inline]
@@ -236,7 +247,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 
 	#[inline(always)]
 	pub unsafe fn const_cast(self) -> RowMut<'a, T, Cols, CStride> {
-		RowMut { trans: self.trans.const_cast() }
+		RowMut {
+			trans: self.trans.const_cast(),
+		}
 	}
 
 	#[inline]
@@ -292,7 +305,10 @@ impl<'a, 'ROWS, T> RowRef<'a, T, Dim<'ROWS>, ContiguousFwd> {
 
 impl<'COLS, 'a, T, CStride: Stride> RowRef<'a, T, Dim<'COLS>, CStride> {
 	#[inline]
-	pub fn split_cols_with<'LEFT, 'RIGHT>(self, col: Partition<'LEFT, 'RIGHT, 'COLS>) -> (RowRef<'a, T, Dim<'LEFT>, CStride>, RowRef<'a, T, Dim<'RIGHT>, CStride>) {
+	pub fn split_cols_with<'LEFT, 'RIGHT>(
+		self,
+		col: Partition<'LEFT, 'RIGHT, 'COLS>,
+	) -> (RowRef<'a, T, Dim<'LEFT>, CStride>, RowRef<'a, T, Dim<'RIGHT>, CStride>) {
 		let (a, b) = self.split_at_col(col.midpoint());
 		(a.as_col_shape(col.head), b.as_col_shape(col.tail))
 	}
@@ -301,7 +317,9 @@ impl<'COLS, 'a, T, CStride: Stride> RowRef<'a, T, Dim<'COLS>, CStride> {
 impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug for RowRef<'_, T, Cols, CStride> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		fn imp<T: core::fmt::Debug>(f: &mut core::fmt::Formatter<'_>, this: RowRef<'_, T, Dim<'_>>) -> core::fmt::Result {
-			f.debug_list().entries(this.ncols().indices().map(|j| crate::hacks::hijack_debug(this.at(j)))).finish()
+			f.debug_list()
+				.entries(this.ncols().indices().map(|j| crate::hacks::hijack_debug(this.at(j))))
+				.finish()
 		}
 
 		with_dim!(N, self.ncols().unbound());

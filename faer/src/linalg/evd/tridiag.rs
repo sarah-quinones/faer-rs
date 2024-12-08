@@ -464,7 +464,19 @@ pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par
 					match par {
 						Par::Seq => {
 							let mut z2 = (&mut z2).col_mut(0);
-							tridiag_fused_op(&mut A22, &mut y2, &mut z2, &w2, &w2, &u2, &u2, &x2, &x2, from_real(tau_inv), simd_align(k1 + 1));
+							tridiag_fused_op(
+								&mut A22,
+								&mut y2,
+								&mut z2,
+								&w2,
+								&w2,
+								&u2,
+								&u2,
+								&x2,
+								&x2,
+								from_real(tau_inv),
+								simd_align(k1 + 1),
+							);
 							z!(&mut y2, &mut z2).for_each(|uz!(y, z)| *y = *y + *z);
 						},
 						#[cfg(feature = "rayon")]
@@ -508,7 +520,19 @@ pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par
 										let u2 = (&x2).subrows(first, ncols);
 										let v2 = (&x2).subrows(first, nrows);
 
-										tridiag_fused_op(&mut A, y2, &mut z2, ry2, rz2, u0, u1, u2, v2, copy(f), n.next_power_of_two() - (k1 + 1) - first);
+										tridiag_fused_op(
+											&mut A,
+											y2,
+											&mut z2,
+											ry2,
+											rz2,
+											u0,
+											u1,
+											u2,
+											v2,
+											copy(f),
+											n.next_power_of_two() - (k1 + 1) - first,
+										);
 									}
 
 									(&mut z2).subrows_mut(0, first).fill(zero());
@@ -549,7 +573,10 @@ pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par
 
 				*y1 = mul_real(*a11 + dot::inner_prod((&A21).transpose(), Conj::Yes, &x2, Conj::No), tau_inv);
 
-				let b = mul_real(mul_pow2(*y1 + dot::inner_prod((&x2).transpose(), Conj::Yes, &y2, Conj::No), from_f64(0.5)), tau_inv);
+				let b = mul_real(
+					mul_pow2(*y1 + dot::inner_prod((&x2).transpose(), Conj::Yes, &y2, Conj::No), from_f64(0.5)),
+					tau_inv,
+				);
 				*y1 = *y1 - b;
 				z!(&mut y2, &x2).for_each(|uz!(y, u)| {
 					*y = *y - b * *u;

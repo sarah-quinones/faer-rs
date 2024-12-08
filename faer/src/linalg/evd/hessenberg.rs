@@ -26,12 +26,20 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 	}
 }
 
-pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn hessenberg_in_place_scratch<T: ComplexField>(
+	dim: usize,
+	blocksize: usize,
+	par: Par,
+	params: Spec<HessenbergParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let params = params.into_inner();
 	let _ = par;
 	let n = dim;
 	if n * n < params.blocking_threshold {
-		StackReq::try_any_of([StackReq::try_all_of([temp_mat_scratch::<T>(n, 1)?.try_array(3)?, temp_mat_scratch::<T>(n, par.degree())?])?])
+		StackReq::try_any_of([StackReq::try_all_of([
+			temp_mat_scratch::<T>(n, 1)?.try_array(3)?,
+			temp_mat_scratch::<T>(n, par.degree())?,
+		])?])
 	} else {
 		StackReq::try_all_of([
 			temp_mat_scratch::<T>(n, blocksize)?,
@@ -387,7 +395,10 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 
 			let u2 = x2;
 
-			let b = mul_real(mul_pow2(dot::inner_prod(u2.rb().transpose(), Conj::Yes, z2.rb(), Conj::No), from_f64(0.5)), tau_inv);
+			let b = mul_real(
+				mul_pow2(dot::inner_prod(u2.rb().transpose(), Conj::Yes, z2.rb(), Conj::No), from_f64(0.5)),
+				tau_inv,
+			);
 			z!(&mut y2, u2.transpose()).for_each(|uz!(y, u)| *y = mul_real(*y - b * conj(*u), tau_inv));
 			z!(&mut z2, u2).for_each(|uz!(z, u)| *z = mul_real(*z - b * *u, tau_inv));
 
@@ -395,7 +406,14 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 			z!(&mut A12, u2.transpose()).for_each(|uz!(a, u)| *a = *a - dot * conj(u));
 
 			matmul(w0.rb_mut().col_mut(0).as_mat_mut(), Accum::Replace, A02.rb(), u2.as_mat(), one(), par);
-			matmul(A02.rb_mut(), Accum::Add, w0.rb().col(0).as_mat(), u2.adjoint().as_mat(), -from_real::<T>(&tau_inv), par);
+			matmul(
+				A02.rb_mut(),
+				Accum::Add,
+				w0.rb().col(0).as_mat(),
+				u2.adjoint().as_mat(),
+				-from_real::<T>(&tau_inv),
+				par,
+			);
 
 			A21[0] = beta;
 		}
@@ -423,7 +441,15 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 }
 
 #[math]
-fn hessenberg_gqvdg_unblocked<T: ComplexField>(A: MatMut<'_, T>, Z: MatMut<'_, T>, H: MatMut<'_, T>, beta: ColMut<'_, T>, par: Par, stack: &mut DynStack, params: HessenbergParams) {
+fn hessenberg_gqvdg_unblocked<T: ComplexField>(
+	A: MatMut<'_, T>,
+	Z: MatMut<'_, T>,
+	H: MatMut<'_, T>,
+	beta: ColMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+	params: HessenbergParams,
+) {
 	let n = A.nrows();
 	let b = H.nrows();
 	let mut A = A;
@@ -680,7 +706,13 @@ mod tests {
 
 			let mut V = A.clone();
 			let mut V = V.as_mut();
-			hessenberg_rearranged_unblocked(V.rb_mut(), H.as_mut(), Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), auto!(f64));
+			hessenberg_rearranged_unblocked(
+				V.rb_mut(),
+				H.as_mut(),
+				Par::Seq,
+				DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
+				auto!(f64),
+			);
 
 			let mut A = A.clone();
 			let mut A = A.as_mut();
@@ -743,7 +775,11 @@ mod tests {
 					H.as_mut(),
 					par,
 					DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
-					HessenbergParams { par_threshold: 0, ..auto!(c64) }.into(),
+					HessenbergParams {
+						par_threshold: 0,
+						..auto!(c64)
+					}
+					.into(),
 				);
 
 				let mut A = A.clone();
@@ -809,7 +845,11 @@ mod tests {
 					H.as_mut(),
 					par,
 					DynStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]),
-					HessenbergParams { par_threshold: 0, ..auto!(c64) }.into(),
+					HessenbergParams {
+						par_threshold: 0,
+						..auto!(c64)
+					}
+					.into(),
 				);
 
 				let mut A = A.clone();

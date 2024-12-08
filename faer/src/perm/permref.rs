@@ -84,7 +84,11 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 			}
 		}
 
-		check(I::canonicalize(N::cast_idx_slice(forward)), I::canonicalize(N::cast_idx_slice(inverse)), dim.unbound());
+		check(
+			I::canonicalize(N::cast_idx_slice(forward)),
+			I::canonicalize(N::cast_idx_slice(inverse)),
+			dim.unbound(),
+		);
 		Self { forward, inverse }
 	}
 
@@ -97,7 +101,11 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 	#[inline]
 	#[track_caller]
 	pub unsafe fn new_unchecked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], dim: N) -> Self {
-		assert!(all(dim.unbound() <= I::Signed::MAX.zx(), forward.len() == dim.unbound(), inverse.len() == dim.unbound(),));
+		assert!(all(
+			dim.unbound() <= I::Signed::MAX.zx(),
+			forward.len() == dim.unbound(),
+			inverse.len() == dim.unbound(),
+		));
 		Self { forward, inverse }
 	}
 

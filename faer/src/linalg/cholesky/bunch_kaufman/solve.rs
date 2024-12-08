@@ -44,7 +44,14 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	let n = L.nrows();
 	let k = rhs.ncols();
 
-	assert!(all(L.nrows() == n, L.ncols() == n, rhs.nrows() == n, diagonal.dim() == n, subdiagonal.dim() == n, perm.len() == n));
+	assert!(all(
+		L.nrows() == n,
+		L.ncols() == n,
+		rhs.nrows() == n,
+		diagonal.dim() == n,
+		subdiagonal.dim() == n,
+		perm.len() == n
+	));
 
 	let a = L;
 	let par = par;
@@ -110,5 +117,14 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	par: Par,
 	stack: &mut DynStack,
 ) {
-	solve_in_place_with_conj(L.canonical(), diagonal.canonical(), subdiagonal.canonical(), Conj::get::<C>(), perm, rhs, par, stack);
+	solve_in_place_with_conj(
+		L.canonical(),
+		diagonal.canonical(),
+		subdiagonal.canonical(),
+		Conj::get::<C>(),
+		perm,
+		rhs,
+		par,
+		stack,
+	);
 }

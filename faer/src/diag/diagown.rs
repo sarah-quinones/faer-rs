@@ -41,7 +41,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	#[inline]
 	#[track_caller]
 	pub fn as_shape<D: Shape>(&self, len: D) -> DiagRef<'_, T, D> {
-		DiagRef { inner: self.inner.as_row_shape(len) }
+		DiagRef {
+			inner: self.inner.as_row_shape(len),
+		}
 	}
 
 	#[inline]
@@ -59,7 +61,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: Conjugate,
 	{
-		DiagRef { inner: self.inner.conjugate() }
+		DiagRef {
+			inner: self.inner.conjugate(),
+		}
 	}
 
 	#[inline]
@@ -67,7 +71,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: Conjugate,
 	{
-		DiagRef { inner: self.inner.canonical() }
+		DiagRef {
+			inner: self.inner.canonical(),
+		}
 	}
 
 	#[inline]
@@ -83,7 +89,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: Conjugate,
 	{
-		DiagMut { inner: self.inner.conjugate_mut() }
+		DiagMut {
+			inner: self.inner.conjugate_mut(),
+		}
 	}
 
 	#[inline]
@@ -91,7 +99,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: Conjugate,
 	{
-		DiagMut { inner: self.inner.canonical_mut() }
+		DiagMut {
+			inner: self.inner.canonical_mut(),
+		}
 	}
 
 	#[inline]
@@ -120,7 +130,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: Clone,
 	{
-		Self { inner: Col::full(dim, value) }
+		Self {
+			inner: Col::full(dim, value),
+		}
 	}
 
 	#[inline]

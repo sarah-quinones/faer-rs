@@ -208,7 +208,8 @@ fn lahqr<T: ComplexField>(want_t: bool, A: MatMut<'_, T>, Z: Option<MatMut<'_, T
 				(A[(i + 1, i - 1)] = zero());
 			}
 
-			rot.adjoint().apply_on_the_left_in_place(A.rb_mut().subcols_mut(i, istop_m - i).two_rows_mut(i, i + 1));
+			rot.adjoint()
+				.apply_on_the_left_in_place(A.rb_mut().subcols_mut(i, istop_m - i).two_rows_mut(i, i + 1));
 
 			rot.apply_on_the_right_in_place(A.rb_mut().get_mut(istart_m..Ord::min(i + 3, istop), ..).two_cols_mut(i, i + 1));
 
@@ -246,7 +247,10 @@ fn lahqr_shiftcolumn<T: ComplexField>(h: MatRef<'_, T>, v: ColMut<'_, T>, s1: T,
 			let s_inv = recip(s);
 			let h10s = mul_real(h[(1, 0)], s_inv);
 			let h20s = mul_real(h[(2, 0)], s_inv);
-			v.write(0, (h[(0, 0)] - s1) * mul_real(h[(0, 0)] - s2, s_inv) + h[(0, 1)] * h10s + h[(0, 2)] * h20s);
+			v.write(
+				0,
+				(h[(0, 0)] - s1) * mul_real(h[(0, 0)] - s2, s_inv) + h[(0, 1)] * h10s + h[(0, 2)] * h20s,
+			);
 			v.write(1, h10s * (h[(0, 0)] + h[(1, 1)] - s1 - s2) + h[(1, 2)] * h20s);
 			v.write(2, h20s * (h[(0, 0)] + h[(2, 2)] - s1 - s2) + h10s * h[(2, 1)]);
 		}
@@ -534,7 +538,8 @@ fn schur_swap<T: ComplexField>(mut a: MatMut<'_, T>, q: Option<MatMut<'_, T>>, j
 	a.write(j1, j1, t00);
 	a.write(j0, j0, t11);
 	if j2 < n {
-		rot.adjoint().apply_on_the_left_in_place(a.rb_mut().get_mut(.., j2..).two_rows_mut(j0, j1));
+		rot.adjoint()
+			.apply_on_the_left_in_place(a.rb_mut().get_mut(.., j2..).two_rows_mut(j0, j1));
 	}
 	if j0 > 0 {
 		rot.apply_on_the_right_in_place(a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1));
@@ -765,7 +770,16 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
 	}
 }
 #[math]
-fn multishift_qr_sweep<T: ComplexField>(want_t: bool, a: MatMut<'_, T>, mut z: Option<MatMut<'_, T>>, s: ColMut<'_, T>, ilo: usize, ihi: usize, par: Par, stack: &mut DynStack) {
+fn multishift_qr_sweep<T: ComplexField>(
+	want_t: bool,
+	a: MatMut<'_, T>,
+	mut z: Option<MatMut<'_, T>>,
+	s: ColMut<'_, T>,
+	ilo: usize,
+	ihi: usize,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = a.nrows();
 	assert!(n >= 12);
 	let (mut v, _stack) = temp_mat_zeroed(3, s.nrows() / 2, stack);
@@ -779,8 +793,16 @@ fn multishift_qr_sweep<T: ComplexField>(want_t: bool, a: MatMut<'_, T>, mut z: O
 	let n_bulges = n_shifts / 2;
 	let n_block_desired = Ord::min(2 * n_shifts, n_block_max);
 	let mut u = unsafe { a.rb().submatrix(n - n_block_desired, 0, n_block_desired, n_block_desired).const_cast() };
-	let mut wh = unsafe { a.rb().submatrix(n - n_block_desired, n_block_desired, n_block_desired, n - 2 * n_block_desired - 3).const_cast() };
-	let mut wv = unsafe { a.rb().submatrix(n_block_desired + 3, 0, n - 2 * n_block_desired - 3, n_block_desired).const_cast() };
+	let mut wh = unsafe {
+		a.rb()
+			.submatrix(n - n_block_desired, n_block_desired, n_block_desired, n - 2 * n_block_desired - 3)
+			.const_cast()
+	};
+	let mut wv = unsafe {
+		a.rb()
+			.submatrix(n_block_desired + 3, 0, n - 2 * n_block_desired - 3, n_block_desired)
+			.const_cast()
+	};
 	let mut a = unsafe { a.rb().const_cast() };
 	let mut i_pos_block = 0;
 	introduce_bulges(
@@ -1110,10 +1132,19 @@ fn move_bulges_down<T: ComplexField>(
 				let i1 = (i_pos - *i_pos_block) - (i_pos_last + 2 - *i_pos_block - n_shifts);
 				let i2 = Ord::min(u2.nrows(), (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3);
 				for j in i1..i2 {
-					let sum = u2.read(j, i_pos - *i_pos_block) + v1 * u2.read(j, i_pos - *i_pos_block + 1) + v2 * u2.read(j, i_pos - *i_pos_block + 2);
+					let sum =
+						u2.read(j, i_pos - *i_pos_block) + v1 * u2.read(j, i_pos - *i_pos_block + 1) + v2 * u2.read(j, i_pos - *i_pos_block + 2);
 					u2.write(j, i_pos - *i_pos_block, u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0));
-					u2.write(j, i_pos - *i_pos_block + 1, u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1)));
-					u2.write(j, i_pos - *i_pos_block + 2, u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2)));
+					u2.write(
+						j,
+						i_pos - *i_pos_block + 1,
+						u2.read(j, i_pos - *i_pos_block + 1) - (mul_real(sum, v0) * conj(v1)),
+					);
+					u2.write(
+						j,
+						i_pos - *i_pos_block + 2,
+						u2.read(j, i_pos - *i_pos_block + 2) - (mul_real(sum, v0) * conj(v2)),
+					);
 				}
 			}
 		}
@@ -1305,8 +1336,16 @@ fn remove_bulges<T: ComplexField>(
 			for j in i1..i2 {
 				let sum = u2.read(j, i_pos - *i_pos_block) + v1 * u2.read(j, i_pos - *i_pos_block + 1) + v2 * u2.read(j, i_pos - *i_pos_block + 2);
 				u2.write(j, i_pos - *i_pos_block, u2.read(j, i_pos - *i_pos_block) - mul_real(sum, v0));
-				u2.write(j, i_pos - *i_pos_block + 1, u2.read(j, i_pos - *i_pos_block + 1) - mul_real(sum, v0) * conj(v1));
-				u2.write(j, i_pos - *i_pos_block + 2, u2.read(j, i_pos - *i_pos_block + 2) - mul_real(sum, v0) * conj(v2));
+				u2.write(
+					j,
+					i_pos - *i_pos_block + 1,
+					u2.read(j, i_pos - *i_pos_block + 1) - mul_real(sum, v0) * conj(v1),
+				);
+				u2.write(
+					j,
+					i_pos - *i_pos_block + 2,
+					u2.read(j, i_pos - *i_pos_block + 2) - mul_real(sum, v0) * conj(v2),
+				);
 			}
 		}
 	}
@@ -1436,7 +1475,9 @@ mod tests {
 						0,
 						n,
 						Par::Seq,
-						DynStack::new(&mut GlobalMemBuffer::new(multishift_qr_scratch::<c64>(n, n, true, true, Par::Seq, auto!(c64)).unwrap())),
+						DynStack::new(&mut GlobalMemBuffer::new(
+							multishift_qr_scratch::<c64>(n, n, true, true, Par::Seq, auto!(c64)).unwrap(),
+						)),
 						auto!(c64),
 					);
 

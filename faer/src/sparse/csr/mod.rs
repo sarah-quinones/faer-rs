@@ -1,6 +1,6 @@
 use super::*;
 use crate::internal_prelude::*;
-use crate::{Idx, assert, debug_assert};
+use crate::{Idx, MaybeIdx, assert, debug_assert};
 use core::ops::Range;
 use core::{fmt, iter};
 
@@ -391,7 +391,9 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMatRef<'a, I, Rows
 		Rows: 'a,
 		Cols: 'a,
 	{
-		self.col_idx_of_row_raw(i).iter().map(|&j| unsafe { Idx::<Cols>::new_unbound(j.unbound().zx()) })
+		self.col_idx_of_row_raw(i)
+			.iter()
+			.map(|&j| unsafe { Idx::<Cols>::new_unbound(j.unbound().zx()) })
 	}
 
 	#[inline]
@@ -423,7 +425,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMatRef<'a, I, Rows
 impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
 	#[inline]
 	#[track_caller]
-	pub unsafe fn new_unchecked(nrows: Rows, ncols: Cols, row_ptr: alloc::vec::Vec<I>, row_nnz: Option<alloc::vec::Vec<I>>, col_idx: alloc::vec::Vec<I>) -> Self {
+	pub unsafe fn new_unchecked(
+		nrows: Rows,
+		ncols: Cols,
+		row_ptr: alloc::vec::Vec<I>,
+		row_nnz: Option<alloc::vec::Vec<I>>,
+		col_idx: alloc::vec::Vec<I>,
+	) -> Self {
 		assume_row_ptr(nrows.unbound(), ncols.unbound(), &row_ptr, row_nnz.as_deref(), &col_idx);
 
 		Self {
@@ -437,7 +445,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
-	pub fn new_checked(nrows: Rows, ncols: Cols, row_ptr: alloc::vec::Vec<I>, row_nnz: Option<alloc::vec::Vec<I>>, col_idx: alloc::vec::Vec<I>) -> Self {
+	pub fn new_checked(
+		nrows: Rows,
+		ncols: Cols,
+		row_ptr: alloc::vec::Vec<I>,
+		row_nnz: Option<alloc::vec::Vec<I>>,
+		col_idx: alloc::vec::Vec<I>,
+	) -> Self {
 		check_row_ptr(nrows.unbound(), ncols.unbound(), &row_ptr, row_nnz.as_deref(), &col_idx);
 		check_col_idx(nrows.unbound(), ncols.unbound(), &row_ptr, row_nnz.as_deref(), &col_idx);
 
@@ -452,7 +466,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
-	pub fn new_unsorted_checked(nrows: Rows, ncols: Cols, row_ptr: alloc::vec::Vec<I>, row_nnz: Option<alloc::vec::Vec<I>>, col_idx: alloc::vec::Vec<I>) -> Self {
+	pub fn new_unsorted_checked(
+		nrows: Rows,
+		ncols: Cols,
+		row_ptr: alloc::vec::Vec<I>,
+		row_nnz: Option<alloc::vec::Vec<I>>,
+		col_idx: alloc::vec::Vec<I>,
+	) -> Self {
 		check_row_ptr(nrows.unbound(), ncols.unbound(), &row_ptr, row_nnz.as_deref(), &col_idx);
 		check_col_idx_unsorted(nrows.unbound(), ncols.unbound(), &row_ptr, row_nnz.as_deref(), &col_idx);
 
@@ -594,6 +614,47 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
 			col_idx: self.col_idx,
 		}
 	}
+
+	#[inline]
+	pub fn try_new_from_indices(nrows: Rows, ncols: Cols, idx: &[Pair<Idx<Rows, I>, Idx<Cols, I>>]) -> Result<(Self, Argsort<I>), CreationError> {
+		let (symbolic, argsort) = SymbolicSparseColMat::try_new_from_indices_impl(
+			ncols,
+			nrows,
+			|i| Pair {
+				row: idx[i].col,
+				col: idx[i].row,
+			},
+			|_, _| false,
+			idx.len(),
+		)?;
+
+		Ok((symbolic.into_transpose(), argsort))
+	}
+
+	#[inline]
+	pub fn try_new_from_nonnegative_indices(
+		nrows: Rows,
+		ncols: Cols,
+		idx: &[Pair<MaybeIdx<Rows, I>, MaybeIdx<Cols, I>>],
+	) -> Result<(Self, Argsort<I>), CreationError> {
+		let (symbolic, argsort) = SymbolicSparseColMat::try_new_from_indices_impl(
+			ncols,
+			nrows,
+			|i| Pair {
+				row: unsafe { Idx::<Cols, I>::new_unbound(I::from_signed(idx[i].col.unbound())) },
+				col: unsafe { Idx::<Rows, I>::new_unbound(I::from_signed(idx[i].row.unbound())) },
+			},
+			|row, col| {
+				let row = row.unbound().to_signed();
+				let col = col.unbound().to_signed();
+				let zero = I::Signed::truncate(0);
+
+				row < zero || col < zero
+			},
+			idx.len(),
+		)?;
+		Ok((symbolic.into_transpose(), argsort))
+	}
 }
 
 impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatRef<'a, I, T, Rows, Cols> {
@@ -687,7 +748,9 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatRef<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(src: SparseRowMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>) -> Mat<T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
+		fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
+			src: SparseRowMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
+		) -> Mat<T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
 			let src = src.canonical();
 
 			let mut out = Mat::zeros(src.nrows(), src.ncols());
@@ -1125,6 +1188,61 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseRowMat<I, T, Rows, Cols> {
 	{
 		self.rb().to_dense()
 	}
+
+	#[track_caller]
+	pub fn new_from_argsort(symbolic: SymbolicSparseRowMat<I, Rows, Cols>, argsort: &Argsort<I>, val: &[T]) -> Result<Self, FaerError>
+	where
+		T: ComplexField,
+	{
+		Ok(SparseColMat::new_from_argsort(symbolic.into_transpose(), argsort, val)?.into_transpose())
+	}
+
+	#[track_caller]
+	pub fn try_new_from_triplets(nrows: Rows, ncols: Cols, entries: &[Triplet<Idx<Rows, I>, Idx<Cols, I>, T>]) -> Result<Self, CreationError>
+	where
+		T: ComplexField,
+	{
+		let (symbolic, argsort) = SymbolicSparseColMat::try_new_from_indices_impl(
+			ncols,
+			nrows,
+			|i| Pair {
+				row: entries[i].col,
+				col: entries[i].row,
+			},
+			|_, _| false,
+			entries.len(),
+		)?;
+
+		Ok(SparseColMat::new_from_argsort_impl(symbolic, &argsort, |i| entries[i].val.clone(), entries.len())?.into_transpose())
+	}
+
+	#[track_caller]
+	pub fn try_new_from_nonnegative_triplets(
+		nrows: Rows,
+		ncols: Cols,
+		entries: &[Triplet<MaybeIdx<Rows, I>, MaybeIdx<Cols, I>, T>],
+	) -> Result<Self, CreationError>
+	where
+		T: ComplexField,
+	{
+		let (symbolic, argsort) = SymbolicSparseColMat::try_new_from_indices_impl(
+			ncols,
+			nrows,
+			|i| Pair {
+				row: unsafe { Idx::<Cols, I>::new_unbound(I::from_signed(entries[i].col.unbound())) },
+				col: unsafe { Idx::<Rows, I>::new_unbound(I::from_signed(entries[i].row.unbound())) },
+			},
+			|row, col| {
+				let row = row.unbound().to_signed();
+				let col = col.unbound().to_signed();
+				let zero = I::Signed::truncate(0);
+				row < zero || col < zero
+			},
+			entries.len(),
+		)?;
+
+		Ok(SparseColMat::new_from_argsort_impl(symbolic, &argsort, |i| entries[i].val.clone(), entries.len())?.into_transpose())
+	}
 }
 
 impl<'a, Rows: Shape, Cols: Shape, I: Index, T> core::ops::Deref for SparseRowMatRef<'a, I, T, Rows, Cols> {
@@ -1164,7 +1282,11 @@ impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseRowMatRef<
 					let mat = self.0;
 
 					f.debug_list()
-						.entries(mat.nrows().indices().flat_map(|row| mat.col_idx_of_row(row).map(move |col| Pair { row, col })))
+						.entries(
+							mat.nrows()
+								.indices()
+								.flat_map(|row| mat.col_idx_of_row(row).map(move |col| Pair { row, col })),
+						)
 						.finish()
 				}
 			}
@@ -1190,7 +1312,10 @@ impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseRowMat<I, 
 
 impl<Rows: Shape, Cols: Shape, I: Index, T: fmt::Debug> fmt::Debug for SparseRowMatRef<'_, I, T, Rows, Cols> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		fn imp<'ROWS, 'COLS, I: Index, T: fmt::Debug>(mat: SparseRowMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		fn imp<'ROWS, 'COLS, I: Index, T: fmt::Debug>(
+			mat: SparseRowMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
+			f: &mut fmt::Formatter<'_>,
+		) -> fmt::Result {
 			struct Entries<'a, 'ROWS, 'COLS, I, T>(SparseRowMatRef<'a, I, T, Dim<'ROWS>, Dim<'COLS>>);
 
 			impl<'ROWS, 'COLS, I: Index, T: fmt::Debug> fmt::Debug for Entries<'_, 'ROWS, 'COLS, I, T> {
@@ -1200,7 +1325,7 @@ impl<Rows: Shape, Cols: Shape, I: Index, T: fmt::Debug> fmt::Debug for SparseRow
 					f.debug_list()
 						.entries(mat.nrows().indices().flat_map(|row| {
 							let col_idx = mat.col_idx_of_row(row);
-							let val = mat.val_of_row(col);
+							let val = mat.val_of_row(row);
 
 							iter::zip(col_idx, val).map(move |(col, val)| Triplet {
 								row,

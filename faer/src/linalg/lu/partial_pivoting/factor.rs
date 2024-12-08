@@ -62,7 +62,14 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 }
 
 #[math]
-fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usize, end: usize, trans: &mut [I], par: Par, params: Spec<PartialPivLuParams, T>) -> usize {
+fn lu_in_place_recursion<I: Index, T: ComplexField>(
+	A: MatMut<'_, T>,
+	start: usize,
+	end: usize,
+	trans: &mut [I],
+	par: Par,
+	params: Spec<PartialPivLuParams, T>,
+) -> usize {
 	let params = params.into_inner();
 	let mut A = A;
 	let m = A.nrows();
@@ -73,14 +80,24 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usi
 		return lu_in_place_unblocked(A, start, end, trans);
 	}
 
-	let blocksize = Ord::min(params.recursion_threshold.get(), Ord::max(params.blocksize.get(), n.next_power_of_two() / 2));
+	let blocksize = Ord::min(
+		params.recursion_threshold.get(),
+		Ord::max(params.blocksize.get(), n.next_power_of_two() / 2),
+	);
 	let blocksize = Ord::min(blocksize, n);
 
 	let mut n_trans = 0;
 
 	assert!(n <= m);
 
-	n_trans += lu_in_place_recursion(A.rb_mut().get_mut(.., start..end), 0, blocksize, &mut trans[..blocksize], par, params.into());
+	n_trans += lu_in_place_recursion(
+		A.rb_mut().get_mut(.., start..end),
+		0,
+		blocksize,
+		&mut trans[..blocksize],
+		par,
+		params.into(),
+	);
 
 	{
 		let mut A = A.rb_mut().get_mut(.., start..end);
@@ -94,7 +111,14 @@ fn lu_in_place_recursion<I: Index, T: ComplexField>(A: MatMut<'_, T>, start: usi
 
 		linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one::<T>(), par);
 
-		n_trans += lu_in_place_recursion(A.rb_mut().get_mut(blocksize..m, ..), blocksize, n, &mut trans[blocksize..n], par, params.into());
+		n_trans += lu_in_place_recursion(
+			A.rb_mut().get_mut(blocksize..m, ..),
+			blocksize,
+			n,
+			&mut trans[blocksize..n],
+			par,
+			params.into(),
+		);
 	}
 
 	let swap = |mat: MatMut<'_, T>| {
@@ -183,7 +207,12 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<PartialPivLuParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+	params: Spec<PartialPivLuParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	StackReq::try_new::<I>(Ord::min(nrows, ncols))
@@ -258,7 +287,10 @@ mod tests {
 	fn test_plu() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
-		let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-13, rel_tol: 1e-13 });
+		let approx_eq = CwiseMat(ApproxEq {
+			abs_tol: 1e-13,
+			rel_tol: 1e-13,
+		});
 
 		for n in [1, 2, 3, 128, 255, 256, 257] {
 			let A = CwiseMatDistribution {
@@ -283,7 +315,9 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params.into()).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params.into()).unwrap(),
+				)),
 				params.into(),
 			)
 			.1;

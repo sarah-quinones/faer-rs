@@ -2,7 +2,13 @@ use crate::internal_prelude::*;
 use pulp::Simd;
 
 #[math]
-fn rank_update_step_simd<T: ComplexField>(L: ColMut<'_, T, usize, ContiguousFwd>, W: MatMut<'_, T, usize, usize, ContiguousFwd>, p: ColRef<'_, T>, beta: ColRef<'_, T>, align_offset: usize) {
+fn rank_update_step_simd<T: ComplexField>(
+	L: ColMut<'_, T, usize, ContiguousFwd>,
+	W: MatMut<'_, T, usize, usize, ContiguousFwd>,
+	p: ColRef<'_, T>,
+	beta: ColRef<'_, T>,
+	align_offset: usize,
+) {
 	struct Impl<'a, 'N, 'R, T: ComplexField> {
 		L: ColMut<'a, T, Dim<'N>, ContiguousFwd>,
 		W: MatMut<'a, T, Dim<'N>, Dim<'R>, ContiguousFwd>,
@@ -394,7 +400,10 @@ mod tests {
 	fn test_rank_update() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
-		let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-12, rel_tol: 1e-12 });
+		let approx_eq = CwiseMat(ApproxEq {
+			abs_tol: 1e-12,
+			rel_tol: 1e-12,
+		});
 
 		for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 10] {
 			for n in [2, 4, 8, 15] {
@@ -434,7 +443,9 @@ mod tests {
 					L.rb_mut(),
 					default(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap())),
+					DynStack::new(&mut GlobalMemBuffer::new(
+						linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap(),
+					)),
 					_,
 				)
 				.unwrap();

@@ -20,7 +20,10 @@ impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for ColMut<'_, T, Ro
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		ColRef { imp: self.imp, __marker: PhantomData }
+		ColRef {
+			imp: self.imp,
+			__marker: PhantomData,
+		}
 	}
 }
 impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for ColMut<'_, T, Rows, RStride> {
@@ -28,7 +31,10 @@ impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for ColMut<'_, T,
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		ColMut { imp: self.imp, __marker: PhantomData }
+		ColMut {
+			imp: self.imp,
+			__marker: PhantomData,
+		}
 	}
 }
 impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for ColMut<'a, T, Rows, RStride> {
@@ -36,7 +42,10 @@ impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for ColMut<'a, T, Rows, RStride
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		ColRef { imp: self.imp, __marker: PhantomData }
+		ColRef {
+			imp: self.imp,
+			__marker: PhantomData,
+		}
 	}
 }
 
@@ -418,7 +427,12 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 		Rows: 'a,
 	{
 		use rayon::prelude::*;
-		unsafe { self.as_type::<SyncCell<T>>().into_const().par_partition(count).map(|col| col.const_cast().as_type::<T>()) }
+		unsafe {
+			self.as_type::<SyncCell<T>>()
+				.into_const()
+				.par_partition(count)
+				.map(|col| col.const_cast().as_type::<T>())
+		}
 	}
 
 	pub(crate) unsafe fn as_type<U>(self) -> ColMut<'a, U, Rows, RStride> {
@@ -441,7 +455,11 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 		let m = self.nrows();
 
 		with_dim!(M, m.unbound());
-		imp(self.rb_mut().as_row_shape_mut(M).as_dyn_stride_mut(), other.as_row_shape(M).canonical(), Conj::get::<RhsT>());
+		imp(
+			self.rb_mut().as_row_shape_mut(M).as_dyn_stride_mut(),
+			other.as_row_shape(M).canonical(),
+			Conj::get::<RhsT>(),
+		);
 
 		pub fn imp<'M, 'N, T: ComplexField>(this: ColMut<'_, T, Dim<'M>>, other: ColRef<'_, T, Dim<'M>>, conj_: Conj) {
 			match conj_ {
@@ -504,7 +522,10 @@ impl<'a, 'ROWS, T> ColMut<'a, T, Dim<'ROWS>, ContiguousFwd> {
 
 impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
 	#[inline]
-	pub fn split_rows_with<'TOP, 'BOT>(self, row: Partition<'TOP, 'BOT, 'ROWS>) -> (ColRef<'a, T, Dim<'TOP>, RStride>, ColRef<'a, T, Dim<'BOT>, RStride>) {
+	pub fn split_rows_with<'TOP, 'BOT>(
+		self,
+		row: Partition<'TOP, 'BOT, 'ROWS>,
+	) -> (ColRef<'a, T, Dim<'TOP>, RStride>, ColRef<'a, T, Dim<'BOT>, RStride>) {
 		let (a, b) = self.split_at_row(row.midpoint());
 		(a.as_row_shape(row.head), b.as_row_shape(row.tail))
 	}
@@ -512,7 +533,10 @@ impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
 
 impl<'ROWS, 'a, T, RStride: Stride> ColMut<'a, T, Dim<'ROWS>, RStride> {
 	#[inline]
-	pub fn split_rows_with_mut<'TOP, 'BOT>(self, row: Partition<'TOP, 'BOT, 'ROWS>) -> (ColMut<'a, T, Dim<'TOP>, RStride>, ColMut<'a, T, Dim<'BOT>, RStride>) {
+	pub fn split_rows_with_mut<'TOP, 'BOT>(
+		self,
+		row: Partition<'TOP, 'BOT, 'ROWS>,
+	) -> (ColMut<'a, T, Dim<'TOP>, RStride>, ColMut<'a, T, Dim<'BOT>, RStride>) {
 		let (a, b) = self.split_at_row_mut(row.midpoint());
 		(a.as_row_shape_mut(row.head), b.as_row_shape_mut(row.tail))
 	}

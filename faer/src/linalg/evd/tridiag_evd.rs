@@ -37,7 +37,11 @@ fn tridiag_to_mat<T: RealField>(diag: ColRef<'_, T, usize, ContiguousFwd>, offdi
 }
 
 #[math]
-pub(crate) fn qr_algorithm<T: RealField>(diag: ColMut<'_, T, usize, ContiguousFwd>, offdiag: ColMut<'_, T, usize, ContiguousFwd>, u: Option<MatMut<'_, T, usize, usize>>) -> Result<(), EvdError> {
+pub(crate) fn qr_algorithm<T: RealField>(
+	diag: ColMut<'_, T, usize, ContiguousFwd>,
+	offdiag: ColMut<'_, T, usize, ContiguousFwd>,
+	u: Option<MatMut<'_, T, usize, usize>>,
+) -> Result<(), EvdError> {
 	let n = diag.nrows();
 
 	let mut u = u;
@@ -272,7 +276,13 @@ fn secular_eq<T: RealField>(shift: T, mu: T, d: ColRef<'_, T, usize, ContiguousF
 }
 
 #[math]
-fn batch_secular_eq<const N: usize, T: RealField>(shift: &[T; N], mu: &[T; N], d: ColRef<'_, T, usize, ContiguousFwd>, z: ColRef<'_, T, usize, ContiguousFwd>, rho_recip: T) -> [T; N] {
+fn batch_secular_eq<const N: usize, T: RealField>(
+	shift: &[T; N],
+	mu: &[T; N],
+	d: ColRef<'_, T, usize, ContiguousFwd>,
+	z: ColRef<'_, T, usize, ContiguousFwd>,
+	rho_recip: T,
+) -> [T; N] {
 	with_dim!(n, d.nrows());
 	let d = d.as_row_shape(n);
 	let z = z.as_row_shape(n);
@@ -595,7 +605,14 @@ fn divide_and_conquer_recurse<T: RealField>(
 		pl_after[non_deflated + i] = pr[i];
 	}
 
-	compute_eigenvalues(mus.rb_mut(), shifts.rb_mut(), permuted_diag.rb(), permuted_z.rb(), copy(rho), non_deflated);
+	compute_eigenvalues(
+		mus.rb_mut(),
+		shifts.rb_mut(),
+		permuted_diag.rb(),
+		permuted_z.rb(),
+		copy(rho),
+		non_deflated,
+	);
 
 	// perturb z and rho
 	// we don't actually need rho for computing the eigenvectors so we're not going to perturb it

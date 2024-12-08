@@ -42,11 +42,29 @@ mod tests {
 
 			let params = Default::default();
 			let mut mem = GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params).unwrap());
-			let (_, perm) = factor::cholesky_in_place(ldl.as_mut(), subdiag.as_mut(), Default::default(), &mut perm, &mut perm_inv, Par::Seq, DynStack::new(&mut mem), params);
+			let (_, perm) = factor::cholesky_in_place(
+				ldl.as_mut(),
+				subdiag.as_mut(),
+				Default::default(),
+				&mut perm,
+				&mut perm_inv,
+				Par::Seq,
+				DynStack::new(&mut mem),
+				params,
+			);
 
 			let mut mem = GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, f64>(n, rhs.ncols(), Par::Seq).unwrap());
 			let mut x = rhs.clone();
-			solve::solve_in_place_with_conj(ldl.as_ref(), ldl.diagonal(), subdiag.as_ref(), Conj::No, perm.rb(), x.as_mut(), Par::Seq, DynStack::new(&mut mem));
+			solve::solve_in_place_with_conj(
+				ldl.as_ref(),
+				ldl.diagonal(),
+				subdiag.as_ref(),
+				Conj::No,
+				perm.rb(),
+				x.as_mut(),
+				Par::Seq,
+				DynStack::new(&mut mem),
+			);
 
 			let err = &a * &x - &rhs;
 			let mut max = 0.0;
@@ -106,7 +124,16 @@ mod tests {
 
 			let mut x = rhs.clone();
 			let mut mem = GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq).unwrap());
-			solve::solve_in_place_with_conj(ldl.as_ref(), ldl.diagonal(), subdiag.as_ref(), Conj::Yes, perm.rb(), x.as_mut(), Par::Seq, DynStack::new(&mut mem));
+			solve::solve_in_place_with_conj(
+				ldl.as_ref(),
+				ldl.diagonal(),
+				subdiag.as_ref(),
+				Conj::Yes,
+				perm.rb(),
+				x.as_mut(),
+				Par::Seq,
+				DynStack::new(&mut mem),
+			);
 
 			let err = a.conjugate() * &x - &rhs;
 			let mut max = 0.0;

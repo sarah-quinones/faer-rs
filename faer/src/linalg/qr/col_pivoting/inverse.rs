@@ -11,7 +11,15 @@ pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, blocksize: usize, 
 }
 
 #[track_caller]
-pub fn inverse<I: Index, T: ComplexField>(out: MatMut<'_, T>, Q_basis: MatRef<'_, T>, Q_coeff: MatRef<'_, T>, R: MatRef<'_, T>, col_perm: PermRef<'_, I>, par: Par, stack: &mut DynStack) {
+pub fn inverse<I: Index, T: ComplexField>(
+	out: MatMut<'_, T>,
+	Q_basis: MatRef<'_, T>,
+	Q_coeff: MatRef<'_, T>,
+	R: MatRef<'_, T>,
+	col_perm: PermRef<'_, I>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	// A P^-1 = Q R
 	// A^-1 = P^-1 R^-1 Q^-1
 
@@ -32,7 +40,14 @@ pub fn inverse<I: Index, T: ComplexField>(out: MatMut<'_, T>, Q_basis: MatRef<'_
 	let mut out = out;
 	out.fill(zero());
 	linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), R, par);
-	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(Q_basis, Q_coeff, Conj::Yes, out.rb_mut(), par, stack);
+	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(
+		Q_basis,
+		Q_coeff,
+		Conj::Yes,
+		out.rb_mut(),
+		par,
+		stack,
+	);
 	crate::perm::permute_rows_in_place(out.rb_mut(), col_perm.inverse(), stack);
 }
 

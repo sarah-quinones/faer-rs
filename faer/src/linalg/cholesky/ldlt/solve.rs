@@ -8,7 +8,14 @@ pub fn solve_in_place_scratch<T: ComplexField>(dim: usize, rhs_ncols: usize, par
 
 #[math]
 #[track_caller]
-pub fn solve_in_place_with_conj<T: ComplexField>(L: MatRef<'_, T>, D: DiagRef<'_, T>, conj_lhs: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_in_place_with_conj<T: ComplexField>(
+	L: MatRef<'_, T>,
+	D: DiagRef<'_, T>,
+	conj_lhs: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = L.nrows();
 	_ = stack;
 	assert!(all(L.nrows() == n, L.ncols() == n, D.dim() == n, rhs.nrows() == n,));
@@ -36,7 +43,13 @@ pub fn solve_in_place_with_conj<T: ComplexField>(L: MatRef<'_, T>, D: DiagRef<'_
 
 #[math]
 #[track_caller]
-pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(L: MatRef<'_, C>, D: DiagRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
+	L: MatRef<'_, C>,
+	D: DiagRef<'_, C>,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	solve_in_place_with_conj(L.canonical(), D.canonical(), Conj::get::<C>(), rhs, par, stack);
 }
 
@@ -91,7 +104,9 @@ mod tests {
 				L.diagonal(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(&A * &X ~ B);
@@ -104,7 +119,9 @@ mod tests {
 				L.conjugate().diagonal(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.conjugate() * &X ~ B);

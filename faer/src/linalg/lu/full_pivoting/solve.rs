@@ -164,7 +164,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(&A * &X ~ B);
@@ -179,7 +181,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.transpose() * &X ~ B);
@@ -193,7 +197,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.conjugate() * &X ~ B);
@@ -207,7 +213,9 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(n, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.adjoint() * &X ~ B);

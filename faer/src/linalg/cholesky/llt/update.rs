@@ -26,7 +26,14 @@ fn rank_update_step_simd<T: ComplexField>(
 
 		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) {
-			let Self { L, W, p, beta, gamma, align_offset } = self;
+			let Self {
+				L,
+				W,
+				p,
+				beta,
+				gamma,
+				align_offset,
+			} = self;
 
 			let mut L = L;
 			let mut W = W;
@@ -105,7 +112,11 @@ fn rank_update_step_simd<T: ComplexField>(
 				(Some(i0), Some(i1), Some(i2), None) => {
 					let (p0, p1, p2) = (simd.splat(&p[i0]), simd.splat(&p[i1]), simd.splat(&p[i2]));
 					let (beta0, beta1, beta2) = (simd.splat(&beta[i0]), simd.splat(&beta[i1]), simd.splat(&beta[i2]));
-					let (gamma0, gamma1, gamma2) = (simd.splat_real(&real(gamma[i0])), simd.splat_real(&real(gamma[i1])), simd.splat_real(&real(gamma[i2])));
+					let (gamma0, gamma1, gamma2) = (
+						simd.splat_real(&real(gamma[i0])),
+						simd.splat_real(&real(gamma[i1])),
+						simd.splat_real(&real(gamma[i2])),
+					);
 
 					macro_rules! simd {
 						($i: expr) => {{
@@ -434,7 +445,10 @@ mod tests {
 	fn test_rank_update() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
-		let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-12, rel_tol: 1e-12 });
+		let approx_eq = CwiseMat(ApproxEq {
+			abs_tol: 1e-12,
+			rel_tol: 1e-12,
+		});
 
 		for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 10] {
 			for n in [2, 4, 8, 15] {
@@ -475,7 +489,9 @@ mod tests {
 					L.rb_mut(),
 					default(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap())),
+					DynStack::new(&mut GlobalMemBuffer::new(
+						linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap(),
+					)),
 					_,
 				)
 				.unwrap();

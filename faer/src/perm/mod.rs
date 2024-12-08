@@ -56,7 +56,11 @@ use self::linalg::temp_mat_scratch;
 #[inline]
 #[track_caller]
 pub fn permute_cols<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, perm_indices: PermRef<'_, I>) {
-	Assert!(all(src.nrows() == dst.nrows(), src.ncols() == dst.ncols(), perm_indices.arrays().0.len() == src.ncols(),));
+	Assert!(all(
+		src.nrows() == dst.nrows(),
+		src.ncols() == dst.ncols(),
+		perm_indices.arrays().0.len() == src.ncols(),
+	));
 
 	permute_rows(dst.transpose_mut(), src.transpose(), perm_indices.canonicalized());
 }
@@ -74,7 +78,11 @@ pub fn permute_rows<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'
 	#[track_caller]
 	#[math]
 	fn implementation<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, perm_indices: PermRef<'_, I>) {
-		Assert!(all(src.nrows() == dst.nrows(), src.ncols() == dst.ncols(), perm_indices.len() == src.nrows(),));
+		Assert!(all(
+			src.nrows() == dst.nrows(),
+			src.ncols() == dst.ncols(),
+			perm_indices.len() == src.nrows(),
+		));
 
 		with_dim!(m, src.nrows());
 		with_dim!(n, src.ncols());

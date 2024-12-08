@@ -7,7 +7,14 @@ pub fn reconstruct_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksiz
 }
 
 #[track_caller]
-pub fn reconstruct<T: ComplexField>(out: MatMut<'_, T>, Q_basis: MatRef<'_, T>, Q_coeff: MatRef<'_, T>, R: MatRef<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn reconstruct<T: ComplexField>(
+	out: MatMut<'_, T>,
+	Q_basis: MatRef<'_, T>,
+	Q_coeff: MatRef<'_, T>,
+	R: MatRef<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let m = Q_basis.nrows();
 	let n = R.ncols();
 	let size = Ord::min(m, n);
@@ -70,7 +77,9 @@ mod tests {
 				Q_coeff.as_ref(),
 				QR.get(..size, ..),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(reconstruct::reconstruct_scratch::<c64>(m, n, 4, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					reconstruct::reconstruct_scratch::<c64>(m, n, 4, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A_rec ~ A);

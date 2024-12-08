@@ -20,7 +20,9 @@ pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef
 	for lhs_j in 0..lhs.ncols() {
 		for lhs_i in 0..lhs.nrows() {
 			let lhs_val = lhs.at(lhs_i, lhs_j);
-			let mut dst = dst.rb_mut().submatrix_mut(lhs_i * rhs.nrows(), lhs_j * rhs.ncols(), rhs.nrows(), rhs.ncols());
+			let mut dst = dst
+				.rb_mut()
+				.submatrix_mut(lhs_i * rhs.nrows(), lhs_j * rhs.ncols(), rhs.nrows(), rhs.ncols());
 
 			for rhs_j in 0..rhs.ncols() {
 				for rhs_i in 0..rhs.nrows() {

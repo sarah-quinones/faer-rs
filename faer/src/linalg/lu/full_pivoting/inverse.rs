@@ -8,7 +8,15 @@ pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> Resul
 }
 
 #[track_caller]
-pub fn inverse<I: Index, T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, U: MatRef<'_, T>, row_perm: PermRef<'_, I>, col_perm: PermRef<'_, I>, par: Par, stack: &mut DynStack) {
+pub fn inverse<I: Index, T: ComplexField>(
+	out: MatMut<'_, T>,
+	L: MatRef<'_, T>,
+	U: MatRef<'_, T>,
+	row_perm: PermRef<'_, I>,
+	col_perm: PermRef<'_, I>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	// A = P^-1 L U Q
 	// A^-1 = Q^-1 U^-1 L^-1 P
 

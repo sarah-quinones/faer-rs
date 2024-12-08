@@ -500,7 +500,9 @@ macro_rules! impl_1d_div_assign_scalar {
 	};
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> PartialEq<MatRef<'_, RhsT, Rows, Cols>> for MatRef<'_, LhsT, Rows, Cols> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
+	PartialEq<MatRef<'_, RhsT, Rows, Cols>> for MatRef<'_, LhsT, Rows, Cols>
+{
 	#[math]
 	fn eq(&self, other: &MatRef<'_, RhsT, Rows, Cols>) -> bool {
 		let lhs = *self;
@@ -510,7 +512,10 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 			return false;
 		}
 
-		fn imp<'M, 'N, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LhsT, Dim<'M>, Dim<'N>>, rhs: MatRef<'_, RhsT, Dim<'M>, Dim<'N>>) -> bool {
+		fn imp<'M, 'N, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
+			lhs: MatRef<'_, LhsT, Dim<'M>, Dim<'N>>,
+			rhs: MatRef<'_, RhsT, Dim<'M>, Dim<'N>>,
+		) -> bool {
 			let m = lhs.nrows();
 			let n = lhs.ncols();
 			for j in n.indices() {
@@ -542,7 +547,9 @@ impl_partial_eq!(Mat< LhsT, Rows, Cols,>, MatRef<'_,  RhsT, Rows, Cols>);
 impl_partial_eq!(Mat< LhsT, Rows, Cols,>, MatMut<'_,  RhsT, Rows, Cols>);
 impl_partial_eq!(Mat< LhsT, Rows, Cols,>, Mat< RhsT, Rows, Cols>);
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<ColRef<'_, RhsT, Len>> for ColRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<ColRef<'_, RhsT, Len>>
+	for ColRef<'_, LhsT, Len>
+{
 	fn eq(&self, other: &ColRef<'_, RhsT, Len>) -> bool {
 		self.transpose() == other.transpose()
 	}
@@ -560,7 +567,9 @@ impl_1d_partial_eq!(Col< LhsT, Len>, ColRef<'_,  RhsT, Len>);
 impl_1d_partial_eq!(Col< LhsT, Len>, ColMut<'_,  RhsT, Len>);
 impl_1d_partial_eq!(Col< LhsT, Len>, Col< RhsT, Len>);
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<RowRef<'_, RhsT, Len>> for RowRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<RowRef<'_, RhsT, Len>>
+	for RowRef<'_, LhsT, Len>
+{
 	#[math]
 	fn eq(&self, other: &RowRef<'_, RhsT, Len>) -> bool {
 		let lhs = *self;
@@ -570,7 +579,10 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 			return false;
 		}
 
-		fn imp<'N, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LhsT, Dim<'N>>, rhs: RowRef<'_, RhsT, Dim<'N>>) -> bool {
+		fn imp<'N, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
+			lhs: RowRef<'_, LhsT, Dim<'N>>,
+			rhs: RowRef<'_, RhsT, Dim<'N>>,
+		) -> bool {
 			let n = lhs.ncols();
 			for j in n.indices() {
 				if Conj::apply::<LhsT>(lhs.at(j)) != Conj::apply::<RhsT>(rhs.at(j)) {
@@ -597,7 +609,9 @@ impl_1d_partial_eq!(Row< LhsT, Len>, RowRef<'_,  RhsT, Len>);
 impl_1d_partial_eq!(Row< LhsT, Len>, RowMut<'_,  RhsT, Len>);
 impl_1d_partial_eq!(Row< LhsT, Len>, Row< RhsT, Len>);
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<DiagRef<'_, RhsT, Len>> for DiagRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<DiagRef<'_, RhsT, Len>>
+	for DiagRef<'_, LhsT, Len>
+{
 	fn eq(&self, other: &DiagRef<'_, RhsT, Len>) -> bool {
 		self.column_vector().eq(&other.column_vector())
 	}
@@ -640,7 +654,9 @@ impl<I: Index> PartialEq<Perm<I>> for Perm<I> {
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Add<MatRef<'_, RhsT, Rows, Cols>> for MatRef<'_, LhsT, Rows, Cols> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Add<MatRef<'_, RhsT, Rows, Cols>>
+	for MatRef<'_, LhsT, Rows, Cols>
+{
 	type Output = Mat<T, Rows, Cols>;
 
 	#[math]
@@ -652,7 +668,9 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Sub<MatRef<'_, RhsT, Rows, Cols>> for MatRef<'_, LhsT, Rows, Cols> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Sub<MatRef<'_, RhsT, Rows, Cols>>
+	for MatRef<'_, LhsT, Rows, Cols>
+{
 	type Output = Mat<T, Rows, Cols>;
 
 	#[math]
@@ -665,7 +683,9 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	}
 }
 
-impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: Shape> AddAssign<MatRef<'_, RhsT, Rows, Cols>> for MatMut<'_, LhsT, Rows, Cols> {
+impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: Shape> AddAssign<MatRef<'_, RhsT, Rows, Cols>>
+	for MatMut<'_, LhsT, Rows, Cols>
+{
 	#[math]
 	#[track_caller]
 	fn add_assign(&mut self, rhs: MatRef<'_, RhsT, Rows, Cols>) {
@@ -673,7 +693,9 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: S
 	}
 }
 
-impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: Shape> SubAssign<MatRef<'_, RhsT, Rows, Cols>> for MatMut<'_, LhsT, Rows, Cols> {
+impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: Shape> SubAssign<MatRef<'_, RhsT, Rows, Cols>>
+	for MatMut<'_, LhsT, Rows, Cols>
+{
 	#[math]
 	#[track_caller]
 	fn sub_assign(&mut self, rhs: MatRef<'_, RhsT, Rows, Cols>) {
@@ -693,21 +715,24 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Ne
 
 #[inline]
 #[math]
-fn add_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>() -> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
+fn add_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
+-> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
 	#[inline(always)]
 	move |unzipped!(a, b)| Conj::apply::<LhsT>(a) + Conj::apply::<RhsT>(b)
 }
 
 #[inline]
 #[math]
-fn sub_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>() -> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
+fn sub_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
+-> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
 	#[inline(always)]
 	move |unzipped!(a, b)| Conj::apply::<LhsT>(a) - Conj::apply::<RhsT>(b)
 }
 
 #[inline]
 #[math]
-fn mul_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>() -> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
+fn mul_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
+-> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
 	#[inline(always)]
 	move |unzipped!(a, b)| Conj::apply::<LhsT>(a) * Conj::apply::<RhsT>(b)
 }
@@ -733,7 +758,9 @@ fn sub_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>() -> imp
 	move |unzipped!(a, b)| *a = Conj::apply::<LhsT>(a) - Conj::apply::<RhsT>(b)
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<ColRef<'_, RhsT, Len>> for ColRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<ColRef<'_, RhsT, Len>>
+	for ColRef<'_, LhsT, Len>
+{
 	type Output = Col<T, Len>;
 
 	#[math]
@@ -745,7 +772,9 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<ColRef<'_, RhsT, Len>> for ColRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<ColRef<'_, RhsT, Len>>
+	for ColRef<'_, LhsT, Len>
+{
 	type Output = Col<T, Len>;
 
 	#[math]
@@ -783,7 +812,9 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for ColRef<'
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<RowRef<'_, RhsT, Len>> for RowRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<RowRef<'_, RhsT, Len>>
+	for RowRef<'_, LhsT, Len>
+{
 	type Output = Row<T, Len>;
 
 	#[math]
@@ -795,7 +826,9 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<RowRef<'_, RhsT, Len>> for RowRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<RowRef<'_, RhsT, Len>>
+	for RowRef<'_, LhsT, Len>
+{
 	type Output = Row<T, Len>;
 
 	#[math]
@@ -833,7 +866,9 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for RowRef<'
 		zipped!(this).map(neg_fn::<_>())
 	}
 }
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<DiagRef<'_, RhsT, Len>> for DiagRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<DiagRef<'_, RhsT, Len>>
+	for DiagRef<'_, LhsT, Len>
+{
 	type Output = Diag<T, Len>;
 
 	#[track_caller]
@@ -842,7 +877,9 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<DiagRef<'_, RhsT, Len>> for DiagRef<'_, LhsT, Len> {
+impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<DiagRef<'_, RhsT, Len>>
+	for DiagRef<'_, LhsT, Len>
+{
 	type Output = Diag<T, Len>;
 
 	#[track_caller]
@@ -1116,7 +1153,9 @@ impl_1d_neg!(&Diag< TT, Len>, Diag< T, Len>);
 mod matmul {
 	use super::*;
 
-	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape> Mul<MatRef<'_, RhsT, K, N>> for MatRef<'_, LhsT, M, K> {
+	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape> Mul<MatRef<'_, RhsT, K, N>>
+		for MatRef<'_, LhsT, M, K>
+	{
 		type Output = Mat<T, M, N>;
 
 		#[inline]
@@ -1131,7 +1170,9 @@ mod matmul {
 		}
 	}
 
-	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, K: Shape> Mul<ColRef<'_, RhsT, K>> for MatRef<'_, LhsT, M, K> {
+	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, K: Shape> Mul<ColRef<'_, RhsT, K>>
+		for MatRef<'_, LhsT, M, K>
+	{
 		type Output = Col<T, M>;
 
 		#[inline]
@@ -1141,12 +1182,21 @@ mod matmul {
 			Assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Col::zeros(lhs.nrows());
 
-			crate::linalg::matmul::matmul(out.as_mut().as_mat_mut(), Accum::Replace, lhs, rhs.as_mat(), T::one_impl(), get_global_parallelism());
+			crate::linalg::matmul::matmul(
+				out.as_mut().as_mat_mut(),
+				Accum::Replace,
+				lhs,
+				rhs.as_mat(),
+				T::one_impl(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
 
-	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, N: Shape, K: Shape> Mul<MatRef<'_, RhsT, K, N>> for RowRef<'_, LhsT, K> {
+	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, N: Shape, K: Shape> Mul<MatRef<'_, RhsT, K, N>>
+		for RowRef<'_, LhsT, K>
+	{
 		type Output = Row<T, N>;
 
 		#[inline]
@@ -1156,7 +1206,14 @@ mod matmul {
 			Assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Row::zeros(rhs.ncols());
 
-			crate::linalg::matmul::matmul(out.as_mut().as_mat_mut(), Accum::Replace, lhs.as_mat(), rhs, T::one_impl(), get_global_parallelism());
+			crate::linalg::matmul::matmul(
+				out.as_mut().as_mat_mut(),
+				Accum::Replace,
+				lhs.as_mat(),
+				rhs,
+				T::one_impl(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
@@ -1176,7 +1233,9 @@ mod matmul {
 		}
 	}
 
-	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape> Mul<RowRef<'_, RhsT, N>> for ColRef<'_, LhsT, M> {
+	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape> Mul<RowRef<'_, RhsT, N>>
+		for ColRef<'_, LhsT, M>
+	{
 		type Output = Mat<T, M, N>;
 
 		#[inline]
@@ -1186,7 +1245,14 @@ mod matmul {
 			Assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
 
-			crate::linalg::matmul::matmul(out.as_mut(), Accum::Replace, lhs.as_mat(), rhs.as_mat(), T::one_impl(), get_global_parallelism());
+			crate::linalg::matmul::matmul(
+				out.as_mut(),
+				Accum::Replace,
+				lhs.as_mat(),
+				rhs.as_mat(),
+				T::one_impl(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
@@ -1386,7 +1452,9 @@ mod matmul {
 	impl_mul_col_row!(&Col< LhsT, M>, &RowMut<'_,  RhsT, N>, Mat< T, M, N>);
 	impl_mul_col_row!(&Col< LhsT, M>, &Row< RhsT, N>, Mat< T, M, N>);
 
-	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape> Mul<MatRef<'_, RhsT, M, N>> for DiagRef<'_, LhsT, M> {
+	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape> Mul<MatRef<'_, RhsT, M, N>>
+		for DiagRef<'_, LhsT, M>
+	{
 		type Output = Mat<T, M, N>;
 
 		#[track_caller]
@@ -1397,7 +1465,9 @@ mod matmul {
 			let rhs_nrows = rhs.nrows();
 			Assert!(lhs_dim == rhs_nrows);
 
-			Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| Conj::apply::<LhsT>(lhs.at(i)) * Conj::apply::<RhsT>(rhs.at(i, j)))
+			Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| {
+				Conj::apply::<LhsT>(lhs.at(i)) * Conj::apply::<RhsT>(rhs.at(i, j))
+			})
 		}
 	}
 
@@ -1494,7 +1564,9 @@ mod matmul {
 	impl_mul_diag_col!(&Diag< LhsT, M>, &ColMut<'_,  RhsT, M>, Col< T, M>);
 	impl_mul_diag_col!(&Diag< LhsT, M>, &Col< RhsT, M>, Col< T, M>);
 
-	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape> Mul<DiagRef<'_, RhsT, N>> for MatRef<'_, LhsT, M, N> {
+	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape> Mul<DiagRef<'_, RhsT, N>>
+		for MatRef<'_, LhsT, M, N>
+	{
 		type Output = Mat<T, M, N>;
 
 		#[math]
@@ -1774,7 +1846,11 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<Co
 		Assert!(lhs.len() == rhs.nrows());
 		let mut out = Col::zeros(rhs.nrows());
 
-		fn imp<'ROWS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(mut out: ColMut<'_, T, Dim<'ROWS>>, lhs: PermRef<'_, I, Dim<'ROWS>>, rhs: ColRef<'_, TT, Dim<'ROWS>>) {
+		fn imp<'ROWS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
+			mut out: ColMut<'_, T, Dim<'ROWS>>,
+			lhs: PermRef<'_, I, Dim<'ROWS>>,
+			rhs: ColRef<'_, TT, Dim<'ROWS>>,
+		) {
 			let fwd = lhs.bound_arrays().0;
 
 			for i in rhs.nrows().indices() {
@@ -1892,7 +1968,11 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<Pe
 		Assert!(lhs.ncols() == rhs.len());
 		let mut out = Row::zeros(lhs.ncols());
 
-		fn imp<'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(mut out: RowMut<'_, T, Dim<'COLS>>, lhs: RowRef<'_, TT, Dim<'COLS>>, rhs: PermRef<'_, I, Dim<'COLS>>) {
+		fn imp<'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
+			mut out: RowMut<'_, T, Dim<'COLS>>,
+			lhs: RowRef<'_, TT, Dim<'COLS>>,
+			rhs: PermRef<'_, I, Dim<'COLS>>,
+		) {
 			let inv = rhs.bound_arrays().1;
 
 			for j in lhs.ncols().indices() {
@@ -2401,7 +2481,9 @@ mod sparse {
 
 	use super::*;
 	use crate::sparse::*;
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<MatRef<'_, RhsT>> for SparseColMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<MatRef<'_, RhsT>>
+		for SparseColMatRef<'_, I, LhsT>
+	{
 		type Output = Mat<T>;
 
 		#[track_caller]
@@ -2413,7 +2495,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<ColRef<'_, RhsT>> for SparseColMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<ColRef<'_, RhsT>>
+		for SparseColMatRef<'_, I, LhsT>
+	{
 		type Output = Col<T>;
 
 		#[track_caller]
@@ -2425,7 +2509,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>> for MatRef<'_, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>>
+		for MatRef<'_, LhsT>
+	{
 		type Output = Mat<T>;
 
 		#[track_caller]
@@ -2437,7 +2523,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>> for RowRef<'_, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>>
+		for RowRef<'_, LhsT>
+	{
 		type Output = Row<T>;
 
 		#[track_caller]
@@ -2449,50 +2537,86 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<MatRef<'_, RhsT>> for SparseRowMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<MatRef<'_, RhsT>>
+		for SparseRowMatRef<'_, I, LhsT>
+	{
 		type Output = Mat<T>;
 
 		#[track_caller]
 		fn mul(self, rhs: MatRef<'_, RhsT>) -> Self::Output {
 			let lhs = self;
 			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-			crate::sparse::linalg::matmul::dense_sparse_matmul(out.as_mut().transpose_mut(), rhs.transpose(), lhs.transpose(), None, E::faer_one(), get_global_parallelism());
+			crate::sparse::linalg::matmul::dense_sparse_matmul(
+				out.as_mut().transpose_mut(),
+				rhs.transpose(),
+				lhs.transpose(),
+				None,
+				E::faer_one(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<ColRef<'_, RhsT>> for SparseRowMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<ColRef<'_, RhsT>>
+		for SparseRowMatRef<'_, I, LhsT>
+	{
 		type Output = Col<T>;
 
 		#[track_caller]
 		fn mul(self, rhs: ColRef<'_, RhsT>) -> Self::Output {
 			let lhs = self;
 			let mut out = Col::zeros(lhs.nrows());
-			crate::sparse::linalg::matmul::dense_sparse_matmul(out.as_mut().transpose_mut(), rhs.transpose(), lhs.transpose(), None, E::faer_one(), get_global_parallelism());
+			crate::sparse::linalg::matmul::dense_sparse_matmul(
+				out.as_mut().transpose_mut(),
+				rhs.transpose(),
+				lhs.transpose(),
+				None,
+				E::faer_one(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>> for MatRef<'_, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>>
+		for MatRef<'_, LhsT>
+	{
 		type Output = Mat<T>;
 
 		#[track_caller]
 		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
 			let lhs = self;
 			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-			crate::sparse::linalg::matmul::sparse_dense_matmul(out.as_mut().transpose_mut(), rhs.transpose(), lhs.transpose(), None, E::faer_one(), get_global_parallelism());
+			crate::sparse::linalg::matmul::sparse_dense_matmul(
+				out.as_mut().transpose_mut(),
+				rhs.transpose(),
+				lhs.transpose(),
+				None,
+				E::faer_one(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>> for RowRef<'_, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>>
+		for RowRef<'_, LhsT>
+	{
 		type Output = Row<T>;
 
 		#[track_caller]
 		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
 			let lhs = self;
 			let mut out = Row::zeros(rhs.ncols());
-			crate::sparse::linalg::matmul::sparse_dense_matmul(out.as_mut().transpose_mut(), rhs.transpose(), lhs.transpose(), None, E::faer_one(), get_global_parallelism());
+			crate::sparse::linalg::matmul::sparse_dense_matmul(
+				out.as_mut().transpose_mut(),
+				rhs.transpose(),
+				lhs.transpose(),
+				None,
+				E::faer_one(),
+				get_global_parallelism(),
+			);
 			out
 		}
 	}
@@ -2809,7 +2933,9 @@ mod sparse {
 	impl_sparse_mul!(&Row<LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
 	impl_sparse_mul!(&Row< LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
 
-	impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<SparseColMatRef<'_, I, RhsT>> for SparseColMatRef<'_, I, LhsT> {
+	impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<SparseColMatRef<'_, I, RhsT>>
+		for SparseColMatRef<'_, I, LhsT>
+	{
 		fn eq(&self, other: &SparseColMatRef<'_, I, RhsT>) -> bool {
 			let lhs = *self;
 			let rhs = *other;
@@ -2828,7 +2954,10 @@ mod sparse {
 
 				let lhs_val = crate::utils::slice::SliceGroup::<'_, LhsT>::new(lhs.values_of_col(j));
 				let rhs_val = crate::utils::slice::SliceGroup::<'_, RhsT>::new(rhs.values_of_col(j));
-				equal &= lhs_val.into_ref_iter().map(|r| r.read().canonicalize()).eq(rhs_val.into_ref_iter().map(|r| r.read().canonicalize()));
+				equal &= lhs_val
+					.into_ref_iter()
+					.map(|r| r.read().canonicalize())
+					.eq(rhs_val.into_ref_iter().map(|r| r.read().canonicalize()));
 
 				if !equal {
 					return false;
@@ -2839,7 +2968,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<SparseRowMatRef<'_, I, RhsT>> for SparseRowMatRef<'_, I, LhsT> {
+	impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<SparseRowMatRef<'_, I, RhsT>>
+		for SparseRowMatRef<'_, I, LhsT>
+	{
 		#[inline]
 		fn eq(&self, other: &SparseRowMatRef<'_, I, RhsT>) -> bool {
 			self.transpose() == other.transpose()
@@ -2868,7 +2999,9 @@ mod sparse {
 	impl_partial_eq_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>);
 	impl_partial_eq_sparse!(SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>);
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<SparseColMatRef<'_, I, RhsT>> for SparseColMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<SparseColMatRef<'_, I, RhsT>>
+		for SparseColMatRef<'_, I, LhsT>
+	{
 		type Output = SparseColMat<I, T>;
 
 		#[track_caller]
@@ -2877,7 +3010,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<SparseColMatRef<'_, I, RhsT>> for SparseColMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<SparseColMatRef<'_, I, RhsT>>
+		for SparseColMatRef<'_, I, LhsT>
+	{
 		type Output = SparseColMat<I, T>;
 
 		#[track_caller]
@@ -2886,7 +3021,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<SparseRowMatRef<'_, I, RhsT>> for SparseRowMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<SparseRowMatRef<'_, I, RhsT>>
+		for SparseRowMatRef<'_, I, LhsT>
+	{
 		type Output = SparseRowMat<I, T>;
 
 		#[track_caller]
@@ -2895,7 +3032,9 @@ mod sparse {
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<SparseRowMatRef<'_, I, RhsT>> for SparseRowMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<SparseRowMatRef<'_, I, RhsT>>
+		for SparseRowMatRef<'_, I, LhsT>
+	{
 		type Output = SparseRowMat<I, T>;
 
 		#[track_caller]
@@ -3214,7 +3353,9 @@ impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT
 	impl_mul_assign_primitive_sparse!(SparseRowMatMut<'_, I, LhsT>);
 	impl_mul_assign_primitive_sparse!(SparseRowMat<I,  LhsT>);
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>> for SparseColMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>>
+		for SparseColMatRef<'_, I, LhsT>
+	{
 		type Output = SparseColMat<I, T>;
 
 		#[track_caller]
@@ -3223,7 +3364,9 @@ impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>> for SparseRowMatRef<'_, I, LhsT> {
+	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>>
+		for SparseRowMatRef<'_, I, LhsT>
+	{
 		type Output = SparseRowMat<I, T>;
 
 		#[track_caller]
@@ -3441,9 +3584,13 @@ mod test {
 			[0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
 			[0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
 		];
-		let perm_right = mat![[0.0, 1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0, 0.0], [
-			0.0, 0.0, 0.0, 1.0, 0.0
-		],];
+		let perm_right = mat![
+			[0.0, 1.0, 0.0, 0.0, 0.0],
+			[0.0, 0.0, 0.0, 0.0, 1.0],
+			[1.0, 0.0, 0.0, 0.0, 0.0],
+			[0.0, 0.0, 1.0, 0.0, 0.0],
+			[0.0, 0.0, 0.0, 1.0, 0.0],
+		];
 
 		assert!(&pl * pl.as_ref().inverse() == PermRef::<'_, usize>::new_checked(&[0, 1, 2, 3, 4, 5], &[0, 1, 2, 3, 4, 5], 6));
 		assert!(&perm_left * &A == &pl * &A);

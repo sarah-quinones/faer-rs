@@ -41,7 +41,13 @@ pub mod dot {
 
 	#[inline(always)]
 	#[math]
-	fn inner_prod_slice<'K, T: ComplexField>(len: Dim<'K>, lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>, conj_lhs: Conj, rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>, conj_rhs: Conj) -> T {
+	fn inner_prod_slice<'K, T: ComplexField>(
+		len: Dim<'K>,
+		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
+		conj_lhs: Conj,
+		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
+		conj_rhs: Conj,
+	) -> T {
 		struct Impl<'a, 'K, T: ComplexField> {
 			len: Dim<'K>,
 			lhs: ColRef<'a, T, Dim<'K>, ContiguousFwd>,
@@ -54,7 +60,13 @@ pub mod dot {
 
 			#[inline(always)]
 			fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-				let Self { len, lhs, conj_lhs, rhs, conj_rhs } = self;
+				let Self {
+					len,
+					lhs,
+					conj_lhs,
+					rhs,
+					conj_rhs,
+				} = self;
 
 				let simd = SimdCtx::new(T::simd_ctx(simd), len);
 
@@ -71,11 +83,25 @@ pub mod dot {
 			}
 		}
 
-		dispatch!(Impl { len, lhs, rhs, conj_lhs, conj_rhs }, Impl, T)
+		dispatch!(
+			Impl {
+				len,
+				lhs,
+				rhs,
+				conj_lhs,
+				conj_rhs
+			},
+			Impl,
+			T
+		)
 	}
 
 	#[inline(always)]
-	pub fn inner_prod_no_conj_simd<'K, T: ComplexField, S: Simd>(simd: SimdCtx<'K, T, S>, lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>, rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>) -> T {
+	pub fn inner_prod_no_conj_simd<'K, T: ComplexField, S: Simd>(
+		simd: SimdCtx<'K, T, S>,
+		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
+		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
+	) -> T {
 		let mut acc0 = simd.zero();
 		let mut acc1 = simd.zero();
 		let mut acc2 = simd.zero();
@@ -125,7 +151,11 @@ pub mod dot {
 	}
 
 	#[inline(always)]
-	pub fn inner_prod_conj_lhs_simd<'K, T: ComplexField, S: Simd>(simd: SimdCtx<'K, T, S>, lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>, rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>) -> T {
+	pub fn inner_prod_conj_lhs_simd<'K, T: ComplexField, S: Simd>(
+		simd: SimdCtx<'K, T, S>,
+		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
+		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
+	) -> T {
 		let mut acc0 = simd.zero();
 		let mut acc1 = simd.zero();
 		let mut acc2 = simd.zero();
@@ -293,14 +323,16 @@ mod matvec_rowmajor {
 				let nthreads = nthreads.get();
 
 				use rayon::prelude::*;
-				dst.par_partition_mut(nthreads).zip_eq(lhs.par_row_partition(nthreads)).for_each(|(dst, lhs)| {
-					make_guard!(M);
-					let nrows = dst.nrows().bind(M);
-					let dst = dst.as_row_shape_mut(nrows);
-					let lhs = lhs.as_row_shape(nrows);
+				dst.par_partition_mut(nthreads)
+					.zip_eq(lhs.par_row_partition(nthreads))
+					.for_each(|(dst, lhs)| {
+						make_guard!(M);
+						let nrows = dst.nrows().bind(M);
+						let dst = dst.as_row_shape_mut(nrows);
+						let lhs = lhs.as_row_shape(nrows);
 
-					matvec(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
-				})
+						matvec(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
+					})
 			},
 		}
 	}
@@ -465,7 +497,16 @@ mod matvec_colmajor {
 						matvec(dst, Accum::Replace, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
 					});
 
-				matvec(dst.rb_mut(), beta, lhs.subcols(z, Z), conj_lhs, rhs.subrows(z, Z), conj_rhs, &zero(), Par::Seq);
+				matvec(
+					dst.rb_mut(),
+					beta,
+					lhs.subcols(z, Z),
+					conj_lhs,
+					rhs.subrows(z, Z),
+					conj_rhs,
+					&zero(),
+					Par::Seq,
+				);
 				for j in 0..nthreads {
 					zipped!(dst.rb_mut(), tmp.rb().col(j)).for_each(|unzipped!(dst, src)| *dst = *dst + *src)
 				}
@@ -875,7 +916,15 @@ mod tests {
 	}
 
 	#[math]
-	fn matmul_with_conj_fallback<T: Copy + ComplexField>(acc: MatMut<'_, T>, a: MatRef<'_, T>, conj_a: Conj, b: MatRef<'_, T>, conj_b: Conj, beta: Accum, alpha: T) {
+	fn matmul_with_conj_fallback<T: Copy + ComplexField>(
+		acc: MatMut<'_, T>,
+		a: MatRef<'_, T>,
+		conj_a: Conj,
+		b: MatRef<'_, T>,
+		conj_b: Conj,
+		beta: Accum,
+		alpha: T,
+	) {
 		let m = acc.nrows();
 		let n = acc.ncols();
 		let k = a.ncols();
@@ -952,7 +1001,12 @@ mod tests {
 
 	fn generate_structured_matrix(is_dst: bool, nrows: usize, ncols: usize, structure: BlockStructure) -> Mat<f64> {
 		let rng = &mut StdRng::seed_from_u64(0);
-		let mut mat = CwiseMatDistribution { nrows, ncols, dist: StandardNormal }.rand::<Mat<f64>>(rng);
+		let mut mat = CwiseMatDistribution {
+			nrows,
+			ncols,
+			dist: StandardNormal,
+		}
+		.rand::<Mat<f64>>(rng);
 
 		if !is_dst {
 			let kind = structure.diag_kind();
@@ -1009,7 +1063,16 @@ mod tests {
 				parallelism,
 			);
 
-			matmul_with_conj(dst_target.as_mut(), Accum::Replace, lhs.as_ref(), Conj::No, rhs.as_ref(), Conj::No, 2.5, parallelism);
+			matmul_with_conj(
+				dst_target.as_mut(),
+				Accum::Replace,
+				lhs.as_ref(),
+				Conj::No,
+				rhs.as_ref(),
+				Conj::No,
+				2.5,
+				parallelism,
+			);
 
 			if dst_structure.is_dense() {
 				for j in 0..n {

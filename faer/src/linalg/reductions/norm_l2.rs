@@ -72,7 +72,11 @@ fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
 			acc0_big = RealReg(simd.add(acc0_big.0, acc1_big.0));
 			acc0_med = RealReg(simd.add(acc0_med.0, acc1_med.0));
 
-			[simd.reduce_sum_real(acc0_sml), simd.reduce_sum_real(acc0_med), simd.reduce_sum_real(acc0_big)]
+			[
+				simd.reduce_sum_real(acc0_sml),
+				simd.reduce_sum_real(acc0_med),
+				simd.reduce_sum_real(acc0_big),
+			]
 		}
 	}
 
@@ -129,13 +133,25 @@ pub fn norm_l2_x3<T: ComplexField>(mut mat: MatRef<'_, T>) -> [T::Real; 3] {
 				if const { T::IS_NATIVE_C32 } {
 					let mat: MatRef<'_, Complex<f32>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
-						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(mat.as_ptr() as *const f32, 2 * mat.nrows(), mat.ncols(), ContiguousFwd, mat.col_stride().wrapping_mul(2))
+						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(
+							mat.as_ptr() as *const f32,
+							2 * mat.nrows(),
+							mat.ncols(),
+							ContiguousFwd,
+							mat.col_stride().wrapping_mul(2),
+						)
 					};
 					return unsafe { crate::hacks::coerce(norm_l2_simd_pairwise_cols::<f32>(mat)) };
 				} else if const { T::IS_NATIVE_C64 } {
 					let mat: MatRef<'_, Complex<f64>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
-						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(mat.as_ptr() as *const f64, 2 * mat.nrows(), mat.ncols(), ContiguousFwd, mat.col_stride().wrapping_mul(2))
+						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(
+							mat.as_ptr() as *const f64,
+							2 * mat.nrows(),
+							mat.ncols(),
+							ContiguousFwd,
+							mat.col_stride().wrapping_mul(2),
+						)
 					};
 					return unsafe { crate::hacks::coerce(norm_l2_simd_pairwise_cols::<f64>(mat)) };
 				} else {

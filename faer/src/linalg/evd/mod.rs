@@ -75,7 +75,12 @@ pub enum ComputeEigenvectors {
 }
 
 #[math]
-pub fn self_adjoint_evd_scratch<T: ComplexField>(dim: usize, compute_u: ComputeEigenvectors, par: Par, params: Spec<SelfAdjointEvdParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn self_adjoint_evd_scratch<T: ComplexField>(
+	dim: usize,
+	compute_u: ComputeEigenvectors,
+	par: Par,
+	params: Spec<SelfAdjointEvdParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let n = dim;
 	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
 
@@ -105,7 +110,14 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(dim: usize, compute_u: ComputeE
 }
 
 #[math]
-pub fn self_adjoint_evd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u: Option<MatMut<'_, T>>, par: Par, stack: &mut DynStack, params: Spec<SelfAdjointEvdParams, T>) -> Result<(), EvdError> {
+pub fn self_adjoint_evd<T: ComplexField>(
+	A: MatRef<'_, T>,
+	s: DiagMut<'_, T>,
+	u: Option<MatMut<'_, T>>,
+	par: Par,
+	stack: &mut DynStack,
+	params: Spec<SelfAdjointEvdParams, T>,
+) -> Result<(), EvdError> {
 	let n = A.nrows();
 	assert!(all(A.nrows() == A.ncols(), s.dim() == n));
 	if let Some(u) = u.rb() {
@@ -178,7 +190,11 @@ pub fn self_adjoint_evd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u:
 
 	let (mut u_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, if T::IS_REAL { 0 } else { n }, stack) };
 	let mut u_real = u_real.as_mat_mut();
-	let mut u_evd = if const { T::IS_REAL } { unsafe { core::mem::transmute(u.rb_mut()) } } else { u_real.rb_mut() };
+	let mut u_evd = if const { T::IS_REAL } {
+		unsafe { core::mem::transmute(u.rb_mut()) }
+	} else {
+		u_real.rb_mut()
+	};
 
 	if n < params.recursion_threshold {
 		tridiag_evd::qr_algorithm(diag.rb_mut(), offdiag.rb_mut(), Some(u_evd.rb_mut()))?;
@@ -208,7 +224,14 @@ pub fn self_adjoint_evd<T: ComplexField>(A: MatRef<'_, T>, s: DiagMut<'_, T>, u:
 		}
 	}
 
-	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(trid.submatrix(1, 0, n - 1, n - 1), householder.rb(), Conj::No, u.rb_mut().subrows_mut(1, n - 1), par, stack);
+	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+		trid.submatrix(1, 0, n - 1, n - 1),
+		householder.rb(),
+		Conj::No,
+		u.rb_mut().subrows_mut(1, n - 1),
+		par,
+		stack,
+	);
 
 	for i in 0..n {
 		s[i] = from_real(diag[i]);
@@ -372,7 +395,14 @@ fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<'_, T>, par
 				V[(i, k)] = -A[(i, k)];
 			}
 
-			solve_real_shifted_upper_quasi_triangular_system(A.submatrix(0, 0, k, k), p, V.rb_mut().subrows_mut(0, k).col_mut(k), copy(norm), par, params);
+			solve_real_shifted_upper_quasi_triangular_system(
+				A.submatrix(0, 0, k, k),
+				p,
+				V.rb_mut().subrows_mut(0, k).col_mut(k),
+				copy(norm),
+				par,
+				params,
+			);
 		} else {
 			// complex eigenvalue pair
 			let p = copy(A[(k, k)]);
@@ -396,7 +426,15 @@ fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<'_, T>, par
 				V[(i, k)] = -V[(k, k)] * A[(i, k)];
 			}
 
-			solve_cplx_shifted_upper_quasi_triangular_system(A.submatrix(0, 0, k - 1, k - 1), p, q, V.rb_mut().submatrix_mut(0, k - 1, k - 1, 2), copy(norm), par, params);
+			solve_cplx_shifted_upper_quasi_triangular_system(
+				A.submatrix(0, 0, k - 1, k - 1),
+				p,
+				q,
+				V.rb_mut().submatrix_mut(0, k - 1, k - 1, 2),
+				copy(norm),
+				par,
+				params,
+			);
 
 			k -= 1;
 		}
@@ -441,12 +479,27 @@ fn evd_from_cplx_schur_imp<T: ComplexField>(A: MatRef<'_, T>, conj_A: Conj, V: M
 			}
 		}
 
-		solve_shifted_upper_triangular_system(A.submatrix(0, 0, k, k), conj_A, p, V.rb_mut().subrows_mut(0, k).col_mut(k), copy(norm), par, params);
+		solve_shifted_upper_triangular_system(
+			A.submatrix(0, 0, k, k),
+			conj_A,
+			p,
+			V.rb_mut().subrows_mut(0, k).col_mut(k),
+			copy(norm),
+			par,
+			params,
+		);
 	}
 }
 
 #[math]
-fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(A: MatRef<'_, T>, p: T, x: ColMut<'_, T>, norm: T, par: Par, params: EvdFromSchurParams) {
+fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(
+	A: MatRef<'_, T>,
+	p: T,
+	x: ColMut<'_, T>,
+	norm: T,
+	par: Par,
+	params: EvdFromSchurParams,
+) {
 	let n = A.nrows();
 
 	let one = one::<T>;
@@ -480,7 +533,11 @@ fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(A: MatRef<'_, 
 					x[i] = x[i] / z;
 				}
 			} else {
-				let (dot0, dot1) = dot2x1(A.row(i - 1).subcols(i + 1, n - i - 1), A.row(i).subcols(i + 1, n - i - 1), x.rb().subrows(i + 1, n - i - 1));
+				let (dot0, dot1) = dot2x1(
+					A.row(i - 1).subcols(i + 1, n - i - 1),
+					A.row(i).subcols(i + 1, n - i - 1),
+					x.rb().subrows(i + 1, n - i - 1),
+				);
 
 				x[i - 1] = x[i - 1] - dot0;
 				x[i] = x[i] - dot1;
@@ -524,7 +581,15 @@ fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(A: MatRef<'_, 
 }
 
 #[math]
-fn solve_cplx_shifted_upper_quasi_triangular_system<T: RealField>(A: MatRef<'_, T>, p: T, q: T, x: MatMut<'_, T>, norm: T, par: Par, params: EvdFromSchurParams) {
+fn solve_cplx_shifted_upper_quasi_triangular_system<T: RealField>(
+	A: MatRef<'_, T>,
+	p: T,
+	q: T,
+	x: MatMut<'_, T>,
+	norm: T,
+	par: Par,
+	params: EvdFromSchurParams,
+) {
 	let n = A.nrows();
 
 	let one = one::<T>;
@@ -640,7 +705,15 @@ fn solve_cplx_shifted_upper_quasi_triangular_system<T: RealField>(A: MatRef<'_, 
 }
 
 #[math]
-fn solve_shifted_upper_triangular_system<T: ComplexField>(A: MatRef<'_, T>, conj_A: Conj, p: T, x: ColMut<'_, T>, norm: T::Real, par: Par, params: EvdFromSchurParams) {
+fn solve_shifted_upper_triangular_system<T: ComplexField>(
+	A: MatRef<'_, T>,
+	conj_A: Conj,
+	p: T,
+	x: ColMut<'_, T>,
+	norm: T::Real,
+	par: Par,
+	params: EvdFromSchurParams,
+) {
 	let n = A.nrows();
 
 	let one = one::<T>;
@@ -687,7 +760,13 @@ fn solve_shifted_upper_triangular_system<T: ComplexField>(A: MatRef<'_, T>, conj
 	}
 }
 
-pub fn evd_scratch<T: ComplexField>(dim: usize, eigen_left: ComputeEigenvectors, eigen_right: ComputeEigenvectors, par: Par, params: Spec<EvdParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn evd_scratch<T: ComplexField>(
+	dim: usize,
+	eigen_left: ComputeEigenvectors,
+	eigen_right: ComputeEigenvectors,
+	par: Par,
+	params: Spec<EvdParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let n = dim;
 
 	if n == 0 {
@@ -747,7 +826,11 @@ fn evd_imp<T: ComplexField>(
 	let (mut Z, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, if u_left.is_some() || u_right.is_some() { n } else { 0 }, stack) };
 
 	let mut H = H.as_mat_mut();
-	let mut Z = if u_left.is_some() || u_right.is_some() { Some(Z.as_mat_mut()) } else { None };
+	let mut Z = if u_left.is_some() || u_right.is_some() {
+		Some(Z.as_mat_mut())
+	} else {
+		None
+	};
 
 	H.copy_from(A);
 
@@ -802,7 +885,12 @@ fn evd_imp<T: ComplexField>(
 		let mut X = X.as_mat_mut();
 
 		if const { T::IS_REAL } {
-			evd_from_real_schur_imp::<T::Real>(unsafe { core::mem::transmute(H) }, unsafe { core::mem::transmute(X.rb_mut()) }, par, params.evd_from_schur);
+			evd_from_real_schur_imp::<T::Real>(
+				unsafe { core::mem::transmute(H) },
+				unsafe { core::mem::transmute(X.rb_mut()) },
+				par,
+				params.evd_from_schur,
+			);
 		} else {
 			evd_from_cplx_schur_imp::<T>(H, Conj::No, X.rb_mut(), par, params.evd_from_schur);
 		}
@@ -893,7 +981,16 @@ pub fn evd_real<T: RealField>(
 		assert!(all(u.nrows() == n, u.ncols() == n));
 	}
 
-	evd_imp(A, s_re.column_vector_mut(), Some(s_im.column_vector_mut()), u_left, u_right, par, stack, params.into_inner())
+	evd_imp(
+		A,
+		s_re.column_vector_mut(),
+		Some(s_im.column_vector_mut()),
+		u_left,
+		u_right,
+		par,
+		stack,
+		params.into_inner(),
+	)
 }
 
 #[cfg(test)]
@@ -909,7 +1006,10 @@ mod general_tests {
 		let params = Spec::new(EvdParams {
 			hessenberg: auto!(c64),
 			schur: auto!(c64),
-			evd_from_schur: EvdFromSchurParams { recursion_threshold: 8, ..auto!(c64) },
+			evd_from_schur: EvdFromSchurParams {
+				recursion_threshold: 8,
+				..auto!(c64)
+			},
 			..auto!(c64)
 		});
 
@@ -944,7 +1044,10 @@ mod general_tests {
 		let params = Spec::new(EvdParams {
 			hessenberg: auto!(f64),
 			schur: auto!(f64),
-			evd_from_schur: EvdFromSchurParams { recursion_threshold: 8, ..auto!(f64) },
+			evd_from_schur: EvdFromSchurParams {
+				recursion_threshold: 8,
+				..auto!(f64)
+			},
 			..auto!(f64)
 		});
 
@@ -1050,7 +1153,10 @@ mod self_adjoint_tests {
 
 	fn test_self_adjoint_evd<T: ComplexField>(mat: MatRef<'_, T>) {
 		let n = mat.nrows();
-		let params = Spec::new(SelfAdjointEvdParams { recursion_threshold: 8, ..auto!(T) });
+		let params = Spec::new(SelfAdjointEvdParams {
+			recursion_threshold: 8,
+			..auto!(T)
+		});
 		use faer_traits::math_utils::*;
 		let approx_eq = CwiseMat(ApproxEq::<T>::eps() * sqrt(&from_f64(8.0 * n as f64)));
 
@@ -1063,7 +1169,9 @@ mod self_adjoint_tests {
 				s.as_mut().diagonal_mut(),
 				Some(u.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(self_adjoint_evd_scratch::<T>(n, ComputeEigenvectors::Yes, Par::Seq, params).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					self_adjoint_evd_scratch::<T>(n, ComputeEigenvectors::Yes, Par::Seq, params).unwrap(),
+				)),
 				params,
 			)
 			.unwrap();
@@ -1080,7 +1188,9 @@ mod self_adjoint_tests {
 				s2.as_mut().diagonal_mut(),
 				None,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(self_adjoint_evd_scratch::<T>(n, ComputeEigenvectors::No, Par::Seq, params).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					self_adjoint_evd_scratch::<T>(n, ComputeEigenvectors::No, Par::Seq, params).unwrap(),
+				)),
 				params,
 			)
 			.unwrap();

@@ -24,7 +24,13 @@ fn bench_new(bencher: Bencher, n: usize) {
 	bencher.bench(|| {
 		LD.copy_from(A);
 
-		_ = faer::linalg::cholesky::ldlt::factor::cholesky_in_place(LD.rb_mut(), Default::default(), Par::Seq, dyn_stack::DynStack::new(&mut []), auto!(f64));
+		_ = faer::linalg::cholesky::ldlt::factor::cholesky_in_place(
+			LD.rb_mut(),
+			Default::default(),
+			Par::Seq,
+			dyn_stack::DynStack::new(&mut []),
+			auto!(f64),
+		);
 	});
 }
 

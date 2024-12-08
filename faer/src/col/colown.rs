@@ -28,7 +28,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	where
 		T: ComplexField,
 	{
-		Self { column: Mat::zeros(nrows, 1) }
+		Self {
+			column: Mat::zeros(nrows, 1),
+		}
 	}
 
 	#[inline]
@@ -44,7 +46,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	where
 		T: Clone,
 	{
-		Self { column: Mat::full(nrows, 1, value) }
+		Self {
+			column: Mat::full(nrows, 1, value),
+		}
 	}
 
 	pub fn try_reserve(&mut self, new_row_capacity: usize) -> Result<(), TryReserveError> {

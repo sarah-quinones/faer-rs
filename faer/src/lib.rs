@@ -75,7 +75,12 @@ macro_rules! __perf_warn {
 			&$name
 		}
 		::core::matches!(
-			$name().compare_exchange(false, true, ::core::sync::atomic::Ordering::Relaxed, ::core::sync::atomic::Ordering::Relaxed,),
+			$name().compare_exchange(
+				false,
+				true,
+				::core::sync::atomic::Ordering::Relaxed,
+				::core::sync::atomic::Ordering::Relaxed,
+			),
 			Ok(_)
 		)
 	}};
@@ -288,13 +293,21 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 	/// Checks if the index is valid, returning `Some(_)` in that case.
 	#[inline(always)]
 	fn idx(self, idx: usize) -> Option<Idx<Self>> {
-		if idx < self.unbound() { Some(unsafe { Idx::<Self>::new_unbound(idx) }) } else { None }
+		if idx < self.unbound() {
+			Some(unsafe { Idx::<Self>::new_unbound(idx) })
+		} else {
+			None
+		}
 	}
 
 	/// Checks if the index is valid, returning `Some(_)` in that case.
 	#[inline(always)]
 	fn idx_inc(self, idx: usize) -> Option<IdxInc<Self>> {
-		if idx <= self.unbound() { Some(unsafe { IdxInc::<Self>::new_unbound(idx) }) } else { None }
+		if idx <= self.unbound() {
+			Some(unsafe { IdxInc::<Self>::new_unbound(idx) })
+		} else {
+			None
+		}
 	}
 
 	/// Checks if the index is valid, and panics otherwise.

@@ -159,7 +159,10 @@ impl<'n, I: Index> PartialOrd<Dim<'n>> for IdxInc<'n, I> {
 }
 
 impl Dim<'static> {
-	pub const ONE: Self = Dim { unbound: 1, __marker: PhantomData };
+	pub const ONE: Self = Dim {
+		unbound: 1,
+		__marker: PhantomData,
+	};
 }
 
 impl<'n> Dim<'n> {
@@ -172,14 +175,20 @@ impl<'n> Dim<'n> {
 	/// See struct safety invariant.
 	#[inline(always)]
 	pub const unsafe fn new_unbound(dim: usize) -> Self {
-		Self { unbound: dim, __marker: PhantomData }
+		Self {
+			unbound: dim,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Create new branded value with a unique brand.
 	#[inline(always)]
 	pub fn new(dim: usize, guard: Guard<'n>) -> Self {
 		_ = guard;
-		Self { unbound: dim, __marker: PhantomData }
+		Self {
+			unbound: dim,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Returns the unconstrained value.
@@ -254,7 +263,10 @@ impl<'n, I: Index> Idx<'n, I> {
 	/// See struct safety invariant.
 	#[inline(always)]
 	pub const unsafe fn new_unbound(idx: I) -> Self {
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Create new branded value with the same brand as `dim`.
@@ -264,7 +276,10 @@ impl<'n, I: Index> Idx<'n, I> {
 	pub unsafe fn new_unchecked(idx: I, dim: Dim<'n>) -> Self {
 		equator::debug_assert!(all(idx.zx() < dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
 
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Create new branded value with the same brand as `dim`.
@@ -275,7 +290,10 @@ impl<'n, I: Index> Idx<'n, I> {
 	pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
 		equator::assert!(all(idx.zx() < dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
 
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Returns the unconstrained value.
@@ -304,7 +322,10 @@ impl<'n, I: Index> IdxInc<'n, I> {
 	/// See struct safety invariant.
 	#[inline(always)]
 	pub const unsafe fn new_unbound(idx: I) -> Self {
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Create new branded value with the same brand as `dim`.
@@ -314,7 +335,10 @@ impl<'n, I: Index> IdxInc<'n, I> {
 	pub unsafe fn new_unchecked(idx: I, dim: Dim<'n>) -> Self {
 		equator::debug_assert!(all(idx.zx() <= dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
 
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Create new branded value with the same brand as `dim`.
@@ -325,7 +349,10 @@ impl<'n, I: Index> IdxInc<'n, I> {
 	pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
 		equator::assert!(all(idx.zx() <= dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
 
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Returns the unconstrained value.
@@ -467,7 +494,11 @@ impl<'size> Dim<'size> {
 	/// Check that the index is bounded by `self`, or return `None` otherwise.
 	#[inline]
 	pub fn try_check<I: Index>(self, idx: I) -> Option<Idx<'size, I>> {
-		if idx.zx() < self.unbound() { Some(unsafe { Idx::new_unbound(idx) }) } else { None }
+		if idx.zx() < self.unbound() {
+			Some(unsafe { Idx::new_unbound(idx) })
+		} else {
+			None
+		}
 	}
 }
 
@@ -574,7 +605,10 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 	/// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
 	#[inline]
 	pub unsafe fn new_unbound(idx: I) -> Self {
-		Self { unbound: idx, __marker: PhantomData }
+		Self {
+			unbound: idx,
+			__marker: PhantomData,
+		}
 	}
 
 	/// Returns the inner value.
@@ -867,7 +901,11 @@ impl PartialEq<One> for IdxIncOne {
 impl PartialOrd<One> for IdxIncOne {
 	#[inline]
 	fn partial_cmp(&self, _: &One) -> Option<core::cmp::Ordering> {
-		if self.inner == 1 { Some(core::cmp::Ordering::Equal) } else { Some(core::cmp::Ordering::Less) }
+		if self.inner == 1 {
+			Some(core::cmp::Ordering::Equal)
+		} else {
+			Some(core::cmp::Ordering::Less)
+		}
 	}
 }
 

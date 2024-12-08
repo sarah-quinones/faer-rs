@@ -88,7 +88,12 @@ unsafe impl<P: Ptr, Q: Ptr> Ptr for (P, Q) {
 
 	#[inline]
 	fn get_ptr(ptr: *mut Self::Item) -> Self {
-		unsafe { (P::get_ptr(core::ptr::addr_of_mut!((*ptr).0)), Q::get_ptr(core::ptr::addr_of_mut!((*ptr).1))) }
+		unsafe {
+			(
+				P::get_ptr(core::ptr::addr_of_mut!((*ptr).0)),
+				Q::get_ptr(core::ptr::addr_of_mut!((*ptr).1)),
+			)
+		}
 	}
 
 	#[inline]
@@ -185,7 +190,10 @@ where
 			// If `is_less` panics at any point during the process, `hole` will get dropped and
 			// fill the hole in `v` with `tmp`, thus ensuring that `v` still holds every object it
 			// initially held exactly once.
-			let mut hole = InsertionHole { src: tmp, dest: i_ptr.sub(1) };
+			let mut hole = InsertionHole {
+				src: tmp,
+				dest: i_ptr.sub(1),
+			};
 			P::copy_nonoverlapping(hole.dest, i_ptr, 1);
 
 			// SAFETY: We know i is at least 1.
@@ -243,7 +251,10 @@ where
 			// If `is_less` panics at any point during the process, `hole` will get dropped and
 			// fill the hole in `v` with `tmp`, thus ensuring that `v` still holds every object it
 			// initially held exactly once.
-			let mut hole = InsertionHole { src: tmp, dest: arr_ptr.add(1) };
+			let mut hole = InsertionHole {
+				src: tmp,
+				dest: arr_ptr.add(1),
+			};
 			P::copy_nonoverlapping(arr_ptr.add(1), arr_ptr.add(0), 1);
 
 			for i in 2..v_len {

@@ -158,7 +158,14 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
 
 		let w_row = w_left.rb().row(0);
 		let w_col = w_right.col_mut(0);
-		crate::linalg::matmul::matmul(w_col.as_mat_mut(), Accum::Add, a.rb().get(k0..n, ..k0), w_row.rb().transpose().as_mat(), -one::<T>(), par);
+		crate::linalg::matmul::matmul(
+			w_col.as_mat_mut(),
+			Accum::Add,
+			a.rb().get(k0..n, ..k0),
+			w_row.rb().transpose().as_mat(),
+			-one::<T>(),
+			par,
+		);
 		make_real(w.rb_mut(), (k0, j0));
 
 		let mut k_step = 1;
@@ -198,7 +205,14 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
 				let w_row = w_left.rb().row(imax - k).subcols(0, k);
 				let w_col = w_right.col_mut(0);
 
-				crate::linalg::matmul::matmul(w_col.as_mat_mut(), Accum::Add, a.rb().get(k0.., ..k0), w_row.rb().transpose().as_mat(), -one::<T>(), par);
+				crate::linalg::matmul::matmul(
+					w_col.as_mat_mut(),
+					Accum::Add,
+					a.rb().get(k0.., ..k0),
+					w_row.rb().transpose().as_mat(),
+					-one::<T>(),
+					par,
+				);
 				make_real(w.rb_mut(), (imax, j1));
 
 				let rowmax = max(best_score(w.rb().get(k0..imax, j1)), best_score(w.rb().get(imax + 1.., j1)));
@@ -394,7 +408,12 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
 }
 
 #[math]
-fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(mut a: MatMut<'_, T>, regularization: BunchKaufmanRegularization<'_, T>, pivots: &mut [I], alpha: T::Real) -> (usize, usize) {
+fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(
+	mut a: MatMut<'_, T>,
+	regularization: BunchKaufmanRegularization<'_, T>,
+	pivots: &mut [I],
+	alpha: T::Real,
+) -> (usize, usize) {
 	let truncate = <I::Signed as SignedIndex>::truncate;
 
 	assert!(a.nrows() == a.ncols());
@@ -650,7 +669,11 @@ fn convert<'N, I: Index, T: ComplexField>(mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>
 
 /// Computes the size and alignment of required workspace for performing a Cholesky
 /// decomposition with Bunch-Kaufman pivoting.
-pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<BunchKaufmanParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(
+	dim: usize,
+	par: Par,
+	params: Spec<BunchKaufmanParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let params = params.into_inner();
 	let _ = par;
 	let mut bs = params.blocksize;
@@ -755,7 +778,8 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 				par,
 			);
 		} else {
-			(piv_count, reg_count) = cholesky_diagonal_pivoting_unblocked(matrix.rb_mut().submatrix_mut(k, k, rem, rem), regularization, &mut pivots[k..], alpha);
+			(piv_count, reg_count) =
+				cholesky_diagonal_pivoting_unblocked(matrix.rb_mut().submatrix_mut(k, k, rem, rem), regularization, &mut pivots[k..], alpha);
 			kb = n - k;
 		}
 		dynamic_regularization_count += reg_count;
@@ -774,7 +798,11 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	}
 
 	with_dim!(N, n);
-	convert(matrix.rb_mut().as_shape_mut(N, N), Array::from_mut(pivots, N), subdiag.column_vector_mut().as_row_shape_mut(N));
+	convert(
+		matrix.rb_mut().as_shape_mut(N, N),
+		Array::from_mut(pivots, N),
+		subdiag.column_vector_mut().as_row_shape_mut(N),
+	);
 
 	for (i, p) in perm.iter_mut().enumerate() {
 		*p = I::from_signed(truncate(i));

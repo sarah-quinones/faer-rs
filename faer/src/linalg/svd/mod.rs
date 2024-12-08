@@ -84,15 +84,17 @@ fn svd_imp_scratch<T: ComplexField>(
 
 	let compute_bidiag_svd = bidiag_svd_scratch(n, compute_ub, compute_vb, par, params)?;
 
-	let apply_householder_u = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, householder_blocksize, match compute_u {
-		ComputeSvdVectors::No => 0,
-		ComputeSvdVectors::Thin => n,
-		ComputeSvdVectors::Full => m,
-	})?;
-	let apply_householder_v = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, householder_blocksize, match compute_v {
-		ComputeSvdVectors::No => 0,
-		_ => n,
-	})?;
+	let apply_householder_u =
+		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, householder_blocksize, match compute_u {
+			ComputeSvdVectors::No => 0,
+			ComputeSvdVectors::Thin => n,
+			ComputeSvdVectors::Full => m,
+		})?;
+	let apply_householder_v =
+		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, householder_blocksize, match compute_v {
+			ComputeSvdVectors::No => 0,
+			_ => n,
+		})?;
 
 	StackReq::try_all_of([
 		bid,
@@ -111,7 +113,13 @@ fn svd_imp_scratch<T: ComplexField>(
 	])
 }
 
-fn bidiag_cplx_svd_scratch<T: ComplexField>(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> Result<StackReq, SizeOverflow> {
+fn bidiag_cplx_svd_scratch<T: ComplexField>(
+	n: usize,
+	compute_u: bool,
+	compute_v: bool,
+	par: Par,
+	params: SvdParams,
+) -> Result<StackReq, SizeOverflow> {
 	StackReq::try_all_of([
 		temp_mat_scratch::<T>(n, 1)?.try_array(4)?,
 		temp_mat_scratch::<T::Real>(n + 1, if compute_u { n + 1 } else { 0 })?,
@@ -184,7 +192,15 @@ fn compute_bidiag_cplx_svd<T: ComplexField>(
 		col_mul[i] = copy(col_normalized);
 	}
 
-	compute_bidiag_real_svd(diag_real.rb_mut(), subdiag_real.rb_mut(), u_real.rb_mut(), v_real.rb_mut(), params, par, stack)?;
+	compute_bidiag_real_svd(
+		diag_real.rb_mut(),
+		subdiag_real.rb_mut(),
+		u_real.rb_mut(),
+		v_real.rb_mut(),
+		params,
+		par,
+		stack,
+	)?;
 
 	for i in 0..n {
 		diag[i] = from_real(diag_real[i]);
@@ -241,7 +257,12 @@ fn compute_bidiag_real_svd<T: RealField>(
 			v.diagonal_mut().fill(one());
 		}
 
-		bidiag_svd::qr_algorithm(diag.rb_mut(), subdiag.rb_mut(), u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)), v.rb_mut())?;
+		bidiag_svd::qr_algorithm(
+			diag.rb_mut(),
+			subdiag.rb_mut(),
+			u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
+			v.rb_mut(),
+		)?;
 
 		return Ok(());
 	} else {
@@ -320,7 +341,15 @@ fn svd_imp<T: ComplexField>(
 		}
 	}
 
-	bidiag_svd(diag.rb_mut(), subdiag.rb_mut(), v.rb().map(|_| ub.rb_mut()), u.rb().map(|_| vb.rb_mut()), params, par, stack)?;
+	bidiag_svd(
+		diag.rb_mut(),
+		subdiag.rb_mut(),
+		v.rb().map(|_| ub.rb_mut()),
+		u.rb().map(|_| vb.rb_mut()),
+		params,
+		par,
+		stack,
+	)?;
 
 	{ s }.copy_from(diag);
 
@@ -342,7 +371,14 @@ fn svd_imp<T: ComplexField>(
 			}
 		}
 
-		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(bid.rb().submatrix(1, 0, n - 1, n - 1), Hr.rb(), Conj::Yes, v.subrows_mut(1, n - 1), par, stack);
+		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+			bid.rb().submatrix(1, 0, n - 1, n - 1),
+			Hr.rb(),
+			Conj::Yes,
+			v.subrows_mut(1, n - 1),
+			par,
+			stack,
+		);
 	}
 
 	Ok(())
@@ -373,7 +409,14 @@ fn compute_squareish_svd<T: ComplexField>(
 	}
 }
 
-pub fn svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, compute_u: ComputeSvdVectors, compute_v: ComputeSvdVectors, par: Par, params: Spec<SvdParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn svd_scratch<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	compute_u: ComputeSvdVectors,
+	compute_v: ComputeSvdVectors,
+	par: Par,
+	params: Spec<SvdParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let params = params.into_inner();
 	let mut m = nrows;
 	let mut n = ncols;
@@ -389,7 +432,11 @@ pub fn svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, compute_u: Compu
 		return Ok(StackReq::empty());
 	}
 
-	let bidiag_svd_scratch = if const { T::IS_REAL } { bidiag_real_svd_scratch::<T::Real> } else { bidiag_cplx_svd_scratch::<T> };
+	let bidiag_svd_scratch = if const { T::IS_REAL } {
+		bidiag_real_svd_scratch::<T::Real>
+	} else {
+		bidiag_cplx_svd_scratch::<T>
+	};
 
 	if m as f64 / n as f64 <= params.qr_ratio_threshold {
 		svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
@@ -399,7 +446,10 @@ pub fn svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, compute_u: Compu
 			temp_mat_scratch::<T>(m, n)?,
 			temp_mat_scratch::<T>(bs, n)?,
 			StackReq::try_any_of([
-				StackReq::try_all_of([temp_mat_scratch::<T>(n, n)?, svd_imp_scratch::<T>(n, n, compute_u, compute_v, bidiag_svd_scratch, params, par)?])?,
+				StackReq::try_all_of([
+					temp_mat_scratch::<T>(n, n)?,
+					svd_imp_scratch::<T>(n, n, compute_u, compute_v, bidiag_svd_scratch, params, par)?,
+				])?,
 				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, bs, match compute_u {
 					ComputeSvdVectors::No => 0,
 					ComputeSvdVectors::Thin => n,
@@ -497,7 +547,14 @@ pub fn svd<T: ComplexField>(
 				u.rb_mut().submatrix_mut(n, n, m - n, m - n).diagonal_mut().fill(one());
 			}
 
-			linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(qr.rb(), householder.rb(), Conj::No, u.rb_mut(), par, stack);
+			linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+				qr.rb(),
+				householder.rb(),
+				Conj::No,
+				u.rb_mut(),
+				par,
+				stack,
+			);
 		}
 	}
 
@@ -521,8 +578,24 @@ pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usiz
 }
 
 #[math]
-pub fn pseudoinverse_from_svd<T: ComplexField>(pinv: MatMut<'_, T>, s: ColRef<'_, T>, u: MatRef<'_, T>, v: MatRef<'_, T>, par: Par, stack: &mut DynStack) {
-	pseudoinverse_from_svd_with_tolerance(pinv, s, u, v, zero(), eps::<T::Real>() * from_f64::<T::Real>(Ord::max(u.nrows(), v.nrows()) as f64), par, stack);
+pub fn pseudoinverse_from_svd<T: ComplexField>(
+	pinv: MatMut<'_, T>,
+	s: ColRef<'_, T>,
+	u: MatRef<'_, T>,
+	v: MatRef<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
+	pseudoinverse_from_svd_with_tolerance(
+		pinv,
+		s,
+		u,
+		v,
+		zero(),
+		eps::<T::Real>() * from_f64::<T::Real>(Ord::max(u.nrows(), v.nrows()) as f64),
+		par,
+		stack,
+	);
 }
 
 #[math]
@@ -541,7 +614,13 @@ pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	let n = v.nrows();
 	let size = Ord::min(m, n);
 
-	assert!(all(u.nrows() == m, v.nrows() == n, u.ncols() >= size, v.ncols() >= size, s.nrows() >= size,));
+	assert!(all(
+		u.nrows() == m,
+		v.nrows() == n,
+		u.ncols() >= size,
+		v.ncols() >= size,
+		s.nrows() >= size,
+	));
 
 	let smax = s.norm_max();
 	let tol = max(abs_tol, rel_tol * smax);
@@ -695,7 +774,19 @@ mod tests {
 	fn test_real() {
 		let rng = &mut StdRng::seed_from_u64(1);
 
-		for (m, n) in [(3, 2), (2, 2), (4, 4), (15, 10), (10, 10), (15, 15), (50, 50), (100, 100), (150, 150), (150, 20), (20, 150)] {
+		for (m, n) in [
+			(3, 2),
+			(2, 2),
+			(4, 4),
+			(15, 10),
+			(10, 10),
+			(15, 15),
+			(50, 50),
+			(100, 100),
+			(150, 150),
+			(150, 20),
+			(20, 150),
+		] {
 			let mat = CwiseMatDistribution {
 				nrows: m,
 				ncols: n,
@@ -746,7 +837,19 @@ mod tests {
 
 	#[test]
 	fn test_special() {
-		for (m, n) in [(3, 2), (2, 2), (4, 4), (15, 10), (10, 10), (15, 15), (50, 50), (100, 100), (150, 150), (150, 20), (20, 150)] {
+		for (m, n) in [
+			(3, 2),
+			(2, 2),
+			(4, 4),
+			(15, 10),
+			(10, 10),
+			(15, 15),
+			(50, 50),
+			(100, 100),
+			(150, 150),
+			(150, 20),
+			(20, 150),
+		] {
 			test_svd(Mat::<f64>::zeros(m, n).as_ref());
 			test_svd(Mat::<c64>::zeros(m, n).as_ref());
 			test_svd(Mat::<f64>::full(m, n, 1.0).as_ref());
@@ -819,7 +922,9 @@ mod tests {
 			None,
 			params,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(bidiag_real_svd_scratch::<f64>(n, false, false, Par::Seq, params).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				bidiag_real_svd_scratch::<f64>(n, false, false, Par::Seq, params).unwrap(),
+			)),
 		)
 		.unwrap();
 

@@ -44,17 +44,23 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	#[inline]
 	#[track_caller]
 	pub fn as_shape<D: Shape>(self, len: D) -> DiagRef<'a, T, D, Stride> {
-		DiagRef { inner: self.inner.as_row_shape(len) }
+		DiagRef {
+			inner: self.inner.as_row_shape(len),
+		}
 	}
 
 	#[inline]
 	pub fn as_dyn(self) -> DiagRef<'a, T, usize, Stride> {
-		DiagRef { inner: self.inner.as_dyn_rows() }
+		DiagRef {
+			inner: self.inner.as_dyn_rows(),
+		}
 	}
 
 	#[inline]
 	pub fn as_dyn_stride(self) -> DiagRef<'a, T, Dim> {
-		DiagRef { inner: self.inner.as_dyn_stride() }
+		DiagRef {
+			inner: self.inner.as_dyn_stride(),
+		}
 	}
 
 	#[inline]
@@ -62,7 +68,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	where
 		T: Conjugate,
 	{
-		DiagRef { inner: self.inner.conjugate() }
+		DiagRef {
+			inner: self.inner.conjugate(),
+		}
 	}
 
 	#[inline]
@@ -70,7 +78,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	where
 		T: Conjugate,
 	{
-		DiagRef { inner: self.inner.canonical() }
+		DiagRef {
+			inner: self.inner.canonical(),
+		}
 	}
 
 	#[inline]
@@ -83,7 +93,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 
 	#[inline]
 	pub fn as_dyn_mut(self) -> DiagMut<'a, T, usize, Stride> {
-		DiagMut { inner: self.inner.as_dyn_rows_mut() }
+		DiagMut {
+			inner: self.inner.as_dyn_rows_mut(),
+		}
 	}
 
 	#[inline]
@@ -98,7 +110,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	where
 		T: Conjugate,
 	{
-		DiagMut { inner: self.inner.conjugate_mut() }
+		DiagMut {
+			inner: self.inner.conjugate_mut(),
+		}
 	}
 
 	#[inline]
@@ -106,7 +120,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	where
 		T: Conjugate,
 	{
-		DiagMut { inner: self.inner.canonical_mut() }
+		DiagMut {
+			inner: self.inner.canonical_mut(),
+		}
 	}
 
 	#[inline]
@@ -147,7 +163,9 @@ impl<'a, T, N: Copy, Stride: Copy> IntoConst for DiagMut<'a, T, N, Stride> {
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		DiagRef { inner: self.inner.into_const() }
+		DiagRef {
+			inner: self.inner.into_const(),
+		}
 	}
 }
 

@@ -3,8 +3,8 @@ use crate::internal_prelude::*;
 use crate::into_range::IntoRange;
 use crate::{Idx, IdxInc, assert, debug_assert};
 
-impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>> MatIndex<RowRange, ColRange>
-	for MatRef<'a, T, R, C, Rs, Cs>
+impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>>
+	MatIndex<RowRange, ColRange> for MatRef<'a, T, R, C, Rs, Cs>
 {
 	type Target = MatRef<'a, T, RowRange::Len<R>, ColRange::Len<C>, Rs, Cs>;
 
@@ -13,7 +13,12 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
 		let row = row.into_range(R::start(), this.nrows().end());
 		let col = col.into_range(C::start(), this.ncols().end());
-		assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
+		assert!(all(
+			row.start <= row.end,
+			row.end <= this.nrows(),
+			col.start <= col.end,
+			col.end <= this.ncols(),
+		));
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
 
@@ -26,7 +31,12 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 		let row = row.into_range(R::start(), this.nrows().end());
 		let col = col.into_range(C::start(), this.ncols().end());
 
-		debug_assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
+		debug_assert!(all(
+			row.start <= row.end,
+			row.end <= this.nrows(),
+			col.start <= col.end,
+			col.end <= this.ncols(),
+		));
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
 
@@ -34,8 +44,8 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 	}
 }
 
-impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>> MatIndex<RowRange, ColRange>
-	for MatMut<'a, T, R, C, Rs, Cs>
+impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>>
+	MatIndex<RowRange, ColRange> for MatMut<'a, T, R, C, Rs, Cs>
 {
 	type Target = MatMut<'a, T, RowRange::Len<R>, ColRange::Len<C>, Rs, Cs>;
 
@@ -44,7 +54,12 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
 		let row = row.into_range(R::start(), this.nrows().end());
 		let col = col.into_range(C::start(), this.ncols().end());
-		assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
+		assert!(all(
+			row.start <= row.end,
+			row.end <= this.nrows(),
+			col.start <= col.end,
+			col.end <= this.ncols(),
+		));
 
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
@@ -57,7 +72,12 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 		let row = row.into_range(R::start(), this.nrows().end());
 		let col = col.into_range(C::start(), this.ncols().end());
 
-		debug_assert!(all(row.start <= row.end, row.end <= this.nrows(), col.start <= col.end, col.end <= this.ncols(),));
+		debug_assert!(all(
+			row.start <= row.end,
+			row.end <= this.nrows(),
+			col.start <= col.end,
+			col.end <= this.ncols(),
+		));
 
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };

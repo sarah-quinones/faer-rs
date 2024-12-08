@@ -121,7 +121,12 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 
 		let top = self.as_ptr();
 		let bot = self.ptr_at(row);
-		unsafe { (ColRef::from_raw_parts(top, row.unbound(), rs), ColRef::from_raw_parts(bot, self.nrows().unbound() - row.unbound(), rs)) }
+		unsafe {
+			(
+				ColRef::from_raw_parts(top, row.unbound(), rs),
+				ColRef::from_raw_parts(bot, self.nrows().unbound() - row.unbound(), rs),
+			)
+		}
 	}
 
 	#[inline(always)]
@@ -239,7 +244,9 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		Rows: 'a,
 	{
 		use rayon::prelude::*;
-		(0..self.nrows().unbound()).into_par_iter().map(move |j| unsafe { self.at_unchecked(Idx::<Rows>::new_unbound(j)) })
+		(0..self.nrows().unbound())
+			.into_par_iter()
+			.map(move |j| unsafe { self.at_unchecked(Idx::<Rows>::new_unbound(j)) })
 	}
 
 	#[inline]
@@ -380,7 +387,10 @@ impl<'a, 'ROWS, T> ColRef<'a, T, Dim<'ROWS>, ContiguousFwd> {
 
 impl<'ROWS, 'a, T, RStride: Stride> ColRef<'a, T, Dim<'ROWS>, RStride> {
 	#[inline]
-	pub fn split_rows_with<'TOP, 'BOT>(self, row: Partition<'TOP, 'BOT, 'ROWS>) -> (ColRef<'a, T, Dim<'TOP>, RStride>, ColRef<'a, T, Dim<'BOT>, RStride>) {
+	pub fn split_rows_with<'TOP, 'BOT>(
+		self,
+		row: Partition<'TOP, 'BOT, 'ROWS>,
+	) -> (ColRef<'a, T, Dim<'TOP>, RStride>, ColRef<'a, T, Dim<'BOT>, RStride>) {
 		let (a, b) = self.split_at_row(row.midpoint());
 		(a.as_row_shape(row.head), b.as_row_shape(row.tail))
 	}

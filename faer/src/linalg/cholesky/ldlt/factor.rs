@@ -254,7 +254,15 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 	Ok(count)
 }
 
-fn simd_cholesky<T: ComplexField>(A: MatMut<'_, T>, D: RowMut<'_, T>, is_llt: bool, regularize: bool, eps: T::Real, delta: T::Real, signs: Option<&[i8]>) -> Result<usize, usize> {
+fn simd_cholesky<T: ComplexField>(
+	A: MatMut<'_, T>,
+	D: RowMut<'_, T>,
+	is_llt: bool,
+	regularize: bool,
+	eps: T::Real,
+	delta: T::Real,
+	signs: Option<&[i8]>,
+) -> Result<usize, usize> {
 	struct Impl<'a, T: ComplexField> {
 		A: MatMut<'a, T, usize, usize, ContiguousFwd>,
 		D: RowMut<'a, T>,
@@ -313,7 +321,15 @@ fn simd_cholesky<T: ComplexField>(A: MatMut<'_, T>, D: RowMut<'_, T>, is_llt: bo
 }
 
 #[math]
-fn cholesky_fallback<T: ComplexField>(A: MatMut<'_, T>, D: RowMut<'_, T>, is_llt: bool, regularize: bool, eps: T::Real, delta: T::Real, signs: Option<&[i8]>) -> Result<usize, usize> {
+fn cholesky_fallback<T: ComplexField>(
+	A: MatMut<'_, T>,
+	D: RowMut<'_, T>,
+	is_llt: bool,
+	regularize: bool,
+	eps: T::Real,
+	delta: T::Real,
+	signs: Option<&[i8]>,
+) -> Result<usize, usize> {
 	let n = A.nrows();
 	let mut count = 0;
 	let mut A = A;
@@ -416,7 +432,18 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 
 			let signs = signs.map(|signs| &signs[j..][..blocksize]);
 
-			match cholesky_recursion(A00.rb_mut(), D0.rb_mut(), recursion_threshold, blocksize, is_llt, regularize, eps, delta, signs, par) {
+			match cholesky_recursion(
+				A00.rb_mut(),
+				D0.rb_mut(),
+				recursion_threshold,
+				blocksize,
+				is_llt,
+				regularize,
+				eps,
+				delta,
+				signs,
+				par,
+			) {
 				Ok(local_count) => count += local_count,
 				Err(fail_idx) => return Err(j + fail_idx),
 			}
@@ -527,7 +554,13 @@ pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: 
 }
 
 #[math]
-pub fn cholesky_in_place<T: ComplexField>(A: MatMut<'_, T>, regularization: LdltRegularization<'_, T>, par: Par, stack: &mut DynStack, params: Spec<LdltParams, T>) -> Result<LdltInfo, LdltError> {
+pub fn cholesky_in_place<T: ComplexField>(
+	A: MatMut<'_, T>,
+	regularization: LdltRegularization<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+	params: Spec<LdltParams, T>,
+) -> Result<LdltInfo, LdltError> {
 	let params = params.into_inner();
 
 	let n = A.nrows();
@@ -548,7 +581,9 @@ pub fn cholesky_in_place<T: ComplexField>(A: MatMut<'_, T>, regularization: Ldlt
 		regularization.dynamic_regularization_signs.map(|signs| signs),
 		par,
 	) {
-		Ok(count) => Ok(LdltInfo { dynamic_regularization_count: count }),
+		Ok(count) => Ok(LdltInfo {
+			dynamic_regularization_count: count,
+		}),
 		Err(index) => Err(LdltError::ZeroPivot { index }),
 	};
 	let init = if let Err(LdltError::ZeroPivot { index }) = ret { index + 1 } else { n };
@@ -576,7 +611,10 @@ mod tests {
 		for n in 0..=64 {
 			for f in [cholesky_fallback::<T>, simd_cholesky::<T>] {
 				for llt in [true, false] {
-					let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-12, rel_tol: 1e-12 });
+					let approx_eq = CwiseMat(ApproxEq {
+						abs_tol: 1e-12,
+						rel_tol: 1e-12,
+					});
 
 					let A = CwiseMatDistribution {
 						nrows: n,
@@ -618,7 +656,10 @@ mod tests {
 
 		for n in [2, 4, 8, 31, 127, 240] {
 			for llt in [false, true] {
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-12, rel_tol: 1e-12 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-12,
+					rel_tol: 1e-12,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: n,

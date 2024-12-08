@@ -64,7 +64,13 @@ fn arrow_to_mat<T: RealField>(diag: ColRef<'_, T, usize, ContiguousFwd>, col0: C
 
 /// secular eq must be increasing
 #[math]
-pub(crate) fn secular_eq_root_finder<T: RealField>(secular_eq: &dyn Fn(T, T) -> T, batch_secular_eq: &dyn Fn(&[T; 4], &[T; 4]) -> [T; 4], left: T, right: T, last: bool) -> (T, T) {
+pub(crate) fn secular_eq_root_finder<T: RealField>(
+	secular_eq: &dyn Fn(T, T) -> T,
+	batch_secular_eq: &dyn Fn(&[T; 4], &[T; 4]) -> [T; 4],
+	left: T,
+	right: T,
+	last: bool,
+) -> (T, T) {
 	let two = from_f64::<T>(2.0);
 	let eight = from_f64::<T>(8.0);
 	let one_half = from_f64::<T>(0.5);
@@ -118,14 +124,22 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(secular_eq: &dyn Fn(T, T) -> 
 			let mut use_bisection = false;
 			let same_sign = (f_prev > zero()) == (f_cur > zero());
 			if !same_sign {
-				let (min, max) = if mu_cur < mu_prev { (copy(mu_cur), copy(mu_prev)) } else { (copy(mu_prev), copy(mu_cur)) };
+				let (min, max) = if mu_cur < mu_prev {
+					(copy(mu_cur), copy(mu_prev))
+				} else {
+					(copy(mu_prev), copy(mu_cur))
+				};
 				left_candidate = Some(min);
 				right_candidate = Some(max);
 			}
 
 			let mut err = SecantError::PrecisionLimitReached;
 
-			while !(f_cur == zero()) && abs(mu_cur - mu_prev) > eight * epsilon * max(abs(mu_cur), abs(mu_prev)) && abs(f_cur - f_prev) > epsilon && !use_bisection {
+			while !(f_cur == zero())
+				&& abs(mu_cur - mu_prev) > eight * epsilon * max(abs(mu_cur), abs(mu_prev))
+				&& abs(f_cur - f_prev) > epsilon
+				&& !use_bisection
+			{
 				// rational interpolation: fit a function of the form a / mu + b through
 				// the two previous iterates and use its
 				// zero to compute the next iterate
@@ -253,7 +267,11 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(secular_eq: &dyn Fn(T, T) -> 
 		if left_shifted < zero() {
 			mid_shifted_geometric = -mid_shifted_geometric;
 		}
-		let mid_shifted = if mid_shifted_geometric == zero() { mid_shifted_arithmetic } else { mid_shifted_geometric };
+		let mid_shifted = if mid_shifted_geometric == zero() {
+			mid_shifted_arithmetic
+		} else {
+			mid_shifted_geometric
+		};
 		let f_mid = secular_eq(copy(shift), copy(mid_shifted));
 
 		if f_mid == zero() {
@@ -423,7 +441,11 @@ pub(super) fn qr_algorithm<T: RealField>(
 			let end2 = end - 2;
 			let end1 = end - 1;
 
-			let t00 = if end - start == 2 { abs2(diag[end2]) } else { abs2(diag[end2] + abs2(subdiag[end - 3])) };
+			let t00 = if end - start == 2 {
+				abs2(diag[end2])
+			} else {
+				abs2(diag[end2] + abs2(subdiag[end - 3]))
+			};
 			let t11 = abs2(diag[end1]) + abs2(subdiag[end2]);
 			let t01 = diag[end2] * subdiag[end2];
 
@@ -572,7 +594,14 @@ fn compute_svd_of_m<T: RealField>(
 		actual_n -= 1;
 	}
 
-	let (perm, stack) = stack.collect(col0.iter().take(actual_n).map(|x| abs(*x)).enumerate().filter(|(_, x)| !(*x == zero())).map(|(i, _)| i));
+	let (perm, stack) = stack.collect(
+		col0.iter()
+			.take(actual_n)
+			.map(|x| abs(*x))
+			.enumerate()
+			.filter(|(_, x)| !(*x == zero()))
+			.map(|(i, _)| i),
+	);
 	let perm = &*perm;
 	with_dim!(o, perm.len());
 
@@ -847,7 +876,12 @@ fn compute_singular_values<'N, 'O, T: RealField>(
 }
 
 #[math]
-fn secular_eq<'N, T: RealField>(shift: T, mu: T, col0_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>, diag_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>) -> T {
+fn secular_eq<'N, T: RealField>(
+	shift: T,
+	mu: T,
+	col0_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+	diag_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+) -> T {
 	let mut res = one();
 
 	let n = diag_perm.nrows();
@@ -861,7 +895,12 @@ fn secular_eq<'N, T: RealField>(shift: T, mu: T, col0_perm: ColRef<'_, T, Dim<'N
 }
 
 #[math]
-fn batch_secular_eq<'N, const N: usize, T: RealField>(shift: &[T; N], mu: &[T; N], col0_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>, diag_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>) -> [T; N] {
+fn batch_secular_eq<'N, const N: usize, T: RealField>(
+	shift: &[T; N],
+	mu: &[T; N],
+	col0_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+	diag_perm: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+) -> [T; N] {
 	let n = col0_perm.nrows();
 	let mut res = [(); N].map(|_| one());
 	for i in n.indices() {
@@ -1037,7 +1076,11 @@ fn deflate<T: RealField>(
 }
 
 #[math]
-fn deflation_43<T: RealField>(diag: ColMut<'_, T, usize, ContiguousFwd>, col0: ColMut<'_, T, usize, ContiguousFwd>, i: usize) -> Option<JacobiRotation<T>> {
+fn deflation_43<T: RealField>(
+	diag: ColMut<'_, T, usize, ContiguousFwd>,
+	col0: ColMut<'_, T, usize, ContiguousFwd>,
+	i: usize,
+) -> Option<JacobiRotation<T>> {
 	let mut diag = diag;
 	let mut col0 = col0;
 
@@ -1061,7 +1104,12 @@ fn deflation_43<T: RealField>(diag: ColMut<'_, T, usize, ContiguousFwd>, col0: C
 }
 
 #[math]
-fn deflation_44<T: RealField>(diag: ColMut<'_, T, usize, ContiguousFwd>, col0: ColMut<'_, T, usize, ContiguousFwd>, i: usize, j: usize) -> Option<JacobiRotation<T>> {
+fn deflation_44<T: RealField>(
+	diag: ColMut<'_, T, usize, ContiguousFwd>,
+	col0: ColMut<'_, T, usize, ContiguousFwd>,
+	i: usize,
+	j: usize,
+) -> Option<JacobiRotation<T>> {
 	let mut diag = diag;
 	let mut col0 = col0;
 
@@ -1103,7 +1151,13 @@ impl<'short, T: RealField> ReborrowMut<'short> for MatU<'_, T> {
 	}
 }
 
-pub(super) fn divide_and_conquer_scratch<T: ComplexField>(n: usize, qr_fallback_threshold: usize, compute_u: bool, compute_v: bool, par: Par) -> Result<StackReq, SizeOverflow> {
+pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
+	n: usize,
+	qr_fallback_threshold: usize,
+	compute_u: bool,
+	compute_v: bool,
+	par: Par,
+) -> Result<StackReq, SizeOverflow> {
 	let qr_fallback_threshold = Ord::max(qr_fallback_threshold, 4);
 
 	if n < qr_fallback_threshold {
@@ -1241,7 +1295,10 @@ pub(super) fn divide_and_conquer<T: RealField>(
 			MatU::Full(u) => {
 				let (u1, u2) = u.split_at_row_mut(k + 1);
 
-				(MatU::Full(u1.submatrix_mut(0, 1, k + 1, k + 1)), MatU::Full(u2.submatrix_mut(0, k + 1, rem + 1, rem + 1)))
+				(
+					MatU::Full(u1.submatrix_mut(0, 1, k + 1, k + 1)),
+					MatU::Full(u2.submatrix_mut(0, k + 1, rem + 1, rem + 1)),
+				)
 			},
 			MatU::TwoRows(u) | MatU::TwoRowsStorage(u) => {
 				let (u1, u2) = u.split_at_col_mut(k + 1);
@@ -1389,7 +1446,16 @@ pub(super) fn divide_and_conquer<T: RealField>(
 
 	let (jacobi_0i, jacobi_ij) = {
 		let (mut transpositions, stack) = stack.collect(0..n);
-		deflate(diag.rb_mut(), col0.rb_mut(), jacobi_coeff, jacobi_idx, &mut transpositions, perm, k, stack)
+		deflate(
+			diag.rb_mut(),
+			col0.rb_mut(),
+			jacobi_coeff,
+			jacobi_idx,
+			&mut transpositions,
+			perm,
+			k,
+			stack,
+		)
 	};
 
 	let allocate_vm = v.is_some() as usize;
@@ -1486,13 +1552,27 @@ pub(super) fn divide_and_conquer<T: RealField>(
 				// matrix matrix
 				crate::linalg::matmul::matmul(combined_u1.rb_mut(), Accum::Replace, u_lhs1, u_rhs1, one(), par);
 				// rank 1 update
-				crate::linalg::matmul::matmul(combined_u1.rb_mut(), Accum::Add, u_lhs.col(n).subrows(0, k + 1).as_mat(), u_rhs2.row(rem).as_mat(), one(), par);
+				crate::linalg::matmul::matmul(
+					combined_u1.rb_mut(),
+					Accum::Add,
+					u_lhs.col(n).subrows(0, k + 1).as_mat(),
+					u_rhs2.row(rem).as_mat(),
+					one(),
+					par,
+				);
 			},
 			|par| {
 				// matrix matrix
 				crate::linalg::matmul::matmul(combined_u2.rb_mut(), Accum::Replace, u_lhs2, u_rhs2, one(), par);
 				// rank 1 update
-				crate::linalg::matmul::matmul(combined_u2.rb_mut(), Accum::Add, u_lhs.col(0).subrows(k + 1, rem + 1).as_mat(), u_rhs1.row(0).as_mat(), one(), par);
+				crate::linalg::matmul::matmul(
+					combined_u2.rb_mut(),
+					Accum::Add,
+					u_lhs.col(0).subrows(k + 1, rem + 1).as_mat(),
+					u_rhs1.row(0).as_mat(),
+					one(),
+					par,
+				);
 			},
 			par,
 		);
@@ -1660,7 +1740,9 @@ mod tests {
 				MatU::Full(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(divide_and_conquer_scratch::<f64>(n, 4, true, true, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					divide_and_conquer_scratch::<f64>(n, 4, true, true, Par::Seq).unwrap(),
+				)),
 				4,
 			)
 			.unwrap();
@@ -1718,7 +1800,9 @@ mod tests {
 				MatU::Full(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(divide_and_conquer_scratch::<f32>(n, 4, true, true, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					divide_and_conquer_scratch::<f32>(n, 4, true, true, Par::Seq).unwrap(),
+				)),
 				4,
 			)
 			.unwrap();

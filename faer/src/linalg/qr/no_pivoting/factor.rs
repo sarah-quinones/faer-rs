@@ -108,7 +108,13 @@ fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par:
 		let mut A = A.rb_mut().get_mut(j.., j..);
 		let mut H = H.rb_mut().submatrix_mut(0, j, blocksize, blocksize);
 
-		qr_in_place_blocked(A.rb_mut().subcols_mut(0, blocksize), H.rb_mut().subrows_mut(0, sub_blocksize), par, stack, params.into());
+		qr_in_place_blocked(
+			A.rb_mut().subcols_mut(0, blocksize),
+			H.rb_mut().subrows_mut(0, sub_blocksize),
+			par,
+			stack,
+			params.into(),
+		);
 
 		let mut k = 0;
 		while k < blocksize {
@@ -158,7 +164,13 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 /// Computes the size and alignment of required workspace for performing a QR
 /// decomposition with no pivoting.
 #[inline]
-pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<QrParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn qr_in_place_scratch<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	blocksize: usize,
+	par: Par,
+	params: Spec<QrParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	let _ = par;
 	let _ = nrows;
 	let _ = &params;
@@ -180,7 +192,10 @@ mod tests {
 
 		for par in [Par::Seq, Par::rayon(8)] {
 			for n in [2, 4, 8, 16, 24, 32, 127, 128, 257] {
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: n,
@@ -225,7 +240,10 @@ mod tests {
 			for n in [2, 3, 4, 8, 16, 24, 32, 128, 255, 256, 257] {
 				let bs = 15;
 
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: n,
@@ -277,7 +295,10 @@ mod tests {
 				let size = Ord::min(m, n);
 				let bs = 15;
 
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: m,

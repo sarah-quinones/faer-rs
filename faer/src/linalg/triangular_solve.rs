@@ -22,7 +22,11 @@ fn conjugate<T: ComplexField>(x: T) -> T {
 
 #[inline(always)]
 #[math]
-fn solve_unit_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField>(tril: MatRef<'_, T, Dim<'N>, Dim<'N>>, rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>, maybe_conj_lhs: impl Fn(T) -> T) {
+fn solve_unit_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField>(
+	tril: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>,
+	maybe_conj_lhs: impl Fn(T) -> T,
+) {
 	let N = tril.nrows();
 	let n = N.unbound();
 
@@ -103,7 +107,11 @@ fn solve_unit_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: Complex
 
 #[inline(always)]
 #[math]
-fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField>(tril: MatRef<'_, T, Dim<'N>, Dim<'N>>, rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>, maybe_conj_lhs: impl Fn(T) -> T) {
+fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField>(
+	tril: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>,
+	maybe_conj_lhs: impl Fn(T) -> T,
+) {
 	let N = tril.nrows();
 	let n = N.unbound();
 
@@ -235,14 +243,22 @@ pub fn solve_lower_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: S
 	rhs: MatMut<'_, T, N, K, impl Stride, impl Stride>,
 	par: Par,
 ) {
-	assert!(all(triangular_lower.nrows() == triangular_lower.ncols(), rhs.nrows() == triangular_lower.ncols(),));
+	assert!(all(
+		triangular_lower.nrows() == triangular_lower.ncols(),
+		rhs.nrows() == triangular_lower.ncols(),
+	));
 
 	make_guard!(N);
 	make_guard!(K);
 	let N = rhs.nrows().bind(N);
 	let K = rhs.ncols().bind(K);
 
-	solve_lower_triangular_in_place_imp(triangular_lower.as_dyn_stride().as_shape(N, N), conj_lhs, rhs.as_dyn_stride_mut().as_shape_mut(N, K), par);
+	solve_lower_triangular_in_place_imp(
+		triangular_lower.as_dyn_stride().as_shape(N, N),
+		conj_lhs,
+		rhs.as_dyn_stride_mut().as_shape_mut(N, K),
+		par,
+	);
 }
 
 #[inline]
@@ -264,14 +280,22 @@ pub fn solve_unit_lower_triangular_in_place_with_conj<T: ComplexField, N: Shape,
 	rhs: MatMut<'_, T, N, K, impl Stride, impl Stride>,
 	par: Par,
 ) {
-	assert!(all(triangular_unit_lower.nrows() == triangular_unit_lower.ncols(), rhs.nrows() == triangular_unit_lower.ncols(),));
+	assert!(all(
+		triangular_unit_lower.nrows() == triangular_unit_lower.ncols(),
+		rhs.nrows() == triangular_unit_lower.ncols(),
+	));
 
 	make_guard!(N);
 	make_guard!(K);
 	let N = rhs.nrows().bind(N);
 	let K = rhs.ncols().bind(K);
 
-	solve_unit_lower_triangular_in_place_imp(triangular_unit_lower.as_dyn_stride().as_shape(N, N), conj_lhs, rhs.as_dyn_stride_mut().as_shape_mut(N, K), par);
+	solve_unit_lower_triangular_in_place_imp(
+		triangular_unit_lower.as_dyn_stride().as_shape(N, N),
+		conj_lhs,
+		rhs.as_dyn_stride_mut().as_shape_mut(N, K),
+		par,
+	);
 }
 
 #[inline]
@@ -293,14 +317,22 @@ pub fn solve_upper_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: S
 	rhs: MatMut<'_, T, N, K, impl Stride, impl Stride>,
 	par: Par,
 ) {
-	assert!(all(triangular_upper.nrows() == triangular_upper.ncols(), rhs.nrows() == triangular_upper.ncols(),));
+	assert!(all(
+		triangular_upper.nrows() == triangular_upper.ncols(),
+		rhs.nrows() == triangular_upper.ncols(),
+	));
 
 	make_guard!(N);
 	make_guard!(K);
 	let N = rhs.nrows().bind(N);
 	let K = rhs.ncols().bind(K);
 
-	solve_upper_triangular_in_place_imp(triangular_upper.as_dyn_stride().as_shape(N, N), conj_lhs, rhs.as_dyn_stride_mut().as_shape_mut(N, K), par);
+	solve_upper_triangular_in_place_imp(
+		triangular_upper.as_dyn_stride().as_shape(N, N),
+		conj_lhs,
+		rhs.as_dyn_stride_mut().as_shape_mut(N, K),
+		par,
+	);
 }
 
 #[inline]
@@ -322,14 +354,22 @@ pub fn solve_unit_upper_triangular_in_place_with_conj<T: ComplexField, N: Shape,
 	rhs: MatMut<'_, T, N, K, impl Stride, impl Stride>,
 	par: Par,
 ) {
-	assert!(all(triangular_unit_upper.nrows() == triangular_unit_upper.ncols(), rhs.nrows() == triangular_unit_upper.ncols(),));
+	assert!(all(
+		triangular_unit_upper.nrows() == triangular_unit_upper.ncols(),
+		rhs.nrows() == triangular_unit_upper.ncols(),
+	));
 
 	make_guard!(N);
 	make_guard!(K);
 	let N = rhs.nrows().bind(N);
 	let K = rhs.ncols().bind(K);
 
-	solve_unit_upper_triangular_in_place_imp(triangular_unit_upper.as_dyn_stride().as_shape(N, N), conj_lhs, rhs.as_dyn_stride_mut().as_shape_mut(N, K), par);
+	solve_unit_upper_triangular_in_place_imp(
+		triangular_unit_upper.as_dyn_stride().as_shape(N, N),
+		conj_lhs,
+		rhs.as_dyn_stride_mut().as_shape_mut(N, K),
+		par,
+	);
 }
 
 #[inline]
@@ -344,7 +384,12 @@ pub fn solve_unit_upper_triangular_in_place<T: ComplexField, LhsT: Conjugate<Can
 }
 
 #[math]
-fn solve_unit_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(tril: MatRef<'_, T, Dim<'N>, Dim<'N>>, conj_lhs: Conj, rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>, par: Par) {
+fn solve_unit_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(
+	tril: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	conj_lhs: Conj,
+	rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>,
+	par: Par,
+) {
 	let N = tril.nrows();
 	let K = rhs.ncols();
 	let n = N.unbound();
@@ -396,13 +441,27 @@ fn solve_unit_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(tril: MatRe
 
 	solve_unit_lower_triangular_in_place_imp(tril_top_left, conj_lhs, rhs_top.rb_mut(), par);
 
-	crate::linalg::matmul::matmul_with_conj(rhs_bot.rb_mut(), Accum::Add, tril_bot_left, conj_lhs, rhs_top.into_const(), Conj::No, -one::<T>(), par);
+	crate::linalg::matmul::matmul_with_conj(
+		rhs_bot.rb_mut(),
+		Accum::Add,
+		tril_bot_left,
+		conj_lhs,
+		rhs_top.into_const(),
+		Conj::No,
+		-one::<T>(),
+		par,
+	);
 
 	solve_unit_lower_triangular_in_place_imp(tril_bot_right, conj_lhs, rhs_bot, par);
 }
 
 #[math]
-fn solve_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(tril: MatRef<'_, T, Dim<'N>, Dim<'N>>, conj_lhs: Conj, rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>, par: Par) {
+fn solve_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(
+	tril: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	conj_lhs: Conj,
+	rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>,
+	par: Par,
+) {
 	let N = tril.nrows();
 	let K = rhs.ncols();
 	let n = N.unbound();
@@ -454,17 +513,36 @@ fn solve_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(tril: MatRef<'_,
 
 	solve_lower_triangular_in_place_imp(tril_top_left, conj_lhs, rhs_top.rb_mut(), par);
 
-	crate::linalg::matmul::matmul_with_conj(rhs_bot.rb_mut(), Accum::Add, tril_bot_left, conj_lhs, rhs_top.into_const(), Conj::No, -one::<T>(), par);
+	crate::linalg::matmul::matmul_with_conj(
+		rhs_bot.rb_mut(),
+		Accum::Add,
+		tril_bot_left,
+		conj_lhs,
+		rhs_top.into_const(),
+		Conj::No,
+		-one::<T>(),
+		par,
+	);
 
 	solve_lower_triangular_in_place_imp(tril_bot_right, conj_lhs, rhs_bot, par);
 }
 
 #[inline]
-fn solve_unit_upper_triangular_in_place_imp<'N, 'K, T: ComplexField>(triu: MatRef<'_, T, Dim<'N>, Dim<'N>>, conj_lhs: Conj, rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>, par: Par) {
+fn solve_unit_upper_triangular_in_place_imp<'N, 'K, T: ComplexField>(
+	triu: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	conj_lhs: Conj,
+	rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>,
+	par: Par,
+) {
 	solve_unit_lower_triangular_in_place_imp(triu.reverse_rows_and_cols(), conj_lhs, rhs.reverse_rows_mut(), par);
 }
 
 #[inline]
-fn solve_upper_triangular_in_place_imp<'N, 'K, T: ComplexField>(triu: MatRef<'_, T, Dim<'N>, Dim<'N>>, conj_lhs: Conj, rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>, par: Par) {
+fn solve_upper_triangular_in_place_imp<'N, 'K, T: ComplexField>(
+	triu: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	conj_lhs: Conj,
+	rhs: MatMut<'_, T, Dim<'N>, Dim<'K>>,
+	par: Par,
+) {
 	solve_lower_triangular_in_place_imp(triu.reverse_rows_and_cols(), conj_lhs, rhs.reverse_rows_mut(), par);
 }

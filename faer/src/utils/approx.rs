@@ -132,7 +132,17 @@ impl<
 > equator::CmpDisplay<CwiseMat<Cmp>, L, R> for CwiseMatError<Rows, Cols, Error>
 {
 	#[math]
-	fn fmt(&self, cmp: &CwiseMat<Cmp>, lhs: &L, lhs_source: &str, _: &dyn core::fmt::Debug, rhs: &R, rhs_source: &str, _: &dyn core::fmt::Debug, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+	fn fmt(
+		&self,
+		cmp: &CwiseMat<Cmp>,
+		lhs: &L,
+		lhs_source: &str,
+		_: &dyn core::fmt::Debug,
+		rhs: &R,
+		rhs_source: &str,
+		_: &dyn core::fmt::Debug,
+		f: &mut core::fmt::Formatter,
+	) -> core::fmt::Result {
 		let lhs = lhs.as_mat_ref();
 		let rhs = rhs.as_mat_ref();
 		match self {
@@ -212,6 +222,10 @@ impl<
 			}
 		}
 
-		if indices.is_empty() { Ok(()) } else { Err(CwiseMatError::Elements(indices)) }
+		if indices.is_empty() {
+			Ok(())
+		} else {
+			Err(CwiseMatError::Elements(indices))
+		}
 	}
 }

@@ -9,7 +9,15 @@ pub fn reconstruct_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> R
 
 #[track_caller]
 #[math]
-pub fn reconstruct<I: Index, T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, diagonal: DiagRef<'_, T>, subdiagonal: DiagRef<'_, T>, perm: PermRef<'_, I>, par: Par, stack: &mut DynStack) {
+pub fn reconstruct<I: Index, T: ComplexField>(
+	out: MatMut<'_, T>,
+	L: MatRef<'_, T>,
+	diagonal: DiagRef<'_, T>,
+	subdiagonal: DiagRef<'_, T>,
+	perm: PermRef<'_, I>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = L.nrows();
 	assert!(all(
 		out.nrows() == n,
@@ -133,7 +141,9 @@ mod tests {
 			subdiag.as_ref(),
 			perm,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq).unwrap(),
+			)),
 		);
 
 		for j in 0..n {

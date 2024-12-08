@@ -76,7 +76,11 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdHead<'N, T, S> {
 	#[inline(always)]
 	fn write(simd: &SimdCtx<'N, T, S>, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: Self, value: T::SimdVec<S>) {
 		unsafe {
-			simd.mask_store(simd.head_mask, slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>, value);
+			simd.mask_store(
+				simd.head_mask,
+				slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
+				value,
+			);
 		}
 	}
 }
@@ -90,7 +94,11 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
 	#[inline(always)]
 	fn write(simd: &SimdCtx<'N, T, S>, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: Self, value: T::SimdVec<S>) {
 		unsafe {
-			simd.mask_store(simd.tail_mask, slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>, value);
+			simd.mask_store(
+				simd.tail_mask,
+				slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
+				value,
+			);
 		}
 	}
 }
@@ -209,7 +217,14 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 
 		let offset = -(self.offset as isize);
 		(
-			if 0 == self.head_end { None } else { Some(SimdHead { start: offset, mask: PhantomData }) },
+			if 0 == self.head_end {
+				None
+			} else {
+				Some(SimdHead {
+					start: offset,
+					mask: PhantomData,
+				})
+			},
 			(self.head_end..self.body_end).map(
 				#[inline(always)]
 				move |i| SimdBody {
@@ -248,7 +263,14 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		let offset = -(self.offset as isize);
 
 		(
-			if 0 == self.head_end { None } else { Some(SimdHead { start: offset, mask: PhantomData }) },
+			if 0 == self.head_end {
+				None
+			} else {
+				Some(SimdHead {
+					start: offset,
+					mask: PhantomData,
+				})
+			},
 			(self.head_end..self.head_end + len / BATCH * BATCH)
 				.map(move |i| {
 					core::array::from_fn(

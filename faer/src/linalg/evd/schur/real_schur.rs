@@ -50,7 +50,10 @@ fn lasy2<T: RealField>(tl: MatRef<'_, T>, tr: MatRef<'_, T>, b: MatRef<'_, T>, x
 	let mut jpiv = [0usize; 4];
 
 	let mut smin = max(max(abs1(tr[(0, 0)]), abs1(tr[(0, 1)])), max(abs1(tr[(1, 0)]), abs1(tr[(1, 1)])));
-	smin = max(smin, max(max(abs1(tl[(0, 0)]), abs1(tl[(0, 1)])), max(abs1(tl[(1, 0)]), abs1(tl[(1, 1)]))));
+	smin = max(
+		smin,
+		max(max(abs1(tl[(0, 0)]), abs1(tl[(0, 1)])), max(abs1(tl[(1, 0)]), abs1(tl[(1, 1)]))),
+	);
 	smin = max(eps * smin, smlnum);
 
 	t16.write(0, 0, tl[(0, 0)] - tr[(0, 0)]);
@@ -697,7 +700,19 @@ fn aggressive_early_deflation<T: RealField>(
 	let infqr = if true || jw < params.blocking_threshold {
 		lahqr(true, tw.rb_mut(), Some(v.rb_mut()), s_re_window.rb_mut(), s_im_window.rb_mut(), 0, jw)
 	} else {
-		let infqr = multishift_qr(true, tw.rb_mut(), Some(v.rb_mut()), s_re_window.rb_mut(), s_im_window.rb_mut(), 0, jw, par, stack.rb_mut(), params).0;
+		let infqr = multishift_qr(
+			true,
+			tw.rb_mut(),
+			Some(v.rb_mut()),
+			s_re_window.rb_mut(),
+			s_im_window.rb_mut(),
+			0,
+			jw,
+			par,
+			stack.rb_mut(),
+			params,
+		)
+		.0;
 		for j in 0..jw {
 			for i in j + 2..jw {
 				tw.write(i, j, zero());
@@ -806,7 +821,8 @@ fn aggressive_early_deflation<T: RealField>(
 			s_re.write(kwtop + i, copy(tw[(i, i)]));
 			s_im.write(kwtop + i, zero());
 		} else {
-			let ((s1_re, s1_im), (s2_re, s2_im)) = lahqr_eig22(copy(tw[(i, i)]), copy(tw[(i, i + 1)]), copy(tw[(i + 1, i)]), copy(tw[(i + 1, i + 1)]));
+			let ((s1_re, s1_im), (s2_re, s2_im)) =
+				lahqr_eig22(copy(tw[(i, i)]), copy(tw[(i, i + 1)]), copy(tw[(i + 1, i)]), copy(tw[(i + 1, i + 1)]));
 			s_re.write(kwtop + i, s1_re);
 			s_im.write(kwtop + i, s1_im);
 			s_re.write(kwtop + i + 1, s2_re);
@@ -978,7 +994,17 @@ fn move_bulge<T: RealField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: (T, 
 	}
 }
 #[math]
-fn multishift_qr_sweep<T: RealField>(want_t: bool, a: MatMut<T>, mut z: Option<MatMut<T>>, s_re: ColMut<T>, s_im: ColMut<T>, ilo: usize, ihi: usize, par: Par, stack: &mut DynStack) {
+fn multishift_qr_sweep<T: RealField>(
+	want_t: bool,
+	a: MatMut<T>,
+	mut z: Option<MatMut<T>>,
+	s_re: ColMut<T>,
+	s_im: ColMut<T>,
+	ilo: usize,
+	ihi: usize,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = a.nrows();
 	assert!(n >= 12);
 	let (mut v, _stack) = crate::linalg::temp_mat_zeroed(3, s_re.nrows() / 2, stack);
@@ -992,8 +1018,16 @@ fn multishift_qr_sweep<T: RealField>(want_t: bool, a: MatMut<T>, mut z: Option<M
 	let n_bulges = n_shifts / 2;
 	let n_block_desired = Ord::min(2 * n_shifts, n_block_max);
 	let mut u = unsafe { a.rb().submatrix(n - n_block_desired, 0, n_block_desired, n_block_desired).const_cast() };
-	let mut wh = unsafe { a.rb().submatrix(n - n_block_desired, n_block_desired, n_block_desired, n - 2 * n_block_desired - 3).const_cast() };
-	let mut wv = unsafe { a.rb().submatrix(n_block_desired + 3, 0, n - 2 * n_block_desired - 3, n_block_desired).const_cast() };
+	let mut wh = unsafe {
+		a.rb()
+			.submatrix(n - n_block_desired, n_block_desired, n_block_desired, n - 2 * n_block_desired - 3)
+			.const_cast()
+	};
+	let mut wv = unsafe {
+		a.rb()
+			.submatrix(n_block_desired + 3, 0, n - 2 * n_block_desired - 3, n_block_desired)
+			.const_cast()
+	};
 	let mut a = unsafe { a.rb().const_cast() };
 	let mut i_pos_block = 0;
 	introduce_bulges(
@@ -1193,7 +1227,14 @@ fn introduce_bulges<T: RealField>(
 			let iblock = Ord::min(istop_m - i, wh.ncols());
 			let mut a_slice = a.rb_mut().submatrix_mut(ilo, i, n_block, iblock);
 			let mut wh_slice = wh.rb_mut().submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
-			matmul(wh_slice.rb_mut(), Accum::Replace, u2.rb().adjoint(), a_slice.rb(), one::<T>(), parallelism);
+			matmul(
+				wh_slice.rb_mut(),
+				Accum::Replace,
+				u2.rb().adjoint(),
+				a_slice.rb(),
+				one::<T>(),
+				parallelism,
+			);
 			a_slice.copy_from(wh_slice.rb());
 			i += iblock;
 		}
@@ -1334,8 +1375,16 @@ fn move_bulges_down<T: RealField>(
 				for j in i1..i2 {
 					let sum = u2[(j, i_pos - *i_pos_block)] + v1 * u2[(j, i_pos - *i_pos_block + 1)] + v2 * u2[(j, i_pos - *i_pos_block + 2)];
 					u2.write(j, i_pos - *i_pos_block, u2[(j, i_pos - *i_pos_block)] - mul_real(sum, v0));
-					u2.write(j, i_pos - *i_pos_block + 1, u2[(j, i_pos - *i_pos_block + 1)] - mul_real(sum, v0) * conj(v1));
-					u2.write(j, i_pos - *i_pos_block + 2, u2[(j, i_pos - *i_pos_block + 2)] - mul_real(sum, v0) * conj(v2));
+					u2.write(
+						j,
+						i_pos - *i_pos_block + 1,
+						u2[(j, i_pos - *i_pos_block + 1)] - mul_real(sum, v0) * conj(v1),
+					);
+					u2.write(
+						j,
+						i_pos - *i_pos_block + 2,
+						u2[(j, i_pos - *i_pos_block + 2)] - mul_real(sum, v0) * conj(v2),
+					);
 				}
 			}
 		}
@@ -1352,7 +1401,14 @@ fn move_bulges_down<T: RealField>(
 				let iblock = Ord::min(istop_m - i, wh.ncols());
 				let mut a_slice = a.rb_mut().submatrix_mut(*i_pos_block, i, n_block, iblock);
 				let mut wh_slice = wh.rb_mut().submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
-				matmul(wh_slice.rb_mut(), Accum::Replace, u2.rb().adjoint(), a_slice.rb(), one::<T>(), parallelism);
+				matmul(
+					wh_slice.rb_mut(),
+					Accum::Replace,
+					u2.rb().adjoint(),
+					a_slice.rb(),
+					one::<T>(),
+					parallelism,
+				);
 				a_slice.copy_from(wh_slice.rb());
 				i += iblock;
 			}
@@ -1531,8 +1587,16 @@ fn remove_bulges<T: RealField>(
 				for j in i1..i2 {
 					let sum = u2[(j, i_pos - *i_pos_block)] + v1 * u2[(j, i_pos - *i_pos_block + 1)] + v2 * u2[(j, i_pos - *i_pos_block + 2)];
 					u2.write(j, i_pos - *i_pos_block, u2[(j, i_pos - *i_pos_block)] - mul_real(sum, v0));
-					u2.write(j, i_pos - *i_pos_block + 1, u2[(j, i_pos - *i_pos_block + 1)] - (mul_real(sum, v0) * conj(v1)));
-					u2.write(j, i_pos - *i_pos_block + 2, u2[(j, i_pos - *i_pos_block + 2)] - (mul_real(sum, v0) * conj(v2)));
+					u2.write(
+						j,
+						i_pos - *i_pos_block + 1,
+						u2[(j, i_pos - *i_pos_block + 1)] - (mul_real(sum, v0) * conj(v1)),
+					);
+					u2.write(
+						j,
+						i_pos - *i_pos_block + 2,
+						u2[(j, i_pos - *i_pos_block + 2)] - (mul_real(sum, v0) * conj(v2)),
+					);
 				}
 			}
 		}
@@ -1550,7 +1614,14 @@ fn remove_bulges<T: RealField>(
 				let iblock = Ord::min(istop_m - i, wh.ncols());
 				let mut a_slice = a.rb_mut().submatrix_mut(*i_pos_block, i, n_block, iblock);
 				let mut wh_slice = wh.rb_mut().submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
-				matmul(wh_slice.rb_mut(), Accum::Replace, u2.rb().adjoint(), a_slice.rb(), one::<T>(), parallelism);
+				matmul(
+					wh_slice.rb_mut(),
+					Accum::Replace,
+					u2.rb().adjoint(),
+					a_slice.rb(),
+					one::<T>(),
+					parallelism,
+				);
 				a_slice.copy_from(wh_slice.rb());
 				i += iblock;
 			}
@@ -1672,7 +1743,19 @@ pub fn multishift_qr<T: RealField>(
 				nw += 1;
 			}
 		}
-		let (ls, ld) = aggressive_early_deflation(want_t, a.rb_mut(), z.rb_mut(), w_re.rb_mut(), w_im.rb_mut(), istart, istop, nw, parallelism, stack.rb_mut(), params);
+		let (ls, ld) = aggressive_early_deflation(
+			want_t,
+			a.rb_mut(),
+			z.rb_mut(),
+			w_re.rb_mut(),
+			w_im.rb_mut(),
+			istart,
+			istop,
+			nw,
+			parallelism,
+			stack.rb_mut(),
+			params,
+		);
 		count_aed += 1;
 		istop -= ld;
 		if ld > 0 {
@@ -1770,13 +1853,31 @@ pub fn multishift_qr<T: RealField>(
 		}
 		let mut shifts_re = w_re.rb_mut().subrows_mut(i_shifts, ns);
 		let mut shifts_im = w_im.rb_mut().subrows_mut(i_shifts, ns);
-		multishift_qr_sweep(want_t, a.rb_mut(), z.rb_mut(), shifts_re.rb_mut(), shifts_im.rb_mut(), istart, istop, parallelism, stack.rb_mut());
+		multishift_qr_sweep(
+			want_t,
+			a.rb_mut(),
+			z.rb_mut(),
+			shifts_re.rb_mut(),
+			shifts_im.rb_mut(),
+			istart,
+			istop,
+			parallelism,
+			stack.rb_mut(),
+		);
 		count_sweep += 1;
 	}
 	(info, count_aed, count_sweep)
 }
 #[math]
-pub fn lahqr<T: RealField>(want_t: bool, a: MatMut<'_, T>, z: Option<MatMut<'_, T>>, w_re: ColMut<'_, T>, w_im: ColMut<'_, T>, ilo: usize, ihi: usize) -> isize {
+pub fn lahqr<T: RealField>(
+	want_t: bool,
+	a: MatMut<'_, T>,
+	z: Option<MatMut<'_, T>>,
+	w_re: ColMut<'_, T>,
+	w_im: ColMut<'_, T>,
+	ilo: usize,
+	ihi: usize,
+) -> isize {
 	let epsilon = eps::<T>();
 	let zero_threshold = min_positive::<T>();
 	assert!(a.nrows() == a.ncols());
@@ -1889,7 +1990,12 @@ pub fn lahqr<T: RealField>(want_t: bool, a: MatMut<'_, T>, z: Option<MatMut<'_, 
 				w_im.write(istart + 1, s2_im);
 				if want_t {
 					if istart + 2 < istop_m {
-						rot.apply_on_the_right_in_place(a.rb_mut().transpose_mut().get_mut(istart + 2..istop_m, ..).two_cols_mut(istart, istart + 1));
+						rot.apply_on_the_right_in_place(
+							a.rb_mut()
+								.transpose_mut()
+								.get_mut(istart + 2..istop_m, ..)
+								.two_cols_mut(istart, istart + 1),
+						);
 					}
 					rot.apply_on_the_right_in_place(a.rb_mut().get_mut(istart_m..istart, ..).two_cols_mut(istart, istart + 1));
 				}
@@ -1939,7 +2045,9 @@ pub fn lahqr<T: RealField>(want_t: bool, a: MatMut<'_, T>, z: Option<MatMut<'_, 
 				let v1 = copy(v[1]);
 				let v2 = copy(v[2]);
 				let refsum = v0 * a[(i, i - 1)] + v1 * a[(i + 1, i - 1)];
-				if (abs((a[(i + 1, i - 1)] - (refsum * v1))) + abs((refsum * v2))) <= (eps * ((abs(a[(i, i - 1)]) + abs(a[(i, i + 1)])) + abs(a[(i + 1, i + 2)]))) {
+				if (abs((a[(i + 1, i - 1)] - (refsum * v1))) + abs((refsum * v2)))
+					<= (eps * ((abs(a[(i, i - 1)]) + abs(a[(i, i + 1)])) + abs(a[(i + 1, i + 2)])))
+				{
 					istart2 = i;
 					break;
 				}
@@ -2045,9 +2153,13 @@ mod tests {
 			[0., 0., 0., -0.989, -0.339],
 		];
 		let h = MatRef::from_row_major_array(&h);
-		let mut q = [[1.0, 0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0, 0.0], [
-			0.0, 0.0, 0.0, 0.0, 1.0,
-		]];
+		let mut q = [
+			[1.0, 0.0, 0.0, 0.0, 0.0],
+			[0.0, 1.0, 0.0, 0.0, 0.0],
+			[0.0, 0.0, 1.0, 0.0, 0.0],
+			[0.0, 0.0, 0.0, 1.0, 0.0],
+			[0.0, 0.0, 0.0, 0.0, 1.0],
+		];
 		let mut q = MatMut::from_row_major_array_mut(&mut q);
 
 		let mut w_re = Col::zeros(5);
@@ -2072,9 +2184,13 @@ mod tests {
 			[0.00, 0.00, 0.00, 0.78, 0.27],
 		];
 		let h = MatRef::from_row_major_array(&h);
-		let mut q = [[1.0, 0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0, 0.0], [
-			0.0, 0.0, 0.0, 0.0, 1.0,
-		]];
+		let mut q = [
+			[1.0, 0.0, 0.0, 0.0, 0.0],
+			[0.0, 1.0, 0.0, 0.0, 0.0],
+			[0.0, 0.0, 1.0, 0.0, 0.0],
+			[0.0, 0.0, 0.0, 1.0, 0.0],
+			[0.0, 0.0, 0.0, 0.0, 1.0],
+		];
 		let mut q = MatMut::from_row_major_array_mut(&mut q);
 
 		let mut w_re = Col::zeros(5);
@@ -2139,7 +2255,9 @@ mod tests {
 					0,
 					n,
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(multishift_qr_scratch::<f64>(n, n, true, true, Par::Seq, auto!(f64)).unwrap())),
+					DynStack::new(&mut GlobalMemBuffer::new(
+						multishift_qr_scratch::<f64>(n, n, true, true, Par::Seq, auto!(f64)).unwrap(),
+					)),
 					auto!(f64),
 				);
 

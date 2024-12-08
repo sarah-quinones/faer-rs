@@ -320,7 +320,8 @@ impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> {
 			None,
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::No, par, _).unwrap(),
+				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::No, par, _)
+					.unwrap(),
 			)),
 			_,
 		)?;
@@ -512,7 +513,16 @@ impl<T: ComplexField> Lblt<T> {
 		let mut mem = GlobalMemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(n, par, _).unwrap());
 		let stack = DynStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(L.as_mut(), subdiag.as_mut(), Default::default(), &mut perm_fwd, &mut perm_bwd, par, stack, _);
+		linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
+			L.as_mut(),
+			subdiag.as_mut(),
+			Default::default(),
+			&mut perm_fwd,
+			&mut perm_bwd,
+			par,
+			stack,
+			_,
+		);
 
 		diag.copy_from(L.diagonal());
 		L.diagonal_mut().fill(one());
@@ -592,7 +602,9 @@ impl<T: ComplexField> PartialPivLu<T> {
 			&mut row_perm_fwd,
 			&mut row_perm_bwd,
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -643,7 +655,9 @@ impl<T: ComplexField> FullPivLu<T> {
 			&mut col_perm_fwd,
 			&mut col_perm_bwd,
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -696,7 +710,9 @@ impl<T: ComplexField> Qr<T> {
 			QR.as_mut(),
 			Q_coeff.as_mut(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(m, n, blocksize, par, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(m, n, blocksize, par, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -809,7 +825,9 @@ impl<T: ComplexField> Svd<T> {
 			Some(U.as_mut()),
 			Some(V.as_mut()),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::svd::svd_scratch::<T>(m, n, compute, compute, par, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::svd::svd_scratch::<T>(m, n, compute, compute, par, _).unwrap(),
+			)),
 			_,
 		)?;
 
@@ -972,7 +990,8 @@ impl<T: RealField> Eigen<T> {
 			Some(U.as_mut()),
 			par,
 			DynStack::new(&mut GlobalMemBuffer::new(
-				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::Yes, par, _).unwrap(),
+				linalg::evd::evd_scratch::<Complex<T>>(n, linalg::evd::ComputeEigenvectors::No, linalg::evd::ComputeEigenvectors::Yes, par, _)
+					.unwrap(),
 			)),
 			_,
 		)?;
@@ -1237,20 +1256,42 @@ impl<T: ComplexField> SolveCore<T> for Lblt<T> {
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
-		let mut mem = GlobalMemBuffer::new(linalg::cholesky::bunch_kaufman::solve::solve_in_place_scratch::<usize, T>(self.L.nrows(), rhs.ncols(), par).unwrap());
+		let mut mem = GlobalMemBuffer::new(
+			linalg::cholesky::bunch_kaufman::solve::solve_in_place_scratch::<usize, T>(self.L.nrows(), rhs.ncols(), par).unwrap(),
+		);
 		let stack = DynStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::solve::solve_in_place_with_conj(self.L.as_ref(), self.B_diag(), self.B_subdiag(), conj, self.P(), rhs, par, stack);
+		linalg::cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
+			self.L.as_ref(),
+			self.B_diag(),
+			self.B_subdiag(),
+			conj,
+			self.P(),
+			rhs,
+			par,
+			stack,
+		);
 	}
 
 	#[track_caller]
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
-		let mut mem = GlobalMemBuffer::new(linalg::cholesky::bunch_kaufman::solve::solve_in_place_scratch::<usize, T>(self.L.nrows(), rhs.ncols(), par).unwrap());
+		let mut mem = GlobalMemBuffer::new(
+			linalg::cholesky::bunch_kaufman::solve::solve_in_place_scratch::<usize, T>(self.L.nrows(), rhs.ncols(), par).unwrap(),
+		);
 		let stack = DynStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::solve::solve_in_place_with_conj(self.L(), self.B_diag(), self.B_subdiag(), conj.compose(Conj::Yes), self.P(), rhs, par, stack);
+		linalg::cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
+			self.L(),
+			self.B_diag(),
+			self.B_subdiag(),
+			conj.compose(Conj::Yes),
+			self.P(),
+			rhs,
+			par,
+			stack,
+		);
 	}
 }
 
@@ -1370,7 +1411,9 @@ impl<T: ComplexField> DenseSolveCore<T> for PartialPivLu<T> {
 			self.U(),
 			self.P(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::partial_pivoting::inverse::inverse_scratch::<usize, T>(n, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::lu::partial_pivoting::inverse::inverse_scratch::<usize, T>(n, par).unwrap(),
+			)),
 		);
 
 		out
@@ -1438,7 +1481,9 @@ impl<T: ComplexField> DenseSolveCore<T> for FullPivLu<T> {
 			self.P(),
 			self.Q(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::full_pivoting::reconstruct::reconstruct_scratch::<usize, T>(m, n, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::lu::full_pivoting::reconstruct::reconstruct_scratch::<usize, T>(m, n, par).unwrap(),
+			)),
 		);
 
 		out
@@ -1461,7 +1506,9 @@ impl<T: ComplexField> DenseSolveCore<T> for FullPivLu<T> {
 			self.P(),
 			self.Q(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::lu::full_pivoting::inverse::inverse_scratch::<usize, T>(n, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::lu::full_pivoting::inverse::inverse_scratch::<usize, T>(n, par).unwrap(),
+			)),
 		);
 
 		out
@@ -1486,7 +1533,9 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 			conj,
 			rhs,
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::qr::no_pivoting::solve::solve_in_place_scratch::<T>(n, blocksize, k, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::qr::no_pivoting::solve::solve_in_place_scratch::<T>(n, blocksize, k, par).unwrap(),
+			)),
 		);
 	}
 
@@ -1555,7 +1604,9 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 			self.Q_coeff(),
 			self.R(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::qr::no_pivoting::reconstruct::reconstruct_scratch::<T>(m, n, blocksize, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::qr::no_pivoting::reconstruct::reconstruct_scratch::<T>(m, n, blocksize, par).unwrap(),
+			)),
 		);
 
 		out
@@ -1576,7 +1627,9 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 			self.Q_coeff(),
 			self.R(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::qr::no_pivoting::inverse::inverse_scratch::<T>(n, blocksize, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::qr::no_pivoting::inverse::inverse_scratch::<T>(n, blocksize, par).unwrap(),
+			)),
 		);
 
 		out
@@ -1700,7 +1753,9 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 			self.R(),
 			self.P(),
 			par,
-			DynStack::new(&mut GlobalMemBuffer::new(linalg::qr::col_pivoting::inverse::inverse_scratch::<usize, T>(n, blocksize, par).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				linalg::qr::col_pivoting::inverse::inverse_scratch::<usize, T>(n, blocksize, par).unwrap(),
+			)),
 		);
 
 		out
@@ -1719,7 +1774,16 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 		let k = rhs.ncols();
 		let mut tmp = Mat::zeros(n, k);
 
-		linalg::matmul::matmul_with_conj(tmp.as_mut(), Accum::Replace, self.U().transpose(), conj.compose(Conj::Yes), rhs.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			tmp.as_mut(),
+			Accum::Replace,
+			self.U().transpose(),
+			conj.compose(Conj::Yes),
+			rhs.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 
 		for j in 0..k {
 			for i in 0..n {
@@ -1742,7 +1806,16 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 		let k = rhs.ncols();
 		let mut tmp = Mat::zeros(n, k);
 
-		linalg::matmul::matmul_with_conj(tmp.as_mut(), Accum::Replace, self.V().transpose(), conj, rhs.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			tmp.as_mut(),
+			Accum::Replace,
+			self.V().transpose(),
+			conj,
+			rhs.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 
 		for j in 0..k {
 			for i in 0..n {
@@ -1751,7 +1824,16 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 			}
 		}
 
-		linalg::matmul::matmul_with_conj(rhs.as_mut(), Accum::Replace, self.U(), conj.compose(Conj::Yes), tmp.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			rhs.as_mut(),
+			Accum::Replace,
+			self.U(),
+			conj.compose(Conj::Yes),
+			tmp.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 	}
 }
 
@@ -1775,7 +1857,16 @@ impl<T: ComplexField> SolveLstsqCore<T> for Svd<T> {
 		let mut rhs = rhs;
 		let mut tmp = Mat::zeros(size, k);
 
-		linalg::matmul::matmul_with_conj(tmp.as_mut(), Accum::Replace, U.transpose(), conj.compose(Conj::Yes), rhs.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			tmp.as_mut(),
+			Accum::Replace,
+			U.transpose(),
+			conj.compose(Conj::Yes),
+			rhs.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 
 		for j in 0..k {
 			for i in 0..size {
@@ -1855,7 +1946,16 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 		let k = rhs.ncols();
 		let mut tmp = Mat::zeros(n, k);
 
-		linalg::matmul::matmul_with_conj(tmp.as_mut(), Accum::Replace, self.U().transpose(), conj.compose(Conj::Yes), rhs.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			tmp.as_mut(),
+			Accum::Replace,
+			self.U().transpose(),
+			conj.compose(Conj::Yes),
+			rhs.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 
 		for j in 0..k {
 			for i in 0..n {
@@ -1878,7 +1978,16 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 		let k = rhs.ncols();
 		let mut tmp = Mat::zeros(n, k);
 
-		linalg::matmul::matmul_with_conj(tmp.as_mut(), Accum::Replace, self.U().transpose(), conj, rhs.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			tmp.as_mut(),
+			Accum::Replace,
+			self.U().transpose(),
+			conj,
+			rhs.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 
 		for j in 0..k {
 			for i in 0..n {
@@ -1887,7 +1996,16 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 			}
 		}
 
-		linalg::matmul::matmul_with_conj(rhs.as_mut(), Accum::Replace, self.U(), conj.compose(Conj::Yes), tmp.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(
+			rhs.as_mut(),
+			Accum::Replace,
+			self.U(),
+			conj.compose(Conj::Yes),
+			tmp.as_ref(),
+			Conj::No,
+			one(),
+			par,
+		);
 	}
 }
 

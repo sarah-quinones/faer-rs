@@ -238,7 +238,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 				MatRef::from_raw_parts(top_left, row.unbound(), col.unbound(), rs, cs),
 				MatRef::from_raw_parts(top_right, row.unbound(), self.ncols().unbound() - col.unbound(), rs, cs),
 				MatRef::from_raw_parts(bot_left, self.nrows().unbound() - row.unbound(), col.unbound(), rs, cs),
-				MatRef::from_raw_parts(bot_right, self.nrows().unbound() - row.unbound(), self.ncols().unbound() - col.unbound(), rs, cs),
+				MatRef::from_raw_parts(
+					bot_right,
+					self.nrows().unbound() - row.unbound(),
+					self.ncols().unbound() - col.unbound(),
+					rs,
+					cs,
+				),
 			)
 		}
 	}
@@ -300,7 +306,15 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	where
 		T: Conjugate,
 	{
-		unsafe { MatRef::from_raw_parts(self.as_ptr() as *const T::Conj, self.nrows(), self.ncols(), self.row_stride(), self.col_stride()) }
+		unsafe {
+			MatRef::from_raw_parts(
+				self.as_ptr() as *const T::Conj,
+				self.nrows(),
+				self.ncols(),
+				self.row_stride(),
+				self.col_stride(),
+			)
+		}
 	}
 
 	#[inline]
@@ -308,7 +322,15 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	where
 		T: Conjugate,
 	{
-		unsafe { MatRef::from_raw_parts(self.as_ptr() as *const T::Canonical, self.nrows(), self.ncols(), self.row_stride(), self.col_stride()) }
+		unsafe {
+			MatRef::from_raw_parts(
+				self.as_ptr() as *const T::Canonical,
+				self.nrows(),
+				self.ncols(),
+				self.row_stride(),
+				self.col_stride(),
+			)
+		}
 	}
 
 	#[inline]
@@ -362,7 +384,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 
 	#[inline]
 	#[track_caller]
-	pub fn submatrix<V: Shape, H: Shape>(self, row_start: IdxInc<Rows>, col_start: IdxInc<Cols>, nrows: V, ncols: H) -> MatRef<'a, T, V, H, RStride, CStride> {
+	pub fn submatrix<V: Shape, H: Shape>(
+		self,
+		row_start: IdxInc<Rows>,
+		col_start: IdxInc<Cols>,
+		nrows: V,
+		ncols: H,
+	) -> MatRef<'a, T, V, H, RStride, CStride> {
 		assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
 		{
 			let nrows = nrows.unbound();
@@ -434,12 +462,28 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 
 	#[inline]
 	pub fn as_dyn_stride(self) -> MatRef<'a, T, Rows, Cols, isize, isize> {
-		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows(), self.ncols(), self.row_stride().element_stride(), self.col_stride().element_stride()) }
+		unsafe {
+			MatRef::from_raw_parts(
+				self.as_ptr(),
+				self.nrows(),
+				self.ncols(),
+				self.row_stride().element_stride(),
+				self.col_stride().element_stride(),
+			)
+		}
 	}
 
 	#[inline]
 	pub fn as_dyn(self) -> MatRef<'a, T, usize, usize, RStride, CStride> {
-		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows().unbound(), self.ncols().unbound(), self.row_stride(), self.col_stride()) }
+		unsafe {
+			MatRef::from_raw_parts(
+				self.as_ptr(),
+				self.nrows().unbound(),
+				self.ncols().unbound(),
+				self.row_stride(),
+				self.col_stride(),
+			)
+		}
 	}
 
 	#[inline]
@@ -497,7 +541,9 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		use rayon::prelude::*;
 
 		#[inline]
-		fn col_fn<T, Rows: Shape, RStride: Stride, CStride: Stride>(col: MatRef<'_, T, Rows, usize, RStride, CStride>) -> ColRef<'_, T, Rows, RStride> {
+		fn col_fn<T, Rows: Shape, RStride: Stride, CStride: Stride>(
+			col: MatRef<'_, T, Rows, usize, RStride, CStride>,
+		) -> ColRef<'_, T, Rows, RStride> {
 			col.col(0)
 		}
 
@@ -519,7 +565,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
-	pub fn par_col_chunks(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
+	pub fn par_col_chunks(
+		self,
+		chunk_size: usize,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Sync,
 		Rows: 'a,
@@ -540,7 +589,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
-	pub fn par_col_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
+	pub fn par_col_partition(
+		self,
+		count: usize,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, Rows, usize, RStride, CStride>>
 	where
 		T: Sync,
 		Rows: 'a,
@@ -560,7 +612,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
-	pub fn par_row_chunks(self, chunk_size: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
+	pub fn par_row_chunks(
+		self,
+		chunk_size: usize,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Sync,
 		Rows: 'a,
@@ -573,7 +628,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
-	pub fn par_row_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
+	pub fn par_row_partition(
+		self,
+		count: usize,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, T, usize, Cols, RStride, CStride>>
 	where
 		T: Sync,
 		Rows: 'a,
@@ -630,7 +688,9 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	where
 		T: Clone,
 	{
-		fn imp<'M, 'N, T: Clone, RStride: Stride, CStride: Stride>(this: MatRef<'_, T, Dim<'M>, Dim<'N>, RStride, CStride>) -> Mat<T, Dim<'M>, Dim<'N>> {
+		fn imp<'M, 'N, T: Clone, RStride: Stride, CStride: Stride>(
+			this: MatRef<'_, T, Dim<'M>, Dim<'N>, RStride, CStride>,
+		) -> Mat<T, Dim<'M>, Dim<'N>> {
 			Mat::from_fn(this.nrows(), this.ncols(), |i, j| this.at(i, j).clone())
 		}
 
@@ -644,7 +704,9 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	where
 		T: Conjugate,
 	{
-		fn imp<'M, 'N, T, RStride: Stride, CStride: Stride>(this: MatRef<'_, T, Dim<'M>, Dim<'N>, RStride, CStride>) -> Mat<T::Canonical, Dim<'M>, Dim<'N>>
+		fn imp<'M, 'N, T, RStride: Stride, CStride: Stride>(
+			this: MatRef<'_, T, Dim<'M>, Dim<'N>, RStride, CStride>,
+		) -> Mat<T::Canonical, Dim<'M>, Dim<'N>>
 		where
 			T: Conjugate,
 		{
@@ -686,7 +748,15 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 
 	#[inline]
 	pub fn bind<'M, 'N>(self, row: Guard<'M>, col: Guard<'N>) -> MatRef<'a, T, Dim<'M>, Dim<'N>, RStride, CStride> {
-		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows().bind(row), self.ncols().bind(col), self.row_stride(), self.col_stride()) }
+		unsafe {
+			MatRef::from_raw_parts(
+				self.as_ptr(),
+				self.nrows().bind(row),
+				self.ncols().bind(col),
+				self.row_stride(),
+				self.col_stride(),
+			)
+		}
 	}
 
 	#[inline]
@@ -743,7 +813,11 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 
 	#[track_caller]
 	#[inline]
-	pub fn get<RowRange, ColRange>(self, row: RowRange, col: ColRange) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::Target
+	pub fn get<RowRange, ColRange>(
+		self,
+		row: RowRange,
+		col: ColRange,
+	) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::Target
 	where
 		MatRef<'a, T, Rows, Cols, RStride, CStride>: MatIndex<RowRange, ColRange>,
 	{
@@ -770,7 +844,11 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 
 	#[track_caller]
 	#[inline]
-	pub unsafe fn get_unchecked<RowRange, ColRange>(self, row: RowRange, col: ColRange) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::Target
+	pub unsafe fn get_unchecked<RowRange, ColRange>(
+		self,
+		row: RowRange,
+		col: ColRange,
+	) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::Target
 	where
 		MatRef<'a, T, Rows, Cols, RStride, CStride>: MatIndex<RowRange, ColRange>,
 	{
@@ -817,7 +895,13 @@ impl<'ROWS, 'COLS, 'a, T, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim<'R
 
 impl<'ROWS, 'a, T, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim<'ROWS>, Cols, RStride, CStride> {
 	#[inline]
-	pub fn split_rows_with<'TOP, 'BOT>(self, row: Partition<'TOP, 'BOT, 'ROWS>) -> (MatRef<'a, T, Dim<'TOP>, Cols, RStride, CStride>, MatRef<'a, T, Dim<'BOT>, Cols, RStride, CStride>) {
+	pub fn split_rows_with<'TOP, 'BOT>(
+		self,
+		row: Partition<'TOP, 'BOT, 'ROWS>,
+	) -> (
+		MatRef<'a, T, Dim<'TOP>, Cols, RStride, CStride>,
+		MatRef<'a, T, Dim<'BOT>, Cols, RStride, CStride>,
+	) {
 		let (a, b) = self.split_at_row(row.midpoint());
 		(a.as_row_shape(row.head), b.as_row_shape(row.tail))
 	}
@@ -825,7 +909,13 @@ impl<'ROWS, 'a, T, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, 
 
 impl<'COLS, 'a, T, Rows: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Rows, Dim<'COLS>, RStride, CStride> {
 	#[inline]
-	pub fn split_cols_with<'LEFT, 'RIGHT>(self, col: Partition<'LEFT, 'RIGHT, 'COLS>) -> (MatRef<'a, T, Rows, Dim<'LEFT>, RStride, CStride>, MatRef<'a, T, Rows, Dim<'RIGHT>, RStride, CStride>) {
+	pub fn split_cols_with<'LEFT, 'RIGHT>(
+		self,
+		col: Partition<'LEFT, 'RIGHT, 'COLS>,
+	) -> (
+		MatRef<'a, T, Rows, Dim<'LEFT>, RStride, CStride>,
+		MatRef<'a, T, Rows, Dim<'RIGHT>, RStride, CStride>,
+	) {
 		let (a, b) = self.split_at_col(col.midpoint());
 		(a.as_col_shape(col.head), b.as_col_shape(col.tail))
 	}
@@ -841,7 +931,9 @@ impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> Index<(Idx<R
 	}
 }
 
-impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> core::fmt::Debug for MatRef<'a, T, Rows, Cols, RStride, CStride> {
+impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> core::fmt::Debug
+	for MatRef<'a, T, Rows, Cols, RStride, CStride>
+{
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		fn imp<'M, 'N, T: core::fmt::Debug>(this: MatRef<'_, T, Dim<'M>, Dim<'N>>, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 			writeln!(f, "[")?;
@@ -858,7 +950,8 @@ impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride
 	}
 }
 
-impl<'a, T, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride, RowRange, ColRange> azucar::Index<'a, (RowRange, ColRange)> for MatRef<'_, T, Rows, Cols, Rs, Cs>
+impl<'a, T, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride, RowRange, ColRange> azucar::Index<'a, (RowRange, ColRange)>
+	for MatRef<'_, T, Rows, Cols, Rs, Cs>
 where
 	MatRef<'a, T, Rows, Cols, Rs, Cs>: MatIndex<RowRange, ColRange>,
 {
@@ -870,7 +963,8 @@ where
 	}
 }
 
-impl<'a, T, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride, RowRange, ColRange> azucar::IndexMut<'a, (RowRange, ColRange)> for MatRef<'_, T, Rows, Cols, Rs, Cs>
+impl<'a, T, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride, RowRange, ColRange> azucar::IndexMut<'a, (RowRange, ColRange)>
+	for MatRef<'_, T, Rows, Cols, Rs, Cs>
 where
 	MatRef<'a, T, Rows, Cols, Rs, Cs>: MatIndex<RowRange, ColRange>,
 {
@@ -882,7 +976,8 @@ where
 	}
 }
 
-impl<'a, T, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride, RowRange, ColRange> azucar::IndexMove<(RowRange, ColRange)> for MatRef<'a, T, Rows, Cols, Rs, Cs>
+impl<'a, T, Rows: Shape, Cols: Shape, Rs: Stride, Cs: Stride, RowRange, ColRange> azucar::IndexMove<(RowRange, ColRange)>
+	for MatRef<'a, T, Rows, Cols, Rs, Cs>
 where
 	MatRef<'a, T, Rows, Cols, Rs, Cs>: MatIndex<RowRange, ColRange>,
 {

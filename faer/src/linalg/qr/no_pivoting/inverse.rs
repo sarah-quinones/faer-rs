@@ -7,7 +7,14 @@ pub fn inverse_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par) 
 }
 
 #[track_caller]
-pub fn inverse<T: ComplexField>(out: MatMut<'_, T>, Q_basis: MatRef<'_, T>, Q_coeff: MatRef<'_, T>, R: MatRef<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn inverse<T: ComplexField>(
+	out: MatMut<'_, T>,
+	Q_basis: MatRef<'_, T>,
+	Q_coeff: MatRef<'_, T>,
+	R: MatRef<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	// A = Q R
 	// A^-1 = R^-1 Q^-1
 
@@ -28,7 +35,14 @@ pub fn inverse<T: ComplexField>(out: MatMut<'_, T>, Q_basis: MatRef<'_, T>, Q_co
 	out.fill(zero());
 	linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), R, par);
 
-	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(Q_basis, Q_coeff, Conj::Yes, out.rb_mut(), par, stack);
+	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(
+		Q_basis,
+		Q_coeff,
+		Conj::Yes,
+		out.rb_mut(),
+		par,
+		stack,
+	);
 }
 
 #[cfg(test)]

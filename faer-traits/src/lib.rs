@@ -795,6 +795,9 @@ pub trait Index:
 	Seal
 	+ core::fmt::Debug
 	+ core::ops::Not<Output = Self>
+	+ core::ops::BitAnd<Output = Self>
+	+ core::ops::BitOr<Output = Self>
+	+ core::ops::BitXor<Output = Self>
 	+ core::ops::Add<Output = Self>
 	+ core::ops::Sub<Output = Self>
 	+ core::ops::AddAssign
@@ -810,6 +813,8 @@ pub trait Index:
 	type FixedWidth: Index;
 	/// Equally-sized signed index type.
 	type Signed: SignedIndex;
+
+	const BITS: u32 = size_of::<Self>() as u32 * 8;
 
 	/// Truncate `value` to type [`Self`].
 	#[must_use]
@@ -1015,7 +1020,12 @@ pub trait ComplexField:
 	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
 
 	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_index_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S>;
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S>;
 
 	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S>;
 	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S>;
@@ -1080,9 +1090,15 @@ pub trait ComplexField:
 
 		unsafe {
 			if const { Self::Unit::IS_NATIVE_F32 } {
-				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f32s(Interleave(core::mem::transmute_copy::<_, Self::SimdVec<S>>(&<Self as pulp::Iota32>::IOTA))))
+				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
+					&simd.deinterleave_shfl_f32s(Interleave(core::mem::transmute_copy::<_, Self::SimdVec<S>>(
+						&<Self as pulp::Iota32>::IOTA,
+					))),
+				)
 			} else if const { Self::Unit::IS_NATIVE_F64 } {
-				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(&<Self as pulp::Iota64>::IOTA)))
+				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
+					&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(&<Self as pulp::Iota64>::IOTA)),
+				)
 			} else {
 				panic!();
 			}
@@ -1090,7 +1106,9 @@ pub trait ComplexField:
 	}
 }
 
-pub trait RealField: ComplexField<Real = Self, Conj = Self> + DivByRef<Output = Self> + PartialOrd + num_traits::NumOps + num_traits::Num + core::ops::Neg<Output = Self> {
+pub trait RealField:
+	ComplexField<Real = Self, Conj = Self> + DivByRef<Output = Self> + PartialOrd + num_traits::NumOps + num_traits::Num + core::ops::Neg<Output = Self>
+{
 	fn epsilon_impl() -> Self;
 	fn nbits_impl() -> usize;
 
@@ -1326,7 +1344,12 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
-	fn simd_index_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		ctx.select_u32s_m32s(mask, lhs, rhs)
 	}
 
@@ -1629,7 +1652,12 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
-	fn simd_index_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		ctx.select_u64s_m64s(mask, lhs, rhs)
 	}
 
@@ -1750,7 +1778,10 @@ impl<T: RealField> ComplexField for Complex<T> {
 
 	#[inline]
 	fn nan_impl() -> Self {
-		Complex { re: T::nan_impl(), im: T::nan_impl() }
+		Complex {
+			re: T::nan_impl(),
+			im: T::nan_impl(),
+		}
 	}
 
 	#[inline]
@@ -1763,7 +1794,10 @@ impl<T: RealField> ComplexField for Complex<T> {
 
 	#[inline]
 	fn from_real_impl(real: &Self::Real) -> Self {
-		Complex { re: real.clone(), im: T::zero_impl() }
+		Complex {
+			re: real.clone(),
+			im: T::zero_impl(),
+		}
 	}
 
 	#[inline]
@@ -1829,7 +1863,10 @@ impl<T: RealField> ComplexField for Complex<T> {
 	#[inline]
 	#[faer_macros::math]
 	fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
-		Complex { re: lhs.re * rhs, im: lhs.im * rhs }
+		Complex {
+			re: lhs.re * rhs,
+			im: lhs.im * rhs,
+		}
 	}
 
 	#[inline]
@@ -2025,7 +2062,12 @@ impl<T: RealField> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_index_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		T::simd_index_select(ctx, mask, lhs, rhs)
 	}
 
@@ -2527,7 +2569,12 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_index_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		f32::simd_index_select(ctx, mask, lhs, rhs)
 	}
 
@@ -2936,7 +2983,12 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_index_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		f64::simd_index_select(ctx, mask, lhs, rhs)
 	}
 
@@ -3315,7 +3367,12 @@ impl ComplexField for Symbolic {
 		()
 	}
 
-	fn simd_index_select<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_select<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMask<S>,
+		_: Self::SimdIndex<S>,
+		_: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		()
 	}
 

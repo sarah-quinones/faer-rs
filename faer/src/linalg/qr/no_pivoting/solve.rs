@@ -1,7 +1,13 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn solve_lstsq_in_place_scratch<T: ComplexField>(qr_nrows: usize, qr_ncols: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_lstsq_in_place_scratch<T: ComplexField>(
+	qr_nrows: usize,
+	qr_ncols: usize,
+	qr_blocksize: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> Result<StackReq, SizeOverflow> {
 	_ = qr_ncols;
 	_ = par;
 	linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(qr_nrows, qr_blocksize, rhs_ncols)
@@ -11,13 +17,26 @@ pub fn solve_in_place_scratch<T: ComplexField>(qr_dim: usize, qr_blocksize: usiz
 	solve_lstsq_in_place_scratch::<T>(qr_dim, qr_dim, qr_blocksize, rhs_ncols, par)
 }
 
-pub fn solve_transpose_in_place_scratch<T: ComplexField>(qr_dim: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_transpose_in_place_scratch<T: ComplexField>(
+	qr_dim: usize,
+	qr_blocksize: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(qr_dim, qr_blocksize, rhs_ncols)
 }
 
 #[track_caller]
-pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(Q_basis: MatRef<'_, T>, Q_coeff: MatRef<'_, T>, R: MatRef<'_, T>, conj_QR: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(
+	Q_basis: MatRef<'_, T>,
+	Q_coeff: MatRef<'_, T>,
+	R: MatRef<'_, T>,
+	conj_QR: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let m = Q_basis.nrows();
 	let n = Q_basis.ncols();
 	let size = Ord::min(m, n);
@@ -33,18 +52,40 @@ pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(Q_basis: MatRef<'_, T>, Q
 
 	let mut rhs = rhs;
 	let mut stack = stack;
-	linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(Q_basis, Q_coeff, conj_QR.compose(Conj::Yes), rhs.rb_mut(), par, stack.rb_mut());
+	linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+		Q_basis,
+		Q_coeff,
+		conj_QR.compose(Conj::Yes),
+		rhs.rb_mut(),
+		par,
+		stack.rb_mut(),
+	);
 
 	linalg::triangular_solve::solve_upper_triangular_in_place_with_conj(R.get(..size, ..), conj_QR, rhs.subrows_mut(0, size), par);
 }
 
 #[track_caller]
-pub fn solve_lstsq_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(Q_basis: MatRef<'_, C>, Q_coeff: MatRef<'_, C>, R: MatRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_lstsq_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
+	Q_basis: MatRef<'_, C>,
+	Q_coeff: MatRef<'_, C>,
+	R: MatRef<'_, C>,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	solve_lstsq_in_place_with_conj(Q_basis.canonical(), Q_coeff.canonical(), R.canonical(), Conj::get::<C>(), rhs, par, stack);
 }
 
 #[track_caller]
-pub fn solve_in_place_with_conj<T: ComplexField>(Q_basis: MatRef<'_, T>, Q_coeff: MatRef<'_, T>, R: MatRef<'_, T>, conj_QR: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_in_place_with_conj<T: ComplexField>(
+	Q_basis: MatRef<'_, T>,
+	Q_coeff: MatRef<'_, T>,
+	R: MatRef<'_, T>,
+	conj_QR: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = Q_basis.nrows();
 	let blocksize = Q_coeff.nrows();
 	assert!(all(
@@ -61,12 +102,27 @@ pub fn solve_in_place_with_conj<T: ComplexField>(Q_basis: MatRef<'_, T>, Q_coeff
 }
 
 #[track_caller]
-pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(Q_basis: MatRef<'_, C>, Q_coeff: MatRef<'_, C>, R: MatRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
+	Q_basis: MatRef<'_, C>,
+	Q_coeff: MatRef<'_, C>,
+	R: MatRef<'_, C>,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	solve_in_place_with_conj(Q_basis.canonical(), Q_coeff.canonical(), R.canonical(), Conj::get::<C>(), rhs, par, stack);
 }
 
 #[track_caller]
-pub fn solve_transpose_in_place_with_conj<T: ComplexField>(Q_basis: MatRef<'_, T>, Q_coeff: MatRef<'_, T>, R: MatRef<'_, T>, conj_QR: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_transpose_in_place_with_conj<T: ComplexField>(
+	Q_basis: MatRef<'_, T>,
+	Q_coeff: MatRef<'_, T>,
+	R: MatRef<'_, T>,
+	conj_QR: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	let n = Q_basis.nrows();
 	let blocksize = Q_coeff.nrows();
 
@@ -84,11 +140,25 @@ pub fn solve_transpose_in_place_with_conj<T: ComplexField>(Q_basis: MatRef<'_, T
 	let mut stack = stack;
 
 	linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(R.transpose(), conj_QR, rhs.rb_mut(), par);
-	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(Q_basis, Q_coeff, conj_QR.compose(Conj::Yes), rhs.rb_mut(), par, stack.rb_mut());
+	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+		Q_basis,
+		Q_coeff,
+		conj_QR.compose(Conj::Yes),
+		rhs.rb_mut(),
+		par,
+		stack.rb_mut(),
+	);
 }
 
 #[track_caller]
-pub fn solve_transpose_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(Q_basis: MatRef<'_, C>, Q_coeff: MatRef<'_, C>, R: MatRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_transpose_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
+	Q_basis: MatRef<'_, C>,
+	Q_coeff: MatRef<'_, C>,
+	R: MatRef<'_, C>,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut DynStack,
+) {
 	solve_transpose_in_place_with_conj(Q_basis.canonical(), Q_coeff.canonical(), R.canonical(), Conj::get::<C>(), rhs, par, stack);
 }
 
@@ -130,7 +200,9 @@ mod tests {
 			QR.as_mut(),
 			H.as_mut(),
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -144,7 +216,9 @@ mod tests {
 				QR.as_ref(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_lstsq_in_place_scratch::<c64>(m, n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_lstsq_in_place_scratch::<c64>(m, n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			let X = X.get(..n, ..);
@@ -160,7 +234,9 @@ mod tests {
 				QR.conjugate(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_lstsq_in_place_scratch::<c64>(m, n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_lstsq_in_place_scratch::<c64>(m, n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			let X = X.get(..n, ..);
@@ -196,7 +272,9 @@ mod tests {
 			QR.as_mut(),
 			H.as_mut(),
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(factor::qr_in_place_scratch::<c64>(n, n, 4, Par::Seq, _).unwrap())),
+			DynStack::new(&mut GlobalMemBuffer::new(
+				factor::qr_in_place_scratch::<c64>(n, n, 4, Par::Seq, _).unwrap(),
+			)),
 			_,
 		);
 
@@ -210,7 +288,9 @@ mod tests {
 				QR.as_ref(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(&A * &X ~ B);
@@ -224,7 +304,9 @@ mod tests {
 				QR.conjugate(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.conjugate() * &X ~ B);
@@ -238,7 +320,9 @@ mod tests {
 				QR.as_ref(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_transpose_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_transpose_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.transpose() * &X ~ B);
@@ -252,7 +336,9 @@ mod tests {
 				QR.conjugate(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(solve::solve_transpose_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap())),
+				DynStack::new(&mut GlobalMemBuffer::new(
+					solve::solve_transpose_in_place_scratch::<c64>(n, 4, k, Par::Seq).unwrap(),
+				)),
 			);
 
 			assert!(A.adjoint() * &X ~ B);

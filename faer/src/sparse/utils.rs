@@ -229,7 +229,13 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 		let new_val = Array::from_mut(new_val, NNZ);
 		let new_row_idx = Array::from_mut(new_row_idx, NNZ);
 
-		let conj_if = |cond: bool, x: &T| -> T { if const { T::IS_REAL } { copy(x) } else { if cond != conj_A { conj(x) } else { copy(x) } } };
+		let conj_if = |cond: bool, x: &T| -> T {
+			if const { T::IS_REAL } {
+				copy(x)
+			} else {
+				if cond != conj_A { conj(x) } else { copy(x) }
+			}
+		};
 
 		for old_j in N.indices() {
 			let new_j = perm_inv[old_j].zx();
@@ -566,7 +572,11 @@ mod tests {
 				],
 			);
 
-			assert!(all(out.col_ptr() == target.col_ptr(), out.row_idx() == target.row_idx(), out.val() == target.val()));
+			assert!(all(
+				out.col_ptr() == target.col_ptr(),
+				out.row_idx() == target.row_idx(),
+				out.val() == target.val()
+			));
 		}
 
 		{
@@ -596,7 +606,11 @@ mod tests {
 				],
 			);
 
-			assert!(all(out.col_ptr() == target.col_ptr(), out.row_idx() == target.row_idx(), out.val() == target.val()));
+			assert!(all(
+				out.col_ptr() == target.col_ptr(),
+				out.row_idx() == target.row_idx(),
+				out.val() == target.val()
+			));
 		}
 	}
 
@@ -658,7 +672,12 @@ mod tests {
 		let new_val = &mut *vec![c64::ZERO; nnz];
 
 		for f in [permute_self_adjoint_to_unsorted, permute_self_adjoint, permute_dedup_self_adjoint] {
-			for (in_side, out_side) in [(Side::Lower, Side::Lower), (Side::Lower, Side::Upper), (Side::Upper, Side::Lower), (Side::Upper, Side::Upper)] {
+			for (in_side, out_side) in [
+				(Side::Lower, Side::Lower),
+				(Side::Lower, Side::Upper),
+				(Side::Upper, Side::Lower),
+				(Side::Upper, Side::Upper),
+			] {
 				let mut out = f(
 					new_val,
 					new_col_ptr,

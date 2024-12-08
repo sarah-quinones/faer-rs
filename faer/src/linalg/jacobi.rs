@@ -90,7 +90,11 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 					let scl = min(safmax, max(safmin, max(abs(a), abs(b))));
 					let r = scl * (sqrt(abs2(a / scl) + abs2(b / scl)));
-					let r = if abs(a) > abs(b) { if a > zero() { r } else { -r } } else { if b > zero() { r } else { -r } };
+					let r = if abs(a) > abs(b) {
+						if a > zero() { r } else { -r }
+					} else {
+						if b > zero() { r } else { -r }
+					};
 					let c = from_real(a / r);
 					let s = from_real(b / r);
 					let r = from_real(r);
@@ -143,7 +147,11 @@ impl<T: ComplexField> JacobiRotation<T> {
 						let f2 = abs2(a);
 						let g2 = abs2(b);
 						let h2 = add(f2, g2);
-						let d = if f2 > rtmin && h2 < rtmax { sqrt(mul(f2, h2)) } else { mul(sqrt(f2), sqrt(h2)) };
+						let d = if f2 > rtmin && h2 < rtmax {
+							sqrt(mul(f2, h2))
+						} else {
+							mul(sqrt(f2), sqrt(h2))
+						};
 						let p = recip(d);
 						c = from_real(mul(f2, p));
 						s = conj(b) * mul_real(a, p);
@@ -172,7 +180,11 @@ impl<T: ComplexField> JacobiRotation<T> {
 							f2 = abs2(fs);
 							h2 = add(f2, g2);
 						}
-						let d = if f2 > rtmin && h2 < rtmax { sqrt(mul(f2, h2)) } else { mul(sqrt(f2), sqrt(h2)) };
+						let d = if f2 > rtmin && h2 < rtmax {
+							sqrt(mul(f2, h2))
+						} else {
+							mul(sqrt(f2), sqrt(h2))
+						};
 						let p = recip(d);
 						c = from_real(mul(mul(f2, p), w));
 						s = conj(gs) * mul_real(fs, p);
@@ -190,7 +202,12 @@ impl<T: ComplexField> JacobiRotation<T> {
 	pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
 		let Self { c, s } = self;
 
-		(m00 * *c + m10 * *s, m01 * *c + m11 * *s, *c * m10 - conj(*s) * m00, *c * m11 - conj(*s) * m01)
+		(
+			m00 * *c + m10 * *s,
+			m01 * *c + m11 * *s,
+			*c * m10 - conj(*s) * m00,
+			*c * m11 - conj(*s) * m01,
+		)
 	}
 
 	#[inline]
@@ -262,13 +279,24 @@ impl<T: ComplexField> JacobiRotation<T> {
 	}
 
 	#[inline(always)]
-	pub fn apply_on_the_right_in_place_with_simd<'N, S: pulp::Simd>(&self, simd: SimdCtx<'N, T, S>, x: ColMut<'_, T, Dim<'N>, ContiguousFwd>, y: ColMut<'_, T, Dim<'N>, ContiguousFwd>) {
-		self.transpose().apply_on_the_left_in_place_with_simd(simd, x.transpose_mut(), y.transpose_mut());
+	pub fn apply_on_the_right_in_place_with_simd<'N, S: pulp::Simd>(
+		&self,
+		simd: SimdCtx<'N, T, S>,
+		x: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+		y: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+	) {
+		self.transpose()
+			.apply_on_the_left_in_place_with_simd(simd, x.transpose_mut(), y.transpose_mut());
 	}
 
 	#[math]
 	#[inline(always)]
-	pub fn apply_on_the_left_in_place_with_simd<'N, S: pulp::Simd>(&self, simd: SimdCtx<'N, T, S>, x: RowMut<'_, T, Dim<'N>, ContiguousFwd>, y: RowMut<'_, T, Dim<'N>, ContiguousFwd>) {
+	pub fn apply_on_the_left_in_place_with_simd<'N, S: pulp::Simd>(
+		&self,
+		simd: SimdCtx<'N, T, S>,
+		x: RowMut<'_, T, Dim<'N>, ContiguousFwd>,
+		y: RowMut<'_, T, Dim<'N>, ContiguousFwd>,
+	) {
 		let Self { c, s } = self;
 
 		if *c == one() && *s == zero() {
@@ -287,7 +315,10 @@ impl<T: ComplexField> JacobiRotation<T> {
 			let mut xx = simd.read(x.rb(), i);
 			let mut yy = simd.read(y.rb(), i);
 
-			(xx, yy) = (simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)), simd.mul_add(s, xx, simd.mul_real(yy, c)));
+			(xx, yy) = (
+				simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)),
+				simd.mul_add(s, xx, simd.mul_real(yy, c)),
+			);
 
 			simd.write(x.rb_mut(), i, xx);
 			simd.write(y.rb_mut(), i, yy);
@@ -296,7 +327,10 @@ impl<T: ComplexField> JacobiRotation<T> {
 			let mut xx = simd.read(x.rb(), i);
 			let mut yy = simd.read(y.rb(), i);
 
-			(xx, yy) = (simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)), simd.mul_add(s, xx, simd.mul_real(yy, c)));
+			(xx, yy) = (
+				simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)),
+				simd.mul_add(s, xx, simd.mul_real(yy, c)),
+			);
 
 			simd.write(x.rb_mut(), i, xx);
 			simd.write(y.rb_mut(), i, yy);
@@ -305,7 +339,10 @@ impl<T: ComplexField> JacobiRotation<T> {
 			let mut xx = simd.read(x.rb(), i);
 			let mut yy = simd.read(y.rb(), i);
 
-			(xx, yy) = (simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)), simd.mul_add(s, xx, simd.mul_real(yy, c)));
+			(xx, yy) = (
+				simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)),
+				simd.mul_add(s, xx, simd.mul_real(yy, c)),
+			);
 
 			simd.write(x.rb_mut(), i, xx);
 			simd.write(y.rb_mut(), i, yy);
@@ -315,13 +352,19 @@ impl<T: ComplexField> JacobiRotation<T> {
 	#[inline]
 	#[math]
 	pub fn adjoint(&self) -> Self {
-		Self { c: copy(self.c), s: -conj(self.s) }
+		Self {
+			c: copy(self.c),
+			s: -conj(self.s),
+		}
 	}
 
 	#[inline]
 	#[math]
 	pub fn conjugate(&self) -> Self {
-		Self { c: copy(self.c), s: conj(self.s) }
+		Self {
+			c: copy(self.c),
+			s: conj(self.s),
+		}
 	}
 
 	#[inline]

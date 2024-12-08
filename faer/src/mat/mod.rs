@@ -70,7 +70,11 @@ impl<T: ComplexField, Rows: Shape, Cols: Shape> core::ops::Deref for Mat<T, Rows
 
 	fn deref<'a>(&'a self) -> &'a Self::Target {
 		// UNSAFETY: not 100% sure if this is fine
-		unsafe { core::mem::transmute::<&'a (dyn 'a + MatExt<T, Rows, Cols>), &'a (dyn 'static + MatExt<T, Rows, Cols>)>(self as &'a (dyn 'a + MatExt<T, Rows, Cols>)) }
+		unsafe {
+			core::mem::transmute::<&'a (dyn 'a + MatExt<T, Rows, Cols>), &'a (dyn 'static + MatExt<T, Rows, Cols>)>(
+				self as &'a (dyn 'a + MatExt<T, Rows, Cols>),
+			)
+		}
 	}
 }
 

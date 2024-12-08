@@ -13,7 +13,9 @@ pub struct Row<T, Cols: Shape = usize> {
 impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline]
 	pub fn from_fn(nrows: Cols, f: impl FnMut(Idx<Cols>) -> T) -> Self {
-		Self { trans: Col::from_fn(nrows, f) }
+		Self {
+			trans: Col::from_fn(nrows, f),
+		}
 	}
 
 	#[inline]
@@ -37,7 +39,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Clone,
 	{
-		Self { trans: Col::full(ncols, value) }
+		Self {
+			trans: Col::full(ncols, value),
+		}
 	}
 
 	#[inline]

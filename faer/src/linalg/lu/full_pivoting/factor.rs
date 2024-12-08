@@ -16,7 +16,10 @@ fn best_value<T: ComplexField, S: Simd>(
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
 	let value = simd.abs1(value);
 	let is_better = simd.gt(value, best_value);
-	(RealReg(simd.select(is_better, value.0, best_value.0)), simd.iselect(is_better, indices, best_indices))
+	(
+		RealReg(simd.select(is_better, value.0, best_value.0)),
+		simd.iselect(is_better, indices, best_indices),
+	)
 }
 
 #[inline(always)]
@@ -28,7 +31,10 @@ fn best_score<T: ComplexField, S: Simd>(
 	indices: T::SimdIndex<S>,
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
 	let is_better = simd.gt(score, best_score);
-	(RealReg(simd.select(is_better, score.0, best_score.0)), simd.iselect(is_better, indices, best_indices))
+	(
+		RealReg(simd.select(is_better, score.0, best_score.0)),
+		simd.iselect(is_better, indices, best_indices),
+	)
 }
 
 #[inline(always)]
@@ -51,7 +57,12 @@ fn best_score_2d<T: ComplexField, S: Simd>(
 
 #[inline(always)]
 #[math]
-fn reduce_2d<T: ComplexField, S: Simd>(simd: &SimdCtx<T, S>, best_values: RealReg<T::SimdVec<S>>, best_row: T::SimdIndex<S>, best_col: T::SimdIndex<S>) -> (usize, usize, Real<T>) {
+fn reduce_2d<T: ComplexField, S: Simd>(
+	simd: &SimdCtx<T, S>,
+	best_values: RealReg<T::SimdVec<S>>,
+	best_row: T::SimdIndex<S>,
+	best_col: T::SimdIndex<S>,
+) -> (usize, usize, Real<T>) {
 	let best_val = simd.reduce_max_real(best_values);
 
 	let best_val_splat = simd.splat_real(&best_val);
@@ -66,7 +77,10 @@ fn reduce_2d<T: ComplexField, S: Simd>(simd: &SimdCtx<T, S>, best_values: RealRe
 
 #[inline(always)]
 #[math]
-fn best_in_col_simd<'M, T: ComplexField, S: Simd>(simd: SimdCtx<'M, T, S>, data: ColRef<'_, T, Dim<'M>, ContiguousFwd>) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
+fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
+	simd: SimdCtx<'M, T, S>,
+	data: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
 	let (head, body4, body1, tail) = simd.batch_indices::<4>();
 
 	let iota = T::simd_iota(&simd.0);
@@ -238,7 +252,15 @@ fn best_in_mat_simd<T: ComplexField>(data: MatRef<'_, T, usize, usize, Contiguou
 				let col = data.col(j);
 				let (best_val_j, best_row_j) = best_in_col_simd(simd, col);
 
-				(best_val, best_row, best_col) = best_score_2d(&simd, best_val, best_row, best_col, best_val_j, best_row_j, simd.isplat(T::Index::truncate(*j)));
+				(best_val, best_row, best_col) = best_score_2d(
+					&simd,
+					best_val,
+					best_row,
+					best_col,
+					best_val_j,
+					best_row_j,
+					simd.isplat(T::Index::truncate(*j)),
+				);
 			}
 			reduce_2d(&simd, best_val, best_row, best_col)
 		}
@@ -284,7 +306,15 @@ fn update_and_best_in_mat_simd<T: ComplexField>(
 				let rhs = copy(rhs[j]);
 				let (best_val_j, best_row_j) = update_and_best_in_col_simd(simd, data, lhs, rhs);
 
-				(best_val, best_row, best_col) = best_score_2d(&simd, best_val, best_row, best_col, best_val_j, best_row_j, simd.isplat(T::Index::truncate(*j)));
+				(best_val, best_row, best_col) = best_score_2d(
+					&simd,
+					best_val,
+					best_row,
+					best_col,
+					best_val_j,
+					best_row_j,
+					simd.isplat(T::Index::truncate(*j)),
+				);
 			}
 			reduce_2d(&simd, best_val, best_row, best_col)
 		}
@@ -339,7 +369,12 @@ fn best_in_matrix<T: ComplexField>(data: MatRef<'_, T>) -> (usize, usize, Real<T
 	}
 }
 #[math]
-fn rank_one_update_and_best_in_matrix<T: ComplexField>(mut dst: MatMut<'_, T>, lhs: ColRef<'_, T>, rhs: RowRef<'_, T>, align: usize) -> (usize, usize, Real<T>) {
+fn rank_one_update_and_best_in_matrix<T: ComplexField>(
+	mut dst: MatMut<'_, T>,
+	lhs: ColRef<'_, T>,
+	rhs: RowRef<'_, T>,
+	align: usize,
+) -> (usize, usize, Real<T>) {
 	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
 			update_and_best_in_mat_simd(dst, lhs, rhs, align)
@@ -354,7 +389,14 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(mut dst: MatMut<'_, T>, l
 }
 
 #[math]
-fn lu_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, row_trans: &mut [usize], col_trans: &mut [usize], par: Par, transpose: bool, params: Spec<FullPivLuParams, T>) -> usize {
+fn lu_in_place_unblocked<T: ComplexField>(
+	A: MatMut<'_, T>,
+	row_trans: &mut [usize],
+	col_trans: &mut [usize],
+	par: Par,
+	transpose: bool,
+	params: Spec<FullPivLuParams, T>,
+) -> usize {
 	let params = params.into_inner();
 	let mut n_trans = 0;
 
@@ -477,7 +519,12 @@ impl<T: ComplexField> Auto<T> for FullPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<FullPivLuParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+	params: Spec<FullPivLuParams, T>,
+) -> Result<StackReq, SizeOverflow> {
 	_ = par;
 	_ = params;
 	let size = Ord::min(nrows, ncols);
@@ -567,7 +614,10 @@ mod tests {
 			for m in [8, 16, 24, 32, 128, 255, 256, 257] {
 				let n = 8;
 
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: m,
@@ -618,7 +668,10 @@ mod tests {
 			}
 
 			for n in [16, 24, 32, 128, 255, 256, 257] {
-				let approx_eq = CwiseMat(ApproxEq { abs_tol: 1e-10, rel_tol: 1e-10 });
+				let approx_eq = CwiseMat(ApproxEq {
+					abs_tol: 1e-10,
+					rel_tol: 1e-10,
+				});
 
 				let A = CwiseMatDistribution {
 					nrows: n,
