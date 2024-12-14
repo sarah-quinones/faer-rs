@@ -183,33 +183,33 @@ pub fn bidiag_in_place<T: ComplexField>(
 	while j < size {
 		let bl = Ord::min(bl, size - j);
 
-		let mut Hl = (&mut Hl)[*(..bl, j..j + bl)];
+		let mut Hl = (&mut Hl).get_mut(..bl, j..j + bl);
 		for k in 0..bl {
 			Hl[(k, k)] = copy(Hl[(0, k)]);
 		}
 
-		householder::upgrade_householder_factor(&mut Hl, (&A)[*(j.., j..j + bl)], bl, 1, par);
+		householder::upgrade_householder_factor(&mut Hl, (&A).get(j.., j..j + bl), bl, 1, par);
 
 		j += bl;
 	}
 
 	if size > 0 {
 		let size = size - 1;
-		let A = (&A)[*(..size, 1..)];
+		let A = (&A).get(..size, 1..);
 
-		let mut Hr = (&mut Hr)[*(.., ..size)];
+		let mut Hr = (&mut Hr).get_mut(.., ..size);
 
 		let mut j = 0;
 		while j < size {
 			let br = Ord::min(br, size - j);
 
-			let mut Hr = (&mut Hr)[*(..br, j..j + br)];
+			let mut Hr = (&mut Hr).get_mut(..br, j..j + br);
 
 			for k in 0..br {
 				Hr[(k, k)] = copy(Hr[(0, k)]);
 			}
 
-			householder::upgrade_householder_factor(&mut Hr, A.transpose()[*(j.., j..j + br)], br, 1, par);
+			householder::upgrade_householder_factor(&mut Hr, A.transpose().get(j.., j..j + br), br, 1, par);
 			j += br;
 		}
 	}
@@ -449,7 +449,7 @@ mod tests {
 			let mut A = A.as_mut();
 
 			householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
-				(&UV)[*(.., ..size)],
+				(&UV).get(.., ..size),
 				&Hl,
 				Conj::Yes,
 				&mut A,
@@ -459,8 +459,8 @@ mod tests {
 				)),
 			);
 
-			let V = (&UV)[*(..size - 1, 1..size)];
-			let A1 = (&mut A)[*(.., 1..size)];
+			let V = (&UV).get(..size - 1, 1..size);
+			let A1 = (&mut A).get_mut(.., 1..size);
 			let Hr = Hr.as_ref();
 
 			householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
@@ -526,8 +526,8 @@ mod tests {
 				)),
 			);
 
-			let V = (&UV)[*(..size - 1, 1..size)];
-			let A1 = (&mut A)[*(.., 1..size)];
+			let V = (&UV).get(..size - 1, 1..size);
+			let A1 = (&mut A).get_mut(.., 1..size);
 			let Hr = &Hr;
 
 			householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(

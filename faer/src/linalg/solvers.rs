@@ -26,6 +26,49 @@ pub trait DenseSolveCore<T: ComplexField>: SolveCore<T> {
 	fn inverse(&self) -> Mat<T>;
 }
 
+impl<S: ?Sized + ShapeCore> ShapeCore for &S {
+	#[inline]
+	fn nrows(&self) -> usize {
+		(**self).nrows()
+	}
+
+	#[inline]
+	fn ncols(&self) -> usize {
+		(**self).ncols()
+	}
+}
+
+impl<T: ComplexField, S: ?Sized + SolveCore<T>> SolveCore<T> for &S {
+	#[inline]
+	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
+		(**self).solve_in_place_with_conj(conj, rhs)
+	}
+
+	#[inline]
+	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
+		(**self).solve_transpose_in_place_with_conj(conj, rhs)
+	}
+}
+
+impl<T: ComplexField, S: ?Sized + SolveLstsqCore<T>> SolveLstsqCore<T> for &S {
+	#[inline]
+	fn solve_lstsq_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
+		(**self).solve_lstsq_in_place_with_conj(conj, rhs)
+	}
+}
+
+impl<T: ComplexField, S: ?Sized + DenseSolveCore<T>> DenseSolveCore<T> for &S {
+	#[inline]
+	fn reconstruct(&self) -> Mat<T> {
+		(**self).reconstruct()
+	}
+
+	#[inline]
+	fn inverse(&self) -> Mat<T> {
+		(**self).inverse()
+	}
+}
+
 pub trait Solve<T: ComplexField>: SolveCore<T> {
 	#[track_caller]
 	#[inline]
@@ -148,7 +191,7 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 	}
 }
 
-impl<C: Conjugate> dyn crate::mat::MatExt<C> {
+impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
 	#[track_caller]
 	pub fn partial_piv_lu(&self) -> PartialPivLu<C::Canonical> {
 		PartialPivLu::new(self.as_mat_ref())
@@ -256,7 +299,7 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> {
 	}
 }
 
-impl<T: RealField> dyn crate::mat::MatExt<T> {
+impl<T: RealField> dyn crate::mat::MatExt<T> + '_ {
 	#[track_caller]
 	pub fn eigen_from_real(&self) -> Result<Eigen<T>, EvdError> {
 		Eigen::new_from_real(self.as_mat_ref())
@@ -296,7 +339,7 @@ impl<T: RealField> dyn crate::mat::MatExt<T> {
 	}
 }
 
-impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> {
+impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> + '_ {
 	#[track_caller]
 	pub fn eigen(&self) -> Result<Eigen<T>, EvdError> {
 		Eigen::new(self.as_mat_ref())
@@ -2071,66 +2114,73 @@ mod tests {
 	use crate::utils::approx::*;
 
 	#[track_caller]
-	fn test_solver_imp(A: MatRef<'_, c64>, A_dec: &dyn SolveCore<c64>) {
-		let rng = &mut StdRng::seed_from_u64(0xC0FFEE);
+	fn test_solver(A: MatRef<'_, c64>, A_dec: impl SolveCore<c64>) {
+		#[azucar::reborrow]
+		#[track_caller]
+		fn test_solver_imp(A: MatRef<'_, c64>, A_dec: &dyn SolveCore<c64>) {
+			let rng = &mut StdRng::seed_from_u64(0xC0FFEE);
 
-		let n = A.nrows();
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 128.0 * (n as f64));
+			let n = A.nrows();
+			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 128.0 * (n as f64));
 
-		let k = 3;
+			let k = 3;
 
-		let R = CwiseMatDistribution {
-			nrows: n,
-			ncols: k,
-			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			let ref R = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			let ref L = CwiseMatDistribution {
+				nrows: k,
+				ncols: n,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			assert!(A * A_dec.solve(R) ~ R);
+			assert!(A.conjugate() * A_dec.solve_conjugate(R) ~ R);
+			assert!(A.transpose() * A_dec.solve_transpose(R) ~ R);
+			assert!(A.adjoint() * A_dec.solve_adjoint(R) ~ R);
+
+			assert!(A_dec.rsolve(L) * A ~ L);
+			assert!(A_dec.rsolve_conjugate(L) * A.conjugate() ~ L);
+			assert!(A_dec.rsolve_transpose(L) * A.transpose() ~ L);
+			assert!(A_dec.rsolve_adjoint(L) * A.adjoint() ~ L);
 		}
-		.rand::<Mat<c64>>(rng);
 
-		let L = CwiseMatDistribution {
-			nrows: k,
-			ncols: n,
-			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
-		}
-		.rand::<Mat<c64>>(rng);
-
-		assert!(A * A_dec.solve(&R) ~ R);
-		assert!(A.conjugate() * A_dec.solve_conjugate(&R) ~ R);
-		assert!(A.transpose() * A_dec.solve_transpose(&R) ~ R);
-		assert!(A.adjoint() * A_dec.solve_adjoint(&R) ~ R);
-
-		assert!(A_dec.rsolve(&L) * A ~ L);
-		assert!(A_dec.rsolve_conjugate(&L) * A.conjugate() ~ L);
-		assert!(A_dec.rsolve_transpose(&L) * A.transpose() ~ L);
-		assert!(A_dec.rsolve_adjoint(&L) * A.adjoint() ~ L);
+		test_solver_imp(A, &A_dec)
 	}
 
+	#[azucar::reborrow]
 	#[test]
 	fn test_all_solvers() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let n = 50;
 
-		let A = CwiseMatDistribution {
+		let ref A = CwiseMatDistribution {
 			nrows: n,
 			ncols: n,
 			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 		}
 		.rand::<Mat<c64>>(rng);
 
-		test_solver_imp(A.as_ref(), &A.partial_piv_lu());
-		test_solver_imp(A.as_ref(), &A.full_piv_lu());
-		test_solver_imp(A.as_ref(), &A.qr());
-		test_solver_imp(A.as_ref(), &A.col_piv_qr());
-		test_solver_imp(A.as_ref(), &A.svd().unwrap());
+		test_solver(A, A.partial_piv_lu());
+		test_solver(A, A.full_piv_lu());
+		test_solver(A, A.qr());
+		test_solver(A, A.col_piv_qr());
+		test_solver(A, A.svd().unwrap());
 
 		{
-			let A = &A * A.adjoint();
-			test_solver_imp(A.as_ref(), &A.llt(Side::Lower).unwrap());
-			test_solver_imp(A.as_ref(), &A.ldlt(Side::Lower).unwrap());
+			let ref A = A * A.adjoint();
+			test_solver(A, A.llt(Side::Lower).unwrap());
+			test_solver(A, A.ldlt(Side::Lower).unwrap());
 		}
 
-		let A = &A + A.adjoint();
-		test_solver_imp(A.as_ref(), &A.lblt(Side::Lower));
-		test_solver_imp(A.as_ref(), &A.self_adjoint_eigen(Side::Lower).unwrap());
+		let ref A = A + A.adjoint();
+		test_solver(A, A.lblt(Side::Lower));
+		test_solver(A, A.self_adjoint_eigen(Side::Lower).unwrap());
 	}
 
 	#[test]

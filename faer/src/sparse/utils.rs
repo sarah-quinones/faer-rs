@@ -150,10 +150,10 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	stack: &mut DynStack,
 ) -> SparseColMatMut<'out, I, T, Dim<'N>, Dim<'N>> {
 	// old_i <= old_j => -old_i >= -old_j
+	// reverse the order with bitwise not
 	// x + !x == MAX
 	// x + !x + 1 == 0
-	// -x = !x + 1
-	// negate => bitwise-not then add 1
+	// !x = -1 - x
 
 	// if we flipped the side of A, then we need to check old_i <= old_j instead
 	let src_to_cmp = {

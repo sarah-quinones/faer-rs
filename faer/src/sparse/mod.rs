@@ -1,6 +1,8 @@
 mod csc;
 mod csr;
 
+pub mod ops;
+
 pub use csc::*;
 pub use csr::*;
 

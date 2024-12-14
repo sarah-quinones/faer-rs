@@ -1,9 +1,8 @@
+use super::bound::{Dim, Idx};
 use crate::internal_prelude::*;
 use core::marker::PhantomData;
 use faer_traits::SimdCapabilities;
 use pulp::Simd;
-
-use super::bound::{Dim, Idx};
 
 pub struct SimdCtx<'N, T: ComplexField, S: Simd> {
 	pub ctx: T::SimdCtx<S>,
@@ -26,7 +25,7 @@ impl<'N, T: ComplexField, S: Simd> core::fmt::Debug for SimdCtx<'N, T, S> {
 			.field("tail_end", &self.tail_end)
 			.field("head_mask", &self.head_mask)
 			.field("tail_mask", &self.tail_mask)
-			.finish()
+			.finish_non_exhaustive()
 	}
 }
 

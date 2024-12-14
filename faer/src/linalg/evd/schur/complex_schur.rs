@@ -227,7 +227,7 @@ fn lahqr_shiftcolumn<T: ComplexField>(h: MatRef<'_, T>, v: ColMut<'_, T>, s1: T,
 	let mut v = v;
 	let n = h.nrows();
 	if n == 2 {
-		let s = abs1((h.read(0, 0) - s2)) + abs1(h.read(1, 0));
+		let s = abs1(h[(0, 0)] - s2) + abs1(h[(1, 0)]);
 		if s == zero() {
 			v.write(0, zero());
 			v.write(1, zero());
