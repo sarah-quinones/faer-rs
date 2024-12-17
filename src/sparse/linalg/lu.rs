@@ -957,9 +957,10 @@ pub mod supernodal {
                             d_col_ind.len(),
                         )
                         .subcols_mut(d_col_start, d_col_mid - d_col_start);
-                        let d_active = &mut left_contrib[d].1[d_col_start..];
-                        let d_active_count = &mut left_contrib[d].2;
-                        let d_active_mat = &mut left_contrib[d].3;
+                        let left_contrib = &mut left_contrib[d];
+                        let d_active = &mut left_contrib.1[d_col_start..];
+                        let d_active_count = &mut left_contrib.2;
+                        let d_active_mat = &mut left_contrib.3;
 
                         for (d_j, j) in d_col_ind[d_col_start..d_col_mid].iter().enumerate() {
                             if d_active[d_j] > I(0) {
@@ -992,10 +993,10 @@ pub mod supernodal {
                             }
                         }
                         if *d_active_count == 0 {
-                            work_make_empty(&mut left_contrib[d].0);
-                            left_contrib[d].1 = alloc::vec::Vec::new();
-                            left_contrib[d].2 = 0;
-                            left_contrib[d].3 = MatU8::new();
+                            work_make_empty(&mut left_contrib.0);
+                            left_contrib.1 = alloc::vec::Vec::new();
+                            left_contrib.2 = 0;
+                            left_contrib.3 = MatU8::new();
                         }
                     }
                 }
@@ -1161,9 +1162,10 @@ pub mod supernodal {
                             d_col_ind.len(),
                         );
                         let mut d_LU = d_LU.get_mut(.., d_col_start..);
-                        let d_active = &mut left_contrib[d].1[d_col_start..];
-                        let d_active_count = &mut left_contrib[d].2;
-                        let d_active_mat = &mut left_contrib[d].3;
+                        let left_contrib = &mut left_contrib[d];
+                        let d_active = &mut left_contrib.1[d_col_start..];
+                        let d_active_count = &mut left_contrib.2;
+                        let d_active_mat = &mut left_contrib.3;
 
                         for (d_j, j) in d_col_ind[d_col_start..].iter().enumerate() {
                             if d_active[d_j] > I(0) {
@@ -1195,10 +1197,10 @@ pub mod supernodal {
                             }
                         }
                         if *d_active_count == 0 {
-                            work_make_empty(&mut left_contrib[d].0);
-                            left_contrib[d].1 = alloc::vec::Vec::new();
-                            left_contrib[d].2 = 0;
-                            left_contrib[d].3 = MatU8::new();
+                            work_make_empty(&mut left_contrib.0);
+                            left_contrib.1 = alloc::vec::Vec::new();
+                            left_contrib.2 = 0;
+                            left_contrib.3 = MatU8::new();
                         }
                     }
                 }
@@ -1270,9 +1272,10 @@ pub mod supernodal {
                                 d_col_ind.len(),
                             );
                             let mut d_LU = d_LU.get_mut(.., d_col_start..);
-                            let d_active = &mut left_contrib[d].1[d_col_start..];
-                            let d_active_count = &mut left_contrib[d].2;
-                            let d_active_mat = &mut left_contrib[d].3;
+                            let left_contrib = &mut left_contrib[d];
+                            let d_active = &mut left_contrib.1[d_col_start..];
+                            let d_active_count = &mut left_contrib.2;
+                            let d_active_mat = &mut left_contrib.3;
 
                             let mut d_active_row_count = 0usize;
                             let mut first_iter = true;
@@ -1334,10 +1337,10 @@ pub mod supernodal {
                                 }
                             }
                             if *d_active_count == 0 {
-                                work_make_empty(&mut left_contrib[d].0);
-                                left_contrib[d].1 = alloc::vec::Vec::new();
-                                left_contrib[d].2 = 0;
-                                left_contrib[d].3 = MatU8::new();
+                                work_make_empty(&mut left_contrib.0);
+                                left_contrib.1 = alloc::vec::Vec::new();
+                                left_contrib.2 = 0;
+                                left_contrib.3 = MatU8::new();
                             }
                         }
                     }
