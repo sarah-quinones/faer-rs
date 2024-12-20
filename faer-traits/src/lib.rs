@@ -634,7 +634,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 }
 
-pub unsafe trait Conjugate {
+pub unsafe trait Conjugate: Send + Sync {
 	const IS_CANONICAL: bool;
 
 	type Conj: Conjugate<Conj = Self, Canonical = Self::Canonical>;
@@ -918,8 +918,6 @@ impl SimdArch for pulp::Scalar {
 
 pub trait ComplexField:
 	Debug
-	+ Send
-	+ Sync
 	+ Clone
 	+ Conjugate<Canonical = Self, Conj: Conjugate<Canonical = Self>>
 	+ PartialEq

@@ -520,8 +520,8 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::assert;
 	use crate::stats::prelude::*;
+	use crate::{assert, linalg};
 	use dyn_stack::GlobalMemBuffer;
 
 	#[test]
