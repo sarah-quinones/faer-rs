@@ -111,7 +111,7 @@ impl<E: Entity, R: Shape, C: Shape> Mat<E, R, C> {
     #[inline]
     pub fn full(nrows: R, ncols: C, constant: E) -> Self
     where
-        E: ComplexField,
+        E: Copy,
     {
         Self::from_fn(nrows, ncols, |_, _| constant)
     }

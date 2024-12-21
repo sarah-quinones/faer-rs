@@ -1,6 +1,6 @@
 [package]
 name = "faer"
-version = "0.20.0"
+version = "0.20.1"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Linear algebra routines"
@@ -19,7 +19,7 @@ reborrow = "0.5.5"
 
 dyn-stack = { version = "0.11.0", default-features = false }
 equator = "0.4.1"
-faer-entity = { version ="0.20.0", default-features = false, path = "./faer-entity" }
+faer-entity = { version ="0.20.1", default-features = false, path = "./faer-entity" }
 
 gemm = { version = "0.18.0", default-features = false }
 nano-gemm = { version = "0.1.2", default-features = false }

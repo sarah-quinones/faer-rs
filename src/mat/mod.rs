@@ -254,4 +254,10 @@ mod tests {
         a.resize_with(50, 2, |_, _| 0.0);
         a.resize_with(60, 1, |_, _| 0.0);
     }
+
+    #[test]
+    fn test_int() {
+        let mut m = Mat::full(3, 4, 0u32);
+        m[(0, 0)] = 3;
+    }
 }

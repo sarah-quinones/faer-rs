@@ -1463,12 +1463,14 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     #[track_caller]
     #[inline(always)]
+    #[doc(hidden)]
     pub fn subcols_range(self, cols: Range<IdxInc<C>>) -> MatRef<'a, E, R, usize> {
         self.into_const().subcols_range(cols)
     }
 
     #[track_caller]
     #[inline(always)]
+    #[doc(hidden)]
     pub fn subcols_range_mut(self, cols: Range<IdxInc<C>>) -> MatMut<'a, E, R, usize> {
         unsafe { self.into_const().subcols_range(cols).const_cast() }
     }

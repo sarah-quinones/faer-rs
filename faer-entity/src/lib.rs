@@ -1897,6 +1897,95 @@ unsafe impl Entity for f64 {
     }
 }
 
+macro_rules! impl_for_int {
+    ($($int: ty),* $(,)?) => {$(
+        unsafe impl Entity for $int {
+            type Unit = Self;
+            type Index = usize;
+            type SimdUnit<S: Simd> = Self;
+            type SimdMask<S: Simd> = bool;
+            type SimdIndex<S: Simd> = Self;
+            type Group = IdentityGroup;
+            type Iter<I: Iterator> = I;
+
+            type PrefixUnit<'a, S: Simd> = &'a [Self];
+            type SuffixUnit<'a, S: Simd> = &'a [Self];
+            type PrefixMutUnit<'a, S: Simd> = &'a mut [Self];
+            type SuffixMutUnit<'a, S: Simd> = &'a mut [Self];
+
+            const N_COMPONENTS: usize = 1;
+            const UNIT: GroupFor<Self, ()> = ();
+
+            #[inline(always)]
+            fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+                group
+            }
+
+            #[inline(always)]
+            fn faer_from_units(group: GroupFor<Self, UnitFor<Self>>) -> Self {
+                group
+            }
+
+            #[inline(always)]
+            fn faer_into_units(self) -> GroupFor<Self, UnitFor<Self>> {
+                self
+            }
+
+            #[inline(always)]
+            fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
+                group
+            }
+
+            #[inline(always)]
+            fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
+                group
+            }
+
+            #[inline(always)]
+            fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
+                group
+            }
+
+            #[inline(always)]
+            fn faer_map_impl<T, U>(
+                group: GroupFor<Self, T>,
+                f: &mut impl FnMut(T) -> U,
+            ) -> GroupFor<Self, U> {
+                (*f)(group)
+            }
+            #[inline(always)]
+            fn faer_map_with_context<Ctx, T, U>(
+                ctx: Ctx,
+                group: GroupFor<Self, T>,
+                f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
+            ) -> (Ctx, GroupFor<Self, U>) {
+                (*f)(ctx, group)
+            }
+
+            #[inline(always)]
+            fn faer_zip<T, U>(
+                first: GroupFor<Self, T>,
+                second: GroupFor<Self, U>,
+            ) -> GroupFor<Self, (T, U)> {
+                (first, second)
+            }
+            #[inline(always)]
+            fn faer_unzip<T, U>(
+                zipped: GroupFor<Self, (T, U)>,
+            ) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
+                zipped
+            }
+
+            #[inline(always)]
+            fn faer_into_iter<I: IntoIterator>(iter: GroupFor<Self, I>) -> Self::Iter<I::IntoIter> {
+                iter.into_iter()
+            }
+        }
+    )*};
+}
+
+impl_for_int!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+
 unsafe impl<E: Entity> Entity for Complex<E> {
     const IS_NUM_COMPLEX: bool = true;
     const IS_REAL: bool = false;
