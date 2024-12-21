@@ -1,10 +1,6 @@
-use dyn_stack::GlobalMemBuffer;
-
 use crate::assert;
-use crate::internal_prelude::*;
-use crate::sparse::*;
+use crate::internal_prelude_sp::*;
 use core::cell::UnsafeCell;
-use core::iter;
 
 pub struct SparseMatMulInfo {
 	flops_prefix_sum: alloc::vec::Vec<f64>,

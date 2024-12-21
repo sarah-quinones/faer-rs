@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 
+extern crate alloc;
+
 use core::num::NonZero;
 use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
@@ -440,6 +442,12 @@ pub enum Conj {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DiagStatus {
+	Unit,
+	Generic,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Accum {
 	Replace,
 	Add,
@@ -481,6 +489,11 @@ impl Conj {
 		} else {
 			T::Canonical::copy_impl(value)
 		}
+	}
+
+	#[inline]
+	pub(crate) fn apply_rt<T: ComplexField>(self, value: &T) -> T {
+		if self.is_conj() { T::conj_impl(value) } else { T::copy_impl(value) }
 	}
 }
 
@@ -545,7 +558,7 @@ mod internal_prelude {
 		i.wrapping_neg()
 	}
 
-	pub use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, Par, Shape, Stride, Unbind, unzipped, zipped};
+	pub use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzipped, zipped};
 
 	pub use {unzipped as uz, zipped as z};
 
@@ -553,6 +566,18 @@ mod internal_prelude {
 	pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
 	pub use generativity::make_guard;
 	pub use reborrow::*;
+}
+
+#[allow(unused_imports)]
+pub(crate) mod internal_prelude_sp {
+	pub(crate) use crate::internal_prelude::*;
+	pub(crate) use crate::sparse::{
+		FaerError, Pair, SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
+		SymbolicSparseColMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef, Triplet, linalg as linalg_sp, try_collect, try_zeroed, windows2,
+	};
+	pub(crate) use core::cell::Cell;
+	pub(crate) use core::iter;
+	pub(crate) use dyn_stack::GlobalMemBuffer;
 }
 
 pub mod prelude {

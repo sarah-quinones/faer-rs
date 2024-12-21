@@ -1,8 +1,5 @@
-use super::*;
-use crate::internal_prelude::*;
+use crate::internal_prelude_sp::*;
 use crate::{assert, debug_assert};
-use core::cell::Cell;
-use core::iter;
 
 pub fn sort_indices<I: Index, T>(col_ptr: &[I], col_nnz: Option<&[I]>, row_idx: &mut [I], val: &mut [T]) {
 	assert!(col_ptr.len() > 0);
@@ -520,8 +517,8 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::assert;
 	use crate::stats::prelude::*;
-	use crate::{assert, linalg};
 	use dyn_stack::GlobalMemBuffer;
 
 	#[test]

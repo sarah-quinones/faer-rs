@@ -111,7 +111,7 @@ impl core::fmt::Display for CreationError {
 impl core::error::Error for CreationError {}
 
 #[inline(always)]
-fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
+pub(crate) fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
 	slice.windows(2).map(
 		#[inline(always)]
 		|window| unsafe { &*(window.as_ptr() as *const [I; 2]) },
@@ -120,7 +120,7 @@ fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
 
 #[inline]
 #[track_caller]
-fn try_zeroed<I: bytemuck::Pod>(n: usize) -> Result<alloc::vec::Vec<I>, FaerError> {
+pub(crate) fn try_zeroed<I: bytemuck::Pod>(n: usize) -> Result<alloc::vec::Vec<I>, FaerError> {
 	let mut v = alloc::vec::Vec::new();
 	v.try_reserve_exact(n).map_err(|_| FaerError::OutOfMemory)?;
 	unsafe {
@@ -132,7 +132,7 @@ fn try_zeroed<I: bytemuck::Pod>(n: usize) -> Result<alloc::vec::Vec<I>, FaerErro
 
 #[inline]
 #[track_caller]
-fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I::Item>, FaerError> {
+pub(crate) fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I::Item>, FaerError> {
 	let iter = iter.into_iter();
 	let mut v = alloc::vec::Vec::new();
 	v.try_reserve_exact(iter.size_hint().0).map_err(|_| FaerError::OutOfMemory)?;
