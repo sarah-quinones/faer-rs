@@ -27,7 +27,11 @@ libm = "0.2.8"
 num-traits = "0.2.19"
 
 [features]
-default = ["std", "rayon"]
+default = [
+  "std",
+  "rayon",
+  "sparse-linalg",
+]
 std = [
   "gemm/std",
   "pulp/std",
@@ -38,6 +42,10 @@ nightly = [
 ]
 rayon = ["dep:rayon", "gemm/rayon"]
 perf-warn = ["log"]
+
+linalg = []
+sparse = []
+sparse-linalg = ["sparse", "linalg"]
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"

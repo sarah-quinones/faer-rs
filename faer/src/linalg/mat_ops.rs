@@ -347,7 +347,7 @@ macro_rules! impl_mul_primitive {
 
 			#[track_caller]
 			fn div(self, other: f64) -> Self::Output {
-				self.mul(Scale(T::from_f64_impl(other.recip())))
+				self.mul(Scale(T::from_f64_impl(f64::recip(other))))
 			}
 		}
 	};
@@ -364,7 +364,7 @@ macro_rules! impl_mul_assign_primitive {
 		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> DivAssign<f64> for $lhs {
 			#[track_caller]
 			fn div_assign(&mut self, other: f64) {
-				self.mul_assign(Scale(LhsT::from_f64_impl(other.recip())))
+				self.mul_assign(Scale(LhsT::from_f64_impl(f64::recip(other))))
 			}
 		}
 	};
@@ -455,7 +455,7 @@ macro_rules! impl_1d_mul_primitive {
 
 			#[track_caller]
 			fn div(self, other: f64) -> Self::Output {
-				self.mul(Scale(T::from_f64_impl(other.recip())))
+				self.mul(Scale(T::from_f64_impl(f64::recip(other))))
 			}
 		}
 	};
@@ -472,7 +472,7 @@ macro_rules! impl_1d_mul_assign_primitive {
 		impl<LhsT: ComplexField, Len: Shape> DivAssign<f64> for $lhs {
 			#[track_caller]
 			fn div_assign(&mut self, other: f64) {
-				self.mul_assign(Scale(LhsT::from_f64_impl(other.recip())))
+				self.mul_assign(Scale(LhsT::from_f64_impl(f64::recip(other))))
 			}
 		}
 	};
@@ -2251,194 +2251,81 @@ impl_1d_mul_assign_primitive!(Row< LhsT, Len>);
 impl_1d_mul_assign_primitive!(DiagMut<'_, LhsT, Len>);
 impl_1d_mul_assign_primitive!(Diag< LhsT, Len>);
 
-#[cfg(any())]
+#[cfg(feature = "sparse")]
 mod sparse {
-	macro_rules! impl_mul_primitive_sparse {
-		($rhs: ty, $out: ty) => {
-			impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for f64 {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					Scale(T::from_f64_impl(self)).mul(other)
-				}
-			}
-			impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for f32 {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					Scale(T::from_f64_impl(self as f64)).mul(other)
-				}
-			}
-
-			impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<f64> for $rhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: f64) -> Self::Output {
-					self.mul(Scale(T::from_f64_impl(other)))
-				}
-			}
-			impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<f32> for $rhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: f32) -> Self::Output {
-					self.mul(Scale(T::from_f64_impl(other as f64)))
-				}
-			}
-			impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Div<f64> for $rhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn div(self, other: f64) -> Self::Output {
-					self.mul(Scale(T::from_f64_impl(other.recip())))
-				}
-			}
-			impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Div<f32> for $rhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn div(self, other: f32) -> Self::Output {
-					self.mul(Scale(T::from_f64_impl(other.recip() as f64)))
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_mul_assign_primitive_sparse {
-		($lhs: ty) => {
-			impl<I: Index, LhsE: ComplexField> MulAssign<f64> for $lhs {
-				#[track_caller]
-				fn mul_assign(&mut self, other: f64) {
-					self.mul_assign(Scale(ThsT::from_f64_impl(other)))
-				}
-			}
-			impl<I: Index, LhsE: ComplexField> MulAssign<f32> for $lhs {
-				#[track_caller]
-				fn mul_assign(&mut self, other: f32) {
-					self.mul_assign(Scale(ThsT::from_f64_impl(other as f64)))
-				}
-			}
-			impl<I: Index, LhsE: ComplexField> DivAssign<f64> for $lhs {
-				#[track_caller]
-				fn div_assign(&mut self, other: f64) {
-					self.mul_assign(Scale(ThsT::from_f64_impl(other.recip())))
-				}
-			}
-			impl<I: Index, LhsE: ComplexField> DivAssign<f32> for $lhs {
-				#[track_caller]
-				fn div_assign(&mut self, other: f32) {
-					self.mul_assign(Scale(ThsT::from_f64_impl(other.recip() as f64)))
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_sparse_mul {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for $lhs
-			where
-				E: ComplexField,
-			{
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					self.as_ref().mul(other.as_ref())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_partial_eq_sparse {
-		($lhs: ty, $rhs: ty) => {
-			impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<$rhs> for $lhs {
-				fn eq(&self, other: &$rhs) -> bool {
-					self.as_ref().eq(&other.as_ref())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_add_sub_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn add(self, other: $rhs) -> Self::Output {
-					self.as_ref().add(other.as_ref())
-				}
-			}
-
-			impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn sub(self, other: $rhs) -> Self::Output {
-					self.as_ref().sub(other.as_ref())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_add_sub_assign_sparse {
-		($lhs: ty, $rhs: ty) => {
-			impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> AddAssign<$rhs> for $lhs {
-				#[track_caller]
-				fn add_assign(&mut self, other: $rhs) {
-					self.as_mut().add_assign(other.as_ref())
-				}
-			}
-
-			impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> SubAssign<$rhs> for $lhs {
-				#[track_caller]
-				fn sub_assign(&mut self, other: $rhs) {
-					self.as_mut().sub_assign(other.as_ref())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_neg_sparse {
-		($mat: ty, $out: ty) => {
-			impl<I: Index, E: Conjugate> Neg for $mat
-			where
-				E: ComplexField,
-			{
-				type Output = $out;
-
-				#[track_caller]
-				fn neg(self) -> Self::Output {
-					self.as_ref().neg()
-				}
-			}
-		};
-	}
+	use super::*;
+	use crate::internal_prelude_sp::*;
 
 	macro_rules! impl_scalar_mul_sparse {
 		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for $lhs {
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
 				type Output = $out;
 
 				#[track_caller]
 				fn mul(self, other: $rhs) -> Self::Output {
-					self.mul(other.as_ref())
+					self.mul(other.rb())
 				}
 			}
 		};
+	}
+
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<SparseRowMatRef<'_, I, T, Rows, Cols>> for Scale<T::Canonical> {
+		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
+
+		#[track_caller]
+		fn mul(self, rhs: SparseRowMatRef<'_, I, T, Rows, Cols>) -> Self::Output {
+			self.mul(rhs.transpose()).into_transpose()
+		}
+	}
+
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<SparseColMatRef<'_, I, T, Rows, Cols>> for Scale<T::Canonical> {
+		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+
+		#[track_caller]
+		fn mul(self, rhs: SparseColMatRef<'_, I, T, Rows, Cols>) -> Self::Output {
+			#[math]
+			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
+				lhs: Scale<T::Canonical>,
+				rhs: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
+			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
+				let symbolic = rhs.symbolic().to_owned().unwrap();
+				let mut val = alloc::vec::Vec::new();
+				val.resize(symbolic.row_idx().len(), zero());
+				let lhs = lhs.0;
+
+				for j in rhs.ncols().indices() {
+					for (val, rhs) in iter::zip(&mut val[symbolic.col_range(j)], rhs.val_of_col(j)) {
+						*val = lhs * Conj::apply(rhs);
+					}
+				}
+
+				SparseColMat::new(symbolic, val)
+			}
+
+			with_dim!(ROWS, rhs.nrows().unbound());
+			with_dim!(COLS, rhs.ncols().unbound());
+
+			imp(self, rhs.as_shape(ROWS, COLS)).into_shape(rhs.nrows(), rhs.ncols())
+		}
 	}
 
 	macro_rules! impl_mul_scalar_sparse {
 		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for $lhs {
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
 				type Output = $out;
 
 				#[track_caller]
 				fn mul(self, other: $rhs) -> Self::Output {
-					self.as_ref().mul(other)
+					self.rb().mul(other)
+				}
+			}
+
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<$rhs> for $lhs {
+				type Output = $out;
+
+				#[track_caller]
+				fn div(self, other: $rhs) -> Self::Output {
+					self.rb().div(other)
 				}
 			}
 		};
@@ -2446,1010 +2333,399 @@ mod sparse {
 
 	macro_rules! impl_mul_assign_scalar_sparse {
 		($lhs: ty, $rhs: ty) => {
-			impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> MulAssign<$rhs> for $lhs {
+			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> MulAssign<$rhs> for $lhs {
 				#[track_caller]
 				fn mul_assign(&mut self, other: $rhs) {
-					self.as_mut().mul_assign(other)
+					(*self).rb_mut().mul_assign(other)
 				}
 			}
-		};
-	}
 
-	macro_rules! impl_div_scalar_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Div<$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn div(self, other: $rhs) -> Self::Output {
-					self.as_ref().mul(Scale(Tther.0.canonicalize().faer_inv()))
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_div_assign_scalar_sparse {
-		($lhs: ty, $rhs: ty) => {
-			impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> DivAssign<$rhs> for $lhs {
+			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> DivAssign<$rhs> for $lhs {
 				#[track_caller]
 				fn div_assign(&mut self, other: $rhs) {
-					self.as_mut().mul_assign(Scale(Tther.0.canonicalize().faer_inv()))
+					(*self).rb_mut().div_assign(other)
 				}
 			}
 		};
 	}
 
-	use super::*;
-	use crate::sparse::*;
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<MatRef<'_, RhsT>>
-		for SparseColMatRef<'_, I, LhsT>
-	{
-		type Output = Mat<T>;
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<Scale<T::Canonical>> for SparseRowMatRef<'_, I, T, Rows, Cols> {
+		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
 
 		#[track_caller]
-		fn mul(self, rhs: MatRef<'_, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-			crate::sparse::linalg::matmul::sparse_dense_matmul(out.as_mut(), lhs, rhs, None, E::faer_one(), get_global_parallelism());
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<ColRef<'_, RhsT>>
-		for SparseColMatRef<'_, I, LhsT>
-	{
-		type Output = Col<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: ColRef<'_, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Col::zeros(lhs.nrows());
-			crate::sparse::linalg::matmul::sparse_dense_matmul(out.as_mut(), lhs, rhs, None, E::faer_one(), get_global_parallelism());
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>>
-		for MatRef<'_, LhsT>
-	{
-		type Output = Mat<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-			crate::sparse::linalg::matmul::dense_sparse_matmul(out.as_mut(), lhs, rhs, None, E::faer_one(), get_global_parallelism());
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>>
-		for RowRef<'_, LhsT>
-	{
-		type Output = Row<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Row::zeros(rhs.ncols());
-			crate::sparse::linalg::matmul::dense_sparse_matmul(out.as_mut(), lhs, rhs, None, E::faer_one(), get_global_parallelism());
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<MatRef<'_, RhsT>>
-		for SparseRowMatRef<'_, I, LhsT>
-	{
-		type Output = Mat<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: MatRef<'_, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-			crate::sparse::linalg::matmul::dense_sparse_matmul(
-				out.as_mut().transpose_mut(),
-				rhs.transpose(),
-				lhs.transpose(),
-				None,
-				E::faer_one(),
-				get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<ColRef<'_, RhsT>>
-		for SparseRowMatRef<'_, I, LhsT>
-	{
-		type Output = Col<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: ColRef<'_, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Col::zeros(lhs.nrows());
-			crate::sparse::linalg::matmul::dense_sparse_matmul(
-				out.as_mut().transpose_mut(),
-				rhs.transpose(),
-				lhs.transpose(),
-				None,
-				E::faer_one(),
-				get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>>
-		for MatRef<'_, LhsT>
-	{
-		type Output = Mat<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-			crate::sparse::linalg::matmul::sparse_dense_matmul(
-				out.as_mut().transpose_mut(),
-				rhs.transpose(),
-				lhs.transpose(),
-				None,
-				E::faer_one(),
-				get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>>
-		for RowRef<'_, LhsT>
-	{
-		type Output = Row<T>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
-			let lhs = self;
-			let mut out = Row::zeros(rhs.ncols());
-			crate::sparse::linalg::matmul::sparse_dense_matmul(
-				out.as_mut().transpose_mut(),
-				rhs.transpose(),
-				lhs.transpose(),
-				None,
-				E::faer_one(),
-				get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	// impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, Mat< RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &Mat< RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, Mat< RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &Mat< RhsT>, Mat< T>);
-
-	// impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, Mat<RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, &MatRef<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, &MatMut<'_, RhsT>, Mat<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, &Mat<RhsT>, Mat<T>);
-
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, Mat< RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &Mat< RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, Mat< RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &MatRef<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &MatMut<'_,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &Mat< RhsT>, Mat< T>);
-
-	// impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, Col< RhsT>, Col< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &Col< RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, Col< RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &Col< RhsT>, Col< T>);
-
-	// impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, Col<RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, &ColRef<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, &ColMut<'_, RhsT>, Col<T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I, LhsT>, &Col<RhsT>, Col<T>);
-
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, Col< RhsT>, Col< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &Col< RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, Col< RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &ColRef<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &ColMut<'_,  RhsT>, Col< T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &Col< RhsT>, Col< T>);
-
-	// impl_sparse_mul!(MatRef<'_,  LhsT>, SparseColMatRef<'_, I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(MatRef<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatRef<'_,  LhsT>, SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(MatRef<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatRef<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatRef<'_,  LhsT>, &SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_,  LhsT>, SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_,  LhsT>, &SparseColMat<I,  RhsT>, Mat< T>);
-
-	impl_sparse_mul!(MatMut<'_, LhsT>, SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_,  LhsT>, SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(MatMut<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_,  LhsT>, &SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_,  LhsT>, SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_,  LhsT>, &SparseColMat<I,  RhsT>, Mat< T>);
-
-	impl_sparse_mul!(Mat<LhsT>, SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat<LhsT>, SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat<  LhsT>, SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(Mat<LhsT>, &SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat<LhsT>, &SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat< LhsT>, &SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&Mat<LhsT>, SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat<LhsT>, SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat< LhsT>, SparseColMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&Mat<LhsT>, &SparseColMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat<LhsT>, &SparseColMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat< LhsT>, &SparseColMat<I,  RhsT>, Mat< T>);
-
-	// impl_sparse_mul!(RowRef<'_,  LhsT>, SparseColMatRef<'_, I,  RhsT>, Row< T>);
-	impl_sparse_mul!(RowRef<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowRef<'_,  LhsT>, SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(RowRef<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowRef<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowRef<'_,  LhsT>, &SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_,  LhsT>, SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_,  LhsT>, &SparseColMat<I,  RhsT>, Row< T>);
-
-	impl_sparse_mul!(RowMut<'_, LhsT>, SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_,  LhsT>, SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(RowMut<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_,  LhsT>, &SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_,  LhsT>, SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, &SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, &SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_,  LhsT>, &SparseColMat<I,  RhsT>, Row< T>);
-
-	impl_sparse_mul!(Row<LhsT>, SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row<LhsT>, SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row< LhsT>, SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(Row<LhsT>, &SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row<LhsT>, &SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row< LhsT>, &SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&Row<LhsT>, SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row<LhsT>, SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row< LhsT>, SparseColMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&Row<LhsT>, &SparseColMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row<LhsT>, &SparseColMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row< LhsT>, &SparseColMat<I,  RhsT>, Row< T>);
-
-	// impl_sparse_mul!(MatRef<'_,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(MatRef<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatRef<'_,  LhsT>, SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(MatRef<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatRef<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatRef<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_,  LhsT>, SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatRef<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Mat< T>);
-
-	impl_sparse_mul!(MatMut<'_, LhsT>, SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_,  LhsT>, SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(MatMut<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(MatMut<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_,  LhsT>, SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&MatMut<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Mat< T>);
-
-	impl_sparse_mul!(Mat<LhsT>, SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat<LhsT>, SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat<  LhsT>, SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(Mat<LhsT>, &SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat<LhsT>, &SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(Mat< LhsT>, &SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&Mat<LhsT>, SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat<LhsT>, SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat< LhsT>, SparseRowMat<I,  RhsT>, Mat< T>);
-	impl_sparse_mul!(&Mat<LhsT>, &SparseRowMatRef<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat<LhsT>, &SparseRowMatMut<'_, I, RhsT>, Mat<T>);
-	impl_sparse_mul!(&Mat< LhsT>, &SparseRowMat<I,  RhsT>, Mat< T>);
-
-	// impl_sparse_mul!(RowRef<'_,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, Row< T>);
-	impl_sparse_mul!(RowRef<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowRef<'_,  LhsT>, SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(RowRef<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowRef<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowRef<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_,  LhsT>, SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowRef<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
-
-	impl_sparse_mul!(RowMut<'_, LhsT>, SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_,  LhsT>, SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(RowMut<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(RowMut<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_,  LhsT>, SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, &SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_, LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&RowMut<'_,  LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
-
-	impl_sparse_mul!(Row<LhsT>, SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row<LhsT>, SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row< LhsT>, SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(Row<LhsT>, &SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row<LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(Row< LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&Row<LhsT>, SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row<LhsT>, SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row< LhsT>, SparseRowMat<I,  RhsT>, Row< T>);
-	impl_sparse_mul!(&Row<LhsT>, &SparseRowMatRef<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row<LhsT>, &SparseRowMatMut<'_, I, RhsT>, Row<T>);
-	impl_sparse_mul!(&Row< LhsT>, &SparseRowMat<I,  RhsT>, Row< T>);
-
-	impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<SparseColMatRef<'_, I, RhsT>>
-		for SparseColMatRef<'_, I, LhsT>
-	{
-		fn eq(&self, other: &SparseColMatRef<'_, I, RhsT>) -> bool {
-			let lhs = *self;
-			let rhs = *other;
-
-			if lhs.nrows() != rhs.nrows() || lhs.ncols() != rhs.ncols() {
-				return false;
-			}
-
-			let n = lhs.ncols();
-			let mut equal = true;
-			for j in 0..n {
-				equal &= lhs.row_indices_of_col_raw(j) == rhs.row_indices_of_col_raw(j);
-				if !equal {
-					return false;
-				}
-
-				let lhs_val = crate::utils::slice::SliceGroup::<'_, LhsT>::new(lhs.values_of_col(j));
-				let rhs_val = crate::utils::slice::SliceGroup::<'_, RhsT>::new(rhs.values_of_col(j));
-				equal &= lhs_val
-					.into_ref_iter()
-					.map(|r| r.read().canonicalize())
-					.eq(rhs_val.into_ref_iter().map(|r| r.read().canonicalize()));
-
-				if !equal {
-					return false;
-				}
-			}
-
-			equal
-		}
-	}
-
-	impl<I: Index, LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> PartialEq<SparseRowMatRef<'_, I, RhsT>>
-		for SparseRowMatRef<'_, I, LhsT>
-	{
-		#[inline]
-		fn eq(&self, other: &SparseRowMatRef<'_, I, RhsT>) -> bool {
-			self.transpose() == other.transpose()
-		}
-	}
-
-	// impl_partial_eq_sparse!(SparseColMatRef<'_, I,  LhsT>, SparseColMatRef<'_, I,
-	// RhsT>);
-	impl_partial_eq_sparse!(SparseColMatRef<'_, I, LhsT>, SparseColMatMut<'_, I, RhsT>);
-	impl_partial_eq_sparse!(SparseColMatRef<'_, I,  LhsT>, SparseColMat<I,  RhsT>);
-	impl_partial_eq_sparse!(SparseColMatMut<'_, I, LhsT>, SparseColMatRef<'_, I, RhsT>);
-	impl_partial_eq_sparse!(SparseColMatMut<'_, I, LhsT>, SparseColMatMut<'_, I, RhsT>);
-	impl_partial_eq_sparse!(SparseColMatMut<'_, I,  LhsT>, SparseColMat<I,  RhsT>);
-	impl_partial_eq_sparse!(SparseColMat<I,  LhsT>, SparseColMatRef<'_, I,  RhsT>);
-	impl_partial_eq_sparse!(SparseColMat<I,  LhsT>, SparseColMatMut<'_, I,  RhsT>);
-	impl_partial_eq_sparse!(SparseColMat<I,  LhsT>, SparseColMat<I,  RhsT>);
-
-	// impl_partial_eq_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatRef<'_, I,
-	// RhsT>);
-	impl_partial_eq_sparse!(SparseRowMatRef<'_, I, LhsT>, SparseRowMatMut<'_, I, RhsT>);
-	impl_partial_eq_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMat<I,  RhsT>);
-	impl_partial_eq_sparse!(SparseRowMatMut<'_, I, LhsT>, SparseRowMatRef<'_, I, RhsT>);
-	impl_partial_eq_sparse!(SparseRowMatMut<'_, I, LhsT>, SparseRowMatMut<'_, I, RhsT>);
-	impl_partial_eq_sparse!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMat<I,  RhsT>);
-	impl_partial_eq_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>);
-	impl_partial_eq_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>);
-	impl_partial_eq_sparse!(SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>);
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<SparseColMatRef<'_, I, RhsT>>
-		for SparseColMatRef<'_, I, LhsT>
-	{
-		type Output = SparseColMat<I, T>;
-
-		#[track_caller]
-		fn add(self, rhs: SparseColMatRef<'_, I, RhsT>) -> Self::Output {
-			crate::sparse::ops::add(self, rhs).unwrap()
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<SparseColMatRef<'_, I, RhsT>>
-		for SparseColMatRef<'_, I, LhsT>
-	{
-		type Output = SparseColMat<I, T>;
-
-		#[track_caller]
-		fn sub(self, rhs: SparseColMatRef<'_, I, RhsT>) -> Self::Output {
-			crate::sparse::ops::sub(self, rhs).unwrap()
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Add<SparseRowMatRef<'_, I, RhsT>>
-		for SparseRowMatRef<'_, I, LhsT>
-	{
-		type Output = SparseRowMat<I, T>;
-
-		#[track_caller]
-		fn add(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
-			(self.transpose() + rhs.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Sub<SparseRowMatRef<'_, I, RhsT>>
-		for SparseRowMatRef<'_, I, LhsT>
-	{
-		type Output = SparseRowMat<I, T>;
-
-		#[track_caller]
-		fn sub(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
-			(self.transpose() - rhs.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> AddAssign<SparseColMatRef<'_, I, RhsT>> for SparseColMatMut<'_, I, LhsT> {
-		#[track_caller]
-		fn add_assign(&mut self, other: SparseColMatRef<'_, I, RhsT>) {
-			crate::sparse::ops::add_assign(self.as_mut(), other);
-		}
-	}
-
-	impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> SubAssign<SparseColMatRef<'_, I, RhsT>> for SparseColMatMut<'_, I, LhsT> {
-		#[track_caller]
-		fn sub_assign(&mut self, other: SparseColMatRef<'_, I, RhsT>) {
-			crate::sparse::ops::sub_assign(self.as_mut(), other);
-		}
-	}
-
-	impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> AddAssign<SparseRowMatRef<'_, I, RhsT>> for SparseRowMatMut<'_, I, LhsT> {
-		#[track_caller]
-		fn add_assign(&mut self, other: SparseRowMatRef<'_, I, RhsT>) {
-			crate::sparse::ops::add_assign(self.as_mut().transpose_mut(), other.transpose());
-		}
-	}
-
-	impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> SubAssign<SparseRowMatRef<'_, I, RhsT>> for SparseRowMatMut<'_, I, LhsT> {
-		#[track_caller]
-		fn sub_assign(&mut self, other: SparseRowMatRef<'_, I, RhsT>) {
-			crate::sparse::ops::sub_assign(self.as_mut().transpose_mut(), other.transpose());
-		}
-	}
-
-	impl<I: Index, E: Conjugate> Neg for SparseColMatRef<'_, I, T>
-	where
-		E: ComplexField,
-	{
-		type Output = SparseColMat<I, TT>;
-
-		#[track_caller]
-		fn neg(self) -> Self::Output {
-			let mut out = self.to_owned().unwrap();
-			for mut x in crate::utils::slice::SliceGroupMut::<'_, TT>::new(out.values_mut()).into_mut_iter() {
-				x.write(x.read().faer_neg())
-			}
-			out
-		}
-	}
-	impl<I: Index, E: Conjugate> Neg for SparseRowMatRef<'_, I, T>
-	where
-		E: ComplexField,
-	{
-		type Output = SparseRowMat<I, TT>;
-
-		#[track_caller]
-		fn neg(self) -> Self::Output {
-			(-self.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>> for Scale<T> {
-		type Output = SparseColMat<I, T>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT>) -> Self::Output {
-			let mut out = rhs.to_owned().unwrap();
-			for mut x in crate::utils::slice::SliceGroupMut::<'_, T>::new(out.values_mut()).into_mut_iter() {
-				x.write(self.0.canonicalize().faer_mul(x.read()))
-			}
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<Scale<T>> for SparseColMatRef<'_, I, LhsT> {
-		type Output = SparseColMat<I, T>;
-
-		#[track_caller]
-		fn mul(self, rhs: Scale<T>) -> Self::Output {
-			let mut out = self.to_owned().unwrap();
-			let rhs = rhs.0.canonicalize();
-			for mut x in crate::utils::slice::SliceGroupMut::<'_, T>::new(out.values_mut()).into_mut_iter() {
-				x.write(x.read().faer_mul(rhs));
-			}
-			out
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>> for Scale<T> {
-		type Output = SparseRowMat<I, T>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
-			self.mul(rhs.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<Scale<T>> for SparseRowMatRef<'_, I, LhsT> {
-		type Output = SparseRowMat<I, T>;
-
-		#[track_caller]
-		fn mul(self, rhs: Scale<T>) -> Self::Output {
+		fn mul(self, rhs: Scale<T::Canonical>) -> Self::Output {
 			self.transpose().mul(rhs).into_transpose()
 		}
 	}
 
-	impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> MulAssign<Scale<T>> for SparseColMatMut<'_, I, LhsT> {
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<Scale<T::Canonical>> for SparseRowMatRef<'_, I, T, Rows, Cols> {
+		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
+
 		#[track_caller]
-		fn mul_assign(&mut self, rhs: Scale<T>) {
-			let rhs = rhs.0.canonicalize();
-			for mut x in crate::utils::slice::SliceGroupMut::<'_, LhsT>::new(self.as_mut().values_mut()).into_mut_iter() {
-				x.write(x.read().faer_mul(rhs))
+		fn div(self, rhs: Scale<T::Canonical>) -> Self::Output {
+			self.transpose().div(rhs).into_transpose()
+		}
+	}
+
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<Scale<T::Canonical>> for SparseColMatRef<'_, I, T, Rows, Cols> {
+		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+
+		#[track_caller]
+		fn mul(self, rhs: Scale<T::Canonical>) -> Self::Output {
+			#[math]
+			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
+				lhs: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
+				rhs: Scale<T::Canonical>,
+			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
+				let symbolic = lhs.symbolic().to_owned().unwrap();
+				let mut val = alloc::vec::Vec::new();
+				val.resize(symbolic.row_idx().len(), zero());
+				let rhs = rhs.0;
+
+				for j in lhs.ncols().indices() {
+					for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], lhs.val_of_col(j)) {
+						*val = Conj::apply(lhs) * rhs;
+					}
+				}
+
+				SparseColMat::new(symbolic, val)
 			}
+
+			with_dim!(ROWS, self.nrows().unbound());
+			with_dim!(COLS, self.ncols().unbound());
+
+			imp(self.as_shape(ROWS, COLS), rhs).into_shape(self.nrows(), self.ncols())
 		}
 	}
 
-	impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsT>> MulAssign<Scale<T>> for SparseRowMatMut<'_, I, LhsT> {
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<Scale<T::Canonical>> for SparseColMatRef<'_, I, T, Rows, Cols> {
+		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+
+		#[track_caller]
+		#[math]
+		fn div(self, rhs: Scale<T::Canonical>) -> Self::Output {
+			self.mul(Scale(recip(rhs.0)))
+		}
+	}
+
+	impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> MulAssign<Scale<T>> for SparseColMatMut<'_, I, T, Rows, Cols> {
 		#[track_caller]
 		fn mul_assign(&mut self, rhs: Scale<T>) {
-			self.as_mut().transpose_mut().mul_assign(Scale(rhs.0.canonicalize()));
+			#[math]
+			fn imp<'ROWS, 'COLS, I: Index, T: ComplexField>(mut lhs: SparseColMatMut<'_, I, T, Dim<'ROWS>, Dim<'COLS>>, rhs: Scale<T>) {
+				let rhs = rhs.0;
+
+				for j in lhs.ncols().indices() {
+					let v = lhs.rb_mut().val_of_col_mut(j);
+
+					for val in v {
+						*val = *val * rhs;
+					}
+				}
+			}
+
+			let (nrows, ncols) = self.shape();
+			with_dim!(ROWS, nrows.unbound());
+			with_dim!(COLS, ncols.unbound());
+
+			imp(self.rb_mut().as_shape_mut(ROWS, COLS), rhs);
 		}
 	}
 
-	#[rustfmt::skip]
-// impl_add_sub_sparse!(SparseColMatRef<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-impl_add_sub_sparse!(SparseColMatRef<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMat<I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMat<I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMat<I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMat<I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMat<I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(SparseColMat<I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMat<I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMat<I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMat<I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMat<I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMat<I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_add_sub_sparse!(&SparseColMat<I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	#[rustfmt::skip]
-// impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMat<I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMat<I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(SparseRowMat<I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMat<I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMat<I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMat<I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_add_sub_sparse!(&SparseRowMat<I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
+	impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> DivAssign<Scale<T>> for SparseColMatMut<'_, I, T, Rows, Cols> {
+		#[track_caller]
+		#[math]
+		fn div_assign(&mut self, rhs: Scale<T>) {
+			self.mul_assign(Scale(recip(rhs.0)))
+		}
+	}
 
-	// impl_add_sub_assign_sparse!(SparseColMatMut<'_, I,  LhsT>, SparseColMatRef<'_, I,
-	//  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I, LhsT>, SparseColMatMut<'_, I, RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I,  LhsT>, SparseColMat<I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I, LhsT>, &SparseColMatRef<'_, I, RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I, LhsT>, &SparseColMatMut<'_, I, RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I,  LhsT>, &SparseColMat<I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMat<I,  LhsT>, SparseColMatRef<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMat<I,  LhsT>, SparseColMatMut<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMat<I,  LhsT>, SparseColMat<I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMat<I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMat<I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseColMat<I,  LhsT>, &SparseColMat<I,  RhsT>);
-	// impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMatRef<'_, I,
-	//  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I, LhsT>, SparseRowMatMut<'_, I, RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMat<I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I, LhsT>, &SparseRowMatRef<'_, I, RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I, LhsT>, &SparseRowMatMut<'_, I, RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I,  LhsT>, &SparseRowMat<I,  RhsT>);
+	macro_rules! impl_mul_primitive_sparse {
+		($rhs: ty, $out: ty) => {
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for f64 {
+				type Output = $out;
 
-	// impl_neg_sparse!(SparseColMatRef<'_, I,  T>, SparseColMat<I,  TT>);
-	impl_neg_sparse!(SparseColMatMut<'_, I,  T>, SparseColMat<I,  TT>);
-	impl_neg_sparse!(SparseColMat<I,  T>, SparseColMat<I,  TT>);
-	impl_neg_sparse!(&SparseColMatRef<'_, I,  T>, SparseColMat<I,  TT>);
-	impl_neg_sparse!(&SparseColMatMut<'_, I,  T>, SparseColMat<I,  TT>);
-	impl_neg_sparse!(&SparseColMat<I,  T>, SparseColMat<I,  TT>);
-	// impl_neg_sparse!(SparseRowMatRef<'_, I,  T>, SparseRowMat<I,  TT>);
-	impl_neg_sparse!(SparseRowMatMut<'_, I,  T>, SparseRowMat<I,  TT>);
-	impl_neg_sparse!(SparseRowMat<I,  T>, SparseRowMat<I,  TT>);
-	impl_neg_sparse!(&SparseRowMatRef<'_, I,  T>, SparseRowMat<I,  TT>);
-	impl_neg_sparse!(&SparseRowMatMut<'_, I,  T>, SparseRowMat<I,  TT>);
-	impl_neg_sparse!(&SparseRowMat<I,  T>, SparseRowMat<I,  TT>);
+				#[track_caller]
+				fn mul(self, other: $rhs) -> Self::Output {
+					Scale(T::Canonical::from_f64_impl(self)).mul(other.rb())
+				}
+			}
 
-	// impl_scalar_mul_sparse!(Scale<T>, SparseColMatRef<'_, I,  RhsT>,
-	// SparseColMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<f64> for $rhs {
+				type Output = $out;
 
-	impl_mul_primitive_sparse!(SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_mul_primitive_sparse!(SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_mul_primitive_sparse!(SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_mul_primitive_sparse!(&SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_mul_primitive_sparse!(&SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_mul_primitive_sparse!(&SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
+				#[track_caller]
+				fn mul(self, other: f64) -> Self::Output {
+					self.rb().mul(Scale(T::Canonical::from_f64_impl(other)))
+				}
+			}
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<f64> for $rhs {
+				type Output = $out;
 
-	// impl_scalar_mul_sparse!(Scale<T>, SparseRowMatRef<'_, I,  RhsT>,
-	// SparseRowMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_scalar_mul_sparse!(Scale<T>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
+				#[track_caller]
+				fn div(self, other: f64) -> Self::Output {
+					self.rb().mul(Scale(T::Canonical::from_f64_impl(f64::recip(other))))
+				}
+			}
+		};
+	}
 
-	impl_mul_primitive_sparse!(SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_mul_primitive_sparse!(SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_mul_primitive_sparse!(SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_mul_primitive_sparse!(&SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_mul_primitive_sparse!(&SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_mul_primitive_sparse!(&SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
+	macro_rules! impl_neg_sparse {
+		($mat: ty, $out: ty) => {
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Neg for $mat {
+				type Output = $out;
 
-	// impl_mul_scalar_sparse!(SparseColMatRef<'_, I,  LhsT>, Scale<T>,
-	// SparseColMat<I,  T>);
-	impl_mul_scalar_sparse!(SparseColMatMut<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_mul_scalar_sparse!(SparseColMat<I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_mul_scalar_sparse!(&SparseColMatRef<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_mul_scalar_sparse!(&SparseColMatMut<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_mul_scalar_sparse!(&SparseColMat<I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
+				fn neg(self) -> Self::Output {
+					self.rb().neg()
+				}
+			}
+		};
+	}
 
-	impl_div_scalar_sparse!(SparseColMatRef<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_div_scalar_sparse!(SparseColMatMut<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_div_scalar_sparse!(SparseColMat<I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_div_scalar_sparse!(&SparseColMatRef<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_div_scalar_sparse!(&SparseColMatMut<'_, I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
-	impl_div_scalar_sparse!(&SparseColMat<I,  LhsT>, Scale<T>, SparseColMat<I,  T>);
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Neg for SparseRowMatRef<'_, I, T, Rows, Cols> {
+		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
 
-	// impl_mul_assign_scalar_sparse!(SparseColMatMut<'_, I,  LhsT>, Scale<T>);
-	impl_mul_assign_scalar_sparse!(SparseColMat<I,  LhsT>, Scale<T>);
+		#[math]
+		fn neg(self) -> Self::Output {
+			self.transpose().neg().into_transpose()
+		}
+	}
 
-	impl_div_assign_scalar_sparse!(SparseColMatMut<'_, I, LhsT>, Scale<T>);
-	impl_div_assign_scalar_sparse!(SparseColMat<I,  LhsT>, Scale<T>);
+	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Neg for SparseColMatRef<'_, I, T, Rows, Cols> {
+		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
 
-	impl_mul_assign_primitive_sparse!(SparseColMatMut<'_, I, LhsT>);
-	impl_mul_assign_primitive_sparse!(SparseColMat<I,  LhsT>);
+		#[math]
+		fn neg(self) -> Self::Output {
+			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
+				mat: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
+			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
+				let symbolic = mat.symbolic().to_owned().unwrap();
+				let mut val = alloc::vec::Vec::new();
+				val.resize(symbolic.row_idx().len(), zero());
 
-	// impl_mul_scalar_sparse!(SparseRowMatRef<'_, I,  LhsT>, Scale<T>,
-	// SparseRowMat<I,  T>);
-	impl_mul_scalar_sparse!(SparseRowMatMut<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_mul_scalar_sparse!(SparseRowMat<I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_mul_scalar_sparse!(&SparseRowMatRef<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_mul_scalar_sparse!(&SparseRowMatMut<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_mul_scalar_sparse!(&SparseRowMat<I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
+				for j in mat.ncols().indices() {
+					for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], mat.val_of_col(j)) {
+						*val = -Conj::apply(lhs);
+					}
+				}
 
-	impl_div_scalar_sparse!(SparseRowMatRef<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_div_scalar_sparse!(SparseRowMatMut<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_div_scalar_sparse!(SparseRowMat<I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_div_scalar_sparse!(&SparseRowMatRef<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_div_scalar_sparse!(&SparseRowMatMut<'_, I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
-	impl_div_scalar_sparse!(&SparseRowMat<I,  LhsT>, Scale<T>, SparseRowMat<I,  T>);
+				SparseColMat::new(symbolic, val)
+			}
+			with_dim!(ROWS, self.nrows().unbound());
+			with_dim!(COLS, self.ncols().unbound());
+			imp(self.as_shape(ROWS, COLS)).into_shape(self.nrows(), self.ncols())
+		}
+	}
 
-	// impl_mul_assign_scalar_sparse!(SparseRowMatMut<'_, I,  LhsT>, Scale<T>);
-	impl_mul_assign_scalar_sparse!(SparseRowMat<I,  LhsT>, Scale<T>);
+	macro_rules! add_sub_sparse {
+		($lhs: ty, $rhs: ty, $out: ty) => {
+			impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Add<$rhs>
+				for $lhs
+			{
+				type Output = $out;
 
-	impl_div_assign_scalar_sparse!(SparseRowMatMut<'_, I, LhsT>, Scale<T>);
-	impl_div_assign_scalar_sparse!(SparseRowMat<I,  LhsT>, Scale<T>);
+				#[track_caller]
+				fn add(self, rhs: $rhs) -> Self::Output {
+					self.rb().add(rhs.rb())
+				}
+			}
 
-	impl_mul_assign_primitive_sparse!(SparseRowMatMut<'_, I, LhsT>);
-	impl_mul_assign_primitive_sparse!(SparseRowMat<I,  LhsT>);
+			impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Sub<$rhs>
+				for $lhs
+			{
+				type Output = $out;
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseColMatRef<'_, I, RhsT>>
-		for SparseColMatRef<'_, I, LhsT>
+				#[track_caller]
+				fn sub(self, rhs: $rhs) -> Self::Output {
+					self.rb().sub(rhs.rb())
+				}
+			}
+		};
+	}
+
+	#[math]
+	fn add_fn<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: Option<&LhsT>, rhs: Option<&RhsT>) -> T {
+		lhs.map(Conj::apply).unwrap_or_else(zero::<T>) + rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
+	}
+
+	#[math]
+	fn sub_fn<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: Option<&LhsT>, rhs: Option<&RhsT>) -> T {
+		lhs.map(Conj::apply).unwrap_or_else(zero::<T>) - rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
+	}
+
+	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
+		Add<SparseColMatRef<'_, I, RhsT, Rows, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Cols>
 	{
-		type Output = SparseColMat<I, T>;
+		type Output = SparseColMat<I, T, Rows, Cols>;
 
 		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT>) -> Self::Output {
-			crate::sparse::linalg::matmul::sparse_sparse_matmul(self, rhs, E::faer_one(), crate::get_global_parallelism()).unwrap()
+		fn add(self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
+			let (nrows, ncols) = self.shape();
+			crate::sparse::ops::binary_op(self.as_dyn(), rhs.as_dyn(), add_fn::<T, LhsT, RhsT>)
+				.unwrap()
+				.into_shape(nrows, ncols)
 		}
 	}
 
-	impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>> Mul<SparseRowMatRef<'_, I, RhsT>>
-		for SparseRowMatRef<'_, I, LhsT>
+	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
+		Sub<SparseColMatRef<'_, I, RhsT, Rows, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Cols>
 	{
-		type Output = SparseRowMat<I, T>;
+		type Output = SparseColMat<I, T, Rows, Cols>;
 
 		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT>) -> Self::Output {
-			(rhs.transpose() * self.transpose()).into_transpose()
+		fn sub(self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
+			let (nrows, ncols) = self.shape();
+			crate::sparse::ops::binary_op(self.as_dyn(), rhs.as_dyn(), sub_fn)
+				.unwrap()
+				.into_shape(nrows, ncols)
 		}
 	}
 
-	#[rustfmt::skip]
-// impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatRef<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMatMut<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(SparseColMat<I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatRef<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMatMut<'_, I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &SparseColMatRef<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &SparseColMatMut<'_, I,  RhsT>, SparseColMat<I,  T>);
-	impl_sparse_mul!(&SparseColMat<I,  LhsT>, &SparseColMat<I,  RhsT>, SparseColMat<I,  T>);
-	#[rustfmt::skip]
-// impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatRef<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMatMut<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(SparseRowMat<I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatRef<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMatMut<'_, I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &SparseRowMatRef<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &SparseRowMatMut<'_, I,  RhsT>, SparseRowMat<I,  T>);
-	impl_sparse_mul!(&SparseRowMat<I,  LhsT>, &SparseRowMat<I,  RhsT>, SparseRowMat<I,  T>);
+	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
+		Add<SparseRowMatRef<'_, I, RhsT, Rows, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Cols>
+	{
+		type Output = SparseRowMat<I, T, Rows, Cols>;
+
+		#[track_caller]
+		fn add(self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
+			self.transpose().add(rhs.transpose()).into_transpose()
+		}
+	}
+
+	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
+		Sub<SparseRowMatRef<'_, I, RhsT, Rows, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Cols>
+	{
+		type Output = SparseRowMat<I, T, Rows, Cols>;
+
+		#[track_caller]
+		fn sub(self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
+			self.transpose().sub(rhs.transpose()).into_transpose()
+		}
+	}
+
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+
+	impl_mul_scalar_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(SparseColMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(&SparseColMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(SparseRowMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_scalar_sparse!(&SparseRowMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+
+	impl_mul_assign_scalar_sparse!(SparseColMat<I, T, Rows, Cols>, Scale<T::Canonical>);
+
+	impl_mul_primitive_sparse!(SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(&SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_mul_primitive_sparse!(&SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+
+	impl_neg_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(&SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+	impl_neg_sparse!(&SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
+
+	add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
+
+	add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+	add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
+
+	// TODO: add_assign, sub_assign, matmul
 }
+
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod test {

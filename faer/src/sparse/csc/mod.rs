@@ -998,6 +998,17 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 
 	#[inline]
 	#[track_caller]
+	pub fn idx_val_of_col_mut(self, j: Idx<Cols>) -> (impl 'a + Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<Rows>>, &'a mut [T])
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
+		let range = self.col_range(j);
+		unsafe { (self.symbolic.row_idx_of_col(j), self.val.get_unchecked_mut(range)) }
+	}
+
+	#[inline]
+	#[track_caller]
 	pub fn as_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> SparseColMatRef<'a, I, T, V, H> {
 		SparseColMatRef {
 			symbolic: self.symbolic.as_shape(nrows, ncols),

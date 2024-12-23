@@ -221,15 +221,16 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				};
 
 				for j in N.indices().rev() {
-					let mut l = iter::zip(l.row_idx_of_col(j), l.val_of_col(j));
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
 					let mut acc0a = zero::<T>();
 					let mut acc1a = zero::<T>();
 					let mut acc2a = zero::<T>();
 					let mut acc3a = zero::<T>();
 
-					let first = (l.next());
-
-					for (i, lij) in l {
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
 						let lij = conj_tril.apply_rt(lij);
 						acc0a = acc0a + lij * x0[i];
 						acc1a = acc1a + lij * x1[i];
@@ -269,14 +270,15 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				};
 
 				for j in N.indices().rev() {
-					let mut l = iter::zip(l.row_idx_of_col(j), l.val_of_col(j));
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
 					let mut acc0a = zero::<T>();
 					let mut acc1a = zero::<T>();
 					let mut acc2a = zero::<T>();
 
-					let first = (l.next());
-
-					for (i, lij) in l {
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
 						let lij = conj_tril.apply_rt(lij);
 						acc0a = acc0a + lij * x0[i];
 						acc1a = acc1a + lij * x1[i];
@@ -311,13 +313,14 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
 
 				for j in N.indices().rev() {
-					let mut l = iter::zip(l.row_idx_of_col(j), l.val_of_col(j));
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
 					let mut acc0a = zero::<T>();
 					let mut acc1a = zero::<T>();
 
-					let first = (l.next());
-
-					for (i, lij) in l {
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
 						let lij = conj_tril.apply_rt(lij);
 						acc0a = acc0a + lij * x0[i];
 						acc1a = acc1a + lij * x1[i];
@@ -347,12 +350,13 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				let mut x0 = x.rb_mut().get_mut(.., k0);
 
 				for j in N.indices().rev() {
-					let mut l = iter::zip(l.row_idx_of_col(j), l.val_of_col(j));
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
 					let mut acc0a = zero::<T>();
 
-					let first = (l.next());
-
-					for (i, lij) in l {
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
 						let lij = conj_tril.apply_rt(lij);
 						acc0a = acc0a + lij * x0[i];
 					}
@@ -602,15 +606,16 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				};
 
 				for j in N.indices() {
-					let mut u = iter::zip(u.row_idx_of_col(j).rev(), u.val_of_col(j).iter().rev());
+					let mut ui = u.row_idx_of_col(j);
+					let mut uv = u.val_of_col(j).iter();
+					let first = ui.next_back().zip(uv.next_back());
+
 					let mut acc0a = zero::<T>();
 					let mut acc1a = zero::<T>();
 					let mut acc2a = zero::<T>();
 					let mut acc3a = zero::<T>();
 
-					let first = (u.next());
-
-					for (i, uij) in u {
+					for (i, uij) in iter::zip(ui, uv) {
 						let uij = conj_triu.apply_rt(uij);
 						acc0a = acc0a + uij * x0[i];
 						acc1a = acc1a + uij * x1[i];
@@ -650,14 +655,15 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				};
 
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j), u.val_of_col(j));
+					let mut ui = u.row_idx_of_col(j);
+					let mut uv = u.val_of_col(j).iter();
+					let first = ui.next_back().zip(uv.next_back());
+
 					let mut acc0a = zero::<T>();
 					let mut acc1a = zero::<T>();
 					let mut acc2a = zero::<T>();
 
-					let first = (u.next());
-
-					for (i, uij) in u {
+					for (i, uij) in iter::zip(ui, uv) {
 						let uij = conj_triu.apply_rt(uij);
 						acc0a = acc0a + uij * x0[i];
 						acc1a = acc1a + uij * x1[i];
@@ -692,13 +698,14 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
 
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j), u.val_of_col(j));
+					let mut ui = u.row_idx_of_col(j);
+					let mut uv = u.val_of_col(j).iter();
+					let first = ui.next_back().zip(uv.next_back());
+
 					let mut acc0a = zero::<T>();
 					let mut acc1a = zero::<T>();
 
-					let first = (u.next());
-
-					for (i, uij) in u {
+					for (i, uij) in iter::zip(ui, uv) {
 						let uij = conj_triu.apply_rt(uij);
 						acc0a = acc0a + uij * x0[i];
 						acc1a = acc1a + uij * x1[i];
@@ -728,12 +735,13 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				let mut x0 = x.rb_mut().get_mut(.., k0);
 
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j), u.val_of_col(j));
+					let mut ui = u.row_idx_of_col(j);
+					let mut uv = u.val_of_col(j).iter();
+					let first = ui.next_back().zip(uv.next_back());
+
 					let mut acc0a = zero::<T>();
 
-					let first = (u.next());
-
-					for (i, uij) in u {
+					for (i, uij) in iter::zip(ui, uv) {
 						let uij = conj_triu.apply_rt(uij);
 						acc0a = acc0a + uij * x0[i];
 					}
