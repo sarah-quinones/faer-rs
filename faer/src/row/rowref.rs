@@ -287,6 +287,16 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	{
 		self.as_ref().transpose().norm_l2()
 	}
+
+	#[inline]
+	pub fn to_owned(&self) -> Row<T::Canonical, Cols>
+	where
+		T: Conjugate,
+	{
+		Row {
+			trans: self.trans.to_owned(),
+		}
+	}
 }
 
 impl<'a, T, Rows: Shape> RowRef<'a, T, Rows, ContiguousFwd> {

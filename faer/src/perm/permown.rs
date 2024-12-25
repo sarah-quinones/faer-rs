@@ -88,3 +88,12 @@ impl<I: Index, N: Shape> Perm<I, N> {
 		}
 	}
 }
+
+impl<'short, I: Index, N: Shape> Reborrow<'short> for Perm<I, N> {
+	type Target = PermRef<'short, I, N>;
+
+	#[inline]
+	fn rb(&'short self) -> Self::Target {
+		self.as_ref()
+	}
+}

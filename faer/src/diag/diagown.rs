@@ -144,3 +144,20 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		self.inner.copy_from(rhs.as_diag_ref().inner)
 	}
 }
+
+impl<'short, T, Dim: Shape> Reborrow<'short> for Diag<T, Dim> {
+	type Target = DiagRef<'short, T, Dim>;
+
+	#[inline]
+	fn rb(&'short self) -> Self::Target {
+		self.as_ref()
+	}
+}
+impl<'short, T, Dim: Shape> ReborrowMut<'short> for Diag<T, Dim> {
+	type Target = DiagMut<'short, T, Dim>;
+
+	#[inline]
+	fn rb_mut(&'short mut self) -> Self::Target {
+		self.as_mut()
+	}
+}

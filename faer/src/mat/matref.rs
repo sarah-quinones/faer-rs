@@ -684,7 +684,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	}
 
 	#[inline]
-	pub fn cloned(self) -> Mat<T, Rows, Cols>
+	pub fn cloned(&self) -> Mat<T, Rows, Cols>
 	where
 		T: Clone,
 	{
@@ -700,7 +700,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	}
 
 	#[inline]
-	pub fn to_owned(self) -> Mat<T::Canonical, Rows, Cols>
+	pub fn to_owned(&self) -> Mat<T::Canonical, Rows, Cols>
 	where
 		T: Conjugate,
 	{

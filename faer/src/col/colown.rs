@@ -278,7 +278,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	}
 
 	#[inline]
-	pub fn try_as_col_major_mut(&self) -> Option<ColMut<'_, T, Rows, ContiguousFwd>> {
+	pub fn try_as_col_major_mut(&mut self) -> Option<ColMut<'_, T, Rows, ContiguousFwd>> {
 		self.as_ref().try_as_col_major().map(|x| unsafe { x.const_cast() })
 	}
 
@@ -288,7 +288,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	}
 
 	#[inline]
-	pub fn as_mat_mut(&self) -> MatMut<'_, T, Rows, usize, isize> {
+	pub fn as_mat_mut(&mut self) -> MatMut<'_, T, Rows, usize, isize> {
 		unsafe { self.as_ref().as_mat().const_cast() }
 	}
 
@@ -429,5 +429,22 @@ impl<T, Rows: Shape> Col<T, Rows> {
 		T: ComplexField,
 	{
 		self.as_mut().copy_from(rhs)
+	}
+}
+
+impl<'short, T, Rows: Shape> Reborrow<'short> for Col<T, Rows> {
+	type Target = ColRef<'short, T, Rows>;
+
+	#[inline]
+	fn rb(&'short self) -> Self::Target {
+		self.as_ref()
+	}
+}
+impl<'short, T, Rows: Shape> ReborrowMut<'short> for Col<T, Rows> {
+	type Target = ColMut<'short, T, Rows>;
+
+	#[inline]
+	fn rb_mut(&'short mut self) -> Self::Target {
+		self.as_mut()
 	}
 }

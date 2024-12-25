@@ -282,7 +282,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	}
 
 	#[inline]
-	pub fn to_owned(self) -> Col<T::Canonical, Rows>
+	pub fn to_owned(&self) -> Col<T::Canonical, Rows>
 	where
 		T: Conjugate,
 	{

@@ -7,7 +7,7 @@ use super::RowIndex;
 
 #[derive(Clone)]
 pub struct Row<T, Cols: Shape = usize> {
-	trans: Col<T, Cols>,
+	pub(crate) trans: Col<T, Cols>,
 }
 
 impl<T, Cols: Shape> Row<T, Cols> {
@@ -409,5 +409,22 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline]
 	pub fn as_diagonal_mut(&mut self) -> DiagMut<'_, T, Cols> {
 		self.as_mut().as_diagonal_mut()
+	}
+}
+
+impl<'short, T, Cols: Shape> Reborrow<'short> for Row<T, Cols> {
+	type Target = RowRef<'short, T, Cols>;
+
+	#[inline]
+	fn rb(&'short self) -> Self::Target {
+		self.as_ref()
+	}
+}
+impl<'short, T, Cols: Shape> ReborrowMut<'short> for Row<T, Cols> {
+	type Target = RowMut<'short, T, Cols>;
+
+	#[inline]
+	fn rb_mut(&'short mut self) -> Self::Target {
+		self.as_mut()
 	}
 }
