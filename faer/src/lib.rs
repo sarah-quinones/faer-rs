@@ -572,7 +572,7 @@ mod internal_prelude {
 pub(crate) mod internal_prelude_sp {
 	pub(crate) use crate::internal_prelude::*;
 	pub(crate) use crate::sparse::{
-		FaerError, Pair, SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
+		FaerError, NONE, Pair, SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
 		SymbolicSparseColMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef, Triplet, linalg as linalg_sp, try_collect, try_zeroed, windows2,
 	};
 	pub(crate) use core::cell::Cell;

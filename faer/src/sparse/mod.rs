@@ -1,6 +1,8 @@
 mod csc;
 mod csr;
 
+pub(crate) const NONE: usize = usize::MAX;
+
 pub mod linalg;
 pub mod ops;
 
