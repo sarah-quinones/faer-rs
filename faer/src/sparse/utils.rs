@@ -43,12 +43,12 @@ pub fn sort_dedup_indices<I: Index, T: ComplexField>(col_ptr: &[I], col_nnz: &mu
 	}
 }
 
-pub fn permute_self_adjoint_scratch<I: Index>(dim: usize) -> Result<StackReq, SizeOverflow> {
-	StackReq::try_new::<I>(dim)
+pub fn permute_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
+	StackReq::new::<I>(dim)
 }
 
-pub fn permute_dedup_self_adjoint_scratch<I: Index>(dim: usize) -> Result<StackReq, SizeOverflow> {
-	StackReq::try_new::<I>(dim)
+pub fn permute_dedup_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
+	StackReq::new::<I>(dim)
 }
 
 pub fn permute_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
@@ -59,7 +59,7 @@ pub fn permute_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjug
 	perm: PermRef<'_, I, N>,
 	in_side: Side,
 	out_side: Side,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, N, N> {
 	let n = A.nrows();
 	with_dim!(N, n.unbound());
@@ -87,7 +87,7 @@ pub fn permute_self_adjoint_to_unsorted<'out, N: Shape, I: Index, T: ComplexFiel
 	perm: PermRef<'_, I, N>,
 	in_side: Side,
 	out_side: Side,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, N, N> {
 	let n = A.nrows();
 	with_dim!(N, n.unbound());
@@ -115,7 +115,7 @@ pub fn permute_dedup_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: 
 	perm: PermRef<'_, I, N>,
 	in_side: Side,
 	out_side: Side,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, N, N> {
 	let n = A.nrows();
 	with_dim!(N, n.unbound());
@@ -144,7 +144,7 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	in_side: Side,
 	out_side: Side,
 	sort: bool,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Dim<'N>, Dim<'N>> {
 	// old_i <= old_j => -old_i >= -old_j
 	// reverse the order with bitwise not
@@ -284,7 +284,7 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	perm: PermRef<'_, I, Dim<'N>>,
 	in_side: Side,
 	out_side: Side,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Dim<'N>, Dim<'N>> {
 	let N = A.nrows();
 
@@ -332,14 +332,14 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, N, new_col_ptr, None, new_row_idx), new_val) }
 }
 
-pub fn transpose_scratch<I: Index>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+pub fn transpose_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
-	StackReq::try_new::<usize>(nrows)
+	StackReq::new::<usize>(nrows)
 }
 
-pub fn transpose_dedup_scratch<I: Index>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+pub fn transpose_dedup_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
-	StackReq::try_new::<usize>(nrows)?.try_array(2)
+	StackReq::new::<usize>(nrows).array(2)
 }
 
 pub fn transpose<'out, Rows: Shape, Cols: Shape, I: Index, T: Clone>(
@@ -347,13 +347,27 @@ pub fn transpose<'out, Rows: Shape, Cols: Shape, I: Index, T: Clone>(
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
 	A: SparseColMatRef<'_, I, T, Rows, Cols>,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Cols, Rows> {
 	let (m, n) = A.shape();
 	with_dim!(M, m.unbound());
 	with_dim!(N, n.unbound());
 
-	transpose_imp(new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
+	transpose_imp(T::clone, new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
+}
+
+pub fn adjoint<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField>(
+	new_val: &'out mut [T],
+	new_col_ptr: &'out mut [I],
+	new_row_idx: &'out mut [I],
+	A: SparseColMatRef<'_, I, T, Rows, Cols>,
+	stack: &mut MemStack,
+) -> SparseColMatMut<'out, I, T, Cols, Rows> {
+	let (m, n) = A.shape();
+	with_dim!(M, m.unbound());
+	with_dim!(N, n.unbound());
+
+	transpose_imp(conj::<T>, new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
 }
 
 pub fn transpose_dedup<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
@@ -361,7 +375,7 @@ pub fn transpose_dedup<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
 	A: SparseColMatRef<'_, I, C, Rows, Cols>,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Cols, Rows> {
 	let (m, n) = A.shape();
 	with_dim!(M, m.unbound());
@@ -370,12 +384,13 @@ pub fn transpose_dedup<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField
 	transpose_dedup_imp(new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
 }
 
-fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T: Clone>(
+fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T>(
+	clone: impl Fn(&T) -> T,
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
 	A: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Dim<'COLS>, Dim<'ROWS>> {
 	let (M, N) = A.shape();
 	assert!(new_col_ptr.len() == *M + 1);
@@ -413,7 +428,7 @@ fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T: Clone>(
 			unsafe {
 				let ci = ci.zx();
 				*new_row_idx.get_unchecked_mut(ci) = I::truncate(*j);
-				*new_val.get_unchecked_mut(ci) = val.clone();
+				*new_val.get_unchecked_mut(ci) = clone(val);
 			}
 			*ci += I::truncate(1);
 		}
@@ -434,7 +449,7 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
 	A: SparseColMatRef<'_, I, C, Dim<'ROWS>, Dim<'COLS>>,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Dim<'COLS>, Dim<'ROWS>> {
 	let (M, N) = A.shape();
 	assert!(new_col_ptr.len() == *M + 1);
@@ -519,7 +534,7 @@ mod tests {
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	#[test]
 	fn test_transpose() {
@@ -548,7 +563,7 @@ mod tests {
 				new_col_ptr,
 				new_row_idx,
 				A,
-				DynStack::new(&mut GlobalMemBuffer::new(transpose_scratch::<usize>(nrows, ncols).unwrap())),
+				MemStack::new(&mut MemBuffer::new(transpose_scratch::<usize>(nrows, ncols))),
 			)
 			.into_const();
 
@@ -582,7 +597,7 @@ mod tests {
 				new_col_ptr,
 				new_row_idx,
 				A,
-				DynStack::new(&mut GlobalMemBuffer::new(transpose_dedup_scratch::<usize>(nrows, ncols).unwrap())),
+				MemStack::new(&mut MemBuffer::new(transpose_dedup_scratch::<usize>(nrows, ncols))),
 			)
 			.into_const();
 
@@ -683,7 +698,7 @@ mod tests {
 					perm,
 					in_side,
 					out_side,
-					DynStack::new(&mut GlobalMemBuffer::new(permute_self_adjoint_scratch::<usize>(n).unwrap())),
+					MemStack::new(&mut MemBuffer::new(permute_self_adjoint_scratch::<usize>(n))),
 				)
 				.to_dense();
 

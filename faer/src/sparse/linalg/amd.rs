@@ -36,7 +36,6 @@
 
 use crate::internal_prelude_sp::*;
 use crate::{assert, debug_assert};
-use core::mem::MaybeUninit;
 
 #[inline]
 fn post_tree<'n, I: Index>(
@@ -95,7 +94,7 @@ fn postorder<'n, 'out, I: Index>(
 	etree: &Array<'n, MaybeIdx<'n, I>>,
 	nv: &Array<'n, I::Signed>,
 	f_size: &Array<'n, I::Signed>,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let N = order.len();
 	let n = *N;
@@ -198,14 +197,14 @@ fn clear_flag<I: SignedIndex>(wflg: I, wbig: I, w: &mut [I]) -> I {
 
 #[allow(clippy::comparison_chain)]
 fn amd_2<I: Index>(
-	pe: &mut [I::Signed],              // input/output
-	iw: &mut [MaybeUninit<I::Signed>], // input/modified (undefined on output)
-	len: &mut [I::Signed],             // input/modified (undefined on output)
+	pe: &mut [I::Signed],  // input/output
+	iw: &mut [I::Signed],  // input/modified (undefined on output)
+	len: &mut [I::Signed], // input/modified (undefined on output)
 	pfree: usize,
 	next: &mut [I::Signed],
 	last: &mut [I::Signed],
 	control: Control,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> FlopCount {
 	let n = pe.len();
 	assert!(n < I::Signed::MAX.zx());
@@ -319,13 +318,13 @@ fn amd_2<I: Index>(
 				pme2 = pme1 - one;
 
 				for p in pme1.zx()..(pme1 + len[me]).zx() {
-					let i = unsafe { iw[p].assume_init() }.zx();
+					let i = iw[p].zx();
 					let nvi = nv[i];
 					if nvi > zero {
 						degme += nvi.zx();
 						nv[i] = -nvi;
 						pme2 += one;
-						iw[pme2.zx()] = MaybeUninit::new(I(i));
+						iw[pme2.zx()] = I(i);
 
 						let ilast = last[i];
 						let inext = next[i];
@@ -354,14 +353,14 @@ fn amd_2<I: Index>(
 						pj = I(p);
 						ln = slenme;
 					} else {
-						e = unsafe { iw[p].assume_init() }.zx();
+						e = iw[p].zx();
 						p += 1;
 						pj = pe[e];
 						ln = len[e].zx();
 					}
 
 					for knt2 in 1..ln + 1 {
-						let i = unsafe { iw[pj.zx()].assume_init() }.zx();
+						let i = iw[pj.zx()].zx();
 						pj += one;
 						let nvi = nv[i];
 
@@ -384,8 +383,8 @@ fn amd_2<I: Index>(
 									let pn = *pe;
 									if pn >= zero {
 										let pn = pn.zx();
-										*pe = unsafe { iw[pn].assume_init() };
-										iw[pn] = MaybeUninit::new(flip(I(j)));
+										*pe = iw[pn];
+										iw[pn] = flip(I(j));
 									}
 								}
 
@@ -394,11 +393,11 @@ fn amd_2<I: Index>(
 								let pend = pme1.zx();
 
 								while psrc < pend {
-									let j = flip(unsafe { iw[psrc].assume_init() });
+									let j = flip(iw[psrc]);
 									psrc += 1;
 									if j >= zero {
 										let j = j.zx();
-										iw[pdst] = MaybeUninit::new(pe[j]);
+										iw[pdst] = pe[j];
 										pe[j] = I(pdst);
 										pdst += 1;
 										let lenj = len[j].zx();
@@ -423,7 +422,7 @@ fn amd_2<I: Index>(
 
 							degme += nvi.zx();
 							nv[i] = -nvi;
-							iw[pfree] = MaybeUninit::new(I(i));
+							iw[pfree] = I(i);
 							pfree += 1;
 
 							let ilast = last[i];
@@ -456,13 +455,13 @@ fn amd_2<I: Index>(
 			assert!(pme1 >= zero);
 			//assert!(pme2 >= zero);
 			for pme in pme1.zx()..(pme2 + one).zx() {
-				let i = unsafe { iw[pme].assume_init().zx() };
+				let i = iw[pme].zx();
 				let eln = elen[i];
 				if eln > zero {
 					let nvi = -nv[i];
 					let wnvi = wflg - nvi;
 					for iw in iw[pe[i].zx()..][..eln.zx()].iter() {
-						let e = unsafe { iw.assume_init().zx() };
+						let e = iw.zx();
 						let mut we = w[e];
 						if we >= wflg {
 							we -= nvi;
@@ -475,7 +474,7 @@ fn amd_2<I: Index>(
 			}
 
 			for pme in pme1.zx()..(pme2 + one).zx() {
-				let i = unsafe { iw[pme].assume_init().zx() };
+				let i = iw[pme].zx();
 				let p1 = pe[i].zx();
 				let p2 = p1 + elen[i].zx();
 				let mut pn = p1;
@@ -485,13 +484,13 @@ fn amd_2<I: Index>(
 
 				if aggressive {
 					for p in p1..p2 {
-						let e = unsafe { iw[p].assume_init().zx() };
+						let e = iw[p].zx();
 						let we = w[e];
 						if we != zero {
 							let dext = we - wflg;
 							if dext > zero {
 								deg += dext.zx();
-								iw[pn] = MaybeUninit::new(I(e));
+								iw[pn] = I(e);
 								pn += 1;
 								hash = hash.wrapping_add(e);
 							} else {
@@ -502,12 +501,12 @@ fn amd_2<I: Index>(
 					}
 				} else {
 					for p in p1..p2 {
-						let e = unsafe { iw[p].assume_init().zx() };
+						let e = iw[p].zx();
 						let we = w[e];
 						if we != zero {
 							let dext = (we - wflg).zx();
 							deg += dext;
-							iw[pn] = MaybeUninit::new(I(e));
+							iw[pn] = I(e);
 							pn += 1;
 							hash = hash.wrapping_add(e);
 						}
@@ -518,11 +517,11 @@ fn amd_2<I: Index>(
 				let p3 = pn;
 				let p4 = p1 + len[i].zx();
 				for p in p2..p4 {
-					let j = unsafe { iw[p].assume_init().zx() };
+					let j = iw[p].zx();
 					let nvj = nv[j];
 					if nvj > zero {
 						deg += nvj.zx();
-						iw[pn] = MaybeUninit::new(I(j));
+						iw[pn] = I(j);
 						pn += 1;
 						hash = hash.wrapping_add(j);
 					}
@@ -541,7 +540,7 @@ fn amd_2<I: Index>(
 					degree[i] = Ord::min(degree[i], I(deg));
 					iw[pn] = iw[p3];
 					iw[p3] = iw[p1];
-					iw[p1] = MaybeUninit::new(I(me));
+					iw[p1] = I(me);
 					len[i] = I(pn - p1 + 1);
 					hash %= n;
 
@@ -563,7 +562,7 @@ fn amd_2<I: Index>(
 			wflg = clear_flag(wflg, wbig, w);
 
 			for pme in pme1.zx()..(pme2 + one).zx() {
-				let mut i = unsafe { iw[pme].assume_init().zx() };
+				let mut i = iw[pme].zx();
 				if nv[i] < zero {
 					let hash = last[i].zx();
 					let j = head[hash];
@@ -583,14 +582,14 @@ fn amd_2<I: Index>(
 						let eln = elen[i];
 
 						for p in (pe[i] + one).zx()..(pe[i] + ln).zx() {
-							w[unsafe { iw[p].assume_init().zx() }] = wflg;
+							w[iw[p].zx()] = wflg;
 						}
 						let mut jlast = i;
 						let mut j = next[i].sx();
 						while j != NONE {
 							let mut ok = len[j] == ln && elen[j] == eln;
 							for p in (pe[j] + one).zx()..(pe[j] + ln).zx() {
-								if w[unsafe { iw[p].assume_init().zx() }] != wflg {
+								if w[iw[p].zx()] != wflg {
 									ok = false;
 								}
 							}
@@ -617,7 +616,7 @@ fn amd_2<I: Index>(
 			let mut p = pme1.zx();
 			let nleft = n - nel;
 			for pme in pme1.zx()..(pme2 + one).zx() {
-				let i = unsafe { iw[pme].assume_init().zx() };
+				let i = iw[pme].zx();
 				let nvi = -nv[i];
 				if nvi > zero {
 					nv[i] = nvi;
@@ -634,7 +633,7 @@ fn amd_2<I: Index>(
 
 					mindeg = Ord::min(mindeg, deg);
 					degree[i] = I(deg);
-					iw[p] = MaybeUninit::new(I(i));
+					iw[p] = I(i);
 					p += 1;
 				}
 			}
@@ -758,7 +757,7 @@ fn amd_1<I: Index>(
 	len: &mut [I::Signed],
 	iwlen: usize,
 	control: Control,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> FlopCount {
 	let n = perm.len();
 	let I = I::Signed::truncate;
@@ -766,22 +765,19 @@ fn amd_1<I: Index>(
 	let zero = I(0);
 	let one = I(1);
 
-	let (p_e, stack) = stack.make_uninit::<I::Signed>(n);
-	let (s_p, stack) = stack.make_uninit::<I::Signed>(n);
-	let (i_w, stack) = stack.make_uninit::<I::Signed>(iwlen);
+	let (p_e, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
+	let (s_p, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
+	let (i_w, stack) = unsafe { stack.make_raw::<I::Signed>(iwlen) };
 
 	// Construct the pointers for A+A'.
 
 	let mut pfree = zero;
 	for j in 0..n {
-		p_e[j] = MaybeUninit::new(pfree);
-		s_p[j] = MaybeUninit::new(pfree);
+		p_e[j] = pfree;
+		s_p[j] = pfree;
 		pfree += len[j];
 	}
 	let pfree = pfree.zx();
-
-	let p_e = unsafe { &mut *(p_e as *mut [MaybeUninit<I::Signed>] as *mut [I::Signed]) };
-	let s_p = unsafe { &mut *(s_p as *mut [MaybeUninit<I::Signed>] as *mut [I::Signed]) };
 
 	// Note that this restriction on iwlen is slightly more restrictive than
 	// what is strictly required in amd_2. amd_2 can operate with no elbow
@@ -791,7 +787,7 @@ fn amd_1<I: Index>(
 
 	{
 		with_dim!(N, n);
-		let (t_p, _) = stack.make_uninit::<I::Signed>(n);
+		let (t_p, _) = unsafe { stack.make_raw::<I::Signed>(n) };
 
 		let A = A.as_shape(N, N);
 		let s_p = Array::from_mut(s_p, N);
@@ -810,10 +806,10 @@ fn amd_1<I: Index>(
 
 				if j < k {
 					// Entry A(j,k) in the strictly upper triangular part.
-					i_w[s_p[j].zx()] = MaybeUninit::new(I(*k));
+					i_w[s_p[j].zx()] = I(*k);
 					s_p[j] += one;
 
-					i_w[s_p[k].zx()] = MaybeUninit::new(I(*j));
+					i_w[s_p[k].zx()] = I(*j);
 					s_p[k] += one;
 
 					seen += one;
@@ -828,7 +824,7 @@ fn amd_1<I: Index>(
 				// row k. Start where last scan left off.
 				let mut seen_j = zero;
 				let mut i_prev = usize::MAX;
-				for i in &A.row_idx_of_col_raw(j)[unsafe { t_p[j].assume_init().zx() }..] {
+				for i in &A.row_idx_of_col_raw(j)[t_p[j].zx()..] {
 					if i_prev == *i.zx() {
 						i_prev = *i.zx();
 						continue;
@@ -839,10 +835,10 @@ fn amd_1<I: Index>(
 					if i < k {
 						// A (i,j) is only in the lower part, not in upper.
 
-						i_w[s_p[i].zx()] = MaybeUninit::new(I(*j));
+						i_w[s_p[i].zx()] = I(*j);
 						s_p[i] += one;
 
-						i_w[s_p[j].zx()] = MaybeUninit::new(I(*i));
+						i_w[s_p[j].zx()] = I(*i);
 						s_p[j] += one;
 
 						seen_j += one;
@@ -853,15 +849,15 @@ fn amd_1<I: Index>(
 						break;
 					}
 				}
-				*unsafe { t_p[j].assume_init_mut() } += seen_j;
+				t_p[j] += seen_j;
 			}
-			t_p[k] = MaybeUninit::new(seen);
+			t_p[k] = seen;
 		}
 
 		// Clean up, for remaining mismatched entries.
 		for j in N.indices() {
 			let mut i_prev = usize::MAX;
-			for i in &A.row_idx_of_col_raw(j)[unsafe { t_p[j].assume_init().zx() }..] {
+			for i in &A.row_idx_of_col_raw(j)[t_p[j].zx()..] {
 				if i_prev == *i.zx() {
 					i_prev = *i.zx();
 					continue;
@@ -869,10 +865,10 @@ fn amd_1<I: Index>(
 				i_prev = *i.zx();
 
 				let i = i.zx();
-				i_w[s_p[i].zx()] = MaybeUninit::new(I(*j));
+				i_w[s_p[i].zx()] = I(*j);
 				s_p[i] += one;
 
-				i_w[s_p[j].zx()] = MaybeUninit::new(I(*i));
+				i_w[s_p[j].zx()] = I(*i);
 				s_p[j] += one;
 			}
 		}
@@ -884,10 +880,10 @@ fn amd_1<I: Index>(
 }
 
 fn preprocess<'out, I: Index>(
-	new_col_ptrs: &'out mut [MaybeUninit<I>],
-	new_row_indices: &'out mut [MaybeUninit<I>],
+	new_col_ptrs: &'out mut [I],
+	new_row_indices: &'out mut [I],
 	A: SymbolicSparseColMatRef<'_, I>,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> SymbolicSparseColMatRef<'out, I> {
 	let n = A.nrows();
 
@@ -913,11 +909,10 @@ fn preprocess<'out, I: Index>(
 		}
 	}
 
-	new_col_ptrs[0] = MaybeUninit::new(I::from_signed(zero));
+	new_col_ptrs[0] = I::from_signed(zero);
 	for (i, [r, r_next]) in iter::zip(N.indices(), windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs)))) {
-		r_next.set(MaybeUninit::new(unsafe { r.get().assume_init() } + I::from_signed(w[i])));
+		r_next.set(r.get() + I::from_signed(w[i]));
 	}
-	let new_col_ptrs = unsafe { &mut *(new_col_ptrs as *mut [MaybeUninit<I>] as *mut [I]) };
 
 	w.as_mut().copy_from_slice(bytemuck::cast_slice(&new_col_ptrs[..n]));
 	flag.as_mut().fill(I(NONE));
@@ -926,19 +921,17 @@ fn preprocess<'out, I: Index>(
 		let j_ = I(*j);
 		for i in A.row_idx_of_col(j) {
 			if flag[i] != j_ {
-				new_row_indices[w[i].zx()] = MaybeUninit::new(I::from_signed(j_));
+				new_row_indices[w[i].zx()] = I::from_signed(j_);
 				w[i] += one;
 				flag[i] = j_;
 			}
 		}
 	}
-	let new_row_indices = unsafe { &mut *(new_row_indices as *mut [MaybeUninit<I>] as *mut [I]) };
-
 	unsafe { SymbolicSparseColMatRef::new_unchecked(n, n, &*new_col_ptrs, None, &new_row_indices[..new_col_ptrs[n].zx()]) }
 }
 
 #[allow(clippy::comparison_chain)]
-fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack: &mut DynStack) -> Result<usize, FaerError> {
+fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack: &mut MemStack) -> Result<usize, FaerError> {
 	{
 		with_dim!(N, A.nrows());
 		let I = I::Signed::truncate;
@@ -948,7 +941,7 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 
 		let n = *N;
 
-		let t_p = &mut *stack.make_uninit::<I::Signed>(n).0; // local workspace
+		let t_p = &mut *unsafe { stack.make_raw::<I::Signed>(n).0 }; // local workspace
 
 		let len = Array::from_mut(len, N);
 		let t_p = Array::from_mut(t_p, N);
@@ -977,7 +970,7 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 
 				let mut seen_j = zero;
 				let mut i_prev = usize::MAX;
-				for i in &A.row_idx_of_col_raw(j)[unsafe { t_p[j].assume_init().zx() }..] {
+				for i in &A.row_idx_of_col_raw(j)[t_p[j].zx()..] {
 					if i_prev == *i.zx() {
 						i_prev = *i.zx();
 						continue;
@@ -995,14 +988,14 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 						break;
 					}
 				}
-				*unsafe { t_p[j].assume_init_mut() } += seen_j;
+				t_p[j] += seen_j;
 			}
-			t_p[k] = MaybeUninit::new(seen);
+			t_p[k] = seen;
 		}
 
 		for j in N.indices() {
 			let mut i_prev = usize::MAX;
-			for i in &A.row_idx_of_col_raw(j)[unsafe { t_p[j].assume_init().zx() }..] {
+			for i in &A.row_idx_of_col_raw(j)[t_p[j].zx()..] {
 				if i_prev == *i.zx() {
 					i_prev = *i.zx();
 					continue;
@@ -1019,14 +1012,14 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 
 /// Computes the size and alignment of required workspace for computing the AMD ordering of a sorted
 /// matrix.
-pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
-	let n_scratch = StackReq::try_new::<I>(n)?;
-	let nzaat = nnz_upper.checked_mul(2).ok_or(SizeOverflow)?;
-	StackReq::try_all_of([
+pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
+	let n_scratch = StackReq::new::<I>(n);
+	let nzaat = nnz_upper.checked_mul(2).unwrap_or(usize::MAX);
+	StackReq::all_of(&[
 		// len
 		n_scratch,
 		// A+A.T plus elbow room
-		StackReq::try_new::<I>(nzaat.checked_add(nzaat / 5).ok_or(SizeOverflow)?)?,
+		StackReq::new::<I>(nzaat.checked_add(nzaat / 5).unwrap_or(usize::MAX)),
 		n_scratch,
 		// p_e
 		n_scratch,
@@ -1051,12 +1044,8 @@ pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, S
 
 /// Computes the size and alignment of required workspace for computing the AMD ordering of an
 /// unsorted matrix.
-pub fn order_maybe_unsorted_scratch<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
-	StackReq::try_all_of([
-		order_scratch::<I>(n, nnz_upper)?,
-		StackReq::try_new::<I>(n + 1)?,
-		StackReq::try_new::<I>(nnz_upper)?,
-	])
+pub fn order_maybe_unsorted_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
+	StackReq::all_of(&[order_scratch::<I>(n, nnz_upper), StackReq::new::<I>(n + 1), StackReq::new::<I>(nnz_upper)])
 }
 
 /// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
@@ -1066,7 +1055,7 @@ pub fn order<I: Index>(
 	perm_inv: &mut [I],
 	A: SymbolicSparseColMatRef<'_, I>,
 	control: Control,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> Result<FlopCount, FaerError> {
 	let n = perm.len();
 
@@ -1105,7 +1094,7 @@ pub fn order_maybe_unsorted<I: Index>(
 	perm_inv: &mut [I],
 	A: SymbolicSparseColMatRef<'_, I>,
 	control: Control,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> Result<FlopCount, FaerError> {
 	let n = perm.len();
 
@@ -1117,8 +1106,8 @@ pub fn order_maybe_unsorted<I: Index>(
 		});
 	}
 	let nnz = A.compute_nnz();
-	let (new_col_ptrs, stack) = stack.make_uninit::<I>(n + 1);
-	let (new_row_indices, stack) = stack.make_uninit::<I>(nnz);
+	let (new_col_ptrs, stack) = unsafe { stack.make_raw::<I>(n + 1) };
+	let (new_row_indices, stack) = unsafe { stack.make_raw::<I>(nnz) };
 	let A = preprocess(new_col_ptrs, new_row_indices, A, stack);
 	order(perm, perm_inv, A, control, stack)
 }

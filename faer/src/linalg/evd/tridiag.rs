@@ -23,10 +23,10 @@ impl<T: ComplexField> Auto<T> for TridiagParams {
 	}
 }
 
-pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<TridiagParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<TridiagParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
-	StackReq::try_all_of([temp_mat_scratch::<T>(dim, 1)?.try_array(2)?, temp_mat_scratch::<T>(dim, par.degree())?])
+	StackReq::all_of(&[temp_mat_scratch::<T>(dim, 1).array(2), temp_mat_scratch::<T>(dim, par.degree())])
 }
 
 #[azucar::reborrow]
@@ -362,7 +362,7 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 
 #[azucar::reborrow]
 #[math]
-pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<TridiagParams, T>) {
+pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<TridiagParams, T>) {
 	let params = params.into_inner();
 	let mut A = A;
 	let mut H = H;
@@ -612,7 +612,7 @@ mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{Mat, assert, c64};
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	#[azucar::reborrow]
 	#[azucar::infer]
@@ -639,9 +639,9 @@ mod tests {
 				&mut V,
 				&mut H,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(StackReq::all_of([
-					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, b, n).unwrap(),
-					tridiag_in_place_scratch::<f64>(n, Par::Seq, _).unwrap(),
+				MemStack::new(&mut MemBuffer::new(StackReq::all_of(&[
+					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, b, n),
+					tridiag_in_place_scratch::<f64>(n, Par::Seq, _),
 				]))),
 				_,
 			);
@@ -664,8 +664,8 @@ mod tests {
 					if iter == 0 { Conj::Yes } else { Conj::No },
 					&mut A,
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n, b, n + 1).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n, b, n + 1),
 					)),
 				);
 			}
@@ -713,7 +713,7 @@ mod tests {
 				&mut V,
 				H.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(tridiag_in_place_scratch::<c64>(n, Par::Seq, _).unwrap())),
+				MemStack::new(&mut MemBuffer::new(tridiag_in_place_scratch::<c64>(n, Par::Seq, _))),
 				_,
 			);
 
@@ -735,8 +735,8 @@ mod tests {
 					if iter == 0 { Conj::Yes } else { Conj::No },
 					&mut A,
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, b, n + 1).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, b, n + 1),
 					)),
 				);
 			}

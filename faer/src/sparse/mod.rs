@@ -50,14 +50,6 @@ pub enum FaerError {
 	OutOfMemory,
 }
 
-impl From<dyn_stack::SizeOverflow> for FaerError {
-	#[inline]
-	fn from(value: dyn_stack::SizeOverflow) -> Self {
-		_ = value;
-		FaerError::OutOfMemory
-	}
-}
-
 impl From<dyn_stack::mem::AllocError> for FaerError {
 	#[inline]
 	fn from(value: dyn_stack::mem::AllocError) -> Self {

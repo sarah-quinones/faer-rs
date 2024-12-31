@@ -6,7 +6,7 @@ use crate::row::RowRef;
 use crate::utils::bound::Dim;
 use crate::utils::simd::SimdCtx;
 use crate::{Conj, ContiguousFwd, Par, Shape};
-use dyn_stack::{DynStack, GlobalMemBuffer};
+use dyn_stack::{MemBuffer, MemStack};
 use equator::assert;
 use faer_macros::math;
 use faer_traits::{ByRef, ComplexField, Conjugate};
@@ -473,8 +473,8 @@ mod matvec_colmajor {
 			Par::Rayon(nthreads) => {
 				use rayon::prelude::*;
 				let nthreads = nthreads.get();
-				let mut mem = GlobalMemBuffer::new(temp_mat_scratch::<T>(dst.nrows().unbound(), nthreads).unwrap());
-				let stack = DynStack::new(&mut mem);
+				let mut mem = MemBuffer::new(temp_mat_scratch::<T>(dst.nrows().unbound(), nthreads));
+				let stack = MemStack::new(&mut mem);
 
 				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(dst.nrows(), nthreads, stack) };
 				let mut tmp = tmp.as_mat_mut().try_as_col_major_mut().unwrap();

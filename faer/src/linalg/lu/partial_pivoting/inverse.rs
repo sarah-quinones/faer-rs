@@ -2,7 +2,7 @@ use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
 
-pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim)
 }
@@ -14,7 +14,7 @@ pub fn inverse<I: Index, T: ComplexField>(
 	U: MatRef<'_, T>,
 	row_perm: PermRef<'_, I>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	// A = P^-1 L U
 	// A^-1 = U^-1 L^-1 P
@@ -57,7 +57,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::lu::partial_pivoting::*;
 
 	#[azucar::infer]
@@ -81,7 +81,7 @@ mod tests {
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, _).unwrap()) }),
+			MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, _)) }),
 			_,
 		);
 
@@ -94,7 +94,7 @@ mod tests {
 			LU.as_ref(),
 			perm,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(inverse::inverse_scratch::<usize, c64>(n, Par::Seq).unwrap())),
+			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<usize, c64>(n, Par::Seq))),
 		);
 
 		assert!(&A_inv * &A ~ Mat::identity(n, n));

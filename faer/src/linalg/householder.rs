@@ -193,7 +193,7 @@ pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	rhs_ncols: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
@@ -204,7 +204,7 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: Complex
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	rhs_ncols: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
@@ -215,7 +215,7 @@ pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	lhs_nrows: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
@@ -226,7 +226,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: Comple
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	lhs_nrows: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
@@ -237,7 +237,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	rhs_ncols: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
@@ -248,7 +248,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexF
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	rhs_ncols: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
@@ -259,7 +259,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	lhs_nrows: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
@@ -270,7 +270,7 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_scratch<T: Complex
 	householder_basis_nrows: usize,
 	blocksize: usize,
 	lhs_nrows: usize,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = householder_basis_nrows;
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
@@ -284,7 +284,7 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 	matrix: MatMut<'_, T, Dim<'M>, Dim<'K>>,
 	forward: bool,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	assert!(all(
 		householder_factor.nrows() == householder_factor.ncols(),
@@ -534,7 +534,7 @@ pub fn apply_block_householder_on_the_right_in_place_with_conj<T: ComplexField>(
 	conj_rhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	apply_block_householder_transpose_on_the_left_in_place_with_conj(
 		householder_basis,
@@ -555,7 +555,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<T: Comp
 	conj_rhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	apply_block_householder_on_the_left_in_place_with_conj(householder_basis, householder_factor, conj_rhs, matrix.transpose_mut(), par, stack)
 }
@@ -569,7 +569,7 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<T: ComplexField>(
 	conj_lhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	make_guard!(M);
 	make_guard!(N);
@@ -598,7 +598,7 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<T: Compl
 	conj_lhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	with_dim!(M, householder_basis.nrows());
 	with_dim!(N, householder_basis.ncols());
@@ -625,7 +625,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<T: Comple
 	conj_lhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let mut matrix = matrix;
 	let mut stack = stack;
@@ -667,7 +667,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 	conj_lhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let mut matrix = matrix;
 	let mut stack = stack;
@@ -705,7 +705,7 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<T: Compl
 	conj_rhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 		householder_basis,
@@ -727,7 +727,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_con
 	conj_rhs: Conj,
 	matrix: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	apply_block_householder_sequence_on_the_left_in_place_with_conj(
 		householder_basis,

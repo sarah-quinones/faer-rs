@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]
 
 use diol::prelude::*;
-use faer::auto;
 use faer::prelude::*;
 use faer::stats::prelude::*;
 use reborrow::*;
@@ -29,7 +28,7 @@ fn bench_new(bencher: Bencher, n: usize) {
 			Default::default(),
 			Par::Seq,
 			dyn_stack::DynStack::new(&mut []),
-			auto!(f64),
+			Default::default(),
 		);
 	});
 }

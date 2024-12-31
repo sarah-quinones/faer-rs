@@ -80,32 +80,32 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 	compute_u: ComputeEigenvectors,
 	par: Par,
 	params: Spec<SelfAdjointEvdParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let n = dim;
 	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
 
-	let prologue = StackReq::try_all_of([
-		temp_mat_scratch::<T>(n, n)?,
-		temp_mat_scratch::<T>(bs, n)?,
-		StackReq::try_any_of([tridiag::tridiag_in_place_scratch::<T>(n, par, params.tridiag.into())?])?,
-		temp_mat_scratch::<T::Real>(n, 1)?.try_array(2)?,
-	])?;
+	let prologue = StackReq::all_of(&[
+		temp_mat_scratch::<T>(n, n),
+		temp_mat_scratch::<T>(bs, n),
+		StackReq::any_of(&[tridiag::tridiag_in_place_scratch::<T>(n, par, params.tridiag.into())]),
+		temp_mat_scratch::<T::Real>(n, 1).array(2),
+	]);
 	if compute_u == ComputeEigenvectors::No {
-		return Ok(prologue);
+		return prologue;
 	}
 
-	StackReq::try_all_of([
+	StackReq::all_of(&[
 		prologue,
-		temp_mat_scratch::<T::Real>(n, if const { T::IS_REAL } { 0 } else { n })?.try_array(2)?,
-		StackReq::try_any_of([
+		temp_mat_scratch::<T::Real>(n, if const { T::IS_REAL } { 0 } else { n }).array(2),
+		StackReq::any_of(&[
 			if n < params.recursion_threshold {
 				StackReq::empty()
 			} else {
-				tridiag_evd::divide_and_conquer_scratch::<T>(n, par)?
+				tridiag_evd::divide_and_conquer_scratch::<T>(n, par)
 			},
-			temp_mat_scratch::<T>(n, 1)?,
-			linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, bs, n)?,
-		])?,
+			temp_mat_scratch::<T>(n, 1),
+			linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, bs, n),
+		]),
 	])
 }
 
@@ -115,7 +115,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	s: DiagMut<'_, T>,
 	u: Option<MatMut<'_, T>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<SelfAdjointEvdParams, T>,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
@@ -240,14 +240,14 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	Ok(())
 }
 
-pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(dim: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
-	temp_mat_scratch::<T>(dim, dim)?.try_array(2)
+	temp_mat_scratch::<T>(dim, dim).array(2)
 }
 
 #[math]
 #[track_caller]
-pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(pinv: MatMut<'_, T>, s: ColRef<'_, T>, u: MatRef<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(pinv: MatMut<'_, T>, s: ColRef<'_, T>, u: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
 	pseudoinverse_from_self_adjoint_evd_with_tolerance(pinv, s, u, zero(), eps::<T::Real>() * from_f64::<T::Real>(u.ncols() as f64), par, stack);
 }
 
@@ -260,7 +260,7 @@ pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 	abs_tol: T::Real,
 	rel_tol: T::Real,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let mut pinv = pinv;
 	let n = u.ncols();
@@ -766,30 +766,30 @@ pub fn evd_scratch<T: ComplexField>(
 	eigen_right: ComputeEigenvectors,
 	par: Par,
 	params: Spec<EvdParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let n = dim;
 
 	if n == 0 {
-		return Ok(StackReq::empty());
+		return StackReq::EMPTY;
 	}
 
 	let compute_eigen = eigen_left == ComputeEigenvectors::Yes || eigen_right == ComputeEigenvectors::Yes;
 	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n - 1, n - 1);
 
-	let H = temp_mat_scratch::<T>(n, n)?;
+	let H = temp_mat_scratch::<T>(n, n);
 	let X = H;
-	let Z = temp_mat_scratch::<T>(n, if compute_eigen { n } else { 0 })?;
-	let householder = temp_mat_scratch::<T>(bs, n)?;
-	let apply = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(n - 1, bs, n - 1)?;
+	let Z = temp_mat_scratch::<T>(n, if compute_eigen { n } else { 0 });
+	let householder = temp_mat_scratch::<T>(bs, n);
+	let apply = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(n - 1, bs, n - 1);
 
-	StackReq::try_all_of([
+	StackReq::all_of(&[
 		H,
 		Z,
-		StackReq::try_any_of([
-			householder.try_and(hessenberg::hessenberg_in_place_scratch::<T>(n, bs, par, params.hessenberg.into())?.try_or(apply)?)?,
-			schur::multishift_qr_scratch::<T>(n, n, compute_eigen, compute_eigen, par, params.schur)?,
+		StackReq::any_of(&[
+			householder.and(hessenberg::hessenberg_in_place_scratch::<T>(n, bs, par, params.hessenberg.into()).or(apply)),
+			schur::multishift_qr_scratch::<T>(n, n, compute_eigen, compute_eigen, par, params.schur),
 			X,
-		])?,
+		]),
 	])
 }
 
@@ -801,7 +801,7 @@ fn evd_imp<T: ComplexField>(
 	u_left: Option<MatMut<'_, T>>,
 	u_right: Option<MatMut<'_, T>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: EvdParams,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
@@ -946,7 +946,7 @@ pub fn evd_cplx<T: RealField>(
 	u_left: Option<MatMut<'_, Complex<T>>>,
 	u_right: Option<MatMut<'_, Complex<T>>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<EvdParams, Complex<T>>,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
@@ -969,7 +969,7 @@ pub fn evd_real<T: RealField>(
 	u_left: Option<MatMut<'_, T>>,
 	u_right: Option<MatMut<'_, T>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<EvdParams, T>,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
@@ -999,7 +999,7 @@ mod general_tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	fn test_cplx_evd(mat: MatRef<'_, c64>) {
 		let n = mat.nrows();
@@ -1027,9 +1027,13 @@ mod general_tests {
 				Some(ul.as_mut()),
 				Some(ur.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					evd_scratch::<c64>(n, ComputeEigenvectors::Yes, ComputeEigenvectors::Yes, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(evd_scratch::<c64>(
+					n,
+					ComputeEigenvectors::Yes,
+					ComputeEigenvectors::Yes,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -1067,9 +1071,13 @@ mod general_tests {
 				Some(ul.as_mut()),
 				Some(ur.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					evd_scratch::<f64>(n, ComputeEigenvectors::Yes, ComputeEigenvectors::Yes, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(evd_scratch::<f64>(
+					n,
+					ComputeEigenvectors::Yes,
+					ComputeEigenvectors::Yes,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -1149,7 +1157,7 @@ mod self_adjoint_tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	fn test_self_adjoint_evd<T: ComplexField>(mat: MatRef<'_, T>) {
 		let n = mat.nrows();
@@ -1169,9 +1177,12 @@ mod self_adjoint_tests {
 				s.as_mut().diagonal_mut(),
 				Some(u.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					self_adjoint_evd_scratch::<T>(n, ComputeEigenvectors::Yes, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(self_adjoint_evd_scratch::<T>(
+					n,
+					ComputeEigenvectors::Yes,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -1188,9 +1199,12 @@ mod self_adjoint_tests {
 				s2.as_mut().diagonal_mut(),
 				None,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					self_adjoint_evd_scratch::<T>(n, ComputeEigenvectors::No, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(self_adjoint_evd_scratch::<T>(
+					n,
+					ComputeEigenvectors::No,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();

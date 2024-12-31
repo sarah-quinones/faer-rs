@@ -1167,7 +1167,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
-	pub fn from_column_major_slice_with_stride(slice: &'a mut [T], nrows: Rows, ncols: Cols, col_stride: usize) -> Self
+	pub fn from_column_major_slice_with_stride_mut(slice: &'a mut [T], nrows: Rows, ncols: Cols, col_stride: usize) -> Self
 	where
 		T: Sized,
 	{

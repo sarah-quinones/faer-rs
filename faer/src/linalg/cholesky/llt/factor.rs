@@ -5,6 +5,7 @@ use crate::linalg::cholesky::ldlt::factor::cholesky_recursion;
 /// Dynamic LDLT regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
+#[derive(Clone, Debug)]
 pub struct LltRegularization<T: ComplexField> {
 	/// Regularized value.
 	pub dynamic_regularization_delta: Real<T>,
@@ -54,7 +55,7 @@ impl<T: ComplexField> Auto<T> for LltParams {
 }
 
 #[inline]
-pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LltParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LltParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
 	temp_mat_scratch::<T>(dim, 1)
@@ -65,7 +66,7 @@ pub fn cholesky_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
 	regularization: LltRegularization<T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<LltParams, T>,
 ) -> Result<LltInfo, LltError> {
 	let params = params.into_inner();

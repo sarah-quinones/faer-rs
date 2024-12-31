@@ -432,7 +432,7 @@ pub fn rank_r_update_clobber<T: ComplexField>(cholesky_factors: MatMut<'_, T>, w
 
 #[cfg(test)]
 mod tests {
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use num_complex::ComplexFloat;
 
 	use super::*;
@@ -489,9 +489,11 @@ mod tests {
 					L.rb_mut(),
 					default(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap(),
-					)),
+					MemStack::new(&mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(
+						n,
+						Par::Seq,
+						_,
+					))),
 					_,
 				)
 				.unwrap();

@@ -766,7 +766,7 @@ pub(crate) fn divide_and_conquer<T: RealField>(
 	u: MatMut<'_, T, usize, usize>,
 
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	qr_fallback_threshold: usize,
 ) -> Result<(), EvdError> {
 	let n = diag.nrows();
@@ -804,18 +804,18 @@ pub(crate) fn divide_and_conquer<T: RealField>(
 	)
 }
 
-pub(crate) fn divide_and_conquer_scratch<T: ComplexField>(n: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub(crate) fn divide_and_conquer_scratch<T: ComplexField>(n: usize, par: Par) -> StackReq {
 	let _ = par;
-	StackReq::try_all_of([
-		StackReq::try_new::<usize>(n)?.try_array(4)?,
-		temp_mat_scratch::<T>(n, 1)?.try_array(6)?,
-		temp_mat_scratch::<T>(n, n)?.try_array(2)?,
+	StackReq::all_of(&[
+		StackReq::new::<usize>(n).array(4),
+		temp_mat_scratch::<T>(n, 1).array(6),
+		temp_mat_scratch::<T>(n, n).array(2),
 	])
 }
 
 #[cfg(test)]
 mod evd_qr_tests {
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	use super::*;
 	use crate::utils::approx::*;
@@ -873,7 +873,7 @@ mod evd_qr_tests {
 				ColMut::from_slice_mut(&mut offdiag).try_as_col_major_mut().unwrap(),
 				u.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(divide_and_conquer_scratch::<f64>(n, Par::Seq).unwrap())),
+				MemStack::new(&mut MemBuffer::new(divide_and_conquer_scratch::<f64>(n, Par::Seq))),
 				4,
 			)
 			.unwrap();

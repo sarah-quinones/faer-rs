@@ -2,7 +2,7 @@ use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
 
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim)
 }
@@ -16,7 +16,7 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	subdiagonal: DiagRef<'_, T>,
 	perm: PermRef<'_, I>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let n = L.nrows();
 	assert!(all(
@@ -98,7 +98,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::cholesky::bunch_kaufman::*;
 
 	#[test]
@@ -127,7 +127,7 @@ mod tests {
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, _).unwrap()) }),
+			MemStack::new(&mut { MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, _)) }),
 			_,
 		);
 
@@ -141,9 +141,7 @@ mod tests {
 			subdiag.as_ref(),
 			perm,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(
-				reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq).unwrap(),
-			)),
+			MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq))),
 		);
 
 		for j in 0..n {

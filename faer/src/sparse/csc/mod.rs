@@ -902,10 +902,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 			&mut new_col_ptr,
 			&mut new_row_idx,
 			*self,
-			DynStack::new(&mut dyn_stack::GlobalMemBuffer::try_new(utils::transpose_dedup_scratch::<I>(
+			MemStack::new(&mut dyn_stack::MemBuffer::try_new(utils::transpose_dedup_scratch::<I>(
 				self.nrows().unbound(),
 				self.ncols().unbound(),
-			)?)?),
+			))?),
 		)
 		.compute_nnz(); // O(1) since it's compressed
 

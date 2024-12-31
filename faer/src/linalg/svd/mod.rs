@@ -61,80 +61,74 @@ fn svd_imp_scratch<T: ComplexField>(
 	compute_u: ComputeSvdVectors,
 	compute_v: ComputeSvdVectors,
 
-	bidiag_svd_scratch: fn(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> Result<StackReq, SizeOverflow>,
+	bidiag_svd_scratch: fn(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> StackReq,
 
 	params: SvdParams,
 
 	par: Par,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	assert!(m >= n);
 
 	let householder_blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
-	let bid = temp_mat_scratch::<T>(m, n)?;
-	let householder_left = temp_mat_scratch::<T>(householder_blocksize, n)?;
-	let householder_right = temp_mat_scratch::<T>(householder_blocksize, n)?;
+	let bid = temp_mat_scratch::<T>(m, n);
+	let householder_left = temp_mat_scratch::<T>(householder_blocksize, n);
+	let householder_right = temp_mat_scratch::<T>(householder_blocksize, n);
 
-	let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag.into())?;
-	let diag = temp_mat_scratch::<T>(n, 1)?;
+	let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag.into());
+	let diag = temp_mat_scratch::<T>(n, 1);
 	let subdiag = diag;
 	let compute_ub = compute_v != ComputeSvdVectors::No;
 	let compute_vb = compute_u != ComputeSvdVectors::No;
-	let u_b = temp_mat_scratch::<T>(if compute_ub { n + 1 } else { 2 }, n + 1)?;
-	let v_b = temp_mat_scratch::<T>(n, if compute_vb { n } else { 0 })?;
+	let u_b = temp_mat_scratch::<T>(if compute_ub { n + 1 } else { 2 }, n + 1);
+	let v_b = temp_mat_scratch::<T>(n, if compute_vb { n } else { 0 });
 
-	let compute_bidiag_svd = bidiag_svd_scratch(n, compute_ub, compute_vb, par, params)?;
+	let compute_bidiag_svd = bidiag_svd_scratch(n, compute_ub, compute_vb, par, params);
 
 	let apply_householder_u =
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, householder_blocksize, match compute_u {
 			ComputeSvdVectors::No => 0,
 			ComputeSvdVectors::Thin => n,
 			ComputeSvdVectors::Full => m,
-		})?;
+		});
 	let apply_householder_v =
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, householder_blocksize, match compute_v {
 			ComputeSvdVectors::No => 0,
 			_ => n,
-		})?;
+		});
 
-	StackReq::try_all_of([
+	StackReq::all_of(&[
 		bid,
 		householder_left,
 		householder_right,
-		StackReq::try_any_of([
+		StackReq::any_of(&[
 			compute_bidiag,
-			StackReq::try_all_of([
+			StackReq::all_of(&[
 				diag,
 				subdiag,
 				u_b,
 				v_b,
-				StackReq::try_any_of([compute_bidiag_svd, StackReq::try_all_of([apply_householder_u, apply_householder_v])?])?,
-			])?,
-		])?,
+				StackReq::any_of(&[compute_bidiag_svd, StackReq::all_of(&[apply_householder_u, apply_householder_v])]),
+			]),
+		]),
 	])
 }
 
-fn bidiag_cplx_svd_scratch<T: ComplexField>(
-	n: usize,
-	compute_u: bool,
-	compute_v: bool,
-	par: Par,
-	params: SvdParams,
-) -> Result<StackReq, SizeOverflow> {
-	StackReq::try_all_of([
-		temp_mat_scratch::<T>(n, 1)?.try_array(4)?,
-		temp_mat_scratch::<T::Real>(n + 1, if compute_u { n + 1 } else { 0 })?,
-		temp_mat_scratch::<T::Real>(n, if compute_v { n } else { 0 })?,
-		bidiag_real_svd_scratch::<T::Real>(n, compute_u, compute_v, par, params)?,
+fn bidiag_cplx_svd_scratch<T: ComplexField>(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> StackReq {
+	StackReq::all_of(&[
+		temp_mat_scratch::<T>(n, 1).array(4),
+		temp_mat_scratch::<T::Real>(n + 1, if compute_u { n + 1 } else { 0 }),
+		temp_mat_scratch::<T::Real>(n, if compute_v { n } else { 0 }),
+		bidiag_real_svd_scratch::<T::Real>(n, compute_u, compute_v, par, params),
 	])
 }
 
-fn bidiag_real_svd_scratch<T: RealField>(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> Result<StackReq, SizeOverflow> {
+fn bidiag_real_svd_scratch<T: RealField>(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> StackReq {
 	if n < params.recursion_threshold {
-		Ok(StackReq::empty())
+		StackReq::EMPTY
 	} else {
-		StackReq::try_all_of([
-			temp_mat_scratch::<T>(2, if compute_u { 0 } else { n + 1 })?,
-			bidiag_svd::divide_and_conquer_scratch::<T>(n, params.recursion_threshold, compute_u, compute_v, par)?,
+		StackReq::all_of(&[
+			temp_mat_scratch::<T>(2, if compute_u { 0 } else { n + 1 }),
+			bidiag_svd::divide_and_conquer_scratch::<T>(n, params.recursion_threshold, compute_u, compute_v, par),
 		])
 	}
 }
@@ -147,7 +141,7 @@ fn compute_bidiag_cplx_svd<T: ComplexField>(
 	mut v: Option<MatMut<'_, T>>,
 	params: SvdParams,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> Result<(), SvdError> {
 	let n = diag.nrows();
 
@@ -238,7 +232,7 @@ fn compute_bidiag_real_svd<T: RealField>(
 	mut v: Option<MatMut<'_, T, usize, usize>>,
 	params: SvdParams,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> Result<(), SvdError> {
 	let n = diag.nrows();
 	for i in 0..n {
@@ -297,10 +291,10 @@ fn svd_imp<T: ComplexField>(
 		v: Option<MatMut<'_, T, usize, usize>>,
 		params: SvdParams,
 		par: Par,
-		stack: &mut DynStack,
+		stack: &mut MemStack,
 	) -> Result<(), SvdError>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: SvdParams,
 ) -> Result<(), SvdError> {
 	assert!(matrix.nrows() >= matrix.ncols());
@@ -390,7 +384,7 @@ fn compute_squareish_svd<T: ComplexField>(
 	u: Option<MatMut<'_, T>>,
 	v: Option<MatMut<'_, T>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: SvdParams,
 ) -> Result<(), SvdError> {
 	if const { T::IS_REAL } {
@@ -416,7 +410,7 @@ pub fn svd_scratch<T: ComplexField>(
 	compute_v: ComputeSvdVectors,
 	par: Par,
 	params: Spec<SvdParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let params = params.into_inner();
 	let mut m = nrows;
 	let mut n = ncols;
@@ -429,7 +423,7 @@ pub fn svd_scratch<T: ComplexField>(
 	}
 
 	if n == 0 {
-		return Ok(StackReq::empty());
+		return StackReq::EMPTY;
 	}
 
 	let bidiag_svd_scratch = if const { T::IS_REAL } {
@@ -442,20 +436,20 @@ pub fn svd_scratch<T: ComplexField>(
 		svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
 	} else {
 		let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
-		StackReq::try_all_of([
-			temp_mat_scratch::<T>(m, n)?,
-			temp_mat_scratch::<T>(bs, n)?,
-			StackReq::try_any_of([
-				StackReq::try_all_of([
-					temp_mat_scratch::<T>(n, n)?,
-					svd_imp_scratch::<T>(n, n, compute_u, compute_v, bidiag_svd_scratch, params, par)?,
-				])?,
+		StackReq::all_of(&[
+			temp_mat_scratch::<T>(m, n),
+			temp_mat_scratch::<T>(bs, n),
+			StackReq::any_of(&[
+				StackReq::all_of(&[
+					temp_mat_scratch::<T>(n, n),
+					svd_imp_scratch::<T>(n, n, compute_u, compute_v, bidiag_svd_scratch, params, par),
+				]),
 				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, bs, match compute_u {
 					ComputeSvdVectors::No => 0,
 					ComputeSvdVectors::Thin => n,
 					ComputeSvdVectors::Full => m,
-				})?,
-			])?,
+				}),
+			]),
 		])
 	}
 }
@@ -467,7 +461,7 @@ pub fn svd<T: ComplexField>(
 	u: Option<MatMut<'_, T>>,
 	v: Option<MatMut<'_, T>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<SvdParams, T>,
 ) -> Result<(), SvdError> {
 	let params = params.into_inner();
@@ -571,10 +565,10 @@ pub fn svd<T: ComplexField>(
 	Ok(())
 }
 
-pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> StackReq {
 	_ = par;
 	let size = Ord::min(nrows, ncols);
-	StackReq::try_all_of([temp_mat_scratch::<T>(nrows, size)?, temp_mat_scratch::<T>(ncols, size)?])
+	StackReq::all_of(&[temp_mat_scratch::<T>(nrows, size), temp_mat_scratch::<T>(ncols, size)])
 }
 
 #[math]
@@ -584,7 +578,7 @@ pub fn pseudoinverse_from_svd<T: ComplexField>(
 	u: MatRef<'_, T>,
 	v: MatRef<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	pseudoinverse_from_svd_with_tolerance(
 		pinv,
@@ -607,7 +601,7 @@ pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	abs_tol: T::Real,
 	rel_tol: T::Real,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let mut pinv = pinv;
 	let m = u.nrows();
@@ -652,7 +646,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	#[track_caller]
 	fn test_svd<T: ComplexField>(mat: MatRef<'_, T>) {
@@ -676,9 +670,14 @@ mod tests {
 				Some(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					svd_scratch::<T>(m, n, ComputeSvdVectors::Full, ComputeSvdVectors::Full, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(svd_scratch::<T>(
+					m,
+					n,
+					ComputeSvdVectors::Full,
+					ComputeSvdVectors::Full,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -699,9 +698,14 @@ mod tests {
 				Some(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					svd_scratch::<T>(m, n, ComputeSvdVectors::Thin, ComputeSvdVectors::Thin, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(svd_scratch::<T>(
+					m,
+					n,
+					ComputeSvdVectors::Thin,
+					ComputeSvdVectors::Thin,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -719,9 +723,14 @@ mod tests {
 				Some(u2.as_mut()),
 				None,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					svd_scratch::<T>(m, n, ComputeSvdVectors::Thin, ComputeSvdVectors::No, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(svd_scratch::<T>(
+					m,
+					n,
+					ComputeSvdVectors::Thin,
+					ComputeSvdVectors::No,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -740,9 +749,14 @@ mod tests {
 				None,
 				Some(v2.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					svd_scratch::<T>(m, n, ComputeSvdVectors::No, ComputeSvdVectors::Thin, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(svd_scratch::<T>(
+					m,
+					n,
+					ComputeSvdVectors::No,
+					ComputeSvdVectors::Thin,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -759,9 +773,14 @@ mod tests {
 				None,
 				None,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					svd_scratch::<T>(m, n, ComputeSvdVectors::No, ComputeSvdVectors::No, Par::Seq, params).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(svd_scratch::<T>(
+					m,
+					n,
+					ComputeSvdVectors::No,
+					ComputeSvdVectors::No,
+					Par::Seq,
+					params,
+				))),
 				params,
 			)
 			.unwrap();
@@ -922,9 +941,7 @@ mod tests {
 			None,
 			params,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(
-				bidiag_real_svd_scratch::<f64>(n, false, false, Par::Seq, params).unwrap(),
-			)),
+			MemStack::new(&mut MemBuffer::new(bidiag_real_svd_scratch::<f64>(n, false, false, Par::Seq, params))),
 		)
 		.unwrap();
 

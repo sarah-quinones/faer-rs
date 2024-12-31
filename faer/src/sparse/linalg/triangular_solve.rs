@@ -182,6 +182,161 @@ pub fn solve_lower_triangular_in_place<I: Index, T: ComplexField>(
 	}
 }
 
+/// Assuming `tril` is a lower triangular matrix, solves the equation `Op(tril) * X = rhs`, and
+/// stores the result in `rhs`, where `Op` is either the conjugate or the identity depending on the
+/// value of `conj_tril`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the first stored element in each column.
+#[track_caller]
+#[math]
+pub fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
+	tril: SparseColMatRef<'_, I, T>,
+	conj_tril: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+) {
+	let _ = par;
+	assert!(all(tril.nrows() == tril.ncols(), rhs.nrows() == tril.nrows()));
+
+	with_dim!(N, rhs.nrows());
+	with_dim!(K, rhs.ncols());
+
+	let mut x = rhs.as_shape_mut(N, K);
+	let l = tril.as_shape(N, N);
+
+	let mut k = IdxInc::ZERO;
+	while let Some(k0) = K.try_check(*k) {
+		let k1 = K.try_check(*k + 1);
+		let k2 = K.try_check(*k + 2);
+		let k3 = K.try_check(*k + 3);
+
+		match (k1, k2, k3) {
+			(Some(_), Some(_), Some(k3)) => {
+				let mut x = x.rb_mut().get_mut(.., k..k3.next()).col_iter_mut();
+				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) = (x.next(), x.next(), x.next(), x.next()) else {
+					panic!()
+				};
+
+				for j in N.indices().rev() {
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
+					let mut acc0a = zero::<T>();
+					let mut acc1a = zero::<T>();
+					let mut acc2a = zero::<T>();
+					let mut acc3a = zero::<T>();
+
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
+						let lij = conj_tril.apply_rt(lij);
+						acc0a = acc0a + lij * x0[i];
+						acc1a = acc1a + lij * x1[i];
+						acc2a = acc2a + lij * x2[i];
+						acc3a = acc3a + lij * x3[i];
+					}
+
+					let (i, d) = first.unwrap();
+					debug_assert!(i == j);
+					let d = conj_tril.apply_rt(&recip(*d));
+
+					x0[j] = x0[j] * d - acc0a;
+					x1[j] = x1[j] * d - acc1a;
+					x2[j] = x2[j] * d - acc2a;
+					x3[j] = x3[j] * d - acc3a;
+				}
+				k = k3.next();
+			},
+			(Some(_), Some(k2), _) => {
+				let mut x = x.rb_mut().get_mut(.., k..k2.next()).col_iter_mut();
+				let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+					panic!()
+				};
+
+				for j in N.indices().rev() {
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
+					let mut acc0a = zero::<T>();
+					let mut acc1a = zero::<T>();
+					let mut acc2a = zero::<T>();
+
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
+						let lij = conj_tril.apply_rt(lij);
+						acc0a = acc0a + lij * x0[i];
+						acc1a = acc1a + lij * x1[i];
+						acc2a = acc2a + lij * x2[i];
+					}
+
+					let (i, d) = first.unwrap();
+					debug_assert!(i == j);
+					let d = conj_tril.apply_rt(&recip(*d));
+
+					x0[j] = x0[j] * d - acc0a;
+					x1[j] = x1[j] * d - acc1a;
+					x2[j] = x2[j] * d - acc2a;
+				}
+
+				k = k2.next();
+			},
+			(Some(k1), _, _) => {
+				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
+				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
+
+				for j in N.indices().rev() {
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
+					let mut acc0a = zero::<T>();
+					let mut acc1a = zero::<T>();
+
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
+						let lij = conj_tril.apply_rt(lij);
+						acc0a = acc0a + lij * x0[i];
+						acc1a = acc1a + lij * x1[i];
+					}
+
+					let (i, d) = first.unwrap();
+					debug_assert!(i == j);
+					let d = conj_tril.apply_rt(&recip(*d));
+
+					x0[j] = x0[j] * d - acc0a;
+					x1[j] = x1[j] * d - acc1a;
+				}
+
+				k = k1.next();
+			},
+			(_, _, _) => {
+				let mut x0 = x.rb_mut().get_mut(.., k0);
+
+				for j in N.indices().rev() {
+					let mut li = l.row_idx_of_col(j);
+					let mut lv = l.val_of_col(j).iter();
+					let first = (li.next().zip(lv.next()));
+
+					let mut acc0a = zero::<T>();
+
+					for (i, lij) in iter::zip(li.rev(), lv.rev()) {
+						let lij = conj_tril.apply_rt(lij);
+						acc0a = acc0a + lij * x0[i];
+					}
+
+					let (i, d) = first.unwrap();
+					debug_assert!(i == j);
+					let d = conj_tril.apply_rt(&recip(*d));
+
+					x0[j] = x0[j] * d - acc0a;
+				}
+
+				k = k0.next();
+			},
+		}
+	}
+}
+
 /// Assuming `tril` is a lower triangular matrix, solves the equation `Op(tril).transpose() * X =
 /// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
 /// depending on the value of `conj_tril`.

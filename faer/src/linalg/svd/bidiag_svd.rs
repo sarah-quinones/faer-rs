@@ -581,7 +581,7 @@ fn compute_svd_of_m<T: RealField>(
 	diag: ColMut<'_, T, usize, ContiguousFwd>,
 	col0: ColRef<'_, T, usize, ContiguousFwd>,
 	outer_perm: &[usize],
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let mut diag = diag;
 	let mut um = um;
@@ -923,7 +923,7 @@ fn deflate<T: RealField>(
 	transpositions: &mut [usize],
 	perm: &mut [usize],
 	k: usize,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> (usize, usize) {
 	let mut diag = diag;
 	let mut col0 = col0;
@@ -1157,23 +1157,23 @@ pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
 	compute_u: bool,
 	compute_v: bool,
 	par: Par,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let qr_fallback_threshold = Ord::max(qr_fallback_threshold, 4);
 
 	if n < qr_fallback_threshold {
-		temp_mat_scratch::<T>(n + 1, n + 1)?.try_array(2)
+		temp_mat_scratch::<T>(n + 1, n + 1).array(2)
 	} else {
 		let _ = par;
-		let perm = StackReq::try_new::<usize>(n)?.try_array(8)?;
-		let jacobi_coeffs = StackReq::try_new::<JacobiRotation<T>>(n)?;
+		let perm = StackReq::new::<usize>(n).array(8);
+		let jacobi_coeffs = StackReq::new::<JacobiRotation<T>>(n);
 
-		let um = temp_mat_scratch::<T>(n + 1, n + 1)?;
-		let vm = temp_mat_scratch::<T>(n, if compute_v { n } else { 0 })?;
+		let um = temp_mat_scratch::<T>(n + 1, n + 1);
+		let vm = temp_mat_scratch::<T>(n, if compute_v { n } else { 0 });
 
-		let combined_u = temp_mat_scratch::<T>(if compute_u { n + 1 } else { 2 }, n + 1)?;
+		let combined_u = temp_mat_scratch::<T>(if compute_u { n + 1 } else { 2 }, n + 1);
 		let combined_v = vm;
 
-		StackReq::try_all_of([perm, jacobi_coeffs, um, vm, combined_u, combined_v])
+		StackReq::all_of(&[perm, jacobi_coeffs, um, vm, combined_u, combined_v])
 	}
 }
 
@@ -1184,7 +1184,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 	u: MatU<'_, T>,
 	v: Option<MatMut<'_, T>>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	qr_fallback_threshold: usize,
 ) -> Result<(), SvdError> {
 	let qr_fallback_threshold = Ord::max(qr_fallback_threshold, 4);
@@ -1317,7 +1317,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 
 		let stack_bytes = stack.len_bytes();
 		let (mut stack1, stack2) = stack.make_uninit::<u8>(stack_bytes / 2);
-		let stack1 = DynStack::new(&mut stack1);
+		let stack1 = MemStack::new(&mut stack1);
 
 		let mut r1 = Ok(());
 		let mut r2 = Ok(());
@@ -1496,7 +1496,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 
 	let _v_is_none = v.is_none();
 
-	let update_v = |mut v: Option<MatMut<'_, T>>, par: Par, stack: &mut DynStack| {
+	let update_v = |mut v: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack| {
 		let (mut combined_v, _) = unsafe { temp_mat_uninit(n, allocate_vm * n, stack) };
 		let mut combined_v = if v.is_some() {
 			Some(combined_v.as_mat_mut().subcols_mut(0, n).try_as_col_major_mut().unwrap())
@@ -1533,7 +1533,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 		}
 	};
 
-	let update_u = |mut u: MatMut<'_, T>, par: Par, stack: &mut DynStack| {
+	let update_u = |mut u: MatMut<'_, T>, par: Par, stack: &mut MemStack| {
 		let n = n;
 		let k = k;
 		let rem = rem;
@@ -1596,9 +1596,9 @@ pub(super) fn divide_and_conquer<T: RealField>(
 		MatU::Full(u) => match par {
 			#[cfg(feature = "rayon")]
 			Par::Rayon(_) if !_v_is_none => {
-				let req_v = crate::linalg::temp_mat_scratch::<T>(n, n).unwrap();
+				let req_v = crate::linalg::temp_mat_scratch::<T>(n, n);
 				let (mem_v, stack_u) = stack.make_aligned_uninit::<u8>(req_v.size_bytes(), req_v.align_bytes());
-				let stack_v = DynStack::new(mem_v);
+				let stack_v = MemStack::new(mem_v);
 				crate::utils::thread::join_raw(|par| update_v(v.rb_mut(), par, stack_v), |par| update_u(u, par, stack_u), par);
 			},
 			_ => {
@@ -1617,7 +1617,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 
 #[cfg(test)]
 mod tests {
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	use super::*;
 	use crate::utils::approx::*;
@@ -1740,9 +1740,7 @@ mod tests {
 				MatU::Full(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					divide_and_conquer_scratch::<f64>(n, 4, true, true, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(divide_and_conquer_scratch::<f64>(n, 4, true, true, Par::Seq))),
 				4,
 			)
 			.unwrap();
@@ -1800,9 +1798,7 @@ mod tests {
 				MatU::Full(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					divide_and_conquer_scratch::<f32>(n, 4, true, true, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(divide_and_conquer_scratch::<f32>(n, 4, true, true, Par::Seq))),
 				4,
 			)
 			.unwrap();
@@ -1852,7 +1848,7 @@ mod tests {
 			&mut *vec![0; n],
 			perm,
 			k,
-			DynStack::new_any(&mut *vec![MaybeUninit::new(0usize); 2 * n]),
+			MemStack::new_any(&mut *vec![MaybeUninit::new(0usize); 2 * n]),
 		);
 		assert!(all(jacobi_0i == 2, jacobi_ij == 0));
 
@@ -1912,7 +1908,7 @@ mod tests {
 			&mut *vec![0; n],
 			perm,
 			k,
-			DynStack::new_any(&mut *vec![MaybeUninit::new(0usize); 2 * n]),
+			MemStack::new_any(&mut *vec![MaybeUninit::new(0usize); 2 * n]),
 		);
 		assert!(all(jacobi_0i == 0, jacobi_ij == 1));
 
@@ -1978,7 +1974,7 @@ mod tests {
 			&mut *vec![0; n],
 			perm,
 			k,
-			DynStack::new_any(&mut *vec![MaybeUninit::new(0usize); 2 * n]),
+			MemStack::new_any(&mut *vec![MaybeUninit::new(0usize); 2 * n]),
 		);
 		assert!(all(jacobi_0i == 1, jacobi_ij == 1));
 

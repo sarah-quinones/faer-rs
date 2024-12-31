@@ -2,7 +2,7 @@ use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
 
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(nrows, ncols)
 }
@@ -15,7 +15,7 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	row_perm: PermRef<'_, I>,
 	col_perm: PermRef<'_, I>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let m = L.nrows();
 	let n = U.ncols();
@@ -87,7 +87,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::lu::full_pivoting::*;
 
 	#[test]
@@ -115,7 +115,7 @@ mod tests {
 				col_perm_fwd,
 				col_perm_bwd,
 				Par::Seq,
-				DynStack::new(&mut { GlobalMemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, _).unwrap()) }),
+				MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, _)) }),
 				_,
 			);
 
@@ -129,9 +129,7 @@ mod tests {
 				row_perm,
 				col_perm,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					reconstruct::reconstruct_scratch::<usize, c64>(m, n, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(m, n, Par::Seq))),
 			);
 
 			assert!(A_rec ~ A);

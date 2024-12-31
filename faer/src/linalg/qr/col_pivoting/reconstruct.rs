@@ -1,11 +1,11 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par) -> StackReq {
 	_ = par;
-	StackReq::try_or(
-		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, blocksize, ncols)?,
-		crate::perm::permute_cols_in_place_scratch::<I, T>(nrows, ncols)?,
+	StackReq::or(
+		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, blocksize, ncols),
+		crate::perm::permute_cols_in_place_scratch::<I, T>(nrows, ncols),
 	)
 }
 
@@ -17,7 +17,7 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	R: MatRef<'_, T>,
 	col_perm: PermRef<'_, I>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let m = Q_basis.nrows();
 	let n = R.ncols();
@@ -47,7 +47,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::qr::col_pivoting::*;
 
 	#[test]
@@ -75,7 +75,7 @@ mod tests {
 				col_perm_fwd,
 				col_perm_bwd,
 				Par::Seq,
-				DynStack::new(&mut { GlobalMemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(m, n, 4, Par::Seq, _).unwrap()) }),
+				MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(m, n, 4, Par::Seq, _)) }),
 				_,
 			);
 
@@ -89,9 +89,7 @@ mod tests {
 				QR.get(..size, ..),
 				col_perm,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					reconstruct::reconstruct_scratch::<usize, c64>(m, n, 4, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(m, n, 4, Par::Seq))),
 			);
 
 			assert!(A_rec ~ A);

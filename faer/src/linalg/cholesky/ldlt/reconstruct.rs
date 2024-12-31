@@ -2,14 +2,14 @@ use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
 
-pub fn reconstruct_scratch<T: ComplexField>(dim: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim)
 }
 
 #[track_caller]
 #[math]
-pub fn reconstruct<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn reconstruct<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef<'_, T>, par: Par, stack: &mut MemStack) {
 	let mut out = out;
 	_ = stack;
 
@@ -55,7 +55,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::cholesky::ldlt::*;
 
 	#[test]
@@ -78,7 +78,7 @@ mod tests {
 			L.as_mut(),
 			Default::default(),
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap()) }),
+			MemStack::new(&mut MemBuffer::new(factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _))),
 			_,
 		)
 		.unwrap();
@@ -91,7 +91,7 @@ mod tests {
 			L.as_ref(),
 			L.diagonal(),
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(reconstruct::reconstruct_scratch::<c64>(n, Par::Seq).unwrap())),
+			MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<c64>(n, Par::Seq))),
 		);
 
 		for j in 0..n {

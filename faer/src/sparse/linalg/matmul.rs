@@ -59,10 +59,7 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 
 /// Computes the size and alignment of the workspace required to perform the numeric matrix
 /// multiplication into `dst`.
-pub fn sparse_sparse_matmul_numeric_scratch<I: Index, T: ComplexField>(
-	dst: SymbolicSparseColMatRef<'_, I>,
-	par: Par,
-) -> Result<StackReq, SizeOverflow> {
+pub fn sparse_sparse_matmul_numeric_scratch<I: Index, T: ComplexField>(dst: SymbolicSparseColMatRef<'_, I>, par: Par) -> StackReq {
 	temp_mat_scratch::<T>(dst.nrows(), par.degree())
 }
 
@@ -81,7 +78,7 @@ pub fn sparse_sparse_matmul_numeric<I: Index, T: ComplexField, LhsT: Conjugate<C
 	alpha: T,
 	info: &SparseMatMulInfo,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	assert!(all(dst.nrows() == lhs.nrows(), dst.ncols() == rhs.ncols(), lhs.ncols() == rhs.nrows()));
 	let m = lhs.nrows();
@@ -187,10 +184,7 @@ pub fn sparse_sparse_matmul<I: Index, T: ComplexField, LhsT: Conjugate<Canonical
 		alpha,
 		&info,
 		par,
-		DynStack::new(&mut GlobalMemBuffer::try_new(sparse_sparse_matmul_numeric_scratch::<I, T>(
-			symbolic.rb(),
-			par,
-		)?)?),
+		MemStack::new(&mut MemBuffer::try_new(sparse_sparse_matmul_numeric_scratch::<I, T>(symbolic.rb(), par))?),
 	);
 
 	Ok(SparseColMat::new(symbolic, val))

@@ -29,7 +29,6 @@
 
 use crate::assert;
 use crate::internal_prelude_sp::*;
-use core::mem::MaybeUninit;
 
 impl<I: Index> ColamdCol<I> {
 	fn is_dead_principal(&self) -> bool {
@@ -84,32 +83,32 @@ fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I
 
 /// Computes the size and alignment of required workspace for computing the COLAMD ordering of a
 /// matrix.
-pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> Result<StackReq, SizeOverflow> {
+pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> StackReq {
 	let m = nrows;
 	let n = ncols;
-	let n_scratch = StackReq::try_new::<I>(n)?;
-	let m_scratch = StackReq::try_new::<I>(m)?;
-	let np1_scratch = StackReq::try_new::<I>(n + 1)?;
-	let size = StackReq::try_new::<I>(
+	let n_scratch = StackReq::new::<I>(n);
+	let m_scratch = StackReq::new::<I>(m);
+	let np1_scratch = StackReq::new::<I>(n + 1);
+	let size = StackReq::new::<I>(
 		A_nnz
 			.checked_mul(2)
 			.and_then(|x| x.checked_add(A_nnz / 5))
 			.and_then(|p| p.checked_add(n))
-			.ok_or(SizeOverflow)?,
-	)?;
+			.unwrap_or(usize::MAX),
+	);
 
-	StackReq::try_or(
-		StackReq::try_all_of([
-			StackReq::try_new::<ColamdCol<I>>(n + 1)?,
-			StackReq::try_new::<ColamdRow<I>>(m + 1)?,
+	StackReq::or(
+		StackReq::all_of(&[
+			StackReq::new::<ColamdCol<I>>(n + 1),
+			StackReq::new::<ColamdRow<I>>(m + 1),
 			np1_scratch,
 			size,
-		])?,
-		StackReq::try_all_of([
+		]),
+		StackReq::all_of(&[
 			n_scratch,
 			n_scratch,
-			StackReq::try_or(StackReq::try_and(n_scratch, m_scratch)?, StackReq::try_all_of([n_scratch; 3])?)?,
-		])?,
+			StackReq::or(StackReq::and(n_scratch, m_scratch), StackReq::all_of(&[n_scratch; 3])),
+		]),
 	)
 }
 
@@ -123,7 +122,7 @@ pub fn order<I: Index>(
 	perm_inv: &mut [I],
 	A: SymbolicSparseColMatRef<'_, I>,
 	control: Control,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) -> Result<(), FaerError> {
 	let m = A.nrows();
 	let n = A.ncols();
@@ -131,64 +130,58 @@ pub fn order<I: Index>(
 	let SI = I::Signed::truncate;
 
 	{
-		let (col, stack) = stack.make_uninit::<ColamdCol<I>>(n + 1);
-		let (row, stack) = stack.make_uninit::<ColamdRow<I>>(m + 1);
+		let (col, stack) = unsafe { stack.make_raw::<ColamdCol<I>>(n + 1) };
+		let (row, stack) = unsafe { stack.make_raw::<ColamdRow<I>>(m + 1) };
 
 		let nnz = A.compute_nnz();
-		let (p, stack) = stack.make_uninit::<I>(n + 1);
+		let (p, stack) = unsafe { stack.make_raw::<I>(n + 1) };
 
 		let size = (2 * nnz).checked_add(nnz / 5).and_then(|p| p.checked_add(n));
-		let (new_row_indices, _) = stack.make_uninit::<I>(size.ok_or(FaerError::IndexOverflow)?);
+		let (new_row_indices, _) = unsafe { stack.make_raw::<I>(size.ok_or(FaerError::IndexOverflow)?) };
 
-		p[0] = MaybeUninit::new(I(0));
+		p[0] = I(0);
 		for j in 0..n {
-			unsafe {
-				let row_ind = A.row_idx_of_col_raw(j) as *const [I] as *const [MaybeUninit<I>];
-				p[j + 1] = MaybeUninit::new(p[j].assume_init() + I(row_ind.len()));
-				new_row_indices[p[j].assume_init().zx()..p[j + 1].assume_init().zx()].copy_from_slice(&*row_ind);
-			}
+			let row_ind = A.row_idx_of_col_raw(j);
+			p[j + 1] = p[j] + I(row_ind.len());
+			new_row_indices[p[j].zx()..p[j + 1].zx()].copy_from_slice(&*row_ind);
 		}
-		let p = unsafe { &mut *(p as *mut [MaybeUninit<I>] as *mut [I]) };
-		let A = unsafe { &mut *(new_row_indices as *mut [MaybeUninit<I>] as *mut [I]) };
+		let A = new_row_indices;
 
 		for c in 0..n {
-			col[c] = MaybeUninit::new(ColamdCol::<I> {
+			col[c] = ColamdCol::<I> {
 				start: p[c].to_signed(),
 				length: p[c + 1].to_signed() - p[c].to_signed(),
 				shared1: SI(1),
 				shared2: SI(0),
 				shared3: SI(NONE),
 				shared4: SI(NONE),
-			});
+			};
 		}
 
-		col[n] = MaybeUninit::new(ColamdCol::<I> {
+		col[n] = ColamdCol::<I> {
 			start: SI(NONE),
 			length: SI(NONE),
 			shared1: SI(NONE),
 			shared2: SI(NONE),
 			shared3: SI(NONE),
 			shared4: SI(NONE),
-		});
+		};
 
 		for r in 0..m {
-			row[r] = MaybeUninit::new(ColamdRow::<I> {
+			row[r] = ColamdRow::<I> {
 				start: SI(0),
 				length: SI(0),
 				shared1: SI(NONE),
 				shared2: SI(NONE),
-			});
+			};
 		}
 
-		row[m] = MaybeUninit::new(ColamdRow::<I> {
+		row[m] = ColamdRow::<I> {
 			start: SI(NONE),
 			length: SI(NONE),
 			shared1: SI(NONE),
 			shared2: SI(NONE),
-		});
-
-		let col = unsafe { &mut *(col as *mut [MaybeUninit<ColamdCol<I>>] as *mut [ColamdCol<I>]) };
-		let row = unsafe { &mut *(row as *mut [MaybeUninit<ColamdRow<I>>] as *mut [ColamdRow<I>]) };
+		};
 
 		let mut jumbled = false;
 
@@ -836,6 +829,11 @@ struct ColamdCol<I: Index> {
 	shared3: I::Signed,
 	shared4: I::Signed,
 }
+
+unsafe impl<I: Index> bytemuck::Zeroable for ColamdCol<I> {}
+unsafe impl<I: Index> bytemuck::Pod for ColamdCol<I> {}
+unsafe impl<I: Index> bytemuck::Zeroable for ColamdRow<I> {}
+unsafe impl<I: Index> bytemuck::Pod for ColamdRow<I> {}
 
 /// Tuning parameters for the AMD implementation.
 #[derive(Debug, Copy, Clone, PartialEq)]

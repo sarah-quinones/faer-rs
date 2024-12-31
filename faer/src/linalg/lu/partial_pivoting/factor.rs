@@ -207,15 +207,10 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
-	nrows: usize,
-	ncols: usize,
-	par: Par,
-	params: Spec<PartialPivLuParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<PartialPivLuParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
-	StackReq::try_new::<I>(Ord::min(nrows, ncols))
+	StackReq::new::<I>(Ord::min(nrows, ncols))
 }
 
 pub fn lu_in_place<'out, I: Index, T: ComplexField>(
@@ -223,7 +218,7 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	perm: &'out mut [I],
 	perm_inv: &'out mut [I],
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<PartialPivLuParams, T>,
 ) -> (PartialPivLuInfo, PermRef<'out, I>) {
 	let _ = &params;
@@ -275,7 +270,7 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	use super::*;
 	use crate::stats::prelude::*;
@@ -315,9 +310,7 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params.into()).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params.into()))),
 				params.into(),
 			)
 			.1;
@@ -362,7 +355,7 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, _).unwrap())),
+				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, _))),
 				_,
 			)
 			.1;

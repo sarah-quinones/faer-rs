@@ -1,7 +1,7 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
 	super::solve::solve_in_place_scratch::<I, T>(dim, dim, par)
 }
@@ -15,7 +15,7 @@ pub fn inverse<I: Index, T: ComplexField>(
 	subdiagonal: DiagRef<'_, T>,
 	perm: PermRef<'_, I>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let n = L.nrows();
 	assert!(all(

@@ -1,7 +1,7 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn inverse_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn inverse_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par) -> StackReq {
 	_ = par;
 	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, blocksize, dim)
 }
@@ -13,7 +13,7 @@ pub fn inverse<T: ComplexField>(
 	Q_coeff: MatRef<'_, T>,
 	R: MatRef<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	// A = Q R
 	// A^-1 = R^-1 Q^-1
@@ -51,7 +51,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::qr::no_pivoting::*;
 
 	#[test]
@@ -73,7 +73,7 @@ mod tests {
 			QR.as_mut(),
 			Q_coeff.as_mut(),
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(factor::qr_in_place_scratch::<c64>(n, n, 4, Par::Seq, _).unwrap()) }),
+			MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<c64>(n, n, 4, Par::Seq, _)) }),
 			_,
 		);
 
@@ -86,7 +86,7 @@ mod tests {
 			Q_coeff.as_ref(),
 			QR.as_ref(),
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(inverse::inverse_scratch::<c64>(n, 4, Par::Seq).unwrap())),
+			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<c64>(n, 4, Par::Seq))),
 		);
 
 		assert!(A_inv * A ~ Mat::identity(n, n));

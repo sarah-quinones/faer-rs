@@ -1,7 +1,7 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn reconstruct_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par) -> StackReq {
 	_ = par;
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, blocksize, ncols)
 }
@@ -13,7 +13,7 @@ pub fn reconstruct<T: ComplexField>(
 	Q_coeff: MatRef<'_, T>,
 	R: MatRef<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let m = Q_basis.nrows();
 	let n = R.ncols();
@@ -41,7 +41,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::qr::no_pivoting::*;
 
 	#[test]
@@ -64,7 +64,7 @@ mod tests {
 				QR.as_mut(),
 				Q_coeff.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut { GlobalMemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, _).unwrap()) }),
+				MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, _)) }),
 				_,
 			);
 
@@ -77,9 +77,7 @@ mod tests {
 				Q_coeff.as_ref(),
 				QR.get(..size, ..),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					reconstruct::reconstruct_scratch::<c64>(m, n, 4, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<c64>(m, n, 4, Par::Seq))),
 			);
 
 			assert!(A_rec ~ A);

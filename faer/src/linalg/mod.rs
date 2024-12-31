@@ -1,13 +1,13 @@
 use crate::internal_prelude::*;
 use core::marker::PhantomData;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::StackReq;
 use faer_traits::ComplexField;
 
 use crate::Shape;
 use crate::mat::matown::align_for;
 use crate::mat::{AsMatMut, MatMut};
 
-pub fn temp_mat_scratch<T: ComplexField>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+pub fn temp_mat_scratch<T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	let align = align_for(size_of::<T>(), align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows;
@@ -15,7 +15,7 @@ pub fn temp_mat_scratch<T: ComplexField>(nrows: usize, ncols: usize) -> Result<S
 		col_stride = col_stride.next_multiple_of(align / size_of::<T>());
 	}
 	let len = col_stride.checked_mul(ncols).unwrap();
-	StackReq::try_new_aligned::<T>(len, align)
+	StackReq::new_aligned::<T>(len, align)
 }
 
 struct DynMat<'a, T: ComplexField, Rows: Shape, Cols: Shape> {
@@ -65,8 +65,8 @@ impl<T> Drop for DropGuard<T> {
 pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape + 'a>(
 	nrows: Rows,
 	ncols: Cols,
-	stack: &'a mut DynStack,
-) -> (impl 'a + AsMatMut<T = T, Rows = Rows, Cols = Cols>, &'a mut DynStack) {
+	stack: &'a mut MemStack,
+) -> (impl 'a + AsMatMut<T = T, Rows = Rows, Cols = Cols>, &'a mut MemStack) {
 	let align = align_for(size_of::<T>(), align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows.unbound();
@@ -106,8 +106,8 @@ pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: 
 pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape + 'a>(
 	nrows: Rows,
 	ncols: Cols,
-	stack: &'a mut DynStack,
-) -> (impl 'a + AsMatMut<T = T, Rows = Rows, Cols = Cols>, &'a mut DynStack) {
+	stack: &'a mut MemStack,
+) -> (impl 'a + AsMatMut<T = T, Rows = Rows, Cols = Cols>, &'a mut MemStack) {
 	let align = align_for(size_of::<T>(), align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows.unbound();

@@ -26,28 +26,23 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 	}
 }
 
-pub fn hessenberg_in_place_scratch<T: ComplexField>(
-	dim: usize,
-	blocksize: usize,
-	par: Par,
-	params: Spec<HessenbergParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
 	let params = params.into_inner();
 	let _ = par;
 	let n = dim;
 	if n * n < params.blocking_threshold {
-		StackReq::try_any_of([StackReq::try_all_of([
-			temp_mat_scratch::<T>(n, 1)?.try_array(3)?,
-			temp_mat_scratch::<T>(n, par.degree())?,
-		])?])
+		StackReq::any_of(&[StackReq::all_of(&[
+			temp_mat_scratch::<T>(n, 1).array(3),
+			temp_mat_scratch::<T>(n, par.degree()),
+		])])
 	} else {
-		StackReq::try_all_of([
-			temp_mat_scratch::<T>(n, blocksize)?,
-			temp_mat_scratch::<T>(blocksize, 1)?,
-			StackReq::try_any_of([
-				StackReq::try_all_of([temp_mat_scratch::<T>(n, 1)?, temp_mat_scratch::<T>(n, par.degree())?])?,
-				temp_mat_scratch::<T>(n, blocksize)?,
-			])?,
+		StackReq::all_of(&[
+			temp_mat_scratch::<T>(n, blocksize),
+			temp_mat_scratch::<T>(blocksize, 1),
+			StackReq::any_of(&[
+				StackReq::all_of(&[temp_mat_scratch::<T>(n, 1), temp_mat_scratch::<T>(n, par.degree())]),
+				temp_mat_scratch::<T>(n, blocksize),
+			]),
 		])
 	}
 }
@@ -287,7 +282,7 @@ fn hessenberg_fused_op<T: ComplexField>(
 }
 
 #[math]
-fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: HessenbergParams) {
+fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: HessenbergParams) {
 	assert!(all(A.nrows() == A.ncols(), H.ncols() == A.ncols().saturating_sub(1)));
 
 	let n = A.nrows();
@@ -447,7 +442,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 	H: MatMut<'_, T>,
 	beta: ColMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: HessenbergParams,
 ) {
 	let n = A.nrows();
@@ -544,7 +539,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 }
 
 #[track_caller]
-pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<HessenbergParams, T>) {
+pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<HessenbergParams, T>) {
 	let params = params.into_inner();
 	assert!(all(A.nrows() == A.ncols(), H.ncols() == A.ncols().saturating_sub(1)));
 
@@ -558,7 +553,7 @@ pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, 
 }
 
 #[math]
-fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: HessenbergParams) {
+fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: HessenbergParams) {
 	let n = A.nrows();
 	let b = H.nrows();
 	let mut A = A;
@@ -680,7 +675,7 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 
 #[cfg(test)]
 mod tests {
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use std::mem::MaybeUninit;
 
 	use super::*;
@@ -710,7 +705,7 @@ mod tests {
 				V.rb_mut(),
 				H.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut [MaybeUninit::uninit(); 1024]),
+				MemStack::new(&mut [MaybeUninit::uninit(); 1024]),
 				auto!(f64),
 			);
 
@@ -732,8 +727,8 @@ mod tests {
 					if iter == 0 { Conj::Yes } else { Conj::No },
 					A.rb_mut(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n, b, n + 1).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n, b, n + 1),
 					)),
 				);
 			}
@@ -774,7 +769,7 @@ mod tests {
 					V.rb_mut(),
 					H.as_mut(),
 					par,
-					DynStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
+					MemStack::new(&mut [MaybeUninit::uninit(); 8 * 1024]),
 					HessenbergParams {
 						par_threshold: 0,
 						..auto!(c64)
@@ -800,8 +795,8 @@ mod tests {
 						if iter == 0 { Conj::Yes } else { Conj::No },
 						A.rb_mut(),
 						Par::Seq,
-						DynStack::new(&mut GlobalMemBuffer::new(
-							householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, b, n + 1).unwrap(),
+						MemStack::new(&mut MemBuffer::new(
+							householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, b, n + 1),
 						)),
 					);
 				}
@@ -844,7 +839,7 @@ mod tests {
 					V.rb_mut(),
 					H.as_mut(),
 					par,
-					DynStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]),
+					MemStack::new(&mut [MaybeUninit::uninit(); 16 * 1024]),
 					HessenbergParams {
 						par_threshold: 0,
 						..auto!(c64)
@@ -870,8 +865,8 @@ mod tests {
 						if iter == 0 { Conj::Yes } else { Conj::No },
 						A.rb_mut(),
 						Par::Seq,
-						DynStack::new(&mut GlobalMemBuffer::new(
-							householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, b, n + 1).unwrap(),
+						MemStack::new(&mut MemBuffer::new(
+							householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, b, n + 1),
 						)),
 					);
 				}

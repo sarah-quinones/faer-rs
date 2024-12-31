@@ -10,7 +10,7 @@ mod tests {
 	use crate::internal_prelude::*;
 	use crate::stats::prelude::*;
 	use crate::{assert, c64};
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use factor::BunchKaufmanParams;
 	use num_complex::ComplexFloat;
 
@@ -41,7 +41,7 @@ mod tests {
 			let mut perm_inv = vec![0; n];
 
 			let params = Default::default();
-			let mut mem = GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params).unwrap());
+			let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params));
 			let (_, perm) = factor::cholesky_in_place(
 				ldl.as_mut(),
 				subdiag.as_mut(),
@@ -49,11 +49,11 @@ mod tests {
 				&mut perm,
 				&mut perm_inv,
 				Par::Seq,
-				DynStack::new(&mut mem),
+				MemStack::new(&mut mem),
 				params,
 			);
 
-			let mut mem = GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, f64>(n, rhs.ncols(), Par::Seq).unwrap());
+			let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<usize, f64>(n, rhs.ncols(), Par::Seq));
 			let mut x = rhs.clone();
 			solve::solve_in_place_with_conj(
 				ldl.as_ref(),
@@ -63,7 +63,7 @@ mod tests {
 				perm.rb(),
 				x.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut mem),
+				MemStack::new(&mut mem),
 			);
 
 			let err = &a * &x - &rhs;
@@ -110,7 +110,7 @@ mod tests {
 				blocksize: 4,
 				..auto!(c64)
 			};
-			let mut mem = GlobalMemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()).unwrap());
+			let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()));
 			let (_, perm) = factor::cholesky_in_place(
 				ldl.as_mut(),
 				subdiag.as_mut(),
@@ -118,12 +118,12 @@ mod tests {
 				&mut perm,
 				&mut perm_inv,
 				Par::Seq,
-				DynStack::new(&mut mem),
+				MemStack::new(&mut mem),
 				params.into(),
 			);
 
 			let mut x = rhs.clone();
-			let mut mem = GlobalMemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq).unwrap());
+			let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq));
 			solve::solve_in_place_with_conj(
 				ldl.as_ref(),
 				ldl.diagonal(),
@@ -132,7 +132,7 @@ mod tests {
 				perm.rb(),
 				x.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut mem),
+				MemStack::new(&mut mem),
 			);
 
 			let err = a.conjugate() * &x - &rhs;

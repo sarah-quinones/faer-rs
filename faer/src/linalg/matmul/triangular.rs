@@ -80,7 +80,7 @@ struct Storage<T>([T; 32 * 16]);
 macro_rules! stack_mat_16x16 {
 	($name: ident, $n: expr, $offset: expr, $rs: expr, $cs: expr,  $T: ty $(,)?) => {
 		let mut __tmp = core::mem::MaybeUninit::<Storage<$T>>::uninit();
-		let __stack = DynStack::new_any(core::slice::from_mut(&mut __tmp));
+		let __stack = MemStack::new_any(core::slice::from_mut(&mut __tmp));
 		let mut $name = unsafe { temp_mat_uninit(32, $n, __stack) }.0;
 		let mut $name = $name.as_mat_mut().subrows_mut($offset, $n);
 		if $cs.unsigned_abs() == 1 {

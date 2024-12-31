@@ -30,30 +30,23 @@ impl<T: ComplexField> Auto<T> for SchurParams {
 	}
 }
 
-pub fn multishift_qr_scratch<T: ComplexField>(
-	n: usize,
-	nh: usize,
-	want_t: bool,
-	want_z: bool,
-	parallelism: Par,
-	params: SchurParams,
-) -> Result<StackReq, SizeOverflow> {
+pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool, want_z: bool, parallelism: Par, params: SchurParams) -> StackReq {
 	let nsr = (params.recommended_shift_count)(n, nh);
 
 	let _ = want_t;
 	let _ = want_z;
 
 	if n <= 3 {
-		return Ok(StackReq::empty());
+		return StackReq::EMPTY;
 	}
 
 	let nw_max = (n - 3) / 3;
 
-	StackReq::try_any_of([
-		hessenberg::hessenberg_in_place_scratch::<T>(nw_max, 1, parallelism, Default::default())?,
-		linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(nw_max, nw_max, nw_max)?,
-		linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(nw_max, nw_max, nw_max)?,
-		temp_mat_scratch::<T>(3, nsr)?,
+	StackReq::any_of(&[
+		hessenberg::hessenberg_in_place_scratch::<T>(nw_max, 1, parallelism, Default::default()),
+		linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(nw_max, nw_max, nw_max),
+		linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(nw_max, nw_max, nw_max),
+		temp_mat_scratch::<T>(3, nsr),
 	])
 }
 

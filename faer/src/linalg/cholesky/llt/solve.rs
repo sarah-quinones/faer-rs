@@ -1,14 +1,14 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn solve_in_place_scratch<T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_in_place_scratch<T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> StackReq {
 	_ = (dim, rhs_ncols, par);
-	Ok(StackReq::empty())
+	StackReq::EMPTY
 }
 
 #[math]
 #[track_caller]
-pub fn solve_in_place_with_conj<T: ComplexField>(L: MatRef<'_, T>, conj_lhs: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_in_place_with_conj<T: ComplexField>(L: MatRef<'_, T>, conj_lhs: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
 	let n = L.nrows();
 	assert!(all(L.nrows() == n, L.ncols() == n, rhs.nrows() == n));
 
@@ -21,7 +21,7 @@ pub fn solve_in_place_with_conj<T: ComplexField>(L: MatRef<'_, T>, conj_lhs: Con
 
 #[math]
 #[track_caller]
-pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(L: MatRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut DynStack) {
+pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(L: MatRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
 	solve_in_place_with_conj(L.canonical(), Conj::get::<C>(), rhs, par, stack);
 }
 
@@ -31,7 +31,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::cholesky::llt;
 
 	#[test]
@@ -62,7 +62,7 @@ mod tests {
 			L.as_mut(),
 			Default::default(),
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _).unwrap()) }),
+			MemStack::new(&mut { MemBuffer::new(llt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _)) }),
 			_,
 		)
 		.unwrap();
@@ -75,9 +75,7 @@ mod tests {
 				L.as_ref(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					llt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(llt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
 			);
 
 			assert!(&A * &X ~ B);
@@ -89,9 +87,7 @@ mod tests {
 				L.conjugate(),
 				X.as_mut(),
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					llt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq).unwrap(),
-				)),
+				MemStack::new(&mut MemBuffer::new(llt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
 			);
 
 			assert!(A.conjugate() * &X ~ B);

@@ -275,7 +275,7 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 	col_perm: &'out mut [I],
 	col_perm_inv: &'out mut [I],
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<ColPivQrParams, T>,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
 	let params = params.into_inner();
@@ -393,13 +393,13 @@ pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
 	blocksize: usize,
 	par: Par,
 	params: Spec<ColPivQrParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+) -> StackReq {
 	let _ = nrows;
 	let _ = ncols;
 	let _ = par;
 	let _ = blocksize;
 	let _ = &params;
-	Ok(StackReq::default())
+	StackReq::EMPTY
 }
 
 /// Information about the resulting QR factorization.
@@ -418,7 +418,7 @@ pub fn qr_in_place<'out, I: Index, T: ComplexField>(
 	col_perm: &'out mut [I],
 	col_perm_inv: &'out mut [I],
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<ColPivQrParams, T>,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
 	let mut A = A;
@@ -452,7 +452,7 @@ mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{Mat, assert, c64};
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	#[test]
 	#[azucar::infer]
@@ -487,7 +487,7 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<usize, c64>(n, n, bs, par, _).unwrap())),
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<usize, c64>(n, n, bs, par, _))),
 					_,
 				)
 				.1;
@@ -505,8 +505,8 @@ mod tests {
 					Conj::No,
 					Q.as_mut(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(n, bs, n).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(n, bs, n),
 					)),
 				);
 
@@ -548,7 +548,7 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<usize, c64>(m, n, bs, par, _).unwrap())),
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<usize, c64>(m, n, bs, par, _))),
 					_,
 				)
 				.1;
@@ -566,8 +566,8 @@ mod tests {
 					Conj::No,
 					Q.as_mut(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(m, bs, m).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(m, bs, m),
 					)),
 				);
 

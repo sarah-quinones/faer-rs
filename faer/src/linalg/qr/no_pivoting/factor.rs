@@ -82,7 +82,7 @@ impl<T: ComplexField> Auto<T> for QrParams {
 }
 
 #[math]
-fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<QrParams, T>) {
+fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<QrParams, T>) {
 	let params = params.into_inner();
 
 	let m = A.nrows();
@@ -145,7 +145,7 @@ fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par:
 }
 
 #[track_caller]
-pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, par: Par, stack: &mut DynStack, params: Spec<QrParams, T>) {
+pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<QrParams, T>) {
 	let blocksize = Q_coeff.nrows();
 	assert!(all(blocksize > 0, Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),));
 
@@ -164,13 +164,7 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 /// Computes the size and alignment of required workspace for performing a QR
 /// decomposition with no pivoting.
 #[inline]
-pub fn qr_in_place_scratch<T: ComplexField>(
-	nrows: usize,
-	ncols: usize,
-	blocksize: usize,
-	par: Par,
-	params: Spec<QrParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<QrParams, T>) -> StackReq {
 	let _ = par;
 	let _ = nrows;
 	let _ = &params;
@@ -183,7 +177,7 @@ mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{Mat, Row, assert, c64};
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	#[test]
 	#[azucar::infer]
@@ -223,8 +217,8 @@ mod tests {
 					Conj::No,
 					Q.as_mut(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, 1, n).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n, 1, n),
 					)),
 				);
 
@@ -259,7 +253,7 @@ mod tests {
 					QR.as_mut(),
 					H.as_mut(),
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, _).unwrap())),
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, _))),
 					_,
 				);
 
@@ -276,8 +270,8 @@ mod tests {
 					Conj::No,
 					Q.as_mut(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(n, bs, n).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(n, bs, n),
 					)),
 				);
 
@@ -314,7 +308,7 @@ mod tests {
 					QR.as_mut(),
 					H.as_mut(),
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, _).unwrap())),
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, _))),
 					_,
 				);
 
@@ -331,8 +325,8 @@ mod tests {
 					Conj::No,
 					Q.as_mut(),
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(m, bs, m).unwrap(),
+					MemStack::new(&mut MemBuffer::new(
+						householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<c64>(m, bs, m),
 					)),
 				);
 

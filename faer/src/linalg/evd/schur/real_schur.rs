@@ -655,7 +655,7 @@ fn aggressive_early_deflation<T: RealField>(
 	ihi: usize,
 	nw: usize,
 	par: Par,
-	mut stack: &mut DynStack,
+	mut stack: &mut MemStack,
 	params: SchurParams,
 ) -> (usize, usize) {
 	let n = a.nrows();
@@ -1003,7 +1003,7 @@ fn multishift_qr_sweep<T: RealField>(
 	ilo: usize,
 	ihi: usize,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let n = a.nrows();
 	assert!(n >= 12);
@@ -1660,7 +1660,7 @@ pub fn multishift_qr<T: RealField>(
 	ilo: usize,
 	ihi: usize,
 	parallelism: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: SchurParams,
 ) -> (isize, usize, usize) {
 	assert!(a.nrows() == a.ncols());
@@ -2141,7 +2141,7 @@ mod tests {
 	use crate::linalg::evd::schur::multishift_qr_scratch;
 	use crate::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::{DynStack, GlobalMemBuffer};
+	use dyn_stack::{MemBuffer, MemStack};
 
 	#[test]
 	fn test_5() {
@@ -2255,9 +2255,7 @@ mod tests {
 					0,
 					n,
 					Par::Seq,
-					DynStack::new(&mut GlobalMemBuffer::new(
-						multishift_qr_scratch::<f64>(n, n, true, true, Par::Seq, auto!(f64)).unwrap(),
-					)),
+					MemStack::new(&mut MemBuffer::new(multishift_qr_scratch::<f64>(n, n, true, true, Par::Seq, auto!(f64)))),
 					auto!(f64),
 				);
 

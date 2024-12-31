@@ -3,15 +3,10 @@ use crate::internal_prelude::*;
 use linalg::householder;
 use linalg::matmul::{dot, matmul};
 
-pub fn bidiag_in_place_scratch<T: ComplexField>(
-	nrows: usize,
-	ncols: usize,
-	par: Par,
-	params: Spec<BidiagParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<BidiagParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
-	StackReq::try_all_of([temp_mat_scratch::<T>(nrows, 1)?, temp_mat_scratch::<T>(ncols, 1)?])
+	StackReq::all_of(&[temp_mat_scratch::<T>(nrows, 1), temp_mat_scratch::<T>(ncols, 1)])
 }
 
 /// QR factorization tuning parameters.
@@ -39,7 +34,7 @@ pub fn bidiag_in_place<T: ComplexField>(
 	H_left: MatMut<'_, T>,
 	H_right: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<BidiagParams, T>,
 ) {
 	let params = params.into_inner();
@@ -413,7 +408,7 @@ fn bidiag_fused_op_simd<'M, 'N, T: ComplexField>(
 mod tests {
 	use std::mem::MaybeUninit;
 
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	use super::*;
 	use crate::stats::prelude::*;
@@ -443,7 +438,7 @@ mod tests {
 			let mut Hr = Mat::zeros(br, size - 1);
 
 			let mut UV = A.clone();
-			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), _);
+			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, MemStack::new(&mut [MaybeUninit::uninit(); 1024]), _);
 
 			let mut A = A.clone();
 			let mut A = A.as_mut();
@@ -454,8 +449,8 @@ mod tests {
 				Conj::Yes,
 				&mut A,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, 1, m).unwrap(),
+				MemStack::new(&mut MemBuffer::new(
+					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, 1, m),
 				)),
 			);
 
@@ -469,8 +464,8 @@ mod tests {
 				Conj::Yes,
 				A1,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<f64>(n - 1, 1, m).unwrap(),
+				MemStack::new(&mut MemBuffer::new(
+					householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<f64>(n - 1, 1, m),
 				)),
 			);
 
@@ -510,7 +505,7 @@ mod tests {
 
 			let mut UV = A.clone();
 			let mut UV = UV.as_mut();
-			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, DynStack::new(&mut [MaybeUninit::uninit(); 1024]), _);
+			bidiag_in_place(&mut UV, &mut Hl, &mut Hr, Par::Seq, MemStack::new(&mut [MaybeUninit::uninit(); 1024]), _);
 
 			let mut A = A.clone();
 			let mut A = A.as_mut();
@@ -521,8 +516,8 @@ mod tests {
 				Conj::Yes,
 				&mut A,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n - 1, 1, m).unwrap(),
+				MemStack::new(&mut MemBuffer::new(
+					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n - 1, 1, m),
 				)),
 			);
 
@@ -536,8 +531,8 @@ mod tests {
 				Conj::Yes,
 				A1,
 				Par::Seq,
-				DynStack::new(&mut GlobalMemBuffer::new(
-					householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<c64>(n - 1, 1, m).unwrap(),
+				MemStack::new(&mut MemBuffer::new(
+					householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<c64>(n - 1, 1, m),
 				)),
 			);
 

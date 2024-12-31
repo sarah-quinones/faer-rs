@@ -519,16 +519,11 @@ impl<T: ComplexField> Auto<T> for FullPivLuParams {
 }
 
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
-	nrows: usize,
-	ncols: usize,
-	par: Par,
-	params: Spec<FullPivLuParams, T>,
-) -> Result<StackReq, SizeOverflow> {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<FullPivLuParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
 	let size = Ord::min(nrows, ncols);
-	StackReq::try_new::<usize>(size)?.try_array(2)
+	StackReq::new::<usize>(size).array(2)
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -543,7 +538,7 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	col_perm: &'out mut [I],
 	col_perm_inv: &'out mut [I],
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<FullPivLuParams, T>,
 ) -> (FullPivLuInfo, PermRef<'out, I>, PermRef<'out, I>) {
 	#[cfg(feature = "perf-warn")]
@@ -603,7 +598,7 @@ mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{Mat, assert, c64};
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 
 	#[test]
 	#[azucar::infer]
@@ -641,7 +636,7 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, _).unwrap())),
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, _))),
 					_,
 				);
 
@@ -695,7 +690,7 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					DynStack::new(&mut GlobalMemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, _).unwrap())),
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, _))),
 					_,
 				);
 

@@ -496,6 +496,7 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 /// Dynamic LDLT regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
+#[derive(Clone, Debug)]
 pub struct LdltRegularization<'a, T: ComplexField> {
 	/// Expected signs for the diagonal at each step of the decomposition.
 	pub dynamic_regularization_signs: Option<&'a [i8]>,
@@ -547,7 +548,7 @@ impl<T: ComplexField> Auto<T> for LdltParams {
 }
 
 #[inline]
-pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LdltParams, T>) -> Result<StackReq, SizeOverflow> {
+pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LdltParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
 	temp_mat_scratch::<T>(dim, 1)
@@ -558,7 +559,7 @@ pub fn cholesky_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
 	regularization: LdltRegularization<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: Spec<LdltParams, T>,
 ) -> Result<LdltInfo, LdltError> {
 	let params = params.into_inner();

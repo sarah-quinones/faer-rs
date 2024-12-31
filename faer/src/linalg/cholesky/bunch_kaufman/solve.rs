@@ -8,7 +8,7 @@ use linalg::triangular_solve::{solve_unit_lower_triangular_in_place_with_conj, s
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// a matrix in place, given its Bunch-Kaufman decomposition.
 #[track_caller]
-pub fn solve_in_place_scratch<I: Index, T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn solve_in_place_scratch<I: Index, T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> StackReq {
 	let _ = par;
 	temp_mat_scratch::<T>(dim, rhs_ncols)
 }
@@ -39,7 +39,7 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	perm: PermRef<'_, I>,
 	rhs: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let n = L.nrows();
 	let k = rhs.ncols();
@@ -115,7 +115,7 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	perm: PermRef<'_, I>,
 	rhs: MatMut<'_, T>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	solve_in_place_with_conj(
 		L.canonical(),

@@ -1,6 +1,6 @@
 use crate::Idx;
 use crate::internal_prelude::*;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::StackReq;
 use linalg::zip::{Last, Zip};
 use reborrow::*;
 
@@ -111,13 +111,13 @@ pub fn permute_rows<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'
 
 /// Computes the size and alignment of required workspace for applying a row permutation to a
 /// matrix in place.
-pub fn permute_rows_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+pub fn permute_rows_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	temp_mat_scratch::<T>(nrows, ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying a column permutation to a
 /// matrix in place.
-pub fn permute_cols_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+pub fn permute_cols_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	temp_mat_scratch::<T>(nrows, ncols)
 }
 
@@ -129,10 +129,10 @@ pub fn permute_cols_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, nc
 /// - Panics if the size of the permutation doesn't match the number of rows of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_rows_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut DynStack) {
+pub fn permute_rows_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut MemStack) {
 	#[inline]
 	#[track_caller]
-	fn implementation<T: ComplexField, I: Index>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut DynStack) {
+	fn implementation<T: ComplexField, I: Index>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut MemStack) {
 		let mut matrix = matrix;
 		let (mut tmp, _) = unsafe { temp_mat_uninit(matrix.nrows(), matrix.ncols(), stack) };
 		let mut tmp = tmp.as_mat_mut();
@@ -151,10 +151,10 @@ pub fn permute_rows_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, p
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_cols_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut DynStack) {
+pub fn permute_cols_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut MemStack) {
 	#[inline]
 	#[track_caller]
-	fn implementation<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut DynStack) {
+	fn implementation<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut MemStack) {
 		let mut matrix = matrix;
 		let (mut tmp, _) = unsafe { temp_mat_uninit(matrix.nrows(), matrix.ncols(), stack) };
 		let mut tmp = tmp.as_mat_mut();

@@ -35,7 +35,7 @@ macro_rules! stack_mat {
 
 			core::mem::MaybeUninit::<__Mat<$T, $M, $N>>::uninit()
 		};
-		let __stack = DynStack::new_any(core::slice::from_mut(&mut __tmp));
+		let __stack = MemStack::new_any(core::slice::from_mut(&mut __tmp));
 		let mut $name = $crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
 		let mut $name = $name.as_mat_mut();
 	};
@@ -562,7 +562,7 @@ mod internal_prelude {
 
 	pub use {unzipped as uz, zipped as z};
 
-	pub use dyn_stack::{DynStack, SizeOverflow, StackReq};
+	pub use dyn_stack::{MemStack, StackReq};
 	pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
 	pub use generativity::make_guard;
 	pub use reborrow::*;
@@ -577,7 +577,7 @@ pub(crate) mod internal_prelude_sp {
 	};
 	pub(crate) use core::cell::Cell;
 	pub(crate) use core::iter;
-	pub(crate) use dyn_stack::GlobalMemBuffer;
+	pub(crate) use dyn_stack::MemBuffer;
 }
 
 pub mod prelude {

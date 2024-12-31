@@ -2,11 +2,11 @@ use crate::assert;
 use crate::internal_prelude::*;
 use linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_scratch;
 
-pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, blocksize: usize, par: Par) -> Result<StackReq, SizeOverflow> {
+pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, blocksize: usize, par: Par) -> StackReq {
 	_ = par;
-	StackReq::try_or(
-		apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, blocksize, dim)?,
-		crate::perm::permute_cols_in_place_scratch::<I, T>(dim, dim)?,
+	StackReq::or(
+		apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, blocksize, dim),
+		crate::perm::permute_cols_in_place_scratch::<I, T>(dim, dim),
 	)
 }
 
@@ -18,7 +18,7 @@ pub fn inverse<I: Index, T: ComplexField>(
 	R: MatRef<'_, T>,
 	col_perm: PermRef<'_, I>,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	// A P^-1 = Q R
 	// A^-1 = P^-1 R^-1 Q^-1
@@ -57,7 +57,7 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
-	use dyn_stack::GlobalMemBuffer;
+	use dyn_stack::MemBuffer;
 	use linalg::qr::col_pivoting::*;
 
 	#[test]
@@ -83,7 +83,7 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			DynStack::new(&mut { GlobalMemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, _).unwrap()) }),
+			MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, _)) }),
 			_,
 		);
 
@@ -97,7 +97,7 @@ mod tests {
 			QR.as_ref(),
 			col_perm,
 			Par::Seq,
-			DynStack::new(&mut GlobalMemBuffer::new(inverse::inverse_scratch::<usize, c64>(n, 4, Par::Seq).unwrap())),
+			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<usize, c64>(n, 4, Par::Seq))),
 		);
 
 		assert!(A_inv * A ~ Mat::identity(n, n));

@@ -266,7 +266,7 @@ fn aggressive_early_deflation<T: ComplexField>(
 	ihi: usize,
 	nw: usize,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: SchurParams,
 ) -> (usize, usize) {
 	let n = a.nrows();
@@ -559,7 +559,7 @@ pub fn multishift_qr<T: ComplexField>(
 	ilo: usize,
 	ihi: usize,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 	params: SchurParams,
 ) -> (isize, usize, usize) {
 	assert!(a.nrows() == a.ncols());
@@ -778,7 +778,7 @@ fn multishift_qr_sweep<T: ComplexField>(
 	ilo: usize,
 	ihi: usize,
 	par: Par,
-	stack: &mut DynStack,
+	stack: &mut MemStack,
 ) {
 	let n = a.nrows();
 	assert!(n >= 12);
@@ -1398,7 +1398,7 @@ mod tests {
 	use crate::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{assert, c64};
-	use dyn_stack::{DynStack, GlobalMemBuffer};
+	use dyn_stack::{MemBuffer, MemStack};
 	use rand::rngs::StdRng;
 	use rand::{Rng, SeedableRng};
 
@@ -1475,9 +1475,7 @@ mod tests {
 						0,
 						n,
 						Par::Seq,
-						DynStack::new(&mut GlobalMemBuffer::new(
-							multishift_qr_scratch::<c64>(n, n, true, true, Par::Seq, auto!(c64)).unwrap(),
-						)),
+						MemStack::new(&mut MemBuffer::new(multishift_qr_scratch::<c64>(n, n, true, true, Par::Seq, auto!(c64)))),
 						auto!(c64),
 					);
 
