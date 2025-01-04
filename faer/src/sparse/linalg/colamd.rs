@@ -658,22 +658,21 @@ pub fn order<I: Index>(
 		}
 	}
 
-	// let mut etree = alloc::vec![I(0); n];
-	// let mut post = alloc::vec![I(0); n];
-	// let etree = super::qr::col_etree::<I>(A, Some(PermRef::<'_, I>::new_checked(perm, perm_inv, n)),
-	// &mut etree, stack); super::qr::postorder(&mut post, etree, stack);
-	// for i in 0..n {
-	// 	perm[post[i].zx()] = I(i);
-	// }
-	// for i in 0..n {
-	// 	perm_inv[i] = perm[perm_inv[i].zx()];
-	// }
-	// for i in 0..n {
-	// 	perm[perm_inv[i].zx()] = I(i);
-	// }
+	let mut etree = alloc::vec![I(0); n];
+	let mut post = alloc::vec![I(0); n];
+	let etree = super::qr::col_etree::<I>(A, Some(PermRef::<'_, I>::new_checked(perm, perm_inv, n)), &mut etree, stack);
+	super::qr::postorder(&mut post, etree, stack);
+	for i in 0..n {
+		perm[post[i].zx()] = I(i);
+	}
+	for i in 0..n {
+		perm_inv[i] = perm[perm_inv[i].zx()];
+	}
+	for i in 0..n {
+		perm[perm_inv[i].zx()] = I(i);
+	}
 
-	// Ok(())
-	todo!()
+	Ok(())
 }
 
 fn detect_super_cols<I: Index>(col: &mut [ColamdCol<I>], A: &mut [I], head: &mut [I], row_start: usize, row_length: usize) {

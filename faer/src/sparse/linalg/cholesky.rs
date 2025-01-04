@@ -2,9 +2,9 @@ use super::super::utils::*;
 use super::ghost;
 use crate::assert;
 use crate::internal_prelude_sp::*;
-use linalg::cholesky::bunch_kaufman::factor::{BunchKaufmanInfo, BunchKaufmanRegularization};
-use linalg::cholesky::ldlt::factor::{LdltError, LdltInfo, LdltRegularization};
-use linalg::cholesky::llt::factor::{LltError, LltInfo, LltRegularization};
+use linalg::cholesky::bunch_kaufman::factor::{BunchKaufmanInfo, BunchKaufmanParams, BunchKaufmanRegularization};
+use linalg::cholesky::ldlt::factor::{LdltError, LdltInfo, LdltParams, LdltRegularization};
+use linalg::cholesky::llt::factor::{LltError, LltInfo, LltParams, LltRegularization};
 use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, amd, triangular_solve};
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -190,7 +190,7 @@ pub mod simplicial {
 
 	/// Computes the size and alignment of the workspace required to compute the symbolic
 	/// Cholesky factorization of a square matrix with size `n`.
-	pub fn factorize_simplicial_symbolic_scratch<I: Index>(n: usize) -> StackReq {
+	pub fn factorize_simplicial_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
 		let n_scratch = StackReq::new::<I>(n);
 		StackReq::all_of(&[n_scratch, n_scratch, n_scratch])
 	}
@@ -204,7 +204,7 @@ pub mod simplicial {
 	/// The elimination tree and column counts must be computed by calling
 	/// [`prefactorize_symbolic_cholesky`] with the same matrix. Otherwise, the behavior is
 	/// unspecified and panics may occur.
-	pub fn factorize_simplicial_symbolic<I: Index>(
+	pub fn factorize_simplicial_symbolic_cholesky<I: Index>(
 		A: SymbolicSparseColMatRef<'_, I>,
 		etree: EliminationTreeRef<'_, I>,
 		col_counts: &[I],
@@ -426,7 +426,7 @@ pub mod simplicial {
 	}
 
 	#[math]
-	fn factorize_simplicial_numeric<I: Index, T: ComplexField>(
+	fn factorize_simplicial_numeric_cholesky<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		kind: FactorizationKind,
 		A: SparseColMatRef<'_, I, T>,
@@ -579,7 +579,7 @@ pub mod simplicial {
 		symbolic: &SymbolicSimplicialCholesky<I>,
 		stack: &mut MemStack,
 	) -> Result<LltInfo, LltError> {
-		factorize_simplicial_numeric(
+		factorize_simplicial_numeric_cholesky(
 			L_values,
 			FactorizationKind::Llt,
 			A,
@@ -648,7 +648,7 @@ pub mod simplicial {
 		symbolic: &SymbolicSimplicialCholesky<I>,
 		stack: &mut MemStack,
 	) -> Result<LdltInfo, LdltError> {
-		match factorize_simplicial_numeric(L_values, FactorizationKind::Ldlt, A, regularization, symbolic, stack) {
+		match factorize_simplicial_numeric_cholesky(L_values, FactorizationKind::Ldlt, A, regularization, symbolic, stack) {
 			Ok(info) => Ok(LdltInfo {
 				dynamic_regularization_count: info.dynamic_regularization_count,
 			}),
@@ -725,10 +725,7 @@ pub mod simplicial {
 			let l = SparseColMatRef::<'_, I, T>::new(self.symbolic().factor(), self.values());
 
 			let mut rhs = rhs;
-			let mut __tmp = rhs.to_owned();
 			triangular_solve::solve_lower_triangular_in_place(l, conj, DiagStatus::Generic, rhs.rb_mut(), par);
-
-			let mut __tmp = rhs.to_owned();
 			triangular_solve::solve_lower_triangular_transpose_in_place(l, conj.compose(Conj::Yes), DiagStatus::Generic, rhs.rb_mut(), par);
 		}
 	}
@@ -1763,7 +1760,7 @@ pub mod supernodal {
 
 	/// Returns the size and alignment of the workspace required to compute the symbolic supernodal
 	/// factorization of a matrix of size `n`.
-	pub fn factorize_supernodal_symbolic_scratch<I: Index>(n: usize) -> StackReq {
+	pub fn factorize_supernodal_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
 		StackReq::new::<I>(n).array(4)
 	}
 
@@ -1776,7 +1773,7 @@ pub mod supernodal {
 	/// The elimination tree and column counts must be computed by calling
 	/// [`simplicial::prefactorize_symbolic_cholesky`] with the same matrix. Otherwise, the behavior
 	/// is unspecified and panics may occur.
-	pub fn factorize_supernodal_symbolic<I: Index>(
+	pub fn factorize_supernodal_symbolic_cholesky<I: Index>(
 		A: SymbolicSparseColMatRef<'_, I>,
 		etree: simplicial::EliminationTreeRef<'_, I>,
 		col_counts: &[I],
@@ -2245,7 +2242,11 @@ pub mod supernodal {
 
 	/// Returns the size and alignment of the workspace required to compute the numeric
 	/// Cholesky LLT factorization of a matrix `A` with dimension `n`.
-	pub fn factorize_supernodal_numeric_llt_scratch<I: Index, T: ComplexField>(symbolic: &SymbolicSupernodalCholesky<I>, par: Par) -> StackReq {
+	pub fn factorize_supernodal_numeric_llt_scratch<I: Index, T: ComplexField>(
+		symbolic: &SymbolicSupernodalCholesky<I>,
+		par: Par,
+		params: Spec<LltParams, T>,
+	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
 		let post = &*symbolic.supernode_postorder;
@@ -2276,18 +2277,18 @@ pub mod supernodal {
 				d_scratch = d_scratch.and(temp_mat_scratch::<T>(d_pattern.len() - d_pattern_start, d_pattern_mid_len));
 				req = req.or(d_scratch);
 			}
-			req = req.or(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(
-				s_ncols,
-				par,
-				Default::default(),
-			));
+			req = req.or(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(s_ncols, par, params));
 		}
 		req.and(StackReq::new::<I>(n))
 	}
 
 	/// Returns the size and alignment of the workspace required to compute the numeric
 	/// Cholesky LDLT factorization of a matrix `A` with dimension `n`.
-	pub fn factorize_supernodal_numeric_ldlt_scratch<I: Index, T: ComplexField>(symbolic: &SymbolicSupernodalCholesky<I>, par: Par) -> StackReq {
+	pub fn factorize_supernodal_numeric_ldlt_scratch<I: Index, T: ComplexField>(
+		symbolic: &SymbolicSupernodalCholesky<I>,
+		par: Par,
+		params: Spec<LdltParams, T>,
+	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
 		let post = &*symbolic.supernode_postorder;
@@ -2325,11 +2326,7 @@ pub mod supernodal {
 				d_scratch = d_scratch.and(temp_mat_scratch::<T>(d_ncols, d_pattern_mid_len));
 				req = req.or(d_scratch);
 			}
-			req = req.or(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(
-				s_ncols,
-				par,
-				Default::default(),
-			));
+			req = req.or(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(s_ncols, par, params));
 		}
 		req.and(StackReq::new::<I>(n))
 	}
@@ -2340,6 +2337,7 @@ pub mod supernodal {
 	pub fn factorize_supernodal_numeric_intranode_bunch_kaufman_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
+		params: Spec<BunchKaufmanParams, T>,
 	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
@@ -2381,7 +2379,7 @@ pub mod supernodal {
 			}
 			req = StackReq::any_of(&[
 				req,
-				linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<I, T>(s_ncols, par, Default::default()),
+				linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<I, T>(s_ncols, par, params),
 				crate::perm::permute_cols_in_place_scratch::<I, T>(s_pattern.len(), s_ncols),
 			]);
 		}
@@ -2407,6 +2405,7 @@ pub mod supernodal {
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<LltParams, T>,
 	) -> Result<LltInfo, LltError> {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
@@ -2532,7 +2531,6 @@ pub mod supernodal {
 
 			let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 
-			let params = Default::default();
 			dynamic_regularization_count +=
 				match linalg::cholesky::llt::factor::cholesky_in_place(Ls_top.rb_mut(), regularization.clone(), par, stack, params) {
 					Ok(count) => count,
@@ -2571,6 +2569,7 @@ pub mod supernodal {
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<LdltParams, T>,
 	) -> Result<LdltInfo, LdltError> {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
@@ -2714,7 +2713,6 @@ pub mod supernodal {
 
 			let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 
-			let params = Default::default();
 			dynamic_regularization_count += match linalg::cholesky::ldlt::factor::cholesky_in_place(
 				Ls_top.rb_mut(),
 				LdltRegularization {
@@ -2770,6 +2768,7 @@ pub mod supernodal {
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<BunchKaufmanParams, T>,
 	) -> BunchKaufmanInfo {
 		let mut regularization = regularization;
 		let n_supernodes = symbolic.n_supernodes();
@@ -2929,7 +2928,6 @@ pub mod supernodal {
 			let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 			let s_subdiag = &mut subdiag[s_start..s_end];
 
-			let params = Default::default();
 			let (info, perm) = linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
 				Ls_top.rb_mut(),
 				ColMut::from_slice_mut(s_subdiag).as_diagonal_mut(),
@@ -3135,7 +3133,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
 	/// Computes the required workspace size and alignment for a numerical LLT factorization.
 	#[inline]
-	pub fn factorize_numeric_llt_scratch<T: ComplexField>(&self, par: Par) -> StackReq {
+	pub fn factorize_numeric_llt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LltParams, T>) -> StackReq {
 		let n = self.nrows();
 		let A_nnz = self.A_nnz;
 
@@ -3145,7 +3143,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
 		let factor_scratch = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => simplicial::factorize_simplicial_numeric_llt_scratch::<I, T>(n),
-			SymbolicCholeskyRaw::Supernodal(this) => supernodal::factorize_supernodal_numeric_llt_scratch::<I, T>(this, par),
+			SymbolicCholeskyRaw::Supernodal(this) => supernodal::factorize_supernodal_numeric_llt_scratch::<I, T>(this, par, params),
 		};
 
 		StackReq::all_of(&[A_scratch, StackReq::or(permute_scratch, factor_scratch)])
@@ -3153,7 +3151,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
 	/// Computes the required workspace size and alignment for a numerical LDLT factorization.
 	#[inline]
-	pub fn factorize_numeric_ldlt_scratch<T: ComplexField>(&self, par: Par) -> StackReq {
+	pub fn factorize_numeric_ldlt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LdltParams, T>) -> StackReq {
 		let n = self.nrows();
 		let A_nnz = self.A_nnz;
 
@@ -3165,7 +3163,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
 		let factor_scratch = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => simplicial::factorize_simplicial_numeric_ldlt_scratch::<I, T>(n),
-			SymbolicCholeskyRaw::Supernodal(this) => supernodal::factorize_supernodal_numeric_ldlt_scratch::<I, T>(this, par),
+			SymbolicCholeskyRaw::Supernodal(this) => supernodal::factorize_supernodal_numeric_ldlt_scratch::<I, T>(this, par, params),
 		};
 
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
@@ -3174,7 +3172,7 @@ impl<I: Index> SymbolicCholesky<I> {
 	/// Computes the required workspace size and alignment for a numerical intranodal Bunch-Kaufman
 	/// factorization.
 	#[inline]
-	pub fn factorize_numeric_intranode_bunch_kaufman_scratch<T: ComplexField>(&self, par: Par) -> StackReq {
+	pub fn factorize_numeric_intranode_bunch_kaufman_scratch<T: ComplexField>(&self, par: Par, params: Spec<BunchKaufmanParams, T>) -> StackReq {
 		let n = self.nrows();
 		let A_nnz = self.A_nnz;
 
@@ -3186,7 +3184,9 @@ impl<I: Index> SymbolicCholesky<I> {
 
 		let factor_scratch = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => simplicial::factorize_simplicial_numeric_ldlt_scratch::<I, T>(n),
-			SymbolicCholeskyRaw::Supernodal(this) => supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<I, T>(this, par),
+			SymbolicCholeskyRaw::Supernodal(this) => {
+				supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<I, T>(this, par, params)
+			},
 		};
 
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
@@ -3203,6 +3203,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		regularization: LltRegularization<T>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<LltParams, T>,
 	) -> Result<LltRef<'out, I, T>, LltError> {
 		assert!(A.nrows() == A.ncols());
 		let n = A.nrows();
@@ -3240,7 +3241,7 @@ impl<I: Index> SymbolicCholesky<I> {
 				simplicial::factorize_simplicial_numeric_llt(L_values, A.as_dyn().into_const(), regularization, this, stack)?;
 			},
 			SymbolicCholeskyRaw::Supernodal(this) => {
-				supernodal::factorize_supernodal_numeric_llt(L_values, A.as_dyn().into_const(), regularization, this, par, stack)?;
+				supernodal::factorize_supernodal_numeric_llt(L_values, A.as_dyn().into_const(), regularization, this, par, stack, params)?;
 			},
 		}
 		Ok(LltRef::<'out, I, T>::new(self, L_values))
@@ -3256,6 +3257,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		regularization: LdltRegularization<'_, T>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<LdltParams, T>,
 	) -> Result<LdltRef<'out, I, T>, LdltError> {
 		assert!(A.nrows() == A.ncols());
 		let n = A.nrows();
@@ -3322,7 +3324,7 @@ impl<I: Index> SymbolicCholesky<I> {
 				simplicial::factorize_simplicial_numeric_ldlt(L_values, A.as_dyn().into_const(), regularization, this, stack)?;
 			},
 			SymbolicCholeskyRaw::Supernodal(this) => {
-				supernodal::factorize_supernodal_numeric_ldlt(L_values, A.as_dyn().into_const(), regularization, this, par, stack)?;
+				supernodal::factorize_supernodal_numeric_ldlt(L_values, A.as_dyn().into_const(), regularization, this, par, stack, params)?;
 			},
 		}
 
@@ -3342,6 +3344,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		regularization: BunchKaufmanRegularization<'_, T>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<BunchKaufmanParams, T>,
 	) -> IntranodeBunchKaufmanRef<'out, I, T> {
 		assert!(A.nrows() == A.ncols());
 		let n = A.nrows();
@@ -3425,6 +3428,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					this,
 					par,
 					stack,
+					params,
 				);
 			},
 		}
@@ -3791,8 +3795,8 @@ pub fn factorize_symbolic_cholesky<I: Index>(
 				n_scratch,
 				// ghost_factorize_*_symbolic
 				StackReq::or(
-					supernodal::factorize_supernodal_symbolic_scratch::<I>(n),
-					simplicial::factorize_simplicial_symbolic_scratch::<I>(n),
+					supernodal::factorize_supernodal_symbolic_cholesky_scratch::<I>(n),
+					simplicial::factorize_simplicial_symbolic_cholesky_scratch::<I>(n),
 				),
 			]),
 		)
@@ -3903,17 +3907,14 @@ pub(super) mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use dyn_stack::MemBuffer;
-	use std::boxed::Box;
 	use std::path::PathBuf;
 	use std::str::FromStr;
-	use std::vec;
-	use std::vec::Vec;
 
 	type Error = Box<dyn std::error::Error>;
 	type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 	#[track_caller]
-	fn parse_vec<F: FromStr>(text: &str) -> (Vec<F>, &str) {
+	pub(crate) fn parse_vec<F: FromStr>(text: &str) -> (Vec<F>, &str) {
 		let mut text = text;
 		let mut out = Vec::new();
 
@@ -3934,7 +3935,7 @@ pub(super) mod tests {
 		(out, text)
 	}
 
-	fn parse_csc_symbolic(text: &str) -> (SymbolicSparseColMat<usize>, &str) {
+	pub(crate) fn parse_csc_symbolic(text: &str) -> (SymbolicSparseColMat<usize>, &str) {
 		let (col_ptr, text) = parse_vec::<usize>(text);
 		let (row_idx, text) = parse_vec::<usize>(text);
 		let n = col_ptr.len() - 1;
@@ -3942,7 +3943,7 @@ pub(super) mod tests {
 		(SymbolicSparseColMat::new_unsorted_checked(n, n, col_ptr, None, row_idx), text)
 	}
 
-	fn parse_csc<T: FromStr>(text: &str) -> (SparseColMat<usize, T>, &str) {
+	pub(crate) fn parse_csc<T: FromStr>(text: &str) -> (SparseColMat<usize, T>, &str) {
 		let (symbolic, text) = parse_csc_symbolic(text);
 		let (numeric, text) = parse_vec::<T>(text);
 		(SparseColMat::new(symbolic, numeric), text)
@@ -4102,11 +4103,13 @@ pub(super) mod tests {
 			))),
 		);
 
-		let symbolic = &supernodal::factorize_supernodal_symbolic(
+		let symbolic = &supernodal::factorize_supernodal_symbolic_cholesky(
 			A_upper.symbolic(),
 			etree,
 			col_counts,
-			MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_symbolic_scratch::<usize>(n))),
+			MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_symbolic_cholesky_scratch::<usize>(
+				n,
+			))),
 			Default::default(),
 		)?;
 
@@ -4123,7 +4126,9 @@ pub(super) mod tests {
 				MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_ldlt_scratch::<usize, c64>(
 					symbolic,
 					Par::Seq,
+					Default::default(),
 				))),
+				Default::default(),
 			)?;
 
 			let mut target = A_lower.to_dense();
@@ -4181,8 +4186,9 @@ pub(super) mod tests {
 				symbolic,
 				Par::Seq,
 				MemStack::new(&mut MemBuffer::new(
-					supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<usize, c64>(symbolic, Par::Seq),
+					supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<usize, c64>(symbolic, Par::Seq, Default::default()),
 				)),
+				Default::default(),
 			);
 
 			let mut A = A_lower.to_dense();
@@ -4250,7 +4256,9 @@ pub(super) mod tests {
 				MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_llt_scratch::<usize, c64>(
 					symbolic,
 					Par::Seq,
+					Default::default(),
 				))),
+				Default::default(),
 			)?;
 
 			let mut target = A_lower.to_dense();
@@ -4310,11 +4318,13 @@ pub(super) mod tests {
 			))),
 		);
 
-		let symbolic = &simplicial::factorize_simplicial_symbolic(
+		let symbolic = &simplicial::factorize_simplicial_symbolic_cholesky(
 			A_upper.symbolic(),
 			etree,
 			col_counts,
-			MemStack::new(&mut MemBuffer::new(simplicial::factorize_simplicial_symbolic_scratch::<usize>(n))),
+			MemStack::new(&mut MemBuffer::new(simplicial::factorize_simplicial_symbolic_cholesky_scratch::<usize>(
+				n,
+			))),
 		)?;
 
 		{
@@ -4468,7 +4478,10 @@ pub(super) mod tests {
 						side,
 						Default::default(),
 						par,
-						MemStack::new(&mut MemBuffer::new(symbolic.factorize_numeric_llt_scratch::<c64>(par))),
+						MemStack::new(&mut MemBuffer::new(
+							symbolic.factorize_numeric_llt_scratch::<c64>(par, Default::default()),
+						)),
+						Default::default(),
 					)?;
 
 					for k in (1..16).chain(128..132) {
@@ -4536,7 +4549,10 @@ pub(super) mod tests {
 						side,
 						Default::default(),
 						par,
-						MemStack::new(&mut MemBuffer::new(symbolic.factorize_numeric_ldlt_scratch::<c64>(par))),
+						MemStack::new(&mut MemBuffer::new(
+							symbolic.factorize_numeric_ldlt_scratch::<c64>(par, Default::default()),
+						)),
+						Default::default(),
 					)?;
 
 					for k in (1..16).chain(128..132) {
@@ -4611,8 +4627,9 @@ pub(super) mod tests {
 						Default::default(),
 						par,
 						MemStack::new(&mut MemBuffer::new(
-							symbolic.factorize_numeric_intranode_bunch_kaufman_scratch::<c64>(par),
+							symbolic.factorize_numeric_intranode_bunch_kaufman_scratch::<c64>(par, Default::default()),
 						)),
+						Default::default(),
 					);
 
 					for k in (1..16).chain(128..132) {

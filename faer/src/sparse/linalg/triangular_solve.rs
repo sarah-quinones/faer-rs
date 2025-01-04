@@ -809,7 +809,7 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 					panic!()
 				};
 
-				for j in N.indices().rev() {
+				for j in N.indices() {
 					let mut ui = u.row_idx_of_col(j);
 					let mut uv = u.val_of_col(j).iter();
 					let first = ui.next_back().zip(uv.next_back());
@@ -852,7 +852,7 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
 				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
 
-				for j in N.indices().rev() {
+				for j in N.indices() {
 					let mut ui = u.row_idx_of_col(j);
 					let mut uv = u.val_of_col(j).iter();
 					let first = ui.next_back().zip(uv.next_back());
@@ -889,7 +889,7 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 			(_, _, _) => {
 				let mut x0 = x.rb_mut().get_mut(.., k0);
 
-				for j in N.indices().rev() {
+				for j in N.indices() {
 					let mut ui = u.row_idx_of_col(j);
 					let mut uv = u.val_of_col(j).iter();
 					let first = ui.next_back().zip(uv.next_back());

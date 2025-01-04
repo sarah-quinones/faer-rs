@@ -274,11 +274,8 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
 	}
 
 	#[azucar::infer]
-	pub fn singular_values(&self, side: Side) -> Result<Vec<Real<C>>, SvdError> {
-		pub fn imp<T: ComplexField>(mut A: MatRef<'_, T>, side: Side) -> Result<Vec<T::Real>, SvdError> {
-			if side == Side::Upper {
-				A = A.transpose();
-			}
+	pub fn singular_values(&self) -> Result<Vec<Real<C>>, SvdError> {
+		pub fn imp<T: ComplexField>(A: MatRef<'_, T>) -> Result<Vec<T::Real>, SvdError> {
 			let par = get_global_parallelism();
 			let m = A.nrows();
 			let n = A.ncols();
@@ -305,7 +302,7 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
 			Ok(s.column_vector().iter().map(|x| real(x)).collect())
 		}
 
-		imp(self.as_mat_ref().canonical(), side)
+		imp(self.as_mat_ref().canonical())
 	}
 }
 

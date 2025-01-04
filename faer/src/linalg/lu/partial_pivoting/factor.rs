@@ -24,37 +24,38 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 	let mut n_trans = 0;
 
 	for j in start..end {
-		let j = j - start;
+		let col = j;
+		let row = j - start;
 
-		let t = &mut trans[j];
-		let mut imax = j;
+		let t = &mut trans[row];
+		let mut imax = row;
 		let mut max = zero();
 
 		for i in imax..m {
-			let abs = abs1(matrix[(i, j)]);
+			let abs = abs1(matrix[(i, col)]);
 			if abs > max {
 				max = abs;
 				imax = i;
 			}
 		}
 
-		*t = I::truncate(imax - j);
+		*t = I::truncate(imax - row);
 
-		if imax != j {
-			swap_rows_idx(matrix.rb_mut(), j, imax);
+		if imax != row {
+			swap_rows_idx(matrix.rb_mut(), row, imax);
 			n_trans += 1;
 		}
 
 		let mut matrix = matrix.rb_mut().get_mut(.., start..end);
 
-		let inv = recip(matrix[(j, j)]);
-		for i in j + 1..m {
-			matrix[(i, j)] = matrix[(i, j)] * inv;
+		let inv = recip(matrix[(row, row)]);
+		for i in row + 1..m {
+			matrix[(i, row)] = matrix[(i, row)] * inv;
 		}
 
-		let (_, A01, A10, A11) = matrix.rb_mut().split_at_mut(j + 1, j + 1);
-		let A01 = A01.row(j);
-		let A10 = A10.col(j);
+		let (_, A01, A10, A11) = matrix.rb_mut().split_at_mut(row + 1, row + 1);
+		let A01 = A01.row(row);
+		let A10 = A10.col(row);
 		linalg::matmul::matmul(A11, Accum::Add, A10.as_mat(), A01.as_mat(), -one::<T>(), Par::Seq);
 	}
 
@@ -62,7 +63,7 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 }
 
 #[math]
-fn lu_in_place_recursion<I: Index, T: ComplexField>(
+pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	A: MatMut<'_, T>,
 	start: usize,
 	end: usize,
