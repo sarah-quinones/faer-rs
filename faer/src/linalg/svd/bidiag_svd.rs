@@ -1617,13 +1617,13 @@ pub(super) fn divide_and_conquer<T: RealField>(
 
 #[cfg(test)]
 mod tests {
-	use dyn_stack::MemBuffer;
-
 	use super::*;
 	use crate::utils::approx::*;
 	use crate::{Col, Mat, MatMut, assert};
+	use dyn_stack::MemBuffer;
 	use std::mem::MaybeUninit;
 	use std::path::{Path, PathBuf};
+	use std::vec;
 
 	fn parse_bidiag(path: &Path) -> (Col<f64>, Col<f64>) {
 		let file = &*std::fs::read_to_string(path).unwrap();

@@ -3813,6 +3813,7 @@ mod sparse {
 #[allow(non_snake_case)]
 mod test {
 	use crate::col::*;
+	use crate::internal_prelude::*;
 	use crate::mat::*;
 	use crate::perm::*;
 	use crate::row::*;

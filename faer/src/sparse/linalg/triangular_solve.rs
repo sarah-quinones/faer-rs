@@ -404,10 +404,10 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_tril.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
-							x1j = x1[j] * d;
-							x2j = x2[j] * d;
-							x3j = x3[j] * d;
+							x0j = x0j * d;
+							x1j = x1j * d;
+							x2j = x2j * d;
+							x3j = x3j * d;
 						},
 					}
 
@@ -450,9 +450,9 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_tril.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
-							x1j = x1[j] * d;
-							x2j = x2[j] * d;
+							x0j = x0j * d;
+							x1j = x1j * d;
+							x2j = x2j * d;
 						},
 					}
 
@@ -490,8 +490,8 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_tril.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
-							x1j = x1[j] * d;
+							x0j = x0j * d;
+							x1j = x1j * d;
 						},
 					}
 
@@ -524,7 +524,7 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_tril.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
+							x0j = x0j * d;
 						},
 					}
 
@@ -789,10 +789,10 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_triu.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
-							x1j = x1[j] * d;
-							x2j = x2[j] * d;
-							x3j = x3[j] * d;
+							x0j = x0j * d;
+							x1j = x1j * d;
+							x2j = x2j * d;
+							x3j = x3j * d;
 						},
 					}
 
@@ -835,9 +835,9 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_triu.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
-							x1j = x1[j] * d;
-							x2j = x2[j] * d;
+							x0j = x0j * d;
+							x1j = x1j * d;
+							x2j = x2j * d;
 						},
 					}
 
@@ -875,8 +875,8 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_triu.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
-							x1j = x1[j] * d;
+							x0j = x0j * d;
+							x1j = x1j * d;
 						},
 					}
 
@@ -909,7 +909,7 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 						DiagStatus::Unit => {},
 						DiagStatus::Generic => {
 							let d = conj_triu.apply_rt(&recip(*d));
-							x0j = x0[j] * d;
+							x0j = x0j * d;
 						},
 					}
 

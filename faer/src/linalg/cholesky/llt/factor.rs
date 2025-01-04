@@ -26,6 +26,13 @@ pub enum LltError {
 	NonPositivePivot { index: usize },
 }
 
+impl core::fmt::Display for LltError {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		core::fmt::Debug::fmt(self, f)
+	}
+}
+impl core::error::Error for LltError {}
+
 impl<T: ComplexField> Default for LltRegularization<T> {
 	fn default() -> Self {
 		Self {

@@ -519,6 +519,13 @@ pub enum LdltError {
 	ZeroPivot { index: usize },
 }
 
+impl core::fmt::Display for LdltError {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		core::fmt::Debug::fmt(self, f)
+	}
+}
+impl core::error::Error for LdltError {}
+
 impl<T: ComplexField> Default for LdltRegularization<'_, T> {
 	fn default() -> Self {
 		Self {

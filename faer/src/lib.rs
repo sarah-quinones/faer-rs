@@ -1,7 +1,9 @@
+#![no_std]
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 
 extern crate alloc;
+extern crate std;
 
 use core::num::NonZero;
 use core::sync::atomic::AtomicUsize;
@@ -532,6 +534,9 @@ pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
+	#[cfg(test)]
+	pub(crate) use {alloc::boxed::Box, alloc::vec, alloc::vec::Vec};
+
 	pub use faer_traits::{ComplexImpl, ComplexImplConj, Symbolic};
 
 	pub(crate) use crate::col::{Col, ColMut, ColRef};

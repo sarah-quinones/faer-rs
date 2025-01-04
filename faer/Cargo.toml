@@ -17,7 +17,7 @@ pulp = { path = "../../pulp/pulp" }
 equator = { path = "../../equator/equator" }
 azucar = { path = "../../azucar/azucar" }
 
-gemm = { version = "0.18.0", default-features = false }
+gemm = { path = "../../gemm/gemm", default-features = false }
 rand = "0.8.5"
 
 faer-traits = { path = "../faer-traits" }
@@ -48,6 +48,7 @@ sparse = []
 sparse-linalg = ["sparse", "linalg"]
 
 [dev-dependencies]
+amd = "0.2.2"
 assert_approx_eq = "1.1.0"
 diol = { version = "0.8.3", default-features = false }
 

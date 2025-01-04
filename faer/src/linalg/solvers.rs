@@ -1,5 +1,7 @@
 use crate::internal_prelude::*;
 use crate::{assert, get_global_parallelism};
+use alloc::vec;
+use alloc::vec::Vec;
 use dyn_stack::MemBuffer;
 use faer_traits::math_utils;
 use linalg::svd::ComputeSvdVectors;

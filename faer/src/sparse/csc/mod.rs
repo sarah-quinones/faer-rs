@@ -894,7 +894,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 		T: Conjugate,
 	{
 		let max = self.row_idx().len();
-		let mut new_col_ptr = try_zeroed::<I>(self.nrows().unbound())?;
+		let mut new_col_ptr = try_zeroed::<I>(self.nrows().unbound() + 1)?;
 		let mut new_row_idx = try_zeroed::<I>(max)?;
 		let mut new_val = try_collect(iter::repeat_n(zero::<T::Canonical>(), max))?;
 		let nnz = utils::transpose_dedup(

@@ -13,6 +13,7 @@ mod tests {
 	use dyn_stack::MemBuffer;
 	use factor::BunchKaufmanParams;
 	use num_complex::ComplexFloat;
+	use std::vec;
 
 	#[test]
 	fn test_real() {

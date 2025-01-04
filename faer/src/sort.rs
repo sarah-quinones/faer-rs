@@ -1012,6 +1012,7 @@ pub unsafe fn sort_indices<I: crate::Index, T>(indices: &mut [I], values: &mut [
 mod tests {
 	use super::*;
 	use crate::assert;
+	use crate::internal_prelude::*;
 	use rand::rngs::StdRng;
 	use rand::{Rng, SeedableRng};
 

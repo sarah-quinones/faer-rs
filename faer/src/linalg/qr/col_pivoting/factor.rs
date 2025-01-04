@@ -342,7 +342,7 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 					use rayon::prelude::*;
 					let nthreads = nthreads.get();
 
-					let mut best = core::iter::repeat_with(|| (0, (zero()))).take(nthreads).collect::<Vec<_>>();
+					let mut best = core::iter::repeat_with(|| (0, (zero()))).take(nthreads).collect::<alloc::vec::Vec<_>>();
 					let full_cols = A11.ncols();
 
 					best.par_iter_mut()

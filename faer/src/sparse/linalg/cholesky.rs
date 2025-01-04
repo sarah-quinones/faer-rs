@@ -2,7 +2,7 @@ use super::super::utils::*;
 use super::ghost;
 use crate::assert;
 use crate::internal_prelude_sp::*;
-use linalg::cholesky::bunch_kaufman::factor::BunchKaufmanRegularization;
+use linalg::cholesky::bunch_kaufman::factor::{BunchKaufmanInfo, BunchKaufmanRegularization};
 use linalg::cholesky::ldlt::factor::{LdltError, LdltInfo, LdltRegularization};
 use linalg::cholesky::llt::factor::{LltError, LltInfo, LltRegularization};
 use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, amd, triangular_solve};
@@ -354,9 +354,9 @@ pub mod simplicial {
 				let mut xj = copy(x[j]);
 				x[j] = zero::<T>();
 
-				let dj = real(L_values[j_start]);
-				let lkj = mul_real(xj, recip(dj));
-				if matches!(kind, FactorizationKind::Llt) {
+				let dj = recip(real(L_values[j_start]));
+				let lkj = mul_real(xj, dj);
+				if kind == FactorizationKind::Llt {
 					xj = copy(lkj);
 				}
 
@@ -368,8 +368,8 @@ pub mod simplicial {
 
 				d = d - real(lkj * conj(xj));
 
-				L_row_idx[row_idx] = *k.truncate();
 				L_values[row_idx] = lkj;
+				L_row_idx[row_idx] = *k.truncate();
 			}
 
 			let k_start = L_col_ptr_start[k].zx();
@@ -493,19 +493,15 @@ pub mod simplicial {
 				let mut xj = copy(x[j]);
 				x[j] = zero::<T>();
 
-				let dj = real(L_values[j_start]);
-				let lkj = mul_real(xj, recip(dj));
-				if matches!(kind, FactorizationKind::Llt) {
+				let dj = recip(real(L_values[j_start]));
+				let lkj = mul_real(xj, dj);
+				if kind == FactorizationKind::Llt {
 					xj = copy(lkj);
 				}
 
 				let range = j_start.next()..row_idx.into();
 				for (i, lij) in iter::zip(&L_row_idx[range.clone()], &L_values[range]) {
-					let i = i.zx();
-					if i >= *N {
-						panic!();
-					}
-					let i = unsafe { Idx::new_unchecked(i, N) };
+					let i = N.check(i.zx());
 					x[i] = x[i] - conj(*lij) * xj;
 				}
 
@@ -694,10 +690,10 @@ pub mod simplicial {
 		/// Creates a new Cholesky LLT factor from the symbolic part and numerical values.
 		///
 		/// # Panics
-		/// Panics if `values.len() != symbolic.len_values()`>
+		/// Panics if `values.len() != symbolic.len_val()`>
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSimplicialCholesky<I>, values: &'a [T]) -> Self {
-			assert!(values.len() == symbolic.len_values());
+			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
@@ -729,7 +725,10 @@ pub mod simplicial {
 			let l = SparseColMatRef::<'_, I, T>::new(self.symbolic().factor(), self.values());
 
 			let mut rhs = rhs;
+			let mut __tmp = rhs.to_owned();
 			triangular_solve::solve_lower_triangular_in_place(l, conj, DiagStatus::Generic, rhs.rb_mut(), par);
+
+			let mut __tmp = rhs.to_owned();
 			triangular_solve::solve_lower_triangular_transpose_in_place(l, conj.compose(Conj::Yes), DiagStatus::Generic, rhs.rb_mut(), par);
 		}
 	}
@@ -738,10 +737,10 @@ pub mod simplicial {
 		/// Creates a new Cholesky LDLT factor from the symbolic part and numerical values.
 		///
 		/// # Panics
-		/// Panics if `values.len() != symbolic.len_values()`>
+		/// Panics if `values.len() != symbolic.len_val()`>
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSimplicialCholesky<I>, values: &'a [T]) -> Self {
-			assert!(values.len() == symbolic.len_values());
+			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
@@ -794,7 +793,7 @@ pub mod simplicial {
 		/// Returns the length of the slice that can be used to contain the numerical values of the
 		/// Cholesky factor.
 		#[inline]
-		pub fn len_values(&self) -> usize {
+		pub fn len_val(&self) -> usize {
 			self.row_idx.len()
 		}
 
@@ -1075,7 +1074,7 @@ pub mod supernodal {
 		/// Returns the length of the slice that can be used to contain the numerical values of the
 		/// Cholesky factor.
 		#[inline]
-		pub fn len_values(&self) -> usize {
+		pub fn len_val(&self) -> usize {
 			self.col_ptr_for_val()[self.n_supernodes()].zx()
 		}
 
@@ -1258,10 +1257,10 @@ pub mod supernodal {
 		/// numerical values.
 		///
 		/// # Panics
-		/// - Panics if `values.len() != symbolic.len_values()`.
+		/// - Panics if `values.len() != symbolic.len_val()`.
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: &'a [T]) -> Self {
-			assert!(values.len() == symbolic.len_values());
+			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
@@ -1319,7 +1318,6 @@ pub mod supernodal {
 			assert!(rhs.nrows() == n);
 
 			let mut x = rhs;
-			let mut stack = stack;
 			let k = x.ncols();
 			for s in 0..symbolic.n_supernodes() {
 				let s = self.supernode(s);
@@ -1329,7 +1327,7 @@ pub mod supernodal {
 				let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
 				linalg::triangular_solve::solve_unit_lower_triangular_in_place_with_conj(Ls_top, conj, x_top.rb_mut(), par);
 
-				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack.rb_mut()) };
+				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack) };
 				let mut tmp = tmp.as_mat_mut();
 				linalg::matmul::matmul_with_conj(tmp.rb_mut(), Accum::Replace, Ls_bot, conj, x_top.rb(), Conj::No, one::<T>(), par);
 
@@ -1358,7 +1356,7 @@ pub mod supernodal {
 				let Ls = s.matrix;
 				let (Ls_top, Ls_bot) = Ls.split_at_row(size);
 
-				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack.rb_mut()) };
+				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack) };
 				let mut tmp = tmp.as_mat_mut();
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
@@ -1393,10 +1391,10 @@ pub mod supernodal {
 		/// numerical values.
 		///
 		/// # Panics
-		/// - Panics if `values.len() != symbolic.len_values()`.
+		/// - Panics if `values.len() != symbolic.len_val()`.
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: &'a [T]) -> Self {
-			assert!(values.len() == symbolic.len_values());
+			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
@@ -1454,7 +1452,6 @@ pub mod supernodal {
 			assert!(rhs.nrows() == n);
 
 			let mut x = rhs;
-			let mut stack = stack;
 			let k = x.ncols();
 			for s in 0..symbolic.n_supernodes() {
 				let s = self.supernode(s);
@@ -1464,7 +1461,7 @@ pub mod supernodal {
 				let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
 				linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(Ls_top, conj, x_top.rb_mut(), par);
 
-				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack.rb_mut()) };
+				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack) };
 				let mut tmp = tmp.as_mat_mut();
 				linalg::matmul::matmul_with_conj(tmp.rb_mut(), Accum::Replace, Ls_bot, conj, x_top.rb(), Conj::No, one::<T>(), par);
 
@@ -1494,7 +1491,6 @@ pub mod supernodal {
 			assert!(rhs.nrows() == n);
 
 			let mut x = rhs;
-			let mut stack = stack;
 			let k = x.ncols();
 			for s in (0..symbolic.n_supernodes()).rev() {
 				let s = self.supernode(s);
@@ -1502,7 +1498,7 @@ pub mod supernodal {
 				let Ls = s.matrix;
 				let (Ls_top, Ls_bot) = Ls.split_at_row(size);
 
-				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack.rb_mut()) };
+				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack) };
 				let mut tmp = tmp.as_mat_mut();
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
@@ -1532,7 +1528,6 @@ pub mod supernodal {
 			assert!(rhs.nrows() == n);
 
 			let mut x = rhs;
-			let mut stack = stack;
 			let k = x.ncols();
 			for s in 0..symbolic.n_supernodes() {
 				let s = self.supernode(s);
@@ -1542,7 +1537,7 @@ pub mod supernodal {
 				let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
 				linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(Ls_top, conj, x_top.rb_mut(), par);
 
-				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack.rb_mut()) };
+				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack) };
 				let mut tmp = tmp.as_mat_mut();
 				linalg::matmul::matmul_with_conj(tmp.rb_mut(), Accum::Replace, Ls_bot, conj, x_top.rb(), Conj::No, one::<T>(), par);
 
@@ -1559,7 +1554,7 @@ pub mod supernodal {
 				let Ls = s.matrix;
 				let (Ls_top, Ls_bot) = Ls.split_at_row(size);
 
-				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack.rb_mut()) };
+				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(s.pattern().len(), k, stack) };
 				let mut tmp = tmp.as_mat_mut();
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
@@ -1589,13 +1584,13 @@ pub mod supernodal {
 		/// numerical values, as well as the pivoting permutation.
 		///
 		/// # Panics
-		/// - Panics if `values.len() != symbolic.len_values()`.
+		/// - Panics if `values.len() != symbolic.len_val()`.
 		/// - Panics if `subdiag.len() != symbolic.nrows()`.
 		/// - Panics if `perm.len() != symbolic.nrows()`.
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: &'a [T], subdiag: &'a [T], perm: PermRef<'a, I>) -> Self {
 			assert!(all(
-				values.len() == symbolic.len_values(),
+				values.len() == symbolic.len_val(),
 				subdiag.len() == symbolic.nrows(),
 				perm.len() == symbolic.nrows(),
 			));
@@ -1644,6 +1639,11 @@ pub mod supernodal {
 					pattern: s_pattern,
 				},
 			}
+		}
+
+		#[inline]
+		pub fn perm(&self) -> PermRef<'a, I> {
+			self.perm
 		}
 
 		/// Solves the system $\text{Op}(L B L^H) x = \text{rhs}$, where $\text{Op}$ is either the
@@ -1763,9 +1763,8 @@ pub mod supernodal {
 
 	/// Returns the size and alignment of the workspace required to compute the symbolic supernodal
 	/// factorization of a matrix of size `n`.
-	pub fn factorize_supernodal_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
-		let n_scratch = StackReq::new::<I>(n);
-		StackReq::all_of(&[n_scratch; 4])
+	pub fn factorize_supernodal_symbolic_scratch<I: Index>(n: usize) -> StackReq {
+		StackReq::new::<I>(n).array(4)
 	}
 
 	/// Computes the supernodal symbolic structure of the Cholesky factor of the matrix `A`.
@@ -1842,9 +1841,9 @@ pub mod supernodal {
 				nnz_per_super: None,
 			});
 		}
-		let mut original_stack = stack;
+		let original_stack = stack;
 
-		let (index_to_super__, stack) = unsafe { original_stack.rb_mut().make_raw::<I>(n) };
+		let (index_to_super__, stack) = unsafe { original_stack.make_raw::<I>(n) };
 		let (super_etree__, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
 		let (supernode_sizes__, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (child_count__, _) = unsafe { stack.make_raw::<I>(n) };
@@ -2393,7 +2392,7 @@ pub mod supernodal {
 	/// `L_values`.
 	///
 	/// # Warning
-	/// Only the *lower* (not upper, unlikely the other functions) triangular part of `A` is
+	/// Only the *lower* (not upper, unlike the other functions) triangular part of `A` is
 	/// accessed.
 	///
 	/// # Panics
@@ -2416,7 +2415,7 @@ pub mod supernodal {
 
 		assert!(A_lower.nrows() == n);
 		assert!(A_lower.ncols() == n);
-		assert!(L_values.len() == symbolic.len_values());
+		assert!(L_values.len() == symbolic.len_val());
 
 		let none = I::Signed::truncate(NONE);
 
@@ -2430,7 +2429,7 @@ pub mod supernodal {
 		let row_ind = &*symbolic.row_idx;
 
 		// mapping from global indices to local
-		let (global_to_local, mut stack) = unsafe { stack.make_raw::<I::Signed>(n) };
+		let (global_to_local, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
 		global_to_local.fill(I::Signed::truncate(NONE));
 
 		for s in 0..n_supernodes {
@@ -2486,8 +2485,6 @@ pub mod supernodal {
 				let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
 				let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
 
-				let stack = stack.rb_mut();
-
 				let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack) };
 				let tmp = tmp.as_mat_mut();
 
@@ -2537,7 +2534,7 @@ pub mod supernodal {
 
 			let params = Default::default();
 			dynamic_regularization_count +=
-				match linalg::cholesky::llt::factor::cholesky_in_place(Ls_top.rb_mut(), regularization.clone(), par, stack.rb_mut(), params) {
+				match linalg::cholesky::llt::factor::cholesky_in_place(Ls_top.rb_mut(), regularization.clone(), par, stack, params) {
 					Ok(count) => count,
 					Err(LltError::NonPositivePivot { index }) => {
 						return Err(LltError::NonPositivePivot { index: index + s_start });
@@ -2559,7 +2556,7 @@ pub mod supernodal {
 	/// in `L_values`.
 	///
 	/// # Note
-	/// Only the *lower* (not upper, unlikely the other functions) triangular part of `A` is
+	/// Only the *lower* (not upper, unlike the other functions) triangular part of `A` is
 	/// accessed.
 	///
 	/// # Panics
@@ -2582,7 +2579,7 @@ pub mod supernodal {
 
 		assert!(A_lower.nrows() == n);
 		assert!(A_lower.ncols() == n);
-		assert!(L_values.len() == symbolic.len_values());
+		assert!(L_values.len() == symbolic.len_val());
 
 		let none = I::Signed::truncate(NONE);
 
@@ -2596,7 +2593,7 @@ pub mod supernodal {
 		let row_ind = &*symbolic.row_idx;
 
 		// mapping from global indices to local
-		let (global_to_local, mut stack) = unsafe { stack.make_raw::<I::Signed>(n) };
+		let (global_to_local, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
 		global_to_local.fill(I::Signed::truncate(NONE));
 
 		for s in 0..n_supernodes {
@@ -2660,8 +2657,6 @@ pub mod supernodal {
 				let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
 				let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
 				let D = Ld_top.diagonal().column_vector();
-
-				let stack = stack.rb_mut();
 
 				let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack) };
 				let tmp = tmp.as_mat_mut();
@@ -2727,7 +2722,7 @@ pub mod supernodal {
 					..regularization.clone()
 				},
 				par,
-				stack.rb_mut(),
+				stack,
 				params,
 			) {
 				Ok(count) => count.dynamic_regularization_count,
@@ -2757,7 +2752,7 @@ pub mod supernodal {
 	/// intranodal pivoting, and stores them in `L_values`.
 	///
 	/// # Note
-	/// Only the *lower* (not upper, unlikely the other functions) triangular part of `A` is
+	/// Only the *lower* (not upper, unlike the other functions) triangular part of `A` is
 	/// accessed.
 	///
 	/// # Panics
@@ -2775,11 +2770,12 @@ pub mod supernodal {
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
-	) -> usize {
+	) -> BunchKaufmanInfo {
 		let mut regularization = regularization;
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
 		let mut dynamic_regularization_count = 0usize;
+		let mut transposition_count = 0usize;
 		L_values.fill(zero());
 
 		assert!(A_lower.nrows() == n);
@@ -2787,7 +2783,7 @@ pub mod supernodal {
 		assert!(perm_forward.len() == n);
 		assert!(perm_inverse.len() == n);
 		assert!(subdiag.len() == n);
-		assert!(L_values.len() == symbolic.len_values());
+		assert!(L_values.len() == symbolic.len_val());
 
 		let none = I::Signed::truncate(NONE);
 
@@ -2801,7 +2797,7 @@ pub mod supernodal {
 		let row_ind = &*symbolic.row_idx;
 
 		// mapping from global indices to local
-		let (global_to_local, mut stack) = unsafe { stack.make_raw::<I::Signed>(n) };
+		let (global_to_local, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
 		global_to_local.fill(I::Signed::truncate(NONE));
 
 		for s in 0..n_supernodes {
@@ -2857,8 +2853,6 @@ pub mod supernodal {
 				let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
 				let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
 				let d_subdiag = &subdiag[d_start..d_start + d_ncols];
-
-				let stack = stack.rb_mut();
 
 				let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack) };
 				let (mut tmp2, _) = unsafe { temp_mat_uninit::<T, _, _>(Ld_mid.ncols(), Ld_mid.nrows(), stack) };
@@ -2951,13 +2945,14 @@ pub mod supernodal {
 				&mut perm_forward[s_start..s_end],
 				&mut perm_inverse[s_start..s_end],
 				par,
-				stack.rb_mut(),
+				stack,
 				params,
 			);
 			dynamic_regularization_count += info.dynamic_regularization_count;
+			transposition_count += info.transposition_count;
 			z!(Ls_top.rb_mut()).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero::<T>());
 
-			crate::perm::permute_cols_in_place(Ls_bot.rb_mut(), perm.rb(), stack.rb_mut());
+			crate::perm::permute_cols_in_place(Ls_bot.rb_mut(), perm.rb(), stack);
 
 			for p in &mut perm_forward[s_start..s_end] {
 				*p += I::truncate(s_start);
@@ -2998,7 +2993,10 @@ pub mod supernodal {
 				global_to_local[row.zx()] = none;
 			}
 		}
-		dynamic_regularization_count
+		BunchKaufmanInfo {
+			dynamic_regularization_count,
+			transposition_count,
+		}
 	}
 }
 
@@ -3017,7 +3015,7 @@ fn postorder_depth_first_search<'n, I: Index>(
 	while top != 0 {
 		let current_node = stack[N.check(top - 1)].zx();
 		let first_child = &mut first_child[N.check(current_node)];
-		let current_child = first_child.sx();
+		let current_child = (*first_child).sx();
 
 		if let Some(current_child) = current_child.idx() {
 			stack[N.check(top)] = *current_child.truncate::<I>();
@@ -3128,10 +3126,10 @@ impl<I: Index> SymbolicCholesky<I> {
 	/// Returns the length of the slice needed to store the numerical values of the Cholesky
 	/// decomposition.
 	#[inline]
-	pub fn len_values(&self) -> usize {
+	pub fn len_val(&self) -> usize {
 		match &self.raw {
-			SymbolicCholeskyRaw::Simplicial(this) => this.len_values(),
-			SymbolicCholeskyRaw::Supernodal(this) => this.len_values(),
+			SymbolicCholeskyRaw::Simplicial(this) => this.len_val(),
+			SymbolicCholeskyRaw::Supernodal(this) => this.len_val(),
 		}
 	}
 
@@ -3155,15 +3153,11 @@ impl<I: Index> SymbolicCholesky<I> {
 
 	/// Computes the required workspace size and alignment for a numerical LDLT factorization.
 	#[inline]
-	pub fn factorize_numeric_ldlt_scratch<T: ComplexField>(&self, with_regularization_signs: bool, par: Par) -> StackReq {
+	pub fn factorize_numeric_ldlt_scratch<T: ComplexField>(&self, par: Par) -> StackReq {
 		let n = self.nrows();
 		let A_nnz = self.A_nnz;
 
-		let regularization_signs = if with_regularization_signs {
-			StackReq::new::<i8>(n)
-		} else {
-			StackReq::empty()
-		};
+		let regularization_signs = StackReq::new::<i8>(n);
 
 		let n_scratch = StackReq::new::<I>(n);
 		let A_scratch = StackReq::all_of(&[temp_mat_scratch::<T>(A_nnz, 1), StackReq::new::<I>(n + 1), StackReq::new::<I>(A_nnz)]);
@@ -3180,15 +3174,11 @@ impl<I: Index> SymbolicCholesky<I> {
 	/// Computes the required workspace size and alignment for a numerical intranodal Bunch-Kaufman
 	/// factorization.
 	#[inline]
-	pub fn factorize_numeric_intranode_bunch_kaufman_scratch<T: ComplexField>(&self, with_regularization_signs: bool, par: Par) -> StackReq {
+	pub fn factorize_numeric_intranode_bunch_kaufman_scratch<T: ComplexField>(&self, par: Par) -> StackReq {
 		let n = self.nrows();
 		let A_nnz = self.A_nnz;
 
-		let regularization_signs = if with_regularization_signs {
-			StackReq::new::<i8>(n)
-		} else {
-			StackReq::empty()
-		};
+		let regularization_signs = StackReq::new::<i8>(n);
 
 		let n_scratch = StackReq::new::<I>(n);
 		let A_scratch = StackReq::all_of(&[temp_mat_scratch::<T>(A_nnz, 1), StackReq::new::<I>(n + 1), StackReq::new::<I>(A_nnz)]);
@@ -3224,7 +3214,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
 		let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let (new_row_ind, mut stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+		let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 
 		let out_side = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -3234,13 +3224,13 @@ impl<I: Index> SymbolicCholesky<I> {
 		let A = match self.perm() {
 			Some(perm) => {
 				let perm = perm.as_shape(N);
-				permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack.rb_mut()).into_const()
+				permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack).into_const()
 			},
 			None => {
 				if side == out_side {
 					A
 				} else {
-					adjoint(new_values, new_col_ptr, new_row_ind, A, stack.rb_mut()).into_const()
+					adjoint(new_values, new_col_ptr, new_row_ind, A, stack).into_const()
 				}
 			},
 		};
@@ -3285,7 +3275,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
 		let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let (new_row_ind, mut stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+		let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 
 		let out_side = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -3295,7 +3285,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (A, signs) = match self.perm() {
 			Some(perm) => {
 				let perm = perm.as_shape(N);
-				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack.rb_mut()).into_const();
+				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack).into_const();
 				let fwd = perm.bound_arrays().0;
 				let signs = regularization.dynamic_regularization_signs.map(|signs| {
 					{
@@ -3315,7 +3305,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					(A, regularization.dynamic_regularization_signs)
 				} else {
 					(
-						adjoint(new_values, new_col_ptr, new_row_ind, A, stack.rb_mut()).into_const(),
+						adjoint(new_values, new_col_ptr, new_row_ind, A, stack).into_const(),
 						regularization.dynamic_regularization_signs,
 					)
 				}
@@ -3365,7 +3355,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
 		let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let (new_row_ind, mut stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+		let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 
 		let out_side = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -3387,7 +3377,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					&mut *new_signs
 				});
 
-				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack.rb_mut()).into_const();
+				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack).into_const();
 
 				(A, signs)
 			},
@@ -3396,7 +3386,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					(A, regularization.dynamic_regularization_signs)
 				} else {
 					(
-						adjoint(new_values, new_col_ptr, new_row_ind, A, stack.rb_mut()).into_const(),
+						adjoint(new_values, new_col_ptr, new_row_ind, A, stack).into_const(),
 						regularization.dynamic_regularization_signs,
 					)
 				}
@@ -3527,13 +3517,13 @@ impl<'a, I: Index, T> IntranodeBunchKaufmanRef<'a, I, T> {
 	/// numerical values, as well as the pivoting permutation.
 	///
 	/// # Panics
-	/// - Panics if `values.len() != symbolic.len_values()`.
+	/// - Panics if `values.len() != symbolic.len_val()`.
 	/// - Panics if `subdiag.len() != symbolic.nrows()`.
 	/// - Panics if `perm.len() != symbolic.nrows()`.
 	#[inline]
 	pub fn new(symbolic: &'a SymbolicCholesky<I>, values: &'a [T], subdiag: &'a [T], perm: PermRef<'a, I>) -> Self {
 		assert!(all(
-			values.len() == symbolic.len_values(),
+			values.len() == symbolic.len_val(),
 			subdiag.len() == symbolic.nrows(),
 			perm.len() == symbolic.nrows(),
 		));
@@ -3638,10 +3628,10 @@ impl<'a, I: Index, T> LltRef<'a, I, T> {
 	/// numerical values.
 	///
 	/// # Panics
-	/// - Panics if `values.len() != symbolic.len_values()`.
+	/// - Panics if `values.len() != symbolic.len_val()`.
 	#[inline]
 	pub fn new(symbolic: &'a SymbolicCholesky<I>, values: &'a [T]) -> Self {
-		assert!(symbolic.len_values() == values.len());
+		assert!(symbolic.len_val() == values.len());
 		Self { symbolic, values }
 	}
 
@@ -3702,10 +3692,10 @@ impl<'a, I: Index, T> LdltRef<'a, I, T> {
 	/// numerical values.
 	///
 	/// # Panics
-	/// - Panics if `values.len() != symbolic.len_values()`.
+	/// - Panics if `values.len() != symbolic.len_val()`.
 	#[inline]
 	pub fn new(symbolic: &'a SymbolicCholesky<I>, values: &'a [T]) -> Self {
-		assert!(symbolic.len_values() == values.len());
+		assert!(symbolic.len_val() == values.len());
 		Self { symbolic, values }
 	}
 
@@ -3758,5 +3748,902 @@ impl<'a, I: Index, T> LdltRef<'a, I, T> {
 				}
 			}
 		}
+	}
+}
+
+/// Computes the symbolic Cholesky factorization of the matrix `A`, or returns an error if the
+/// operation could not be completed.
+pub fn factorize_symbolic_cholesky<I: Index>(
+	A: SymbolicSparseColMatRef<'_, I>,
+	side: Side,
+	ord: SymmetricOrdering<'_, I>,
+	params: CholeskySymbolicParams<'_>,
+) -> Result<SymbolicCholesky<I>, FaerError> {
+	let n = A.nrows();
+	let A_nnz = A.compute_nnz();
+
+	assert!(A.nrows() == A.ncols());
+
+	with_dim!(N, n);
+	let A = A.as_shape(N, N);
+
+	let req = {
+		let n_scratch = StackReq::new::<I>(n);
+		let A_scratch = StackReq::and(
+			// new_col_ptr
+			StackReq::new::<I>(n + 1),
+			// new_row_ind
+			StackReq::new::<I>(A_nnz),
+		);
+
+		StackReq::or(
+			match ord {
+				SymmetricOrdering::Amd => amd::order_maybe_unsorted_scratch::<I>(n, A_nnz),
+				_ => StackReq::empty(),
+			},
+			StackReq::all_of(&[
+				A_scratch,
+				// permute_symmetric | etree
+				n_scratch,
+				// col_counts
+				n_scratch,
+				// ghost_prefactorize_symbolic
+				n_scratch,
+				// ghost_factorize_*_symbolic
+				StackReq::or(
+					supernodal::factorize_supernodal_symbolic_scratch::<I>(n),
+					simplicial::factorize_simplicial_symbolic_scratch::<I>(n),
+				),
+			]),
+		)
+	};
+
+	let mut mem = dyn_stack::MemBuffer::try_new(req).ok().ok_or(FaerError::OutOfMemory)?;
+	let stack = MemStack::new(&mut mem);
+
+	let mut perm_fwd = match ord {
+		SymmetricOrdering::Identity => None,
+		_ => Some(try_zeroed(n)?),
+	};
+	let mut perm_inv = match ord {
+		SymmetricOrdering::Identity => None,
+		_ => Some(try_zeroed(n)?),
+	};
+	let flops = match ord {
+		SymmetricOrdering::Amd => Some(amd::order_maybe_unsorted(
+			perm_fwd.as_mut().unwrap(),
+			perm_inv.as_mut().unwrap(),
+			A.as_dyn(),
+			params.amd_params,
+			stack,
+		)?),
+		SymmetricOrdering::Identity => None,
+		SymmetricOrdering::Custom(perm) => {
+			let (fwd, inv) = perm.arrays();
+			perm_fwd.as_mut().unwrap().copy_from_slice(fwd);
+			perm_inv.as_mut().unwrap().copy_from_slice(inv);
+			None
+		},
+	};
+
+	let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
+	let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+	let A = match ord {
+		SymmetricOrdering::Identity => A,
+		_ => permute_self_adjoint_to_unsorted(
+			Symbolic::materialize(A_nnz),
+			new_col_ptr,
+			new_row_ind,
+			SparseColMatRef::new(A, Symbolic::materialize(A.row_idx().len())),
+			PermRef::new_checked(perm_fwd.as_ref().unwrap(), perm_inv.as_ref().unwrap(), n).as_shape(N),
+			side,
+			Side::Upper,
+			stack,
+		)
+		.symbolic(),
+	};
+
+	let (etree, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
+	let (col_counts, stack) = unsafe { stack.make_raw::<I>(n) };
+	let etree = simplicial::prefactorize_symbolic_cholesky::<I>(etree, col_counts, A.as_shape(n, n), stack);
+	let L_nnz = I::sum_nonnegative(col_counts.as_ref()).ok_or(FaerError::IndexOverflow)?;
+
+	let col_counts = Array::from_mut(col_counts, N);
+	let flops = match flops {
+		Some(flops) => flops,
+		None => {
+			let mut n_div = 0u128;
+			let mut n_mult_subs_ldl = 0u128;
+			for i in N.indices() {
+				let c = col_counts[i].zx();
+				n_div += c as u128;
+				n_mult_subs_ldl += (c as u128 * (c as u128 + 1)) / 2;
+			}
+			amd::FlopCount {
+				n_div: n_div as f64,
+				n_mult_subs_ldl: n_mult_subs_ldl as f64,
+				n_mult_subs_lu: 0.0,
+			}
+		},
+	};
+
+	let flops = flops.n_div + flops.n_mult_subs_ldl;
+	let raw = if (flops / L_nnz.zx() as f64) > params.supernodal_flop_ratio_threshold.0 * crate::sparse::linalg::CHOLESKY_SUPERNODAL_RATIO_FACTOR {
+		SymbolicCholeskyRaw::Supernodal(supernodal::ghost_factorize_supernodal_symbolic(
+			A,
+			None,
+			None,
+			supernodal::CholeskyInput::A,
+			etree.as_bound(N),
+			col_counts,
+			stack,
+			params.supernodal_params,
+		)?)
+	} else {
+		SymbolicCholeskyRaw::Simplicial(simplicial::ghost_factorize_simplicial_symbolic_cholesky(
+			A,
+			etree.as_bound(N),
+			col_counts,
+			stack,
+		)?)
+	};
+
+	Ok(SymbolicCholesky {
+		raw,
+		perm_fwd,
+		perm_inv,
+		A_nnz,
+	})
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+	use super::*;
+	use crate::assert;
+	use crate::stats::prelude::*;
+	use crate::utils::approx::*;
+	use dyn_stack::MemBuffer;
+	use std::boxed::Box;
+	use std::path::PathBuf;
+	use std::str::FromStr;
+	use std::vec;
+	use std::vec::Vec;
+
+	type Error = Box<dyn std::error::Error>;
+	type Result<T = (), E = Error> = core::result::Result<T, E>;
+
+	#[track_caller]
+	fn parse_vec<F: FromStr>(text: &str) -> (Vec<F>, &str) {
+		let mut text = text;
+		let mut out = Vec::new();
+
+		assert!(text.trim().starts_with('['));
+		text = &text.trim()[1..];
+		while !text.trim().starts_with(']') {
+			let i = text.find(',').unwrap();
+			let num = &text[..i];
+
+			let num = num.trim().parse::<F>().ok().unwrap();
+			out.push(num);
+			text = &text[i + 1..];
+		}
+
+		assert!(text.trim().starts_with("],"));
+		text = &text.trim()[2..];
+
+		(out, text)
+	}
+
+	fn parse_csc_symbolic(text: &str) -> (SymbolicSparseColMat<usize>, &str) {
+		let (col_ptr, text) = parse_vec::<usize>(text);
+		let (row_idx, text) = parse_vec::<usize>(text);
+		let n = col_ptr.len() - 1;
+
+		(SymbolicSparseColMat::new_unsorted_checked(n, n, col_ptr, None, row_idx), text)
+	}
+
+	fn parse_csc<T: FromStr>(text: &str) -> (SparseColMat<usize, T>, &str) {
+		let (symbolic, text) = parse_csc_symbolic(text);
+		let (numeric, text) = parse_vec::<T>(text);
+		(SparseColMat::new(symbolic, numeric), text)
+	}
+
+	#[test]
+	fn test_counts() {
+		let n = 11;
+		let col_ptr = &[0, 3, 6, 10, 13, 16, 21, 24, 29, 31, 37, 43usize];
+		let row_ind = &[
+			0, 5, 6, // 0
+			1, 2, 7, // 1
+			1, 2, 9, 10, // 2
+			3, 5, 9, // 3
+			4, 7, 10, // 4
+			0, 3, 5, 8, 9, // 5
+			0, 6, 10, // 6
+			1, 4, 7, 9, 10, // 7
+			5, 8, // 8
+			2, 3, 5, 7, 9, 10, // 9
+			2, 4, 6, 7, 9, 10usize, // 10
+		];
+
+		let A = SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind);
+		let mut etree = vec![0isize; n];
+		let mut col_count = vec![0usize; n];
+
+		simplicial::prefactorize_symbolic_cholesky(
+			&mut etree,
+			&mut col_count,
+			A,
+			MemStack::new(&mut MemBuffer::new(StackReq::new::<usize>(n))),
+		);
+
+		assert!(etree == [5, 2, 7, 5, 7, 6, 8, 9, 9, 10, NONE as isize]);
+		assert!(col_count == [3, 3, 4, 3, 3, 4, 4, 3, 3, 2, 1usize]);
+	}
+
+	#[test]
+	fn test_amd() -> Result {
+		for file in [
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/small.txt"),
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-0.txt"),
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-1.txt"),
+		] {
+			let (A, _) = parse_csc_symbolic(&std::fs::read_to_string(&file)?);
+			let n = A.nrows();
+
+			let (target_fwd, target_bwd, _) = ::amd::order(A.nrows(), A.col_ptr(), A.row_idx(), &::amd::Control::default()).unwrap();
+
+			let fwd = &mut *vec![0usize; n];
+			let bwd = &mut *vec![0usize; n];
+			amd::order_maybe_unsorted(
+				fwd,
+				bwd,
+				A.rb(),
+				amd::Control::default(),
+				MemStack::new(&mut MemBuffer::new(amd::order_maybe_unsorted_scratch::<usize>(n, A.compute_nnz()))),
+			)?;
+
+			assert!(fwd == &target_fwd);
+			assert!(bwd == &target_bwd);
+		}
+		Ok(())
+	}
+
+	fn reconstruct_from_supernodal_ldlt<I: Index, T: ComplexField>(symbolic: &supernodal::SymbolicSupernodalCholesky<I>, L_values: &[T]) -> Mat<T> {
+		let ldlt = supernodal::SupernodalLdltRef::new(symbolic, L_values);
+		let n_supernodes = ldlt.symbolic().n_supernodes();
+		let n = ldlt.symbolic().nrows();
+
+		let mut dense = Mat::<T>::zeros(n, n);
+
+		for s in 0..n_supernodes {
+			let s = ldlt.supernode(s);
+			let node = s.val();
+			let size = node.ncols();
+
+			let (Ls_top, Ls_bot) = node.split_at_row(size);
+			dense
+				.rb_mut()
+				.submatrix_mut(s.start(), s.start(), size, size)
+				.copy_from_triangular_lower(Ls_top);
+
+			for col in 0..size {
+				for (i, &row) in s.pattern().iter().enumerate() {
+					dense[(row.zx(), s.start() + col)] = Ls_bot[(i, col)].clone();
+				}
+			}
+		}
+		let mut D = Col::<T>::zeros(n);
+		D.copy_from(dense.rb().diagonal().column_vector());
+		dense.rb_mut().diagonal_mut().fill(one::<T>());
+
+		&dense * D.as_diagonal() * dense.adjoint()
+	}
+
+	fn reconstruct_from_supernodal_llt<I: Index, T: ComplexField>(symbolic: &supernodal::SymbolicSupernodalCholesky<I>, L_values: &[T]) -> Mat<T> {
+		let llt = supernodal::SupernodalLltRef::new(symbolic, L_values);
+		let n_supernodes = llt.symbolic().n_supernodes();
+		let n = llt.symbolic().nrows();
+
+		let mut dense = Mat::<T>::zeros(n, n);
+
+		for s in 0..n_supernodes {
+			let s = llt.supernode(s);
+			let node = s.val();
+			let size = node.ncols();
+
+			let (Ls_top, Ls_bot) = node.split_at_row(size);
+			dense
+				.rb_mut()
+				.submatrix_mut(s.start(), s.start(), size, size)
+				.copy_from_triangular_lower(Ls_top);
+
+			for col in 0..size {
+				for (i, &row) in s.pattern().iter().enumerate() {
+					dense[(row.zx(), s.start() + col)] = Ls_bot[(i, col)].clone();
+				}
+			}
+		}
+		&dense * dense.adjoint()
+	}
+	fn reconstruct_from_simplicial_ldlt<I: Index, T: ComplexField>(symbolic: &simplicial::SymbolicSimplicialCholesky<I>, L_values: &[T]) -> Mat<T> {
+		let n = symbolic.nrows();
+
+		let mut dense = SparseColMatRef::new(symbolic.factor(), L_values).to_dense();
+		let mut D = Col::<T>::zeros(n);
+		D.copy_from(dense.rb().diagonal().column_vector());
+		dense.rb_mut().diagonal_mut().fill(one::<T>());
+
+		&dense * D.as_diagonal() * dense.adjoint()
+	}
+
+	fn reconstruct_from_simplicial_llt<I: Index, T: ComplexField>(symbolic: &simplicial::SymbolicSimplicialCholesky<I>, L_values: &[T]) -> Mat<T> {
+		let dense = SparseColMatRef::new(symbolic.factor(), L_values).to_dense();
+		&dense * dense.adjoint()
+	}
+
+	#[test]
+	fn test_supernodal() -> Result {
+		let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-1.txt");
+		let A_upper = parse_csc::<c64>(&std::fs::read_to_string(&file)?).0;
+		let mut A_lower = A_upper.adjoint().to_col_major()?;
+		let A_upper = A_upper.rb();
+
+		let n = A_upper.nrows();
+		let etree = &mut *vec![0isize; n];
+		let col_counts = &mut *vec![0usize; n];
+		let etree = simplicial::prefactorize_symbolic_cholesky(
+			etree,
+			col_counts,
+			A_upper.symbolic(),
+			MemStack::new(&mut MemBuffer::new(simplicial::prefactorize_symbolic_cholesky_scratch::<usize>(
+				n,
+				A_upper.compute_nnz(),
+			))),
+		);
+
+		let symbolic = &supernodal::factorize_supernodal_symbolic(
+			A_upper.symbolic(),
+			etree,
+			col_counts,
+			MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_symbolic_scratch::<usize>(n))),
+			Default::default(),
+		)?;
+
+		{
+			let A_lower = A_lower.rb();
+			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+			supernodal::factorize_supernodal_numeric_ldlt(
+				L_val,
+				A_lower,
+				Default::default(),
+				symbolic,
+				Par::Seq,
+				MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_ldlt_scratch::<usize, c64>(
+					symbolic,
+					Par::Seq,
+				))),
+			)?;
+
+			let mut target = A_lower.to_dense();
+			let adjoint = target.adjoint().to_owned();
+			target.copy_from_strict_triangular_upper(adjoint);
+			let A = reconstruct_from_supernodal_ldlt(symbolic, L_val);
+
+			assert!(A ~ target);
+
+			let k = 3;
+			let rng = &mut StdRng::seed_from_u64(0);
+
+			let rhs = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			let supernodal = supernodal::SupernodalLdltRef::new(symbolic, L_val);
+			for conj in [Conj::No, Conj::Yes] {
+				let mut x = rhs.clone();
+				supernodal.solve_in_place_with_conj(
+					conj,
+					x.rb_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+				);
+
+				let target = rhs.rb();
+				let rhs = match conj {
+					Conj::No => &A * &x,
+					Conj::Yes => A.conjugate() * &x,
+				};
+
+				assert!(rhs ~ target);
+			}
+		}
+
+		{
+			let A_lower = A_lower.rb();
+			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e2);
+			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+			let fwd = &mut *vec![0usize; n];
+			let bwd = &mut *vec![0usize; n];
+			let subdiag = &mut *vec![zero::<c64>(); n];
+
+			supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+				L_val,
+				subdiag,
+				fwd,
+				bwd,
+				A_lower,
+				Default::default(),
+				symbolic,
+				Par::Seq,
+				MemStack::new(&mut MemBuffer::new(
+					supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<usize, c64>(symbolic, Par::Seq),
+				)),
+			);
+
+			let mut A = A_lower.to_dense();
+			let adjoint = A.adjoint().to_owned();
+			A.copy_from_strict_triangular_upper(adjoint);
+
+			let k = 3;
+			let rng = &mut StdRng::seed_from_u64(0);
+
+			let rhs = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			let supernodal = supernodal::SupernodalIntranodeBunchKaufmanRef::new(symbolic, L_val, subdiag, PermRef::new_checked(fwd, bwd, n));
+			for conj in [Conj::No, Conj::Yes] {
+				let mut x = rhs.clone();
+				let mut tmp = x.clone();
+
+				for j in 0..k {
+					for (i, &fwd) in fwd.iter().enumerate() {
+						tmp[(i, j)] = x[(fwd, j)];
+					}
+				}
+
+				supernodal.solve_in_place_no_numeric_permute_with_conj(
+					conj,
+					tmp.rb_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+				);
+
+				for j in 0..k {
+					for (i, &bwd) in bwd.iter().enumerate() {
+						x[(i, j)] = tmp[(bwd, j)];
+					}
+				}
+
+				let target = rhs.rb();
+				let rhs = match conj {
+					Conj::No => &A * &x,
+					Conj::Yes => A.conjugate() * &x,
+				};
+
+				assert!(rhs ~ target);
+			}
+		}
+
+		{
+			for j in 0..n {
+				*A_lower.val_of_col_mut(j).first_mut().unwrap() *= 1e3;
+			}
+			let A_lower = A_lower.rb();
+
+			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+			supernodal::factorize_supernodal_numeric_llt(
+				L_val,
+				A_lower,
+				Default::default(),
+				symbolic,
+				Par::Seq,
+				MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_llt_scratch::<usize, c64>(
+					symbolic,
+					Par::Seq,
+				))),
+			)?;
+
+			let mut target = A_lower.to_dense();
+			let adjoint = target.adjoint().to_owned();
+			target.copy_from_strict_triangular_upper(adjoint);
+			let A = reconstruct_from_supernodal_llt(symbolic, L_val);
+
+			assert!(A ~ target);
+
+			let k = 3;
+			let rng = &mut StdRng::seed_from_u64(0);
+
+			let rhs = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			let supernodal = supernodal::SupernodalLltRef::new(symbolic, L_val);
+			for conj in [Conj::No, Conj::Yes] {
+				let mut x = rhs.clone();
+				supernodal.solve_in_place_with_conj(
+					conj,
+					x.rb_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+				);
+
+				let target = rhs.rb();
+				let rhs = match conj {
+					Conj::No => &A * &x,
+					Conj::Yes => A.conjugate() * &x,
+				};
+
+				assert!(rhs ~ target);
+			}
+		}
+		Ok(())
+	}
+
+	#[test]
+	fn test_simplicial() -> Result {
+		let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-1.txt");
+		let mut A_upper = parse_csc::<c64>(&std::fs::read_to_string(&file)?).0;
+
+		let n = A_upper.nrows();
+		let etree = &mut *vec![0isize; n];
+		let col_counts = &mut *vec![0usize; n];
+		let etree = simplicial::prefactorize_symbolic_cholesky(
+			etree,
+			col_counts,
+			A_upper.symbolic(),
+			MemStack::new(&mut MemBuffer::new(simplicial::prefactorize_symbolic_cholesky_scratch::<usize>(
+				n,
+				A_upper.compute_nnz(),
+			))),
+		);
+
+		let symbolic = &simplicial::factorize_simplicial_symbolic(
+			A_upper.symbolic(),
+			etree,
+			col_counts,
+			MemStack::new(&mut MemBuffer::new(simplicial::factorize_simplicial_symbolic_scratch::<usize>(n))),
+		)?;
+
+		{
+			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e5);
+			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+			let A_upper = A_upper.rb();
+			simplicial::factorize_simplicial_numeric_ldlt(
+				L_val,
+				A_upper,
+				Default::default(),
+				symbolic,
+				MemStack::new(&mut MemBuffer::new(simplicial::factorize_simplicial_numeric_ldlt_scratch::<usize, c64>(
+					n,
+				))),
+			)?;
+
+			let mut target = A_upper.to_dense();
+			let adjoint = target.adjoint().to_owned();
+			target.copy_from_strict_triangular_lower(adjoint);
+			let A = reconstruct_from_simplicial_ldlt(symbolic, L_val);
+
+			assert!(A ~ target);
+
+			let k = 3;
+			let rng = &mut StdRng::seed_from_u64(0);
+
+			let rhs = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			let simplicial = simplicial::SimplicialLdltRef::new(symbolic, L_val);
+			for conj in [Conj::No, Conj::Yes] {
+				let mut x = rhs.clone();
+				simplicial.solve_in_place_with_conj(
+					conj,
+					x.rb_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+				);
+
+				let target = rhs.rb();
+				let rhs = match conj {
+					Conj::No => &A * &x,
+					Conj::Yes => A.conjugate() * &x,
+				};
+
+				assert!(rhs ~ target);
+			}
+		}
+
+		{
+			for j in 0..n {
+				let (i, x) = A_upper.rb_mut().idx_val_of_col_mut(j);
+				for (i, x) in iter::zip(i, x) {
+					if i == j {
+						*x *= 1e3;
+					}
+				}
+			}
+			let A_upper = A_upper.rb();
+
+			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e5);
+			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+			simplicial::factorize_simplicial_numeric_llt(
+				L_val,
+				A_upper,
+				Default::default(),
+				symbolic,
+				MemStack::new(&mut MemBuffer::new(simplicial::factorize_simplicial_numeric_llt_scratch::<usize, c64>(n))),
+			)?;
+
+			let mut target = A_upper.to_dense();
+			let adjoint = target.adjoint().to_owned();
+			target.copy_from_strict_triangular_lower(adjoint);
+			let A = reconstruct_from_simplicial_llt(symbolic, L_val);
+
+			assert!(A ~ target);
+
+			let k = 3;
+			let rng = &mut StdRng::seed_from_u64(0);
+
+			let rhs = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
+
+			let simplicial = simplicial::SimplicialLltRef::new(symbolic, L_val);
+			for conj in [Conj::No, Conj::Yes] {
+				let mut x = rhs.clone();
+				simplicial.solve_in_place_with_conj(
+					conj,
+					x.rb_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+				);
+
+				let target = rhs.rb();
+				let rhs = match conj {
+					Conj::No => &A * &x,
+					Conj::Yes => A.conjugate() * &x,
+				};
+
+				assert!(rhs ~ target);
+			}
+		}
+		Ok(())
+	}
+
+	#[test]
+	fn test_solver_llt() -> Result {
+		let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-1.txt");
+		let mut A_upper = parse_csc::<c64>(&std::fs::read_to_string(&file)?).0;
+		let n = A_upper.nrows();
+		for j in 0..n {
+			let (i, x) = A_upper.rb_mut().idx_val_of_col_mut(j);
+			for (i, x) in iter::zip(i, x) {
+				if i == j {
+					*x *= 1e3;
+				}
+			}
+		}
+		let A_upper = A_upper.rb();
+		let A_lower = A_upper.adjoint().to_col_major()?;
+		let A_lower = A_lower.rb();
+
+		let mut A_full = A_lower.to_dense();
+		let adjoint = A_full.adjoint().to_owned();
+		A_full.copy_from_triangular_upper(adjoint);
+		let A_full = A_full.rb();
+
+		let rng = &mut StdRng::seed_from_u64(0);
+		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+
+		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
+			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
+				for par in [Par::Seq, Par::rayon(4)] {
+					let symbolic = &factorize_symbolic_cholesky(A.symbolic(), side, SymmetricOrdering::Amd, CholeskySymbolicParams {
+						supernodal_flop_ratio_threshold,
+						..Default::default()
+					})?;
+
+					let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+					let llt = symbolic.factorize_numeric_llt(
+						L_val,
+						A,
+						side,
+						Default::default(),
+						par,
+						MemStack::new(&mut MemBuffer::new(symbolic.factorize_numeric_llt_scratch::<c64>(par))),
+					)?;
+
+					for k in (1..16).chain(128..132) {
+						let rhs = CwiseMatDistribution {
+							nrows: n,
+							ncols: k,
+							dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						}
+						.rand::<Mat<c64>>(rng);
+
+						for conj in [Conj::No, Conj::Yes] {
+							let mut x = rhs.clone();
+							llt.solve_in_place_with_conj(
+								conj,
+								x.rb_mut(),
+								par,
+								MemStack::new(&mut MemBuffer::new(llt.solve_in_place_scratch::<c64>(k))),
+							);
+
+							let target = rhs.as_ref();
+							let rhs = match conj {
+								Conj::No => A_full * &x,
+								Conj::Yes => A_full.conjugate() * &x,
+							};
+							assert!(rhs ~ target);
+						}
+					}
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_solver_ldlt() -> Result {
+		let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-1.txt");
+		let A_upper = parse_csc::<c64>(&std::fs::read_to_string(&file)?).0;
+		let n = A_upper.nrows();
+
+		let A_upper = A_upper.rb();
+		let A_lower = A_upper.adjoint().to_col_major()?;
+		let A_lower = A_lower.rb();
+
+		let mut A_full = A_lower.to_dense();
+		let adjoint = A_full.adjoint().to_owned();
+		A_full.copy_from_triangular_upper(adjoint);
+		let A_full = A_full.rb();
+
+		let rng = &mut StdRng::seed_from_u64(0);
+		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+
+		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
+			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
+				for par in [Par::Seq, Par::rayon(4)] {
+					let symbolic = &factorize_symbolic_cholesky(A.symbolic(), side, SymmetricOrdering::Amd, CholeskySymbolicParams {
+						supernodal_flop_ratio_threshold,
+						..Default::default()
+					})?;
+
+					let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+					let ldlt = symbolic.factorize_numeric_ldlt(
+						L_val,
+						A,
+						side,
+						Default::default(),
+						par,
+						MemStack::new(&mut MemBuffer::new(symbolic.factorize_numeric_ldlt_scratch::<c64>(par))),
+					)?;
+
+					for k in (1..16).chain(128..132) {
+						let rhs = CwiseMatDistribution {
+							nrows: n,
+							ncols: k,
+							dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						}
+						.rand::<Mat<c64>>(rng);
+
+						for conj in [Conj::No, Conj::Yes] {
+							let mut x = rhs.clone();
+							ldlt.solve_in_place_with_conj(
+								conj,
+								x.rb_mut(),
+								par,
+								MemStack::new(&mut MemBuffer::new(ldlt.solve_in_place_scratch::<c64>(k))),
+							);
+
+							let target = rhs.as_ref();
+							let rhs = match conj {
+								Conj::No => A_full * &x,
+								Conj::Yes => A_full.conjugate() * &x,
+							};
+							assert!(rhs ~ target);
+						}
+					}
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_solver_bk() -> Result {
+		let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_cholesky/medium-1.txt");
+		let A_upper = parse_csc::<c64>(&std::fs::read_to_string(&file)?).0;
+		let n = A_upper.nrows();
+
+		let A_upper = A_upper.rb();
+		let A_lower = A_upper.adjoint().to_col_major()?;
+		let A_lower = A_lower.rb();
+
+		let mut A_full = A_lower.to_dense();
+		let adjoint = A_full.adjoint().to_owned();
+		A_full.copy_from_triangular_upper(adjoint);
+		let A_full = A_full.rb();
+
+		let rng = &mut StdRng::seed_from_u64(0);
+		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+
+		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
+			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
+				for par in [Par::Seq, Par::rayon(4)] {
+					let symbolic = &factorize_symbolic_cholesky(A.symbolic(), side, SymmetricOrdering::Amd, CholeskySymbolicParams {
+						supernodal_flop_ratio_threshold,
+						..Default::default()
+					})?;
+					let fwd = &mut *vec![0usize; n];
+					let bwd = &mut *vec![0usize; n];
+					let subdiag = &mut *vec![zero::<c64>(); n];
+
+					let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
+					let lblt = symbolic.factorize_numeric_intranode_bunch_kaufman(
+						L_val,
+						subdiag,
+						fwd,
+						bwd,
+						A,
+						side,
+						Default::default(),
+						par,
+						MemStack::new(&mut MemBuffer::new(
+							symbolic.factorize_numeric_intranode_bunch_kaufman_scratch::<c64>(par),
+						)),
+					);
+
+					for k in (1..16).chain(128..132) {
+						let rhs = CwiseMatDistribution {
+							nrows: n,
+							ncols: k,
+							dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						}
+						.rand::<Mat<c64>>(rng);
+
+						for conj in [Conj::No, Conj::Yes] {
+							let mut x = rhs.clone();
+							lblt.solve_in_place_with_conj(
+								conj,
+								x.rb_mut(),
+								par,
+								MemStack::new(&mut MemBuffer::new(lblt.solve_in_place_scratch::<c64>(k))),
+							);
+
+							let target = rhs.as_ref();
+							let rhs = match conj {
+								Conj::No => A_full * &x,
+								Conj::Yes => A_full.conjugate() * &x,
+							};
+							assert!(rhs ~ target);
+						}
+					}
+				}
+			}
+		}
+
+		Ok(())
 	}
 }
