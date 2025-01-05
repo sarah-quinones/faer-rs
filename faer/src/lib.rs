@@ -56,7 +56,7 @@ macro_rules! __dbg {
     ($val:expr $(,)?) => {
         match $val {
             tmp => {
-                std::eprintln!("[{}:{}:{}] {} = {:8.5?}",
+                std::eprintln!("[{}:{}:{}] {} = {:12.9?}",
                     std::file!(), std::line!(), std::column!(), std::stringify!($val), &tmp);
                 tmp
             }
@@ -534,6 +534,8 @@ pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
+	#[cfg(test)]
+	pub(crate) use std::dbg;
 	#[cfg(test)]
 	pub(crate) use {alloc::boxed::Box, alloc::vec, alloc::vec::Vec};
 

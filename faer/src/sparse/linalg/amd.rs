@@ -880,8 +880,8 @@ fn amd_1<I: Index>(
 }
 
 fn preprocess<'out, I: Index>(
-	new_col_ptrs: &'out mut [I],
-	new_row_indices: &'out mut [I],
+	new_col_ptr: &'out mut [I],
+	new_row_idx: &'out mut [I],
 	A: SymbolicSparseColMatRef<'_, I>,
 	stack: &mut MemStack,
 ) -> SymbolicSparseColMatRef<'out, I> {
@@ -909,25 +909,25 @@ fn preprocess<'out, I: Index>(
 		}
 	}
 
-	new_col_ptrs[0] = I::from_signed(zero);
-	for (i, [r, r_next]) in iter::zip(N.indices(), windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs)))) {
+	new_col_ptr[0] = I::from_signed(zero);
+	for (i, [r, r_next]) in iter::zip(N.indices(), windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr)))) {
 		r_next.set(r.get() + I::from_signed(w[i]));
 	}
 
-	w.as_mut().copy_from_slice(bytemuck::cast_slice(&new_col_ptrs[..n]));
+	w.as_mut().copy_from_slice(bytemuck::cast_slice(&new_col_ptr[..n]));
 	flag.as_mut().fill(I(NONE));
 
 	for j in N.indices() {
 		let j_ = I(*j);
 		for i in A.row_idx_of_col(j) {
 			if flag[i] != j_ {
-				new_row_indices[w[i].zx()] = I::from_signed(j_);
+				new_row_idx[w[i].zx()] = I::from_signed(j_);
 				w[i] += one;
 				flag[i] = j_;
 			}
 		}
 	}
-	unsafe { SymbolicSparseColMatRef::new_unchecked(n, n, &*new_col_ptrs, None, &new_row_indices[..new_col_ptrs[n].zx()]) }
+	unsafe { SymbolicSparseColMatRef::new_unchecked(n, n, &*new_col_ptr, None, &new_row_idx[..new_col_ptr[n].zx()]) }
 }
 
 #[allow(clippy::comparison_chain)]
@@ -1106,9 +1106,9 @@ pub fn order_maybe_unsorted<I: Index>(
 		});
 	}
 	let nnz = A.compute_nnz();
-	let (new_col_ptrs, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-	let (new_row_indices, stack) = unsafe { stack.make_raw::<I>(nnz) };
-	let A = preprocess(new_col_ptrs, new_row_indices, A, stack);
+	let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
+	let (new_row_idx, stack) = unsafe { stack.make_raw::<I>(nnz) };
+	let A = preprocess(new_col_ptr, new_row_idx, A, stack);
 	order(perm, perm_inv, A, control, stack)
 }
 

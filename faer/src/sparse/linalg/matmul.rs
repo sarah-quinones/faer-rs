@@ -21,8 +21,8 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 	let m = lhs.nrows();
 	let n = rhs.ncols();
 
-	let mut col_ptrs = try_zeroed::<I>(n + 1)?;
-	let mut row_ind = alloc::vec::Vec::new();
+	let mut col_ptr = try_zeroed::<I>(n + 1)?;
+	let mut row_idx = alloc::vec::Vec::new();
 	let mut work = try_collect(core::iter::repeat_n(I::truncate(usize::MAX), m))?;
 	let mut info = try_zeroed::<f64>(n + 1)?;
 
@@ -32,8 +32,8 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 		for k in rhs.row_idx_of_col(j) {
 			for i in lhs.row_idx_of_col(k) {
 				if work[i] != I::truncate(j) {
-					row_ind.try_reserve(1).ok().ok_or(FaerError::OutOfMemory)?;
-					row_ind.push(I::truncate(i));
+					row_idx.try_reserve(1).ok().ok_or(FaerError::OutOfMemory)?;
+					row_idx.push(I::truncate(i));
 					work[i] = I::truncate(j);
 
 					count += 1;
@@ -43,15 +43,15 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 		}
 
 		info[j + 1] = info[j] + flops;
-		col_ptrs[j + 1] = col_ptrs[j] + I::truncate(count);
-		if col_ptrs[j + 1] > I::from_signed(I::Signed::MAX) {
+		col_ptr[j + 1] = col_ptr[j] + I::truncate(count);
+		if col_ptr[j + 1] > I::from_signed(I::Signed::MAX) {
 			return Err(FaerError::IndexOverflow);
 		}
-		row_ind[col_ptrs[j].zx()..col_ptrs[j + 1].zx()].sort_unstable();
+		row_idx[col_ptr[j].zx()..col_ptr[j + 1].zx()].sort_unstable();
 	}
 
 	unsafe {
-		Ok((SymbolicSparseColMat::new_unchecked(m, n, col_ptrs, None, row_ind), SparseMatMulInfo {
+		Ok((SymbolicSparseColMat::new_unchecked(m, n, col_ptr, None, row_idx), SparseMatMulInfo {
 			flops_prefix_sum: info,
 		}))
 	}

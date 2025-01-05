@@ -233,10 +233,10 @@ pub mod simplicial {
 			p_next.set(p.get() + count);
 		}
 		let l_nnz = L_col_ptr[n].zx();
-		let mut L_row_ind = try_zeroed::<I>(l_nnz)?;
+		let mut L_row_idx = try_zeroed::<I>(l_nnz)?;
 
 		with_dim!(L_NNZ, l_nnz);
-		let (current_row_index, stack) = unsafe { stack.make_raw::<I>(n) };
+		let (current_row_idxex, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (ereach_stack, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (visited, _) = unsafe { stack.make_raw::<I::Signed>(n) };
 
@@ -244,21 +244,23 @@ pub mod simplicial {
 		let visited = Array::from_mut(visited, N);
 
 		visited.as_mut().fill(I::Signed::truncate(NONE));
-		let L_row_idx = Array::from_mut(&mut L_row_ind, L_NNZ);
-		let L_col_ptr_start = Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptr[..n], L_NNZ), N);
-		let current_row_index = Array::from_mut(ghost::copy_slice(current_row_index, L_col_ptr_start.as_ref()), N);
+		{
+			let L_row_idx = Array::from_mut(&mut L_row_idx, L_NNZ);
+			let L_col_ptr_start = Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptr[..n], L_NNZ), N);
+			let current_row_idxex = Array::from_mut(ghost::copy_slice(current_row_idxex, L_col_ptr_start.as_ref()), N);
 
-		for k in N.indices() {
-			let reach = ereach(ereach_stack, A, etree, k, visited);
-			for &j in reach {
-				let j = j.zx();
-				let cj = &mut current_row_index[j];
-				let row_idx = L_NNZ.check(*cj.zx() + 1);
-				*cj = row_idx.truncate();
-				L_row_idx[row_idx] = *k.truncate();
+			for k in N.indices() {
+				let reach = ereach(ereach_stack, A, etree, k, visited);
+				for &j in reach {
+					let j = j.zx();
+					let cj = &mut current_row_idxex[j];
+					let row_idx = L_NNZ.check(*cj.zx() + 1);
+					*cj = row_idx.truncate();
+					L_row_idx[row_idx] = *k.truncate();
+				}
+				let k_start = L_col_ptr_start[k].zx();
+				L_row_idx[k_start] = *k.truncate();
 			}
-			let k_start = L_col_ptr_start[k].zx();
-			L_row_idx[k_start] = *k.truncate();
 		}
 
 		let etree = try_collect(
@@ -267,12 +269,11 @@ pub mod simplicial {
 				.copied(),
 		)?;
 
-		let _ = SymbolicSparseColMatRef::new_unsorted_checked(n, n, &L_col_ptr, None, &L_row_ind);
-
+		let _ = SymbolicSparseColMatRef::new_unsorted_checked(n, n, &L_col_ptr, None, &L_row_idx);
 		Ok(SymbolicSimplicialCholesky {
 			dimension: n,
 			col_ptr: L_col_ptr,
-			row_idx: L_row_ind,
+			row_idx: L_row_idx,
 			etree,
 		})
 	}
@@ -317,7 +318,7 @@ pub mod simplicial {
 		let (mut x, stack) = temp_mat_zeroed::<T, _, _>(n, 1, stack);
 		let mut x = x.as_mat_mut().col_mut(0).as_row_shape_mut(N);
 
-		let (current_row_index, stack) = unsafe { stack.make_raw::<I>(n) };
+		let (current_row_idxex, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (ereach_stack, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (visited, _) = unsafe { stack.make_raw::<I::Signed>(n) };
 
@@ -331,7 +332,7 @@ pub mod simplicial {
 
 		let L_col_ptr_start = Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptr[..n], L_NNZ), N);
 
-		let current_row_index = Array::from_mut(ghost::copy_slice(current_row_index, L_col_ptr_start.as_ref()), N);
+		let current_row_idxex = Array::from_mut(ghost::copy_slice(current_row_idxex, L_col_ptr_start.as_ref()), N);
 
 		for k in N.indices() {
 			let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
@@ -347,7 +348,7 @@ pub mod simplicial {
 				let j = j.zx();
 
 				let j_start = L_col_ptr_start[j].zx();
-				let cj = &mut current_row_index[j];
+				let cj = &mut current_row_idxex[j];
 				let row_idx = L_NNZ.check(*cj.zx() + 1);
 				*cj = row_idx.truncate();
 
@@ -456,7 +457,7 @@ pub mod simplicial {
 
 		let (mut x, stack) = temp_mat_zeroed::<T, _, _>(n, 1, stack);
 		let mut x = x.as_mat_mut().col_mut(0).as_row_shape_mut(N);
-		let (current_row_index, stack) = unsafe { stack.make_raw::<I>(n) };
+		let (current_row_idxex, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (ereach_stack, stack) = unsafe { stack.make_raw::<I>(n) };
 		let (visited, _) = unsafe { stack.make_raw::<I::Signed>(n) };
 
@@ -470,7 +471,7 @@ pub mod simplicial {
 
 		let L_col_ptr_start = Array::from_ref(Idx::from_slice_ref_checked(&L_col_ptr[..n], L_NNZ), N);
 
-		let current_row_index = Array::from_mut(ghost::copy_slice(current_row_index, L_col_ptr_start.as_ref()), N);
+		let current_row_idxex = Array::from_mut(ghost::copy_slice(current_row_idxex, L_col_ptr_start.as_ref()), N);
 
 		for k in N.indices() {
 			let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
@@ -486,7 +487,7 @@ pub mod simplicial {
 				let j = j.zx();
 
 				let j_start = L_col_ptr_start[j].zx();
-				let cj = &mut current_row_index[j];
+				let cj = &mut current_row_idxex[j];
 				let row_idx = L_NNZ.check(*cj.zx() + 1);
 				*cj = row_idx.truncate();
 
@@ -2255,7 +2256,7 @@ pub mod supernodal {
 		let desc_count = &*symbolic.descendant_count;
 
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
-		let row_ind = &*symbolic.row_idx;
+		let row_idx = &*symbolic.row_idx;
 
 		let mut req = StackReq::empty();
 		for s in 0..n_supernodes {
@@ -2270,7 +2271,7 @@ pub mod supernodal {
 				let mut d_scratch = StackReq::empty();
 				let d = d.zx();
 
-				let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
 				let d_pattern_start = d_pattern.partition_point(partition_fn(s_start));
 				let d_pattern_mid_len = d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
 
@@ -2297,7 +2298,7 @@ pub mod supernodal {
 		let desc_count = &*symbolic.descendant_count;
 
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
-		let row_ind = &*symbolic.row_idx;
+		let row_idx = &*symbolic.row_idx;
 
 		let mut req = StackReq::empty();
 		for s in 0..n_supernodes {
@@ -2315,7 +2316,7 @@ pub mod supernodal {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 
-				let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
 
 				let d_ncols = d_end - d_start;
 
@@ -2347,7 +2348,7 @@ pub mod supernodal {
 		let desc_count = &*symbolic.descendant_count;
 
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
-		let row_ind = &*symbolic.row_idx;
+		let row_idx = &*symbolic.row_idx;
 
 		let mut req = StackReq::empty();
 		for s in 0..n_supernodes {
@@ -2355,7 +2356,7 @@ pub mod supernodal {
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 
 			let s_ncols = s_end - s_start;
-			let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
 
 			let s_postordered = post_inv[s].zx();
 			let desc_count = desc_count[s].zx();
@@ -2366,7 +2367,7 @@ pub mod supernodal {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 
-				let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
 
 				let d_ncols = d_end - d_start;
 
@@ -2425,7 +2426,7 @@ pub mod supernodal {
 
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let col_ptr_val = &*symbolic.col_ptr_for_val;
-		let row_ind = &*symbolic.row_idx;
+		let row_idx = &*symbolic.row_idx;
 
 		// mapping from global indices to local
 		let (global_to_local, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
@@ -2435,7 +2436,7 @@ pub mod supernodal {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 
-			let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 
@@ -2470,7 +2471,7 @@ pub mod supernodal {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 
-				let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
 				let d_ncols = d_end - d_start;
 				let d_nrows = d_pattern.len() + d_ncols;
 
@@ -2589,7 +2590,7 @@ pub mod supernodal {
 
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let col_ptr_val = &*symbolic.col_ptr_for_val;
-		let row_ind = &*symbolic.row_idx;
+		let row_idx = &*symbolic.row_idx;
 
 		// mapping from global indices to local
 		let (global_to_local, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
@@ -2599,9 +2600,9 @@ pub mod supernodal {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 			let s_pattern = if let Some(nnz_per_super) = symbolic.nnz_per_super.as_deref() {
-				&row_ind[col_ptr_row[s].zx()..][..nnz_per_super[s].zx()]
+				&row_idx[col_ptr_row[s].zx()..][..nnz_per_super[s].zx()]
 			} else {
-				&row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()]
+				&row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()]
 			};
 
 			let s_ncols = s_end - s_start;
@@ -2638,9 +2639,9 @@ pub mod supernodal {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = if let Some(nnz_per_super) = symbolic.nnz_per_super.as_deref() {
-					&row_ind[col_ptr_row[d].zx()..][..nnz_per_super[d].zx()]
+					&row_idx[col_ptr_row[d].zx()..][..nnz_per_super[d].zx()]
 				} else {
-					&row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()]
+					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()]
 				};
 
 				let d_ncols = d_end - d_start;
@@ -2793,7 +2794,7 @@ pub mod supernodal {
 
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let col_ptr_val = &*symbolic.col_ptr_for_val;
-		let row_ind = &*symbolic.row_idx;
+		let row_idx = &*symbolic.row_idx;
 
 		// mapping from global indices to local
 		let (global_to_local, stack) = unsafe { stack.make_raw::<I::Signed>(n) };
@@ -2803,7 +2804,7 @@ pub mod supernodal {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 
-			let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 
@@ -2838,7 +2839,7 @@ pub mod supernodal {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 
-				let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
 				let d_ncols = d_end - d_start;
 				let d_nrows = d_pattern.len() + d_ncols;
 
@@ -3215,7 +3216,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
 		let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+		let (new_row_idx, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 
 		let out_side = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -3225,13 +3226,13 @@ impl<I: Index> SymbolicCholesky<I> {
 		let A = match self.perm() {
 			Some(perm) => {
 				let perm = perm.as_shape(N);
-				permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack).into_const()
+				permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_idx, A, perm, side, out_side, stack).into_const()
 			},
 			None => {
 				if side == out_side {
 					A
 				} else {
-					adjoint(new_values, new_col_ptr, new_row_ind, A, stack).into_const()
+					adjoint(new_values, new_col_ptr, new_row_idx, A, stack).into_const()
 				}
 			},
 		};
@@ -3277,7 +3278,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
 		let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+		let (new_row_idx, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 
 		let out_side = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -3287,7 +3288,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (A, signs) = match self.perm() {
 			Some(perm) => {
 				let perm = perm.as_shape(N);
-				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack).into_const();
+				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_idx, A, perm, side, out_side, stack).into_const();
 				let fwd = perm.bound_arrays().0;
 				let signs = regularization.dynamic_regularization_signs.map(|signs| {
 					{
@@ -3307,7 +3308,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					(A, regularization.dynamic_regularization_signs)
 				} else {
 					(
-						adjoint(new_values, new_col_ptr, new_row_ind, A, stack).into_const(),
+						adjoint(new_values, new_col_ptr, new_row_idx, A, stack).into_const(),
 						regularization.dynamic_regularization_signs,
 					)
 				}
@@ -3358,7 +3359,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
 		let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+		let (new_row_idx, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 
 		let out_side = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -3380,7 +3381,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					&mut *new_signs
 				});
 
-				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_ind, A, perm, side, out_side, stack).into_const();
+				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_idx, A, perm, side, out_side, stack).into_const();
 
 				(A, signs)
 			},
@@ -3389,7 +3390,7 @@ impl<I: Index> SymbolicCholesky<I> {
 					(A, regularization.dynamic_regularization_signs)
 				} else {
 					(
-						adjoint(new_values, new_col_ptr, new_row_ind, A, stack).into_const(),
+						adjoint(new_values, new_col_ptr, new_row_idx, A, stack).into_const(),
 						regularization.dynamic_regularization_signs,
 					)
 				}
@@ -3776,7 +3777,7 @@ pub fn factorize_symbolic_cholesky<I: Index>(
 		let A_scratch = StackReq::and(
 			// new_col_ptr
 			StackReq::new::<I>(n + 1),
-			// new_row_ind
+			// new_row_idx
 			StackReq::new::<I>(A_nnz),
 		);
 
@@ -3831,13 +3832,13 @@ pub fn factorize_symbolic_cholesky<I: Index>(
 	};
 
 	let (new_col_ptr, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-	let (new_row_ind, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
+	let (new_row_idx, stack) = unsafe { stack.make_raw::<I>(A_nnz) };
 	let A = match ord {
 		SymmetricOrdering::Identity => A,
 		_ => permute_self_adjoint_to_unsorted(
 			Symbolic::materialize(A_nnz),
 			new_col_ptr,
-			new_row_ind,
+			new_row_idx,
 			SparseColMatRef::new(A, Symbolic::materialize(A.row_idx().len())),
 			PermRef::new_checked(perm_fwd.as_ref().unwrap(), perm_inv.as_ref().unwrap(), n).as_shape(N),
 			side,
@@ -3907,11 +3908,47 @@ pub(super) mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use dyn_stack::MemBuffer;
+	use matrix_market_rs::MtxData;
 	use std::path::PathBuf;
 	use std::str::FromStr;
 
 	type Error = Box<dyn std::error::Error>;
 	type Result<T = (), E = Error> = core::result::Result<T, E>;
+
+	pub(crate) fn load_mtx<I: Index>(data: MtxData<f64>) -> (usize, usize, Vec<I>, Vec<I>, Vec<f64>) {
+		let I = I::truncate;
+
+		let MtxData::Sparse([nrows, ncols], coo_indices, coo_values, _) = data else {
+			panic!()
+		};
+
+		let m = nrows;
+		let n = ncols;
+		let mut col_counts = vec![I(0); n];
+		let mut col_ptr = vec![I(0); n + 1];
+
+		for &[_, j] in &coo_indices {
+			col_counts[j] += I(1);
+		}
+
+		for i in 0..n {
+			col_ptr[i + 1] = col_ptr[i] + col_counts[i];
+		}
+		let nnz = col_ptr[n].zx();
+
+		let mut row_idx = vec![I(0); nnz];
+		let mut values = vec![0.0; nnz];
+
+		col_counts.copy_from_slice(&col_ptr[..n]);
+
+		for (&[i, j], &val) in iter::zip(&coo_indices, &coo_values) {
+			values[col_counts[j].zx()] = val;
+			row_idx[col_counts[j].zx()] = I(i);
+			col_counts[j] += I(1);
+		}
+
+		(m, n, col_ptr, row_idx, values)
+	}
 
 	#[track_caller]
 	pub(crate) fn parse_vec<F: FromStr>(text: &str) -> (Vec<F>, &str) {
@@ -3953,7 +3990,7 @@ pub(super) mod tests {
 	fn test_counts() {
 		let n = 11;
 		let col_ptr = &[0, 3, 6, 10, 13, 16, 21, 24, 29, 31, 37, 43usize];
-		let row_ind = &[
+		let row_idx = &[
 			0, 5, 6, // 0
 			1, 2, 7, // 1
 			1, 2, 9, 10, // 2
@@ -3967,7 +4004,7 @@ pub(super) mod tests {
 			2, 4, 6, 7, 9, 10usize, // 10
 		];
 
-		let A = SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind);
+		let A = SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_idx);
 		let mut etree = vec![0isize; n];
 		let mut col_count = vec![0usize; n];
 
@@ -4041,7 +4078,10 @@ pub(super) mod tests {
 		&dense * D.as_diagonal() * dense.adjoint()
 	}
 
-	fn reconstruct_from_supernodal_llt<I: Index, T: ComplexField>(symbolic: &supernodal::SymbolicSupernodalCholesky<I>, L_values: &[T]) -> Mat<T> {
+	pub(crate) fn reconstruct_from_supernodal_llt<I: Index, T: ComplexField>(
+		symbolic: &supernodal::SymbolicSupernodalCholesky<I>,
+		L_values: &[T],
+	) -> Mat<T> {
 		let llt = supernodal::SupernodalLltRef::new(symbolic, L_values);
 		let n_supernodes = llt.symbolic().n_supernodes();
 		let n = llt.symbolic().nrows();

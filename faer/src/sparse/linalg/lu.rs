@@ -1930,57 +1930,9 @@ mod tests {
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use dyn_stack::MemBuffer;
+	use linalg_sp::cholesky::tests::load_mtx;
 	use matrix_market_rs::MtxData;
 	use std::path::PathBuf;
-
-	fn load_mtx<I: Index>(data: MtxData<f64>) -> (usize, usize, Vec<I>, Vec<I>, Vec<f64>) {
-		let I = I::truncate;
-
-		let MtxData::Sparse([nrows, ncols], coo_indices, coo_values, _) = data else {
-			panic!()
-		};
-
-		let m = nrows;
-		let n = ncols;
-		let mut col_counts = vec![I(0); n];
-		let mut col_ptr = vec![I(0); n + 1];
-
-		for &[i, j] in &coo_indices {
-			col_counts[j] += I(1);
-			if i != j {
-				col_counts[i] += I(1);
-			}
-		}
-
-		for i in 0..n {
-			col_ptr[i + 1] = col_ptr[i] + col_counts[i];
-		}
-		let nnz = col_ptr[n].zx();
-
-		let mut row_idx = vec![I(0); nnz];
-		let mut values = vec![0.0; nnz];
-
-		col_counts.copy_from_slice(&col_ptr[..n]);
-
-		for (&[i, j], &val) in iter::zip(&coo_indices, &coo_values) {
-			if i == j {
-				values[col_counts[j].zx()] = 2.0 * val;
-			} else {
-				values[col_counts[i].zx()] = val;
-				values[col_counts[j].zx()] = val;
-			}
-
-			row_idx[col_counts[j].zx()] = I(i);
-			col_counts[j] += I(1);
-
-			if i != j {
-				row_idx[col_counts[i].zx()] = I(j);
-				col_counts[i] += I(1);
-			}
-		}
-
-		(m, n, col_ptr, row_idx, values)
-	}
 
 	#[test]
 	fn test_numeric_lu_multifrontal() {
@@ -2009,12 +1961,12 @@ mod tests {
 		let mut col_counts = vec![0usize; n];
 
 		let nnz = A.compute_nnz();
-		let mut new_col_ptrs = vec![0usize; m + 1];
+		let mut new_col_ptr = vec![0usize; m + 1];
 		let mut new_row_idx = vec![0usize; nnz];
 		let mut new_values = vec![zero::<T>(); nnz];
 		let AT = utils::transpose(
 			&mut *new_values,
-			&mut new_col_ptrs,
+			&mut new_col_ptr,
 			&mut new_row_idx,
 			A,
 			MemStack::new(&mut MemBuffer::new(StackReq::new::<usize>(m))),

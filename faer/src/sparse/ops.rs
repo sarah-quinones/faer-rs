@@ -19,7 +19,7 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 	let m = lhs.nrows();
 	let n = lhs.ncols();
 
-	let mut col_ptrs = try_zeroed::<I>(n + 1)?;
+	let mut col_ptr = try_zeroed::<I>(n + 1)?;
 
 	let mut nnz = 0usize;
 	for j in 0..n {
@@ -38,14 +38,14 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 		}
 		nnz += lhs.len() - lhs_pos;
 		nnz += rhs.len() - rhs_pos;
-		col_ptrs[j + 1] = I::truncate(nnz);
+		col_ptr[j + 1] = I::truncate(nnz);
 	}
 
 	if nnz > I::Signed::MAX.zx() {
 		return Err(FaerError::IndexOverflow);
 	}
 
-	let mut row_indices = try_zeroed(nnz)?;
+	let mut row_idx = try_zeroed(nnz)?;
 	let mut values = alloc::vec::Vec::new();
 	values.try_reserve_exact(nnz).map_err(|_| FaerError::OutOfMemory)?;
 
@@ -64,15 +64,15 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 
 			match lhs.cmp(&rhs) {
 				core::cmp::Ordering::Less => {
-					row_indices[nnz] = lhs;
+					row_idx[nnz] = lhs;
 					values.push(f(Some(&lhs_values[lhs_pos]), None));
 				},
 				core::cmp::Ordering::Equal => {
-					row_indices[nnz] = lhs;
+					row_idx[nnz] = lhs;
 					values.push(f(Some(&lhs_values[lhs_pos]), Some(&rhs_values[rhs_pos])));
 				},
 				core::cmp::Ordering::Greater => {
-					row_indices[nnz] = rhs;
+					row_idx[nnz] = rhs;
 					values.push(f(None, Some(&rhs_values[rhs_pos])));
 				},
 			}
@@ -81,13 +81,13 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 			rhs_pos += (rhs <= lhs) as usize;
 			nnz += 1;
 		}
-		row_indices[nnz..nnz + lhs.len() - lhs_pos].copy_from_slice(&lhs[lhs_pos..]);
+		row_idx[nnz..nnz + lhs.len() - lhs_pos].copy_from_slice(&lhs[lhs_pos..]);
 		for src in &lhs_values[lhs_pos..lhs.len()] {
 			values.push(f(Some(src), None));
 		}
 		nnz += lhs.len() - lhs_pos;
 
-		row_indices[nnz..nnz + rhs.len() - rhs_pos].copy_from_slice(&rhs[rhs_pos..]);
+		row_idx[nnz..nnz + rhs.len() - rhs_pos].copy_from_slice(&rhs[rhs_pos..]);
 		for src in &rhs_values[rhs_pos..rhs.len()] {
 			values.push(f(None, Some(src)));
 		}
@@ -95,7 +95,7 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 	}
 
 	Ok(SparseColMat::<I, T>::new(
-		SymbolicSparseColMat::<I>::new_checked(m, n, col_ptrs, None, row_indices),
+		SymbolicSparseColMat::<I>::new_checked(m, n, col_ptr, None, row_idx),
 		values,
 	))
 }

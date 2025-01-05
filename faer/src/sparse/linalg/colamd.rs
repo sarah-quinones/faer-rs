@@ -137,15 +137,15 @@ pub fn order<I: Index>(
 		let (p, stack) = unsafe { stack.make_raw::<I>(n + 1) };
 
 		let size = (2 * nnz).checked_add(nnz / 5).and_then(|p| p.checked_add(n));
-		let (new_row_indices, _) = unsafe { stack.make_raw::<I>(size.ok_or(FaerError::IndexOverflow)?) };
+		let (new_row_idx, _) = unsafe { stack.make_raw::<I>(size.ok_or(FaerError::IndexOverflow)?) };
 
 		p[0] = I(0);
 		for j in 0..n {
-			let row_ind = A.row_idx_of_col_raw(j);
-			p[j + 1] = p[j] + I(row_ind.len());
-			new_row_indices[p[j].zx()..p[j + 1].zx()].copy_from_slice(&*row_ind);
+			let row_idx = A.row_idx_of_col_raw(j);
+			p[j + 1] = p[j] + I(row_idx.len());
+			new_row_idx[p[j].zx()..p[j + 1].zx()].copy_from_slice(&*row_idx);
 		}
-		let A = new_row_indices;
+		let A = new_row_idx;
 
 		for c in 0..n {
 			col[c] = ColamdCol::<I> {

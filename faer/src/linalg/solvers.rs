@@ -618,7 +618,7 @@ fn split_LU<T: ComplexField>(LU: Mat<T>) -> (Mat<T>, Mat<T>) {
 		let mut L = LU;
 		let mut U = Mat::zeros(size, size);
 
-		U.copy_from_triangular_upper(&L);
+		U.copy_from_triangular_upper(L.get(..size, ..size));
 
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 		L.diagonal_mut().fill(one());
@@ -628,7 +628,7 @@ fn split_LU<T: ComplexField>(LU: Mat<T>) -> (Mat<T>, Mat<T>) {
 		let mut U = LU;
 		let mut L = Mat::zeros(size, size);
 
-		L.copy_from_strict_triangular_lower(&U);
+		L.copy_from_strict_triangular_lower(U.get(..size, ..size));
 
 		z!(&mut U).for_each_triangular_lower(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 		L.diagonal_mut().fill(one());
