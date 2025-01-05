@@ -39,8 +39,9 @@ pub struct CwiseRowDistribution<Cols: Shape, D> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct UnitaryMat<Dim: Shape> {
+pub struct UnitaryMat<Dim: Shape, D> {
 	pub dim: Dim,
+	pub standard_normal: D,
 }
 
 impl<T, Rows: Shape, Cols: Shape, D: Distribution<T>> Distribution<Mat<T, Rows, Cols>> for CwiseMatDistribution<Rows, Cols, D> {
@@ -61,5 +62,32 @@ impl<T, Cols: Shape, D: Distribution<T>> Distribution<Row<T, Cols>> for CwiseRow
 	#[inline]
 	fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Row<T, Cols> {
 		Row::from_fn(self.ncols, |_| self.dist.sample(rng))
+	}
+}
+
+impl<T: ComplexField, D: Distribution<T>> Distribution<Mat<T>> for UnitaryMat<usize, D> {
+	#[math]
+	fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> Mat<T> {
+		let qr = CwiseMatDistribution {
+			nrows: self.dim,
+			ncols: self.dim,
+			dist: &self.standard_normal,
+		}
+		.sample(rng)
+		.qr();
+
+		let r_diag = qr.R().diagonal().column_vector();
+		let mut q = qr.compute_Q();
+
+		for j in 0..self.dim {
+			let r = r_diag.read(j);
+			let r = if r == zero() { one() } else { mul_real(r, recip(abs(r))) };
+
+			z!(q.as_mut().col_mut(j)).for_each(|uz!(q)| {
+				*q = *q * r;
+			});
+		}
+
+		q
 	}
 }

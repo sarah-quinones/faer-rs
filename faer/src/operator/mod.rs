@@ -44,6 +44,72 @@ pub trait LinOp<T: ComplexField>: Sync + core::fmt::Debug {
 	fn conj_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack);
 }
 
+impl<T: ComplexField> LinOp<T> for IdentityPrecond {
+	#[inline]
+	#[track_caller]
+	fn apply_scratch(&self, _rhs_ncols: usize, _par: Par) -> StackReq {
+		StackReq::EMPTY
+	}
+
+	#[inline]
+	fn nrows(&self) -> usize {
+		self.dim
+	}
+
+	#[inline]
+	fn ncols(&self) -> usize {
+		self.dim
+	}
+
+	#[inline]
+	#[track_caller]
+	fn apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, _par: Par, _stack: &mut MemStack) {
+		{ out }.copy_from(rhs);
+	}
+
+	#[inline]
+	#[track_caller]
+	fn conj_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, _par: Par, _stack: &mut MemStack) {
+		{ out }.copy_from(rhs);
+	}
+}
+impl<T: ComplexField> BiLinOp<T> for IdentityPrecond {
+	#[inline]
+	fn transpose_apply_scratch(&self, _rhs_ncols: usize, _par: Par) -> StackReq {
+		StackReq::EMPTY
+	}
+
+	#[inline]
+	#[track_caller]
+	fn transpose_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, _par: Par, _stack: &mut MemStack) {
+		{ out }.copy_from(rhs);
+	}
+
+	#[inline]
+	#[track_caller]
+	fn adjoint_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, _par: Par, _stack: &mut MemStack) {
+		{ out }.copy_from(rhs);
+	}
+}
+impl<T: ComplexField> Precond<T> for IdentityPrecond {
+	fn apply_in_place_scratch(&self, _rhs_ncols: usize, _par: Par) -> StackReq {
+		StackReq::EMPTY
+	}
+
+	fn apply_in_place(&self, _rhs: MatMut<'_, T>, _par: Par, _stack: &mut MemStack) {}
+
+	fn conj_apply_in_place(&self, _rhs: MatMut<'_, T>, _par: Par, _stack: &mut MemStack) {}
+}
+impl<T: ComplexField> BiPrecond<T> for IdentityPrecond {
+	fn transpose_apply_in_place_scratch(&self, _rhs_ncols: usize, _par: Par) -> StackReq {
+		StackReq::EMPTY
+	}
+
+	fn transpose_apply_in_place(&self, _rhs: MatMut<'_, T>, _par: Par, _stack: &mut MemStack) {}
+
+	fn adjoint_apply_in_place(&self, _rhs: MatMut<'_, T>, _par: Par, _stack: &mut MemStack) {}
+}
+
 /// Linear operator that can be applied from either the right or the left side.
 pub trait BiLinOp<T: ComplexField>: LinOp<T> {
 	/// Computes the workspace size and alignment required to apply the transpose or adjoint of
@@ -70,7 +136,7 @@ pub trait Precond<T: ComplexField>: LinOp<T> {
 	/// Applies `self` to `rhs`, and stores the result in `rhs`.
 	#[track_caller]
 	fn apply_in_place(&self, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
-		let (mut tmp, stack) = temp_mat_zeroed::<T, _, _>(self.nrows(), rhs.ncols(), stack);
+		let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(self.nrows(), rhs.ncols(), stack) };
 		let mut tmp = tmp.as_mat_mut();
 		self.apply(tmp.rb_mut(), rhs.rb(), par, stack);
 		{ rhs }.copy_from(&tmp);
@@ -79,7 +145,7 @@ pub trait Precond<T: ComplexField>: LinOp<T> {
 	/// Applies the conjugate of `self` to `rhs`, and stores the result in `rhs`.
 	#[track_caller]
 	fn conj_apply_in_place(&self, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
-		let (mut tmp, stack) = temp_mat_zeroed::<T, _, _>(self.nrows(), rhs.ncols(), stack);
+		let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(self.nrows(), rhs.ncols(), stack) };
 		let mut tmp = tmp.as_mat_mut();
 
 		self.conj_apply(tmp.rb_mut(), rhs.rb(), par, stack);
@@ -100,7 +166,7 @@ pub trait BiPrecond<T: ComplexField>: Precond<T> + BiLinOp<T> {
 	/// Applies the transpose of `self` to `rhs`, and stores the result in `rhs`.
 	#[track_caller]
 	fn transpose_apply_in_place(&self, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
-		let (mut tmp, stack) = temp_mat_zeroed::<T, _, _>(self.nrows(), rhs.ncols(), stack);
+		let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(self.nrows(), rhs.ncols(), stack) };
 		let mut tmp = tmp.as_mat_mut();
 		self.transpose_apply(tmp.rb_mut(), rhs.rb(), par, stack);
 		{ rhs }.copy_from(&tmp);
@@ -109,7 +175,7 @@ pub trait BiPrecond<T: ComplexField>: Precond<T> + BiLinOp<T> {
 	/// Applies the adjoint of `self` to `rhs`, and stores the result in `rhs`.
 	#[track_caller]
 	fn adjoint_apply_in_place(&self, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
-		let (mut tmp, stack) = temp_mat_zeroed::<T, _, _>(self.nrows(), rhs.ncols(), stack);
+		let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(self.nrows(), rhs.ncols(), stack) };
 		let mut tmp = tmp.as_mat_mut();
 
 		self.adjoint_apply(tmp.rb_mut(), rhs.rb(), par, stack);

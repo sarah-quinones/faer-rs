@@ -38,6 +38,7 @@ std = [
 ]
 nightly = [
   "pulp/nightly",
+  "pulp/nightly-x86-v4",
   "gemm/nightly",
 ]
 rayon = ["dep:rayon", "gemm/rayon"]
