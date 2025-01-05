@@ -8,6 +8,12 @@ pub struct DiagMut<'a, T, Dim = usize, Stride = isize> {
 	pub(crate) inner: ColMut<'a, T, Dim, Stride>,
 }
 
+impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for DiagMut<'_, T, Dim, S> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		self.inner.fmt(f)
+	}
+}
+
 impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// Returns the diagonal as a column vector view.
 	#[inline(always)]

@@ -634,7 +634,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 }
 
-pub unsafe trait Conjugate: Send + Sync {
+pub unsafe trait Conjugate: Send + Sync + core::fmt::Debug {
 	const IS_CANONICAL: bool;
 
 	type Conj: Conjugate<Conj = Self, Canonical = Self::Canonical>;

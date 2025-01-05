@@ -2,9 +2,15 @@ use super::*;
 use crate::internal_prelude::{DiagMut, DiagRef};
 
 /// Diagonal matrix.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Diag<T, Dim: Shape = usize> {
 	pub(crate) inner: Col<T, Dim>,
+}
+
+impl<T: core::fmt::Debug, Dim: Shape> core::fmt::Debug for Diag<T, Dim> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		self.inner.fmt(f)
+	}
 }
 
 impl<T, Dim: Shape> Diag<T, Dim> {

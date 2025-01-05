@@ -238,6 +238,9 @@ pub struct Mat<T, Rows: Shape = usize, Cols: Shape = usize> {
 	ncols: Cols,
 }
 
+unsafe impl<T: Send, Rows: Shape, Cols: Shape> Send for Mat<T, Rows, Cols> {}
+unsafe impl<T: Sync, Rows: Shape, Cols: Shape> Sync for Mat<T, Rows, Cols> {}
+
 pub struct DropCol<T> {
 	ptr: *mut T,
 	nrows: usize,

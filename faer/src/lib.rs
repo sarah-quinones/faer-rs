@@ -203,6 +203,7 @@ pub mod perm;
 pub mod row;
 
 pub mod linalg;
+pub mod operator;
 pub mod sparse;
 
 pub trait Index: faer_traits::Index + seal::Seal {}

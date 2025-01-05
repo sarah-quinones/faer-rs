@@ -4,6 +4,12 @@ pub struct DiagRef<'a, T, Dim = usize, Stride = isize> {
 	pub(crate) inner: ColRef<'a, T, Dim, Stride>,
 }
 
+impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for DiagRef<'_, T, Dim, S> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		self.inner.fmt(f)
+	}
+}
+
 impl<T, Dim: Copy, Stride: Copy> Copy for DiagRef<'_, T, Dim, Stride> {}
 impl<T, Dim: Copy, Stride: Copy> Clone for DiagRef<'_, T, Dim, Stride> {
 	#[inline]
