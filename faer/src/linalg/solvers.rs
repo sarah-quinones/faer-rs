@@ -797,6 +797,11 @@ impl<T: ComplexField> Qr<T> {
 		self.R.as_ref()
 	}
 
+	pub fn thin_R(&self) -> MatRef<'_, T> {
+		let size = Ord::min(self.nrows(), self.ncols());
+		self.R.get(..size, ..)
+	}
+
 	pub fn compute_Q(&self) -> Mat<T> {
 		let mut Q = Mat::identity(self.nrows(), self.nrows());
 		let par = get_global_parallelism();
@@ -812,6 +817,23 @@ impl<T: ComplexField> Qr<T> {
 					self.Q_coeff.nrows(),
 					self.nrows(),
 				),
+			)),
+		);
+		Q
+	}
+
+	pub fn compute_thin_Q(&self) -> Mat<T> {
+		let size = Ord::min(self.nrows(), self.ncols());
+		let mut Q = Mat::identity(self.nrows(), size);
+		let par = get_global_parallelism();
+		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
+			self.Q_basis(),
+			self.Q_coeff(),
+			Conj::No,
+			Q.rb_mut(),
+			par,
+			MemStack::new(&mut MemBuffer::new(
+				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(self.nrows(), self.Q_coeff.nrows(), size),
 			)),
 		);
 		Q

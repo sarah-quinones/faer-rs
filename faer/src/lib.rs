@@ -194,6 +194,100 @@ macro_rules! row {
     };
 }
 
+/// Convenience function to concatenate a nested list of matrices into a single
+/// big ['Mat']. Concatonation pattern follows the numpy.block convention that
+/// each sub-list must have an equal number of columns (net) but the boundaries
+/// do not need to align. In other words, this sort of thing:
+/// ```notcode
+///   AAAbb
+///   AAAbb
+///   cDDDD
+/// ```
+/// is perfectly acceptable.
+#[doc(hidden)]
+#[track_caller]
+pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) -> mat::Mat<E> {
+	#[inline(always)]
+	fn count_total_columns<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
+		let mut out: usize = 0;
+		for (elem, _) in block_row.iter() {
+			out += elem.ncols();
+		}
+		out
+	}
+
+	#[inline(always)]
+	#[track_caller]
+	fn count_rows<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
+		let mut out: usize = 0;
+		for (i, (e, _)) in block_row.iter().enumerate() {
+			if i == 0 {
+				out = e.nrows();
+			} else {
+				assert!(e.nrows() == out);
+			}
+		}
+		out
+	}
+
+	// get size of result while doing checks
+	let mut n: usize = 0;
+	let mut m: usize = 0;
+	for row in blocks.iter() {
+		n += count_rows(row);
+	}
+	for (i, row) in blocks.iter().enumerate() {
+		let cols = count_total_columns(row);
+		if i == 0 {
+			m = cols;
+		} else {
+			assert!(cols == m);
+		}
+	}
+
+	let mut mat = mat::Mat::<E>::zeros(n, m);
+	let mut ni: usize = 0;
+	let mut mj: usize;
+	for row in blocks.iter() {
+		mj = 0;
+
+		for (elem, conj) in row.iter() {
+			let mut dst = mat.as_mut().submatrix_mut(ni, mj, elem.nrows(), elem.ncols());
+			if *conj == Conj::No {
+				dst.copy_from(elem);
+			} else {
+				dst.copy_from(elem.conjugate());
+			}
+			mj += elem.ncols();
+		}
+		ni += row[0].0.nrows();
+	}
+
+	mat
+}
+
+/// Concatenates the matrices in each row horizontally,
+/// then concatenates the results vertically.
+///
+/// `concat![[a0, a1, a2], [b1, b2]]` results in the matrix
+/// ```notcode
+/// [a0 | a1 | a2][b0 | b1]
+/// ```
+#[macro_export]
+macro_rules! concat {
+    () => {
+        {
+            compile_error!("number of columns in the matrix is ambiguous");
+        }
+    };
+
+    ($([$($v:expr),* $(,)?] ),* $(,)?) => {
+        {
+            $crate::concat_impl(&[$(&[$(($v).as_ref().__canonicalize(),)*],)*])
+        }
+    };
+}
+
 pub mod utils;
 
 pub mod col;

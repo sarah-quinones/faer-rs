@@ -15,7 +15,7 @@ pub struct CgParams<T: RealField> {
 	/// Maximum number of iterations.
 	pub max_iters: usize,
 
-	pub non_exaustive: NonExhaustive,
+	pub non_exhaustive: NonExhaustive,
 }
 
 /// Algorithm result.
@@ -28,7 +28,7 @@ pub struct CgInfo<T: RealField> {
 	/// Number of iterations executed by the algorithm.
 	pub iter_count: usize,
 
-	pub non_exaustive: NonExhaustive,
+	pub non_exhaustive: NonExhaustive,
 }
 
 /// Algorithm error.
@@ -56,7 +56,7 @@ impl<T: RealField> Default for CgParams<T> {
 			abs_tolerance: zero::<T>(),
 			rel_tolerance: eps::<T>() * from_f64::<T>(128.0),
 			max_iters: usize::MAX,
-			non_exaustive: NonExhaustive(()),
+			non_exhaustive: NonExhaustive(()),
 		}
 	}
 }
@@ -139,7 +139,7 @@ pub fn conjugate_gradient<T: ComplexField>(
 				abs_residual: zero::<T::Real>(),
 				rel_residual: zero::<T::Real>(),
 				iter_count: 0,
-				non_exaustive: NonExhaustive(()),
+				non_exhaustive: NonExhaustive(()),
 			});
 		}
 
@@ -173,7 +173,7 @@ pub fn conjugate_gradient<T: ComplexField>(
 				rel_residual: abs_residual / b_norm,
 				abs_residual,
 				iter_count: 0,
-				non_exaustive: NonExhaustive(()),
+				non_exhaustive: NonExhaustive(()),
 			});
 		}
 
@@ -265,7 +265,7 @@ pub fn conjugate_gradient<T: ComplexField>(
 					rel_residual: abs_residual / b_norm,
 					abs_residual,
 					iter_count: iter + 1,
-					non_exaustive: NonExhaustive(()),
+					non_exhaustive: NonExhaustive(()),
 				});
 			}
 

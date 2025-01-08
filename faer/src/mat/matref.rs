@@ -334,6 +334,15 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	}
 
 	#[inline]
+	#[doc(hidden)]
+	pub fn __canonicalize(self) -> (MatRef<'a, T::Canonical, Rows, Cols, RStride, CStride>, Conj)
+	where
+		T: Conjugate,
+	{
+		(self.canonical(), Conj::get::<T>())
+	}
+
+	#[inline]
 	pub fn adjoint(self) -> MatRef<'a, T::Conj, Cols, Rows, CStride, RStride>
 	where
 		T: Conjugate,
