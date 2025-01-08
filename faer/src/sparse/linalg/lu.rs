@@ -3,7 +3,7 @@ use crate::internal_prelude_sp::*;
 use crate::sparse::utils;
 use linalg::lu::partial_pivoting::factor::PartialPivLuParams;
 use linalg_sp::cholesky::simplicial::EliminationTreeRef;
-use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, colamd};
+use linalg_sp::{LuError, SupernodalThreshold, SymbolicSupernodalParams, colamd};
 
 #[inline(never)]
 fn resize_vec<T: Clone>(v: &mut alloc::vec::Vec<T>, n: usize, exact: bool, reserve_only: bool, value: T) -> Result<(), FaerError> {
@@ -17,33 +17,6 @@ fn resize_vec<T: Clone>(v: &mut alloc::vec::Vec<T>, n: usize, exact: bool, reser
 		v.resize(Ord::max(n, v.len()), value);
 	}
 	Ok(())
-}
-
-/// Sparse LU error.
-#[derive(Copy, Clone, Debug)]
-pub enum LuError {
-	/// Generic sparse error.
-	Generic(FaerError),
-	/// Rank deficient symbolic structure.
-	///
-	/// Contains the iteration at which a pivot could not be found.
-	SymbolicSingular(usize),
-}
-
-impl core::fmt::Display for LuError {
-	#[inline]
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		core::fmt::Debug::fmt(self, f)
-	}
-}
-
-impl core::error::Error for LuError {}
-
-impl From<FaerError> for LuError {
-	#[inline]
-	fn from(value: FaerError) -> Self {
-		Self::Generic(value)
-	}
 }
 
 /// Supernodal factorization module.
@@ -1187,8 +1160,8 @@ pub mod simplicial {
 			let u = self.u_factor_unsorted();
 
 			crate::perm::permute_rows(temp.rb_mut(), X.rb(), row_perm);
-			linalg_sp::triangular_solve::solve_lower_triangular_in_place(l, conj_lhs, DiagStatus::Unit, temp.rb_mut(), par);
-			linalg_sp::triangular_solve::solve_upper_triangular_in_place(u, conj_lhs, DiagStatus::Generic, temp.rb_mut(), par);
+			linalg_sp::triangular_solve::solve_unit_lower_triangular_in_place(l, conj_lhs, temp.rb_mut(), par);
+			linalg_sp::triangular_solve::solve_upper_triangular_in_place(u, conj_lhs, temp.rb_mut(), par);
 			crate::perm::permute_rows(X.rb_mut(), temp.rb(), col_perm.inverse());
 		}
 
@@ -1219,8 +1192,8 @@ pub mod simplicial {
 			let u = self.u_factor_unsorted();
 
 			crate::perm::permute_rows(temp.rb_mut(), X.rb(), col_perm);
-			linalg_sp::triangular_solve::solve_upper_triangular_transpose_in_place(u, conj_lhs, DiagStatus::Generic, temp.rb_mut(), par);
-			linalg_sp::triangular_solve::solve_lower_triangular_transpose_in_place(l, conj_lhs, DiagStatus::Unit, temp.rb_mut(), par);
+			linalg_sp::triangular_solve::solve_upper_triangular_transpose_in_place(u, conj_lhs, temp.rb_mut(), par);
+			linalg_sp::triangular_solve::solve_unit_lower_triangular_transpose_in_place(l, conj_lhs, temp.rb_mut(), par);
 			crate::perm::permute_rows(X.rb_mut(), temp.rb(), row_perm.inverse());
 		}
 	}

@@ -1,3 +1,5 @@
+use crate::internal_prelude_sp::*;
+
 const CHOLESKY_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const QR_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const LU_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
@@ -50,8 +52,61 @@ impl SupernodalThreshold {
 	pub const FORCE_SUPERNODAL: Self = Self(0.0);
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum LltError {
+	Numeric(linalg::cholesky::llt::factor::LltError),
+	Generic(FaerError),
+}
+impl core::fmt::Display for LltError {
+	#[inline]
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		core::fmt::Debug::fmt(self, f)
+	}
+}
+
+impl core::error::Error for LltError {}
+
+impl From<linalg::cholesky::llt::factor::LltError> for LltError {
+	fn from(value: linalg::cholesky::llt::factor::LltError) -> Self {
+		Self::Numeric(value)
+	}
+}
+/// Sparse LU error.
+#[derive(Copy, Clone, Debug)]
+pub enum LuError {
+	/// Generic sparse error.
+	Generic(FaerError),
+	/// Rank deficient symbolic structure.
+	///
+	/// Contains the iteration at which a pivot could not be found.
+	SymbolicSingular(usize),
+}
+
+impl core::fmt::Display for LuError {
+	#[inline]
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		core::fmt::Debug::fmt(self, f)
+	}
+}
+
+impl core::error::Error for LuError {}
+
+impl<T: Into<FaerError>> From<T> for LltError {
+	fn from(value: T) -> Self {
+		Self::Generic(value.into())
+	}
+}
+impl<T: Into<FaerError>> From<T> for LuError {
+	fn from(value: T) -> Self {
+		Self::Generic(value.into())
+	}
+}
+
 pub mod matmul;
 pub mod triangular_solve;
+
+#[path = "../solvers.rs"]
+pub mod solvers;
 
 pub mod amd;
 pub mod colamd;

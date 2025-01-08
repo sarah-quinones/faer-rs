@@ -1,6 +1,7 @@
 use crate::assert;
 use crate::internal_prelude_sp::*;
 use crate::sparse::utils;
+use linalg::qr::no_pivoting::factor::QrParams;
 use linalg_sp::cholesky::ghost_postorder;
 use linalg_sp::cholesky::simplicial::EliminationTreeRef;
 use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, colamd, ghost};
@@ -373,7 +374,7 @@ pub mod supernodal {
 	}
 	/// Symbolic structure of the QR decomposition,
 	#[derive(Debug)]
-	pub struct SymbolicSupernodalQr<I: Index> {
+	pub struct SymbolicSupernodalQr<I> {
 		L: SymbolicSupernodalCholesky<I>,
 		H: SymbolicSupernodalHouseholder<I>,
 		min_col: alloc::vec::Vec<I>,
@@ -831,7 +832,11 @@ pub mod supernodal {
 	/// Computes the size and alignment of the workspace required to compute the numerical QR
 	/// factorization of the matrix whose structure was used to produce the symbolic structure.
 	#[track_caller]
-	pub fn factorize_supernodal_numeric_qr_scratch<I: Index, T: ComplexField>(symbolic: &SymbolicSupernodalQr<I>, par: Par) -> StackReq {
+	pub fn factorize_supernodal_numeric_qr_scratch<I: Index, T: ComplexField>(
+		symbolic: &SymbolicSupernodalQr<I>,
+		par: Par,
+		params: Spec<QrParams, T>,
+	) -> StackReq {
 		let n_supernodes = symbolic.L.n_supernodes();
 		let n = symbolic.L.dimension;
 		let m = symbolic.H.nrows;
@@ -859,7 +864,7 @@ pub mod supernodal {
 				s_ncols + s_pattern_len,
 				max_blocksize,
 				par,
-				Default::default(),
+				params,
 			));
 
 			loop_scratch = loop_scratch.or(
@@ -906,6 +911,7 @@ pub mod supernodal {
 		symbolic: &'a SymbolicSupernodalQr<I>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<QrParams, T>,
 	) -> SupernodalQrRef<'a, I, T> {
 		assert!(all(
 			householder_row_idx.len() == symbolic.householder().len_householder_row_idx(),
@@ -936,6 +942,7 @@ pub mod supernodal {
 			bytemuck::cast_slice(&symbolic.child_next),
 			par,
 			stack,
+			params,
 		);
 
 		unsafe {
@@ -977,6 +984,7 @@ pub mod supernodal {
 
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<QrParams, T>,
 	) -> usize {
 		let n_supernodes = L_symbolic.n_supernodes();
 		let m = AT.ncols();
@@ -1203,7 +1211,7 @@ pub mod supernodal {
 
 							let mut s_tau = s_tau.rb_mut().subrows_mut(0, bs).subcols_mut(current_start, ncols);
 
-							linalg::qr::no_pivoting::factor::qr_in_place(left.rb_mut(), s_tau.rb_mut(), par, stack.rb_mut(), Default::default());
+							linalg::qr::no_pivoting::factor::qr_in_place(left.rb_mut(), s_tau.rb_mut(), par, stack.rb_mut(), params);
 
 							if right.ncols() > 0 {
 								linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
@@ -1498,7 +1506,7 @@ pub mod simplicial {
 			x.rb_mut().subrows_mut(0, n).copy_from(tmp.rb().subrows(0, n));
 			x.rb_mut().subrows_mut(n, m - n).fill(zero());
 
-			linalg_sp::triangular_solve::solve_upper_triangular_in_place(r, conj_qr, DiagStatus::Generic, x.rb_mut().subrows_mut(0, n), par);
+			linalg_sp::triangular_solve::solve_upper_triangular_in_place(r, conj_qr, x.rb_mut().subrows_mut(0, n), par);
 		}
 	}
 
@@ -1741,7 +1749,7 @@ pub struct QrSymbolicParams<'a> {
 
 /// The inner factorization used for the symbolic QR, either simplicial or symbolic.
 #[derive(Debug)]
-pub enum SymbolicQrRaw<I: Index> {
+pub enum SymbolicQrRaw<I> {
 	/// Simplicial structure.
 	Simplicial(simplicial::SymbolicSimplicialQr<I>),
 	/// Supernodal structure.
@@ -1750,7 +1758,7 @@ pub enum SymbolicQrRaw<I: Index> {
 
 /// The symbolic structure of a sparse QR decomposition.
 #[derive(Debug)]
-pub struct SymbolicQr<I: Index> {
+pub struct SymbolicQr<I> {
 	raw: SymbolicQrRaw<I>,
 	col_perm_fwd: alloc::vec::Vec<I>,
 	col_perm_inv: alloc::vec::Vec<I>,
@@ -1781,7 +1789,7 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 	#[inline]
 	pub unsafe fn new_unchecked(symbolic: &'a SymbolicQr<I>, indices: &'a [I], val: &'a [T]) -> Self {
 		let val = val;
-		assert!(all(symbolic.len_val() == val.len(), symbolic.len_indices() == indices.len(),));
+		assert!(all(symbolic.len_val() == val.len(), symbolic.len_idx() == indices.len(),));
 		Self { symbolic, val, indices }
 	}
 
@@ -1902,7 +1910,7 @@ impl<I: Index> SymbolicQr<I> {
 	/// Returns the length of the slice needed to store the symbolic indices of the QR
 	/// decomposition.
 	#[inline]
-	pub fn len_indices(&self) -> usize {
+	pub fn len_idx(&self) -> usize {
 		match &self.raw {
 			SymbolicQrRaw::Simplicial(symbolic) => symbolic.len_r() + symbolic.len_householder() + 2 * self.ncols() + 2,
 			SymbolicQrRaw::Supernodal(symbolic) => 4 * symbolic.householder().len_householder_row_idx() + 3 * symbolic.householder().n_supernodes(),
@@ -1934,7 +1942,7 @@ impl<I: Index> SymbolicQr<I> {
 	}
 
 	/// Computes the required workspace size and alignment for a numerical QR factorization.
-	pub fn factorize_numeric_qr_scratch<T>(&self, par: Par) -> StackReq
+	pub fn factorize_numeric_qr_scratch<T>(&self, par: Par, params: Spec<QrParams, T>) -> StackReq
 	where
 		T: ComplexField,
 	{
@@ -1944,9 +1952,10 @@ impl<I: Index> SymbolicQr<I> {
 
 		match &self.raw {
 			SymbolicQrRaw::Simplicial(symbolic) => simplicial::factorize_simplicial_numeric_qr_scratch::<I, T>(symbolic),
-			SymbolicQrRaw::Supernodal(symbolic) => {
-				StackReq::and(AT_scratch, supernodal::factorize_supernodal_numeric_qr_scratch::<I, T>(symbolic, par))
-			},
+			SymbolicQrRaw::Supernodal(symbolic) => StackReq::and(
+				AT_scratch,
+				supernodal::factorize_supernodal_numeric_qr_scratch::<I, T>(symbolic, par, params),
+			),
 		}
 	}
 
@@ -1959,8 +1968,9 @@ impl<I: Index> SymbolicQr<I> {
 		A: SparseColMatRef<'_, I, T>,
 		par: Par,
 		stack: &mut MemStack,
+		params: Spec<QrParams, T>,
 	) -> QrRef<'out, I, T> {
-		assert!(all(val.len() == self.len_val(), indices.len() == self.len_indices(),));
+		assert!(all(val.len() == self.len_val(), indices.len() == self.len_idx(),));
 		assert!(all(A.nrows() == self.nrows(), A.ncols() == self.ncols()));
 
 		let m = A.nrows();
@@ -2024,6 +2034,7 @@ impl<I: Index> SymbolicQr<I> {
 					symbolic,
 					par,
 					stack,
+					params,
 				);
 			},
 		}
@@ -2347,7 +2358,9 @@ mod tests {
 			MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_qr_scratch::<usize, f64>(
 				&symbolic,
 				Par::Seq,
+				Default::default(),
 			))),
+			Default::default(),
 		);
 		let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_adjoint(), &L_val);
 		let a = A.as_dyn().to_dense();
@@ -2458,7 +2471,9 @@ mod tests {
 			MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_qr_scratch::<usize, T>(
 				&symbolic,
 				Par::Seq,
+				Default::default(),
 			))),
+			Default::default(),
 		);
 
 		let a = A.as_dyn().to_dense();
@@ -2658,14 +2673,17 @@ mod tests {
 				..Default::default()
 			})
 			.unwrap();
-			let mut indices = vec![0usize; symbolic.len_indices()];
+			let mut indices = vec![0usize; symbolic.len_idx()];
 			let mut val = vec![T::ZERO; symbolic.len_val()];
 			let qr = symbolic.factorize_numeric_qr::<T>(
 				&mut indices,
 				&mut val,
 				A,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(symbolic.factorize_numeric_qr_scratch::<T>(Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					symbolic.factorize_numeric_qr_scratch::<T>(Par::Seq, Default::default()),
+				)),
+				Default::default(),
 			);
 
 			{
@@ -2723,14 +2741,17 @@ mod tests {
 					..Default::default()
 				})
 				.unwrap();
-				let mut indices = vec![0usize; symbolic.len_indices()];
+				let mut indices = vec![0usize; symbolic.len_idx()];
 				let mut val = vec![T::ZERO; symbolic.len_val()];
 				symbolic.factorize_numeric_qr::<T>(
 					&mut indices,
 					&mut val,
 					A,
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(symbolic.factorize_numeric_qr_scratch::<T>(Par::Seq))),
+					MemStack::new(&mut MemBuffer::new(
+						symbolic.factorize_numeric_qr_scratch::<T>(Par::Seq, Default::default()),
+					)),
+					Default::default(),
 				);
 			}
 		}

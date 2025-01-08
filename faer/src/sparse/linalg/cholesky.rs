@@ -726,8 +726,8 @@ pub mod simplicial {
 			let l = SparseColMatRef::<'_, I, T>::new(self.symbolic().factor(), self.values());
 
 			let mut rhs = rhs;
-			triangular_solve::solve_lower_triangular_in_place(l, conj, DiagStatus::Generic, rhs.rb_mut(), par);
-			triangular_solve::solve_lower_triangular_transpose_in_place(l, conj.compose(Conj::Yes), DiagStatus::Generic, rhs.rb_mut(), par);
+			triangular_solve::solve_lower_triangular_in_place(l, conj, rhs.rb_mut(), par);
+			triangular_solve::solve_lower_triangular_transpose_in_place(l, conj.compose(Conj::Yes), rhs.rb_mut(), par);
 		}
 	}
 
@@ -770,8 +770,8 @@ pub mod simplicial {
 			assert!(rhs.nrows() == n);
 
 			let mut x = rhs;
-			triangular_solve::solve_lower_triangular_in_place(ld, conj, DiagStatus::Unit, x.rb_mut(), par);
-			triangular_solve::ldlt_scale_solve_unit_lower_triangular_transpose_in_place(ld, conj.compose(Conj::Yes), x.rb_mut(), par);
+			triangular_solve::solve_unit_lower_triangular_in_place(ld, conj, x.rb_mut(), par);
+			triangular_solve::ldlt_scale_solve_unit_lower_triangular_transpose_in_place_impl(ld, conj.compose(Conj::Yes), x.rb_mut(), par);
 		}
 	}
 
@@ -850,7 +850,7 @@ pub mod simplicial {
 
 	/// Cholesky factor structure containing its symbolic structure.
 	#[derive(Debug, Clone)]
-	pub struct SymbolicSimplicialCholesky<I: Index> {
+	pub struct SymbolicSimplicialCholesky<I> {
 		dimension: usize,
 		col_ptr: alloc::vec::Vec<I>,
 		row_idx: alloc::vec::Vec<I>,
@@ -952,7 +952,7 @@ pub mod supernodal {
 
 	/// Symbolic structure of a single supernode from the Cholesky factor.
 	#[derive(Debug)]
-	pub struct SymbolicSupernodeRef<'a, I: Index> {
+	pub struct SymbolicSupernodeRef<'a, I> {
 		start: usize,
 		pattern: &'a [I],
 	}
@@ -1036,7 +1036,7 @@ pub mod supernodal {
 
 	/// Cholesky factor structure containing its symbolic structure.
 	#[derive(Debug)]
-	pub struct SymbolicSupernodalCholesky<I: Index> {
+	pub struct SymbolicSupernodalCholesky<I> {
 		pub(crate) dimension: usize,
 		pub(crate) supernode_postorder: alloc::vec::Vec<I>,
 		pub(crate) supernode_postorder_inv: alloc::vec::Vec<I>,
@@ -1123,7 +1123,8 @@ pub mod supernodal {
 
 		/// Returns the size and alignment of the workspace required to solve the system `A×x =
 		/// rhs`.
-		pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize) -> StackReq {
+		pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
+			_ = par;
 			let mut req = StackReq::EMPTY;
 			let symbolic = self;
 			for s in 0..symbolic.n_supernodes() {
@@ -3075,7 +3076,7 @@ pub struct CholeskySymbolicParams<'a> {
 
 /// The inner factorization used for the symbolic Cholesky, either simplicial or symbolic.
 #[derive(Debug)]
-pub enum SymbolicCholeskyRaw<I: Index> {
+pub enum SymbolicCholeskyRaw<I> {
 	/// Simplicial structure.
 	Simplicial(simplicial::SymbolicSimplicialCholesky<I>),
 	/// Supernodal structure.
@@ -3084,7 +3085,7 @@ pub enum SymbolicCholeskyRaw<I: Index> {
 
 /// The symbolic structure of a sparse Cholesky decomposition.
 #[derive(Debug)]
-pub struct SymbolicCholesky<I: Index> {
+pub struct SymbolicCholesky<I> {
 	raw: SymbolicCholeskyRaw<I>,
 	perm_fwd: Option<alloc::vec::Vec<I>>,
 	perm_inv: Option<alloc::vec::Vec<I>>,
@@ -3441,10 +3442,10 @@ impl<I: Index> SymbolicCholesky<I> {
 
 	/// Computes the required workspace size and alignment for a dense solve in place using an LLT,
 	/// LDLT or intranodal Bunch-Kaufman factorization.
-	pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize) -> StackReq {
+	pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(match self.raw() {
 			SymbolicCholeskyRaw::Simplicial(this) => this.solve_in_place_scratch::<T>(rhs_ncols),
-			SymbolicCholeskyRaw::Supernodal(this) => this.solve_in_place_scratch::<T>(rhs_ncols),
+			SymbolicCholeskyRaw::Supernodal(this) => this.solve_in_place_scratch::<T>(rhs_ncols, par),
 		})
 	}
 }
@@ -4195,7 +4196,7 @@ pub(super) mod tests {
 					conj,
 					x.rb_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k, Par::Seq))),
 				);
 
 				let target = rhs.rb();
@@ -4260,7 +4261,7 @@ pub(super) mod tests {
 					conj,
 					tmp.rb_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k, Par::Seq))),
 				);
 
 				for j in 0..k {
@@ -4325,7 +4326,7 @@ pub(super) mod tests {
 					conj,
 					x.rb_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k))),
+					MemStack::new(&mut MemBuffer::new(symbolic.solve_in_place_scratch::<c64>(k, Par::Seq))),
 				);
 
 				let target = rhs.rb();
@@ -4538,7 +4539,7 @@ pub(super) mod tests {
 								conj,
 								x.rb_mut(),
 								par,
-								MemStack::new(&mut MemBuffer::new(llt.solve_in_place_scratch::<c64>(k))),
+								MemStack::new(&mut MemBuffer::new(llt.solve_in_place_scratch::<c64>(k, Par::Seq))),
 							);
 
 							let target = rhs.as_ref();
@@ -4609,7 +4610,7 @@ pub(super) mod tests {
 								conj,
 								x.rb_mut(),
 								par,
-								MemStack::new(&mut MemBuffer::new(ldlt.solve_in_place_scratch::<c64>(k))),
+								MemStack::new(&mut MemBuffer::new(ldlt.solve_in_place_scratch::<c64>(k, Par::Seq))),
 							);
 
 							let target = rhs.as_ref();
@@ -4686,7 +4687,7 @@ pub(super) mod tests {
 								conj,
 								x.rb_mut(),
 								par,
-								MemStack::new(&mut MemBuffer::new(lblt.solve_in_place_scratch::<c64>(k))),
+								MemStack::new(&mut MemBuffer::new(lblt.solve_in_place_scratch::<c64>(k, Par::Seq))),
 							);
 
 							let target = rhs.as_ref();

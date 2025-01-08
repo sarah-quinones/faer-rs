@@ -539,7 +539,7 @@ pub enum Conj {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DiagStatus {
+pub(crate) enum DiagStatus {
 	Unit,
 	Generic,
 }
@@ -660,7 +660,7 @@ mod internal_prelude {
 		i.wrapping_neg()
 	}
 
-	pub use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzipped, zipped};
+	pub(crate) use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzipped, zipped};
 
 	pub use {unzipped as uz, zipped as z};
 
