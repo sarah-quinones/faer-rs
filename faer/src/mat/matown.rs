@@ -86,7 +86,7 @@ impl<T> RawMatUnit<T> {
 
 		if align > size {
 			row_capacity = row_capacity
-				.checked_next_multiple_of(align / size)
+				.msrv_checked_next_multiple_of(align / size)
 				.ok_or(TryReserveError::CapacityOverflow)?;
 		}
 
@@ -174,7 +174,7 @@ impl<T> RawMat<T> {
 	#[cold]
 	fn do_reserve_with(&mut self, nrows: usize, ncols: usize, new_row_capacity: usize, new_col_capacity: usize) -> Result<(), TryReserveError> {
 		let old_row_capacity = self.row_capacity;
-		let size = size_of::<T>();
+		let size = core::mem::size_of::<T>();
 
 		let new = Self::try_with_capacity(new_row_capacity, new_col_capacity)?;
 
@@ -256,7 +256,7 @@ pub struct DropMat<T> {
 impl<T> Drop for DropCol<T> {
 	#[inline]
 	fn drop(&mut self) {
-		if const { core::mem::needs_drop::<T>() } {
+		if try_const! { core::mem::needs_drop::<T>() } {
 			unsafe {
 				let slice = core::slice::from_raw_parts_mut(self.ptr, self.nrows);
 				core::ptr::drop_in_place(slice);
@@ -268,7 +268,7 @@ impl<T> Drop for DropCol<T> {
 impl<T> Drop for DropMat<T> {
 	#[inline]
 	fn drop(&mut self) {
-		if const { core::mem::needs_drop::<T>() } {
+		if try_const! { core::mem::needs_drop::<T>() } {
 			let mut ptr = self.ptr;
 
 			if self.nrows > 0 {
@@ -284,9 +284,9 @@ impl<T> Drop for DropMat<T> {
 impl<T, Rows: Shape, Cols: Shape> Drop for Mat<T, Rows, Cols> {
 	#[inline]
 	fn drop(&mut self) {
-		if const { core::mem::needs_drop::<T>() } {
+		if try_const! { core::mem::needs_drop::<T>() } {
 			if self.nrows.unbound() > 0 && self.ncols.unbound() > 0 {
-				let size = size_of::<T>();
+				let size = core::mem::size_of::<T>();
 				let ptr = self.raw.ptr.as_ptr();
 				let row_capacity = self.raw.row_capacity;
 				let stride = row_capacity * size;
@@ -453,7 +453,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			self.ncols = new_ncols;
 		}
 		if new_nrows < self.nrows {
-			let size = size_of::<T>();
+			let size = core::mem::size_of::<T>();
 			let stride = size * self.raw.row_capacity;
 
 			drop(DropMat {

@@ -34,7 +34,7 @@ pub unsafe fn coerce<Src, Dst>(src: Src) -> Dst {
 
 #[inline(always)]
 pub unsafe fn transmute<Src, Dst>(src: Src) -> Dst {
-	if const { size_of::<Src>() != size_of::<Dst>() || align_of::<Src>() != align_of::<Dst>() } {
+	if try_const! {core::mem::size_of::<Src>() !=core::mem::size_of::<Dst>() ||core::mem::align_of::<Src>() !=core::mem::align_of::<Dst>() } {
 		panic!();
 	} else {
 		unsafe { core::mem::transmute_copy(&core::mem::ManuallyDrop::new(src)) }
@@ -174,5 +174,3 @@ pub fn hijack_debug<T: Debug>(x: &T) -> &dyn Debug {
 		x
 	}
 }
-
-pub use crate::variadics;

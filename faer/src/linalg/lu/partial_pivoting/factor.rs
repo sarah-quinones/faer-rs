@@ -1,7 +1,6 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use crate::perm::swap_rows_idx;
-use core::num::NonZero;
 
 #[math]
 fn swap_elems<T: ComplexField>(mut col: ColMut<'_, T>, i: usize, j: usize) {
@@ -77,14 +76,11 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	let ncols = A.ncols();
 	let n = end - start;
 
-	if n <= params.recursion_threshold.get() {
+	if n <= params.recursion_threshold {
 		return lu_in_place_unblocked(A, start, end, trans);
 	}
 
-	let blocksize = Ord::min(
-		params.recursion_threshold.get(),
-		Ord::max(params.blocksize.get(), n.next_power_of_two() / 2),
-	);
+	let blocksize = Ord::min(params.recursion_threshold, Ord::max(params.blocksize, n.next_power_of_two() / 2));
 	let blocksize = Ord::min(blocksize, n);
 
 	let mut n_trans = 0;
@@ -176,8 +172,8 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 /// LUfactorization tuning parameters.
 #[derive(Copy, Clone, Debug)]
 pub struct PartialPivLuParams {
-	pub recursion_threshold: NonZero<usize>,
-	pub blocksize: NonZero<usize>,
+	pub recursion_threshold: usize,
+	pub blocksize: usize,
 
 	pub non_exhaustive: NonExhaustive,
 }
@@ -200,8 +196,8 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 	#[inline]
 	fn auto() -> Self {
 		Self {
-			recursion_threshold: NonZero::new(16).unwrap(),
-			blocksize: NonZero::new(64).unwrap(),
+			recursion_threshold: 16,
+			blocksize: 64,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
@@ -302,8 +298,8 @@ mod tests {
 			let perm_inv = &mut *vec![0usize; n];
 
 			let params = PartialPivLuParams {
-				recursion_threshold: NonZero::new(2).unwrap(),
-				blocksize: NonZero::new(2).unwrap(),
+				recursion_threshold: 2,
+				blocksize: 2,
 				..auto!(f64)
 			};
 			let p = lu_in_place(

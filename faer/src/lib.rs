@@ -5,7 +5,19 @@
 extern crate alloc;
 extern crate std;
 
-use core::num::NonZero;
+macro_rules! repeat_n {
+	($e: expr, $n: expr) => {
+		iter::repeat($e).take($n)
+	};
+}
+
+macro_rules! try_const {
+	($e: expr) => {
+		::pulp::try_const! { $e }
+	};
+}
+
+use core::num::NonZeroUsize;
 use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
 use faer_traits::*;
@@ -18,9 +30,9 @@ macro_rules! auto {
 
 macro_rules! dispatch {
 	($imp: expr, $ty: ident, $T: ty $(,)?) => {
-		if const { <$T>::IS_NATIVE_C32 } {
+		if try_const! { <$T>::IS_NATIVE_C32 } {
 			unsafe { transmute(<ComplexImpl<f32> as ComplexField>::Arch::default().dispatch(transmute::<_, $ty<ComplexImpl<f32>>>($imp))) }
-		} else if const { <$T>::IS_NATIVE_C64 } {
+		} else if try_const! { <$T>::IS_NATIVE_C64 } {
 			unsafe { transmute(<ComplexImpl<f64> as ComplexField>::Arch::default().dispatch(transmute::<_, $ty<ComplexImpl<f64>>>($imp))) }
 		} else {
 			<$T>::Arch::default().dispatch($imp)
@@ -91,13 +103,6 @@ macro_rules! __perf_warn {
 }
 
 #[macro_export]
-macro_rules! guards {
-    ($($ctx: ident),* $(,)?) => {
-        $(::generativity::make_guard!($ctx));*
-    };
-}
-
-#[macro_export]
 macro_rules! with_dim {
 	($name: ident, $value: expr $(,)?) => {
 		let __val = $value;
@@ -107,24 +112,24 @@ macro_rules! with_dim {
 }
 
 #[macro_export]
-macro_rules! zipped {
+macro_rules! zip {
     ($head: expr $(,)?) => {
         $crate::linalg::zip::LastEq($crate::linalg::zip::IntoView::into_view($head), ::core::marker::PhantomData)
     };
 
     ($head: expr, $($tail: expr),* $(,)?) => {
-        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::IntoView::into_view($head), $crate::zipped!($($tail,)*))
+        $crate::linalg::zip::ZipEq::new($crate::linalg::zip::IntoView::into_view($head), $crate::zip!($($tail,)*))
     };
 }
 
 #[macro_export]
-macro_rules! unzipped {
+macro_rules! unzip {
     ($head: pat $(,)?) => {
         $crate::linalg::zip::Last($head)
     };
 
     ($head: pat, $($tail: pat),* $(,)?) => {
-        $crate::linalg::zip::Zip($head, $crate::unzipped!($($tail,)*))
+        $crate::linalg::zip::Zip($head, $crate::unzip!($($tail,)*))
     };
 }
 
@@ -297,7 +302,8 @@ pub mod perm;
 pub mod row;
 
 pub mod linalg;
-pub mod operator;
+#[path = "./operator/mod.rs"]
+pub mod matrix_free;
 pub mod sparse;
 
 pub trait Index: faer_traits::Index + seal::Seal {}
@@ -344,9 +350,6 @@ pub trait ShapeIdx {
 	/// Either an index or a negative value.
 	type MaybeIdx<I: Index>: Unbind<I::Signed> + Ord + Eq;
 }
-
-pub struct Unit;
-pub struct Any;
 
 /// Matrix dimension.
 pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>, IdxInc<usize>: Ord + Eq + PartialOrd<Self>> {
@@ -472,6 +475,7 @@ impl Shape for usize {
 	const IS_BOUND: bool = false;
 }
 
+/// Stride distance between two consecutive elements along a given dimension.
 pub trait Stride: core::fmt::Debug + Copy + Send + Sync + 'static {
 	type Rev: Stride<Rev = Self>;
 	fn rev(self) -> Self::Rev;
@@ -493,8 +497,10 @@ impl Stride for isize {
 	}
 }
 
+/// Contiguous stride equal to `+1`.
 #[derive(Copy, Clone, Debug)]
 pub struct ContiguousFwd;
+/// Contiguous stride equal to `-1`.
 #[derive(Copy, Clone, Debug)]
 pub struct ContiguousBwd;
 
@@ -526,15 +532,21 @@ impl Stride for ContiguousBwd {
 	}
 }
 
+/// Memoy allocation error.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TryReserveError {
+	/// Required allocation does not fit within `isize` bytes.
 	CapacityOverflow,
+	/// Allocator could not provide an allocation with the requested layout.
 	AllocError { layout: core::alloc::Layout },
 }
 
+/// Determines whether the input should be implicitly conjugated or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Conj {
+	/// No implicit conjugation.
 	No,
+	/// Implicit conjugation.
 	Yes,
 }
 
@@ -544,15 +556,21 @@ pub(crate) enum DiagStatus {
 	Generic,
 }
 
+/// Determines whether to replace or add to the result of a matmul operation
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Accum {
+	/// Overwrites the output buffer.
 	Replace,
+	/// Adds the result to the output buffer.
 	Add,
 }
 
+/// Determines which side of a self-adjoint matrix should be accessed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Side {
+	/// Lower triangular half.
 	Lower,
+	/// Upper triangular half.
 	Upper,
 }
 
@@ -581,7 +599,7 @@ impl Conj {
 	pub(crate) fn apply<T: Conjugate>(value: &T) -> T::Canonical {
 		let value = unsafe { &*(value as *const T as *const T::Canonical) };
 
-		if const { matches!(Self::get::<T>(), Conj::Yes) } {
+		if try_const! { matches!(Self::get::<T>(), Conj::Yes) } {
 			T::Canonical::conj_impl(value)
 		} else {
 			T::Canonical::copy_impl(value)
@@ -594,11 +612,14 @@ impl Conj {
 	}
 }
 
+/// Determines the parallelization configuration.
 #[derive(Copy, Clone, Debug)]
 pub enum Par {
+	/// Sequential, non portable across different platforms.
 	Seq,
+	/// Parallelized using the global rayon threadpool, non portable across different platforms.
 	#[cfg(feature = "rayon")]
-	Rayon(NonZero<usize>),
+	Rayon(NonZeroUsize),
 }
 
 impl Par {
@@ -606,9 +627,9 @@ impl Par {
 	#[cfg(feature = "rayon")]
 	pub fn rayon(nthreads: usize) -> Self {
 		if nthreads == 0 {
-			Self::Rayon(NonZero::new(rayon::current_num_threads()).unwrap())
+			Self::Rayon(NonZeroUsize::new(rayon::current_num_threads()).unwrap())
 		} else {
-			Self::Rayon(NonZero::new(nthreads).unwrap())
+			Self::Rayon(NonZeroUsize::new(nthreads).unwrap())
 		}
 	}
 
@@ -619,8 +640,10 @@ impl Par {
 }
 
 #[allow(non_camel_case_types)]
+/// `Complex<f32>`
 pub type c32 = num_complex::Complex32;
 #[allow(non_camel_case_types)]
+/// `Complex<f64>`
 pub type c64 = num_complex::Complex64;
 
 pub use col::{Col, ColMut, ColRef};
@@ -629,6 +652,39 @@ pub use row::{Row, RowMut, RowRef};
 
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
+	pub trait DivCeil: Sized {
+		fn msrv_div_ceil(self, rhs: Self) -> Self;
+		fn msrv_next_multiple_of(self, rhs: Self) -> Self;
+		fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self>;
+	}
+
+	impl DivCeil for usize {
+		#[inline]
+		fn msrv_div_ceil(self, rhs: Self) -> Self {
+			let d = self / rhs;
+			let r = self % rhs;
+			if r > 0 { d + 1 } else { d }
+		}
+
+		#[inline]
+		fn msrv_next_multiple_of(self, rhs: Self) -> Self {
+			match self % rhs {
+				0 => self,
+				r => self + (rhs - r),
+			}
+		}
+
+		#[inline]
+		fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self> {
+			{
+				match self.checked_rem(rhs)? {
+					0 => Some(self),
+					r => self.checked_add(rhs - r),
+				}
+			}
+		}
+	}
+
 	#[cfg(test)]
 	pub(crate) use std::dbg;
 	#[cfg(test)]
@@ -646,7 +702,6 @@ mod internal_prelude {
 	pub(crate) use crate::row::{AsRowMut, AsRowRef, Row, RowMut, RowRef};
 	pub(crate) use crate::utils::bound::{Array, Dim, Idx, IdxInc, MaybeIdx};
 	pub(crate) use crate::utils::simd::SimdCtx;
-	pub(crate) use crate::variadics::{L, l};
 	pub(crate) use crate::{Auto, NonExhaustive, Side, Spec};
 
 	pub use num_complex::Complex;
@@ -660,9 +715,9 @@ mod internal_prelude {
 		i.wrapping_neg()
 	}
 
-	pub(crate) use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzipped, zipped};
+	pub(crate) use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzip, zip};
 
-	pub use {unzipped as uz, zipped as z};
+	pub use {unzip as uz, zip as z};
 
 	pub use dyn_stack::{MemStack, StackReq};
 	pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
@@ -696,6 +751,7 @@ pub mod prelude {
 	}
 }
 
+/// Scaling factor for multiplying matrices.
 #[derive(Copy, Clone, Debug)]
 pub struct Scale<T>(pub T);
 
@@ -752,8 +808,6 @@ pub mod hacks;
 
 pub mod stats;
 
-pub mod variadics;
-
 mod non_exhaustive {
 	#[doc(hidden)]
 	#[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -761,10 +815,13 @@ mod non_exhaustive {
 }
 pub(crate) use non_exhaustive::NonExhaustive;
 
+/// Like `Default`, but with an extra type parameter so algorithm hyperparameters can be tuned per
+/// scalar type.
 pub trait Auto<T> {
 	fn auto() -> Self;
 }
 
+/// Implements [`Default`] based on `Config`'s [`Auto`] implementation for the type `T`.
 pub struct Spec<Config, T> {
 	config: Config,
 	__marker: core::marker::PhantomData<fn() -> T>,

@@ -260,7 +260,7 @@ fn tridiag_fused_op<T: ComplexField>(
 	let mut A = A;
 	let mut z2 = z2;
 
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(A), Some(z2), Some(rz2), Some(u0), Some(v2)) = (
 			(&mut A).try_as_col_major_mut(),
 			(&mut z2).try_as_col_major_mut(),
@@ -741,7 +741,7 @@ mod tests {
 				);
 			}
 
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+			let approx_eq = CwiseMat(ApproxEq::eps());
 			for j in 0..n {
 				for i in 0..n {
 					if i > j + 1 || j > i + 1 {

@@ -5,8 +5,11 @@ use pulp::Simd;
 
 use math_utils::*;
 
+use pulp::try_const;
+
 pub mod math_utils {
 	use crate::{ByRef, ComplexField, RealField, abs_impl};
+	use pulp::try_const;
 
 	#[inline(always)]
 	#[must_use]
@@ -136,7 +139,7 @@ pub mod math_utils {
 	#[inline(always)]
 	#[must_use]
 	pub fn absmax<T: ComplexField>(value: &T) -> T::Real {
-		if const { T::IS_REAL } {
+		if try_const! { T::IS_REAL } {
 			T::abs1_impl(value)
 		} else {
 			add(&T::Real::abs1_impl(&real(value)), &T::Real::abs1_impl(&imag(value)))
@@ -527,7 +530,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	#[inline(always)]
 	pub fn reduce_sum_real(&self, value: RealReg<T::SimdVec<S>>) -> Real<T> {
 		let value = T::simd_reduce_sum(&self.0, value.0);
-		if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
+		if try_const! { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
 			add(real(value), imag(value))
 		} else {
 			real(value)
@@ -538,7 +541,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	#[inline(always)]
 	pub fn reduce_max_real(&self, value: RealReg<T::SimdVec<S>>) -> Real<T> {
 		let value = T::simd_reduce_max(&self.0, value.0);
-		if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
+		if try_const! { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
 			max(real(value), imag(value))
 		} else {
 			real(value)
@@ -814,7 +817,7 @@ pub trait Index:
 	/// Equally-sized signed index type.
 	type Signed: SignedIndex;
 
-	const BITS: u32 = size_of::<Self>() as u32 * 8;
+	const BITS: u32 = core::mem::size_of::<Self>() as u32 * 8;
 
 	/// Truncate `value` to type [`Self`].
 	#[must_use]
@@ -919,7 +922,7 @@ impl SimdArch for pulp::Scalar {
 pub trait ComplexField:
 	Debug
 	+ Clone
-	+ Conjugate<Canonical = Self, Conj: Conjugate<Canonical = Self>>
+	+ Conjugate<Canonical = Self>
 	+ PartialEq
 	+ AddByRef<Output = Self>
 	+ SubByRef<Output = Self>
@@ -1034,9 +1037,9 @@ pub trait ComplexField:
 	#[inline(always)]
 	fn simd_load<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S> {
 		let simd = Self::ctx_from_simd(ctx);
-		if const { Self::Unit::IS_NATIVE_F32 } {
+		if try_const! { Self::Unit::IS_NATIVE_F32 } {
 			simd.deinterleave_shfl_f32s(*ptr)
-		} else if const { Self::Unit::IS_NATIVE_F64 } {
+		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
 			simd.deinterleave_shfl_f64s(*ptr)
 		} else {
 			panic!();
@@ -1046,9 +1049,9 @@ pub trait ComplexField:
 	#[inline(always)]
 	fn simd_store<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &mut Self::SimdVec<S>, value: Self::SimdVec<S>) {
 		let simd = Self::ctx_from_simd(ctx);
-		if const { Self::Unit::IS_NATIVE_F32 } {
+		if try_const! { Self::Unit::IS_NATIVE_F32 } {
 			*ptr = simd.deinterleave_shfl_f32s(value)
-		} else if const { Self::Unit::IS_NATIVE_F64 } {
+		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
 			*ptr = simd.deinterleave_shfl_f64s(value)
 		} else {
 			panic!();
@@ -1059,9 +1062,9 @@ pub trait ComplexField:
 	unsafe fn simd_mask_load<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
 		let simd = Self::ctx_from_simd(ctx);
 		let value = Self::simd_mask_load_raw(ctx, mask, ptr);
-		if const { Self::Unit::IS_NATIVE_F32 } {
+		if try_const! { Self::Unit::IS_NATIVE_F32 } {
 			simd.deinterleave_shfl_f32s(value)
-		} else if const { Self::Unit::IS_NATIVE_F64 } {
+		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
 			simd.deinterleave_shfl_f64s(value)
 		} else {
 			panic!();
@@ -1071,9 +1074,9 @@ pub trait ComplexField:
 	#[inline(always)]
 	unsafe fn simd_mask_store<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, value: Self::SimdVec<S>) {
 		let simd = Self::ctx_from_simd(ctx);
-		if const { Self::Unit::IS_NATIVE_F32 } {
+		if try_const! { Self::Unit::IS_NATIVE_F32 } {
 			Self::simd_mask_store_raw(ctx, mask, ptr, simd.deinterleave_shfl_f32s(value))
-		} else if const { Self::Unit::IS_NATIVE_F64 } {
+		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
 			Self::simd_mask_store_raw(ctx, mask, ptr, simd.deinterleave_shfl_f64s(value))
 		} else {
 			panic!();
@@ -1087,16 +1090,17 @@ pub trait ComplexField:
 		unsafe impl<T> pulp::Interleave for Interleave<T> {}
 
 		unsafe {
-			if const { Self::Unit::IS_NATIVE_F32 } {
-				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
-					&simd.deinterleave_shfl_f32s(Interleave(core::mem::transmute_copy::<_, Self::SimdVec<S>>(
-						&<Self as pulp::Iota32>::IOTA,
-					))),
-				)
-			} else if const { Self::Unit::IS_NATIVE_F64 } {
-				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
-					&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(&<Self as pulp::Iota64>::IOTA)),
-				)
+			if try_const! { Self::Unit::IS_NATIVE_F32 } {
+				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f32s(Interleave(core::mem::transmute_copy::<
+					_,
+					Self::SimdVec<S>,
+				>(
+					&try_const! {pulp::iota_32::<Interleave<Self>>()},
+				))))
+			} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
+				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(
+					&try_const! {pulp::iota_64::<Interleave<Self>>()},
+				)))
 			} else {
 				panic!();
 			}
@@ -2091,7 +2095,7 @@ impl<T: RealField> ComplexField for Complex<T> {
 
 	#[inline(always)]
 	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		let n = size_of::<Self::SimdVec<S>>() / size_of::<Self>();
+		let n = core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>();
 		let start = start.zx() * 2;
 		let end = end.zx() * 2;
 
@@ -2103,15 +2107,15 @@ impl<T: RealField> ComplexField for Complex<T> {
 	#[inline(always)]
 	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
 		Complex {
-			re: T::simd_mask_load_raw(ctx, mask.re, &raw const (*ptr).re),
-			im: T::simd_mask_load_raw(ctx, mask.im, &raw const (*ptr).im),
+			re: T::simd_mask_load_raw(ctx, mask.re, core::ptr::addr_of!((*ptr).re)),
+			im: T::simd_mask_load_raw(ctx, mask.im, core::ptr::addr_of!((*ptr).im)),
 		}
 	}
 
 	#[inline(always)]
 	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
-		T::simd_mask_store_raw(ctx, mask.re, &raw mut (*ptr).re, values.re);
-		T::simd_mask_store_raw(ctx, mask.im, &raw mut (*ptr).im, values.im);
+		T::simd_mask_store_raw(ctx, mask.re, core::ptr::addr_of_mut!((*ptr).re), values.re);
+		T::simd_mask_store_raw(ctx, mask.im, core::ptr::addr_of_mut!((*ptr).im), values.im);
 	}
 }
 
@@ -2389,9 +2393,9 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			bytemuck::cast(ctx.abs_f32s(bytemuck::cast(value)))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let v = value.re.abs() + value.im.abs();
 			bytemuck::cast(Complex { re: v, im: v })
@@ -2402,9 +2406,9 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			bytemuck::cast(ctx.abs_f32s(bytemuck::cast(value)))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let re = value.re.abs();
 			let im = value.im.abs();
@@ -2417,9 +2421,9 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			bytemuck::cast(ctx.mul_f32s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
 			let mut lhs: Complex<f32> = bytemuck::cast(lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
 			lhs *= rhs.re;
@@ -2456,9 +2460,9 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			bytemuck::cast(ctx.mul_f32s(bytemuck::cast(value), bytemuck::cast(value)))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let v = value.re * value.re + value.im * value.im;
 			bytemuck::cast(Complex { re: v, im: v })
@@ -2469,9 +2473,9 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			bytemuck::cast(ctx.mul_add_f32s(bytemuck::cast(value), bytemuck::cast(value), bytemuck::cast(acc)))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let acc: Complex<f32> = bytemuck::cast(acc);
 			let v = value.re * value.re + value.im * value.im + acc.re;
@@ -2493,10 +2497,10 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			ctx.less_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
-			assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
@@ -2508,10 +2512,10 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			ctx.less_than_or_equal_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
-			assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
@@ -2523,10 +2527,10 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			ctx.greater_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
-			assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
@@ -2538,10 +2542,10 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			ctx.greater_than_or_equal_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
-			assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
@@ -2553,10 +2557,10 @@ impl ComplexField for ComplexImpl<f32> {
 
 	#[inline(always)]
 	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c32s>() == size_of::<S::f32s>() } {
+		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			bytemuck::cast(ctx.select_f32s_m32s(mask, bytemuck::cast(lhs), bytemuck::cast(rhs)))
-		} else if const { size_of::<S::c32s>() == size_of::<Complex<f32>>() } {
-			assert!(const { size_of::<S::m32s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
 			let mask: bool = unsafe { core::mem::transmute_copy(&mask) };
 			let lhs: Complex<f32> = bytemuck::cast(lhs);
 			let rhs: Complex<f32> = bytemuck::cast(rhs);
@@ -2803,9 +2807,9 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			bytemuck::cast(ctx.abs_f64s(bytemuck::cast(value)))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let v = value.re.abs() + value.im.abs();
 			bytemuck::cast(Complex { re: v, im: v })
@@ -2816,9 +2820,9 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			bytemuck::cast(ctx.abs_f64s(bytemuck::cast(value)))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let re = value.re.abs();
 			let im = value.im.abs();
@@ -2831,9 +2835,9 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			bytemuck::cast(ctx.mul_f64s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
 			let mut lhs: Complex<f64> = bytemuck::cast(lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
 			lhs *= rhs.re;
@@ -2870,9 +2874,9 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			bytemuck::cast(ctx.mul_f64s(bytemuck::cast(value), bytemuck::cast(value)))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let v = value.re * value.re + value.im * value.im;
 			bytemuck::cast(Complex { re: v, im: v })
@@ -2883,9 +2887,9 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			bytemuck::cast(ctx.mul_add_f64s(bytemuck::cast(value), bytemuck::cast(value), bytemuck::cast(acc)))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let acc: Complex<f64> = bytemuck::cast(acc);
 			let v = value.re * value.re + value.im * value.im + acc.re;
@@ -2907,10 +2911,10 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			ctx.less_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
-			assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
@@ -2922,10 +2926,10 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			ctx.less_than_or_equal_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
-			assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
@@ -2937,10 +2941,10 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			ctx.greater_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
-			assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
@@ -2952,10 +2956,10 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			ctx.greater_than_or_equal_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
-			assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
 
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
@@ -2967,10 +2971,10 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if const { size_of::<S::c64s>() == size_of::<S::f64s>() } {
+		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			bytemuck::cast(ctx.select_f64s_m64s(mask, bytemuck::cast(lhs), bytemuck::cast(rhs)))
-		} else if const { size_of::<S::c64s>() == size_of::<Complex<f64>>() } {
-			assert!(const { size_of::<S::m64s>() == size_of::<bool>() });
+		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
 			let mask: bool = unsafe { core::mem::transmute_copy(&mask) };
 			let lhs: Complex<f64> = bytemuck::cast(lhs);
 			let rhs: Complex<f64> = bytemuck::cast(rhs);

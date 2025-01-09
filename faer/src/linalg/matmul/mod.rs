@@ -23,7 +23,7 @@ pub mod dot {
 	pub fn inner_prod<K: Shape, T: ComplexField>(lhs: RowRef<T, K>, conj_lhs: Conj, rhs: ColRef<T, K>, conj_rhs: Conj) -> T {
 		#[math]
 		pub fn imp<'K, T: ComplexField>(lhs: RowRef<T, Dim<'K>>, conj_lhs: Conj, rhs: ColRef<T, Dim<'K>>, conj_rhs: Conj) -> T {
-			if const { T::SIMD_CAPABILITIES.is_simd() } {
+			if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 				if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
 					inner_prod_slice::<T>(lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
 				} else {
@@ -209,7 +209,7 @@ pub mod dot {
 		let mut acc = zero();
 
 		for k in lhs.ncols().indices() {
-			if const { T::IS_REAL } {
+			if try_const! { T::IS_REAL } {
 				acc = lhs[k] * rhs[k] + acc;
 			} else {
 				match (conj_lhs, conj_rhs) {
@@ -249,7 +249,7 @@ mod matvec_rowmajor {
 		alpha: &T,
 		par: Par,
 	) {
-		core::assert!(const { T::SIMD_CAPABILITIES.is_simd() });
+		core::assert!(try_const! { T::SIMD_CAPABILITIES.is_simd() });
 
 		match par {
 			Par::Seq => {
@@ -344,7 +344,7 @@ mod matvec_colmajor {
 	use crate::linalg::temp_mat_uninit;
 	use crate::mat::AsMatMut;
 	use crate::utils::bound::IdxInc;
-	use crate::{unzipped, zipped};
+	use crate::{unzip, zip};
 	use faer_traits::SimdArch;
 
 	#[math]
@@ -358,7 +358,7 @@ mod matvec_colmajor {
 		alpha: &T,
 		par: Par,
 	) {
-		core::assert!(const { T::SIMD_CAPABILITIES.is_simd() });
+		core::assert!(try_const! { T::SIMD_CAPABILITIES.is_simd() });
 
 		match par {
 			Par::Seq => {
@@ -508,7 +508,7 @@ mod matvec_colmajor {
 					Par::Seq,
 				);
 				for j in 0..nthreads {
-					zipped!(dst.rb_mut(), tmp.rb().col(j)).for_each(|unzipped!(dst, src)| *dst = *dst + *src)
+					zip!(dst.rb_mut(), tmp.rb().col(j)).for_each(|unzip!(dst, src)| *dst = *dst + *src)
 				}
 			},
 		}
@@ -535,7 +535,7 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	let mut lhs = lhs;
 	let mut rhs = rhs;
 
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if dst.row_stride() < 0 {
 			dst = dst.reverse_rows_mut();
 			lhs = lhs.reverse_rows();
@@ -614,16 +614,16 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			};
 		}
 
-		if const { T::IS_NATIVE_F64 } {
+		if try_const! { T::IS_NATIVE_F64 } {
 			gemm_call!(f64);
 		}
-		if const { T::IS_NATIVE_C64 } {
+		if try_const! { T::IS_NATIVE_C64 } {
 			gemm_call!(num_complex::Complex<f64>);
 		}
-		if const { T::IS_NATIVE_F32 } {
+		if try_const! { T::IS_NATIVE_F32 } {
 			gemm_call!(f32);
 		}
-		if const { T::IS_NATIVE_C32 } {
+		if try_const! { T::IS_NATIVE_C32 } {
 			gemm_call!(num_complex::Complex<f32>);
 		}
 	}
@@ -651,7 +651,7 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			let m = *dst.nrows();
 			let n = *dst.ncols();
 			let task_count = m * n;
-			let task_per_thread = task_count.div_ceil(nthreads);
+			let task_per_thread = task_count.msrv_div_ceil(nthreads);
 
 			let dst = dst.rb();
 			(0..nthreads).into_par_iter().for_each(|tid| {
@@ -714,9 +714,9 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 		dst.as_dyn_stride_mut().as_shape_mut(M, N),
 		beta,
 		lhs.as_dyn_stride().canonical().as_shape(M, K),
-		const { Conj::get::<LhsT>() },
+		try_const! { Conj::get::<LhsT>() },
 		rhs.as_dyn_stride().canonical().as_shape(K, N),
-		const { Conj::get::<RhsT>() },
+		try_const! { Conj::get::<RhsT>() },
 		&alpha,
 		par,
 	);

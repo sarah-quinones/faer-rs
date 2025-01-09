@@ -106,9 +106,9 @@ pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
 		let m = mat.nrows();
 		let n = mat.ncols();
 
-		if const { T::SIMD_CAPABILITIES.is_simd() } {
+		if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 			if let Some(mat) = mat.try_as_col_major() {
-				if const { T::IS_NATIVE_C32 } {
+				if try_const! { T::IS_NATIVE_C32 } {
 					let mat: MatRef<'_, Complex<f32>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
 						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(
@@ -120,7 +120,7 @@ pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
 						)
 					};
 					return unsafe { crate::hacks::coerce(sum_simd_pairwise_cols::<f32>(mat)) };
-				} else if const { T::IS_NATIVE_C64 } {
+				} else if try_const! { T::IS_NATIVE_C64 } {
 					let mat: MatRef<'_, Complex<f64>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
 						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(
@@ -151,7 +151,7 @@ pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Col, Mat, assert, unzipped, zipped};
+	use crate::{Col, Mat, assert, unzip, zip};
 
 	#[test]
 	fn test_sum() {
@@ -161,7 +161,7 @@ mod tests {
 			for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
 				let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
 				let mut target = 0.0;
-				zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
+				zip!(mat.as_ref()).for_each(|unzip!(x)| {
 					target += x;
 				});
 

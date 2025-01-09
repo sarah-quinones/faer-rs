@@ -106,9 +106,9 @@ fn postorder<'n, 'out, I: Index>(
 	let zero = I(0);
 	let none = I(NONE);
 
-	let (ref mut child, stack) = stack.collect(iter::repeat_n(MaybeIdx::<'_, I>::none(), n));
-	let (ref mut sibling, stack) = stack.collect(iter::repeat_n(MaybeIdx::<'_, I>::none(), n));
-	let (ref mut stack, _) = stack.collect(iter::repeat_n(I(0), n));
+	let (ref mut child, stack) = stack.collect(repeat_n!(MaybeIdx::<'_, I>::none(), n));
+	let (ref mut sibling, stack) = stack.collect(repeat_n!(MaybeIdx::<'_, I>::none(), n));
+	let (ref mut stack, _) = stack.collect(repeat_n!(I(0), n));
 
 	let child = Array::from_mut(child, N);
 	let sibling = Array::from_mut(sibling, N);
@@ -240,9 +240,9 @@ fn amd_2<I: Index>(
 	let dense = Ord::max(dense, 16);
 	let dense = Ord::min(dense, n);
 
-	let (mut w, stack) = stack.collect(iter::repeat_n(one, n));
-	let (mut nv, stack) = stack.collect(iter::repeat_n(one, n));
-	let (mut elen, stack) = stack.collect(iter::repeat_n(zero, n));
+	let (mut w, stack) = stack.collect(repeat_n!(one, n));
+	let (mut nv, stack) = stack.collect(repeat_n!(one, n));
+	let (mut elen, stack) = stack.collect(repeat_n!(zero, n));
 
 	let nv = &mut *nv;
 	let elen = &mut *elen;
@@ -253,8 +253,8 @@ fn amd_2<I: Index>(
 	let mut ndense = zero;
 
 	{
-		let (mut head, stack) = stack.collect(iter::repeat_n(none, n));
-		let (mut degree, _) = stack.collect(iter::repeat_n(none, n));
+		let (mut head, stack) = stack.collect(repeat_n!(none, n));
+		let (mut degree, _) = stack.collect(repeat_n!(none, n));
 
 		let head = &mut *head;
 		let degree = &mut *degree;
@@ -704,7 +704,7 @@ fn amd_2<I: Index>(
 		stack,
 	);
 
-	let (ref mut head, _) = stack.collect(iter::repeat_n(none, n));
+	let (ref mut head, _) = stack.collect(repeat_n!(none, n));
 	next.fill(none);
 
 	for (e, &k) in w.iter().enumerate() {
@@ -892,8 +892,8 @@ fn preprocess<'out, I: Index>(
 	let zero = I(0);
 	let one = I(1);
 
-	let (ref mut w, stack) = stack.collect(iter::repeat_n(I(0), n));
-	let (ref mut flag, _) = stack.collect(iter::repeat_n(I(NONE), n));
+	let (ref mut w, stack) = stack.collect(repeat_n!(I(0), n));
+	let (ref mut flag, _) = stack.collect(repeat_n!(I(NONE), n));
 
 	let w = Array::from_mut(w, N);
 	let flag = Array::from_mut(flag, N);
@@ -1067,7 +1067,7 @@ pub fn order<I: Index>(
 		});
 	}
 
-	let (ref mut len, stack) = stack.collect(iter::repeat_n(I::Signed::truncate(0), n));
+	let (ref mut len, stack) = stack.collect(repeat_n!(I::Signed::truncate(0), n));
 	let nzaat = aat(len, A, stack)?;
 	let iwlen = nzaat
 		.checked_add(nzaat / 5)

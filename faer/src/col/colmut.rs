@@ -464,10 +464,10 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 		pub fn imp<'M, 'N, T: ComplexField>(this: ColMut<'_, T, Dim<'M>>, other: ColRef<'_, T, Dim<'M>>, conj_: Conj) {
 			match conj_ {
 				Conj::No => {
-					zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = copy(&src));
+					zip!(this, other).for_each(|unzip!(dst, src)| *dst = copy(&src));
 				},
 				Conj::Yes => {
-					zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = conj(&src));
+					zip!(this, other).for_each(|unzip!(dst, src)| *dst = conj(&src));
 				},
 			}
 		}

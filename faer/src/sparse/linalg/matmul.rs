@@ -23,7 +23,7 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 
 	let mut col_ptr = try_zeroed::<I>(n + 1)?;
 	let mut row_idx = alloc::vec::Vec::new();
-	let mut work = try_collect(core::iter::repeat_n(I::truncate(usize::MAX), m))?;
+	let mut work = try_collect(repeat_n!(I::truncate(usize::MAX), m))?;
 	let mut info = try_zeroed::<f64>(n + 1)?;
 
 	for j in 0..n {

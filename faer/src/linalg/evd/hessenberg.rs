@@ -264,7 +264,7 @@ fn hessenberg_fused_op<T: ComplexField>(
 	let mut A = A;
 	let mut r_out = r_out;
 
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(A), Some(r_out), Some(l_in), Some(l0), Some(l1)) = (
 			A.rb_mut().try_as_col_major_mut(),
 			r_out.rb_mut().try_as_col_major_mut(),
@@ -801,7 +801,7 @@ mod tests {
 					);
 				}
 
-				let approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+				let approx_eq = CwiseMat(ApproxEq::eps());
 				for j in 0..n {
 					for i in 0..n {
 						if i > j + 1 {
@@ -871,7 +871,7 @@ mod tests {
 					);
 				}
 
-				let approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+				let approx_eq = CwiseMat(ApproxEq::eps());
 				for j in 0..n {
 					for i in 0..n {
 						if i > j + 1 {

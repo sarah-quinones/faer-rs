@@ -63,7 +63,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	#[math]
 	pub fn rotg(p: T, q: T) -> (Self, T) {
-		if const { T::IS_REAL } {
+		if try_const! { T::IS_REAL } {
 			{
 				let p = real(p);
 				let q = real(q);
@@ -220,7 +220,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 	fn apply_on_the_left_in_place_impl<'N>(&self, (x, y): (RowMut<'_, T, Dim<'N>>, RowMut<'_, T, Dim<'N>>)) {
 		let mut x = x;
 		let mut y = y;
-		if const { T::SIMD_CAPABILITIES.is_simd() } {
+		if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 			struct Impl<'a, 'N, T: ComplexField> {
 				this: &'a JacobiRotation<T>,
 				x: RowMut<'a, T, Dim<'N>, ContiguousFwd>,
@@ -270,7 +270,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 	#[math]
 	fn apply_on_the_left_in_place_fallback<'N>(&self, x: RowMut<'_, T, Dim<'N>>, y: RowMut<'_, T, Dim<'N>>) {
 		let Self { c, s } = self;
-		zipped!(x, y).for_each(move |unzipped!(x, y)| {
+		zip!(x, y).for_each(move |unzip!(x, y)| {
 			let x_ = *c * *x - conj(*s) * *y;
 			let y_ = *c * *y + *s * *x;
 			*x = x_;

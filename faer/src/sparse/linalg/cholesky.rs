@@ -293,7 +293,7 @@ pub mod simplicial {
 
 		etree: EliminationTreeRef<'_, I>,
 		A: SparseColMatRef<'_, I, T>,
-		regularization: LdltRegularization<'_, T>,
+		regularization: LdltRegularization<'_, T::Real>,
 
 		stack: &mut MemStack,
 	) -> Result<LltInfo, LltError> {
@@ -431,7 +431,7 @@ pub mod simplicial {
 		L_values: &mut [T],
 		kind: FactorizationKind,
 		A: SparseColMatRef<'_, I, T>,
-		regularization: LdltRegularization<'_, T>,
+		regularization: LdltRegularization<'_, T::Real>,
 		symbolic: &SymbolicSimplicialCholesky<I>,
 		stack: &mut MemStack,
 	) -> Result<LltInfo, LltError> {
@@ -571,12 +571,12 @@ pub mod simplicial {
 	///
 	/// # Panics
 	/// The symbolic structure must be computed by calling
-	/// [`factorize_simplicial_symbolic`] on a matrix with the same symbolic structure.
+	/// [`factorize_simplicial_symbolic_cholesky`] on a matrix with the same symbolic structure.
 	/// Otherwise, the behavior is unspecified and panics may occur.
 	pub fn factorize_simplicial_numeric_llt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		A: SparseColMatRef<'_, I, T>,
-		regularization: LltRegularization<T>,
+		regularization: LltRegularization<T::Real>,
 		symbolic: &SymbolicSimplicialCholesky<I>,
 		stack: &mut MemStack,
 	) -> Result<LltInfo, LltError> {
@@ -612,7 +612,7 @@ pub mod simplicial {
 
 		etree: EliminationTreeRef<'_, I>,
 		A: SparseColMatRef<'_, I, T>,
-		regularization: LltRegularization<T>,
+		regularization: LltRegularization<T::Real>,
 
 		stack: &mut MemStack,
 	) -> Result<LltInfo, LltError> {
@@ -640,12 +640,12 @@ pub mod simplicial {
 	///
 	/// # Panics
 	/// The symbolic structure must be computed by calling
-	/// [`factorize_simplicial_symbolic`] on a matrix with the same symbolic structure.
+	/// [`factorize_simplicial_symbolic_cholesky`] on a matrix with the same symbolic structure.
 	/// Otherwise, the behavior is unspecified and panics may occur.
 	pub fn factorize_simplicial_numeric_ldlt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		A: SparseColMatRef<'_, I, T>,
-		regularization: LdltRegularization<'_, T>,
+		regularization: LdltRegularization<'_, T::Real>,
 		symbolic: &SymbolicSimplicialCholesky<I>,
 		stack: &mut MemStack,
 	) -> Result<LdltInfo, LdltError> {
@@ -675,7 +675,7 @@ pub mod simplicial {
 
 		etree: EliminationTreeRef<'_, I>,
 		A: SparseColMatRef<'_, I, T>,
-		regularization: LdltRegularization<'_, T>,
+		regularization: LdltRegularization<'_, T::Real>,
 
 		stack: &mut MemStack,
 	) -> Result<LdltInfo, LdltError> {
@@ -2397,13 +2397,13 @@ pub mod supernodal {
 	///
 	/// # Panics
 	/// The symbolic structure must be computed by calling
-	/// [`factorize_supernodal_symbolic`] on a matrix with the same symbolic structure.
+	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure.
 	/// Otherwise, the behavior is unspecified and panics may occur.
 	#[math]
 	pub fn factorize_supernodal_numeric_llt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		A_lower: SparseColMatRef<'_, I, T>,
-		regularization: LltRegularization<T>,
+		regularization: LltRegularization<T::Real>,
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
@@ -2561,13 +2561,13 @@ pub mod supernodal {
 	///
 	/// # Panics
 	/// The symbolic structure must be computed by calling
-	/// [`factorize_supernodal_symbolic`] on a matrix with the same symbolic structure.
+	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure.
 	/// Otherwise, the behavior is unspecified and panics may occur.
 	#[math]
 	pub fn factorize_supernodal_numeric_ldlt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		A_lower: SparseColMatRef<'_, I, T>,
-		regularization: LdltRegularization<'_, T>,
+		regularization: LdltRegularization<'_, T::Real>,
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
@@ -2757,7 +2757,7 @@ pub mod supernodal {
 	///
 	/// # Panics
 	/// The symbolic structure must be computed by calling
-	/// [`factorize_supernodal_symbolic`] on a matrix with the same symbolic structure.
+	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure.
 	/// Otherwise, the behavior is unspecified and panics may occur.
 	#[math]
 	pub fn factorize_supernodal_numeric_intranode_bunch_kaufman<I: Index, T: ComplexField>(
@@ -2766,13 +2766,12 @@ pub mod supernodal {
 		perm_forward: &mut [I],
 		perm_inverse: &mut [I],
 		A_lower: SparseColMatRef<'_, I, T>,
-		regularization: BunchKaufmanRegularization<'_, T>,
+		regularization: BunchKaufmanRegularization<'_, T::Real>,
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
 		params: Spec<BunchKaufmanParams, T>,
 	) -> BunchKaufmanInfo {
-		let mut regularization = regularization;
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
 		let mut dynamic_regularization_count = 0usize;
@@ -2934,10 +2933,7 @@ pub mod supernodal {
 				Ls_top.rb_mut(),
 				ColMut::from_slice_mut(s_subdiag).as_diagonal_mut(),
 				BunchKaufmanRegularization {
-					dynamic_regularization_signs: regularization
-						.dynamic_regularization_signs
-						.rb_mut()
-						.map(|signs| &mut signs[s_start..s_end]),
+					dynamic_regularization_signs: regularization.dynamic_regularization_signs.map(|signs| &signs[s_start..s_end]),
 
 					dynamic_regularization_delta: copy(regularization.dynamic_regularization_delta),
 					dynamic_regularization_epsilon: copy(regularization.dynamic_regularization_epsilon),
@@ -3202,7 +3198,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		L_values: &'out mut [T],
 		A: SparseColMatRef<'_, I, T>,
 		side: Side,
-		regularization: LltRegularization<T>,
+		regularization: LltRegularization<T::Real>,
 		par: Par,
 		stack: &mut MemStack,
 		params: Spec<LltParams, T>,
@@ -3256,7 +3252,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		L_values: &'out mut [T],
 		A: SparseColMatRef<'_, I, T>,
 		side: Side,
-		regularization: LdltRegularization<'_, T>,
+		regularization: LdltRegularization<'_, T::Real>,
 		par: Par,
 		stack: &mut MemStack,
 		params: Spec<LdltParams, T>,
@@ -3343,7 +3339,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		perm_inverse: &'out mut [I],
 		A: SparseColMatRef<'_, I, T>,
 		side: Side,
-		regularization: BunchKaufmanRegularization<'_, T>,
+		regularization: BunchKaufmanRegularization<'_, T::Real>,
 		par: Par,
 		stack: &mut MemStack,
 		params: Spec<BunchKaufmanParams, T>,
@@ -3379,7 +3375,7 @@ impl<I: Index> SymbolicCholesky<I> {
 							new_signs[i] = signs[fwd[i].zx()];
 						}
 					}
-					&mut *new_signs
+					&*new_signs
 				});
 
 				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_idx, A, perm, side, out_side, stack).into_const();
@@ -4156,7 +4152,7 @@ pub(super) mod tests {
 
 		{
 			let A_lower = A_lower.rb();
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			supernodal::factorize_supernodal_numeric_ldlt(
 				L_val,
@@ -4211,7 +4207,7 @@ pub(super) mod tests {
 
 		{
 			let A_lower = A_lower.rb();
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e2);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e2);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			let fwd = &mut *vec![0usize; n];
 			let bwd = &mut *vec![0usize; n];
@@ -4286,7 +4282,7 @@ pub(super) mod tests {
 			}
 			let A_lower = A_lower.rb();
 
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			supernodal::factorize_supernodal_numeric_llt(
 				L_val,
@@ -4369,7 +4365,7 @@ pub(super) mod tests {
 		)?;
 
 		{
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e5);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e5);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			let A_upper = A_upper.rb();
 			simplicial::factorize_simplicial_numeric_ldlt(
@@ -4430,7 +4426,7 @@ pub(super) mod tests {
 			}
 			let A_upper = A_upper.rb();
 
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e5);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e5);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			simplicial::factorize_simplicial_numeric_llt(
 				L_val,
@@ -4502,7 +4498,7 @@ pub(super) mod tests {
 		let A_full = A_full.rb();
 
 		let rng = &mut StdRng::seed_from_u64(0);
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+		let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
 
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
@@ -4573,7 +4569,7 @@ pub(super) mod tests {
 		let A_full = A_full.rb();
 
 		let rng = &mut StdRng::seed_from_u64(0);
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+		let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
 
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
@@ -4644,7 +4640,7 @@ pub(super) mod tests {
 		let A_full = A_full.rb();
 
 		let rng = &mut StdRng::seed_from_u64(0);
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 1e4);
+		let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
 
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {

@@ -96,7 +96,7 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 
 	StackReq::all_of(&[
 		prologue,
-		temp_mat_scratch::<T::Real>(n, if const { T::IS_REAL } { 0 } else { n }).array(2),
+		temp_mat_scratch::<T::Real>(n, if try_const! { T::IS_REAL } { 0 } else { n }).array(2),
 		StackReq::any_of(&[
 			if n < params.recursion_threshold {
 				StackReq::empty()
@@ -165,7 +165,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 		diag[i] = real(trid[(i, i)]);
 
 		if i + 1 < n {
-			if const { T::IS_REAL } {
+			if try_const! { T::IS_REAL } {
 				offdiag[i] = real(trid[(i + 1, i)]);
 			} else {
 				offdiag[i] = abs(trid[(i + 1, i)]);
@@ -190,7 +190,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 
 	let (mut u_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, if T::IS_REAL { 0 } else { n }, stack) };
 	let mut u_real = u_real.as_mat_mut();
-	let mut u_evd = if const { T::IS_REAL } {
+	let mut u_evd = if try_const! { T::IS_REAL } {
 		unsafe { core::mem::transmute(u.rb_mut()) }
 	} else {
 		u_real.rb_mut()
@@ -202,7 +202,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 		tridiag_evd::divide_and_conquer::<T::Real>(diag.rb_mut(), offdiag.rb_mut(), u_evd.rb_mut(), par, stack, params.recursion_threshold)?;
 	}
 
-	if const { !T::IS_REAL } {
+	if try_const! { !T::IS_REAL } {
 		let normalized = |x: T| {
 			if x == zero() { one() } else { mul_real(x, recip(abs(x))) }
 		};
@@ -861,7 +861,7 @@ fn evd_imp<T: ComplexField>(
 		}
 	}
 
-	if const { T::IS_REAL } {
+	if try_const! { T::IS_REAL } {
 		schur::real_schur::multishift_qr::<T::Real>(
 			unsafe { core::mem::transmute(Z.is_some()) },
 			unsafe { core::mem::transmute(H.rb_mut()) },
@@ -884,7 +884,7 @@ fn evd_imp<T: ComplexField>(
 		let (mut X, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 		let mut X = X.as_mat_mut();
 
-		if const { T::IS_REAL } {
+		if try_const! { T::IS_REAL } {
 			evd_from_real_schur_imp::<T::Real>(
 				unsafe { core::mem::transmute(H) },
 				unsafe { core::mem::transmute(X.rb_mut()) },
@@ -912,7 +912,7 @@ fn evd_imp<T: ComplexField>(
 		let (mut X, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 		let mut X = X.as_mat_mut().reverse_rows_mut();
 
-		if const { T::IS_REAL } {
+		if try_const! { T::IS_REAL } {
 			evd_from_real_schur_imp::<T::Real>(
 				unsafe { core::mem::transmute(H.transpose().reverse_rows_and_cols()) },
 				unsafe { core::mem::transmute(X.rb_mut()) },
@@ -1014,7 +1014,7 @@ mod general_tests {
 		});
 
 		use faer_traits::math_utils::*;
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * sqrt(&from_f64(8.0 * n as f64)));
+		let approx_eq = CwiseMat(ApproxEq::eps() * sqrt(&from_f64(8.0 * n as f64)));
 
 		let mut s = Mat::zeros(n, n);
 		{
@@ -1107,7 +1107,7 @@ mod general_tests {
 
 					let s = Scale(c64::new(s_re[i], s_im[i]));
 
-					let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * sqrt(&from_f64(8.0 * n as f64)));
+					let approx_eq = CwiseMat(ApproxEq::eps() * sqrt(&from_f64(8.0 * n as f64)));
 
 					assert!((ur * s).as_mat() ~ (mat * ur).as_mat());
 					assert!((ul.adjoint() * s).as_mat() ~ (ul.adjoint() * mat).as_mat());
@@ -1166,7 +1166,7 @@ mod self_adjoint_tests {
 			..auto!(T)
 		});
 		use faer_traits::math_utils::*;
-		let approx_eq = CwiseMat(ApproxEq::<T>::eps() * sqrt(&from_f64(8.0 * n as f64)));
+		let approx_eq = CwiseMat(ApproxEq::<T::Real>::eps() * sqrt(&from_f64(8.0 * n as f64)));
 
 		let mut s = Mat::zeros(n, n);
 		{

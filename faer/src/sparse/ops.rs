@@ -286,16 +286,11 @@ pub fn add<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
 ) -> Result<SparseColMat<I, T>, FaerError> {
-	binary_op(lhs.canonical(), rhs.canonical(), |lhs, rhs| {
-		match (
-			lhs.map(|lhs| if const { Conj::get::<LhsT>().is_conj() } { conj(lhs) } else { copy(lhs) }),
-			rhs.map(|rhs| if const { Conj::get::<RhsT>().is_conj() } { conj(rhs) } else { copy(rhs) }),
-		) {
-			(None, None) => zero(),
-			(None, Some(rhs)) => rhs,
-			(Some(lhs), None) => lhs,
-			(Some(lhs), Some(rhs)) => faer_traits::math_utils::add(&lhs, &rhs),
-		}
+	binary_op(lhs, rhs, |lhs, rhs| match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
+		(None, None) => zero(),
+		(None, Some(rhs)) => rhs,
+		(Some(lhs), None) => lhs,
+		(Some(lhs), Some(rhs)) => faer_traits::math_utils::add(&lhs, &rhs),
 	})
 }
 
@@ -309,16 +304,11 @@ pub fn sub<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
 ) -> Result<SparseColMat<I, T>, FaerError> {
-	binary_op(lhs.canonical(), rhs.canonical(), |lhs, rhs| {
-		match (
-			lhs.map(|lhs| if const { Conj::get::<LhsT>().is_conj() } { conj(lhs) } else { copy(lhs) }),
-			rhs.map(|rhs| if const { Conj::get::<RhsT>().is_conj() } { conj(rhs) } else { copy(rhs) }),
-		) {
-			(None, None) => zero(),
-			(None, Some(rhs)) => rhs,
-			(Some(lhs), None) => lhs,
-			(Some(lhs), Some(rhs)) => faer_traits::math_utils::sub(&lhs, &rhs),
-		}
+	binary_op(lhs, rhs, |lhs, rhs| match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
+		(None, None) => zero(),
+		(None, Some(rhs)) => rhs,
+		(Some(lhs), None) => lhs,
+		(Some(lhs), Some(rhs)) => faer_traits::math_utils::sub(&lhs, &rhs),
 	})
 }
 
@@ -329,15 +319,9 @@ pub fn sub<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 /// Panics if `dst` and `rhs` don't have matching dimensions.  
 /// Panics if `rhs` contains an index that's unavailable in `dst`.  
 pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
-	binary_op_assign_into(dst, rhs.canonical(), |dst, rhs| {
+	binary_op_assign_into(dst, rhs, |dst, rhs| {
 		*dst = faer_traits::math_utils::add(dst, &match rhs {
-			Some(rhs) => {
-				if const { Conj::get::<RhsT>().is_conj() } {
-					conj(rhs)
-				} else {
-					copy(rhs)
-				}
-			},
+			Some(rhs) => Conj::apply(rhs),
 			None => zero(),
 		})
 	})
@@ -350,15 +334,9 @@ pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst
 /// Panics if `dst` and `rhs` don't have matching dimensions.  
 /// Panics if `rhs` contains an index that's unavailable in `dst`.  
 pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
-	binary_op_assign_into(dst, rhs.canonical(), |dst, rhs| {
+	binary_op_assign_into(dst, rhs, |dst, rhs| {
 		*dst = faer_traits::math_utils::sub(dst, &match rhs {
-			Some(rhs) => {
-				if const { Conj::get::<RhsT>().is_conj() } {
-					conj(rhs)
-				} else {
-					copy(rhs)
-				}
-			},
+			Some(rhs) => Conj::apply(rhs),
 			None => zero(),
 		})
 	})
@@ -377,11 +355,8 @@ pub fn add_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT:
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
 ) {
-	ternary_op_assign_into(dst, lhs.canonical(), rhs.canonical(), |dst, lhs, rhs| {
-		*dst = match (
-			lhs.map(|lhs| if const { Conj::get::<LhsT>().is_conj() } { conj(lhs) } else { copy(lhs) }),
-			rhs.map(|rhs| if const { Conj::get::<RhsT>().is_conj() } { conj(rhs) } else { copy(rhs) }),
-		) {
+	ternary_op_assign_into(dst, lhs, rhs, |dst, lhs, rhs| {
+		*dst = match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
 			(None, None) => zero(),
 			(None, Some(rhs)) => rhs,
 			(Some(lhs), None) => lhs,
@@ -403,11 +378,8 @@ pub fn sub_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT:
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
 ) {
-	ternary_op_assign_into(dst, lhs.canonical(), rhs.canonical(), |dst, lhs, rhs| {
-		*dst = match (
-			lhs.map(|lhs| if const { Conj::get::<LhsT>().is_conj() } { conj(lhs) } else { copy(lhs) }),
-			rhs.map(|rhs| if const { Conj::get::<RhsT>().is_conj() } { conj(rhs) } else { copy(rhs) }),
-		) {
+	ternary_op_assign_into(dst, lhs, rhs, |dst, lhs, rhs| {
+		*dst = match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
 			(None, None) => zero(),
 			(None, Some(rhs)) => rhs,
 			(Some(lhs), None) => lhs,

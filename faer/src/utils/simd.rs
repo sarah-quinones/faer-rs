@@ -105,9 +105,9 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
 impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	#[inline]
 	pub fn new(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
-		core::assert!(const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
+		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
-		let stride = size_of::<T::SimdVec<S>>() / size_of::<T>();
+		let stride = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 		Self {
 			ctx: simd,
 			len,
@@ -122,9 +122,9 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 
 	#[inline]
 	pub fn new_align(simd: T::SimdCtx<S>, len: Dim<'N>, align_offset: usize) -> Self {
-		core::assert!(const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
+		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
-		let stride = size_of::<T::SimdVec<S>>() / size_of::<T>();
+		let stride = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 		let align_offset = align_offset % stride;
 
 		if align_offset == 0 {
@@ -172,12 +172,12 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 
 	#[inline]
 	pub fn new_force_mask(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
-		core::assert!(const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
+		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
 		crate::assert!(*len != 0);
 		let new_len = *len - 1;
 
-		let stride = size_of::<T::SimdVec<S>>() / size_of::<T>();
+		let stride = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 		Self {
 			ctx: simd,
 			len,
@@ -210,7 +210,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	) {
 		macro_rules! stride {
 			() => {
-				size_of::<T::SimdVec<S>>() / size_of::<T>()
+				core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>()
 			};
 		}
 
@@ -253,7 +253,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	) {
 		macro_rules! stride {
 			() => {
-				size_of::<T::SimdVec<S>>() / size_of::<T>()
+				core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>()
 			};
 		}
 

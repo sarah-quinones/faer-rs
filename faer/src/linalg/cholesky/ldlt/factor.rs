@@ -1,6 +1,5 @@
 use crate::assert;
 use crate::internal_prelude::*;
-use faer_traits::Real;
 use linalg::matmul::triangular::BlockStructure;
 use pulp::Simd;
 
@@ -229,7 +228,7 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 ) -> Result<usize, usize> {
 	let N = A.ncols();
 
-	let blocksize = 4 * (size_of::<T::SimdVec<S>>() / size_of::<T>());
+	let blocksize = 4 * (core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>());
 
 	let mut A = A;
 	let mut D = D;
@@ -297,7 +296,7 @@ fn simd_cholesky<T: ComplexField>(
 	}
 
 	let mut A = A;
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if let Some(A) = A.rb_mut().try_as_col_major_mut() {
 			dispatch!(
 				Impl {
@@ -496,14 +495,14 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 /// Dynamic LDLT regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
-#[derive(Clone, Debug)]
-pub struct LdltRegularization<'a, T: ComplexField> {
+#[derive(Copy, Clone, Debug)]
+pub struct LdltRegularization<'a, T> {
 	/// Expected signs for the diagonal at each step of the decomposition.
 	pub dynamic_regularization_signs: Option<&'a [i8]>,
 	/// Regularized value.
-	pub dynamic_regularization_delta: Real<T>,
+	pub dynamic_regularization_delta: T,
 	/// Regularization threshold.
-	pub dynamic_regularization_epsilon: Real<T>,
+	pub dynamic_regularization_epsilon: T,
 }
 
 /// Info about the result of the LDLT factorization.
@@ -526,7 +525,7 @@ impl core::fmt::Display for LdltError {
 }
 impl core::error::Error for LdltError {}
 
-impl<T: ComplexField> Default for LdltRegularization<'_, T> {
+impl<T: RealField> Default for LdltRegularization<'_, T> {
 	fn default() -> Self {
 		Self {
 			dynamic_regularization_signs: None,
@@ -564,7 +563,7 @@ pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: 
 #[math]
 pub fn cholesky_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
-	regularization: LdltRegularization<'_, T>,
+	regularization: LdltRegularization<'_, T::Real>,
 	par: Par,
 	stack: &mut MemStack,
 	params: Spec<LdltParams, T>,

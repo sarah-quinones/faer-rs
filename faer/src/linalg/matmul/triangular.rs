@@ -3,7 +3,7 @@ use crate::linalg::temp_mat_uninit;
 use crate::linalg::zip::Diag;
 use crate::mat::{AsMatMut, MatMut, MatRef};
 use crate::utils::thread::join_raw;
-use crate::{assert, debug_assert, unzipped, zipped};
+use crate::{assert, debug_assert, unzip, zip};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
@@ -15,7 +15,7 @@ pub(crate) enum DiagonalKind {
 
 #[inline]
 fn pointer_offset<T>(ptr: *const T) -> usize {
-	if const { size_of::<T>().is_power_of_two() && size_of::<T>() <= 64 } {
+	if try_const! {core::mem::size_of::<T>().is_power_of_two() &&core::mem::size_of::<T>() <= 64 } {
 		ptr.align_offset(64).wrapping_neg() % 16
 	} else {
 		0
@@ -44,7 +44,7 @@ fn copy_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: Ma
 		DiagonalKind::Generic => dst.copy_from_triangular_lower(src),
 	}
 
-	zipped!(dst).for_each_triangular_upper(Diag::Skip, |unzipped!(dst)| *dst = zero());
+	zip!(dst).for_each_triangular_upper(Diag::Skip, |unzip!(dst)| *dst = zero());
 }
 
 #[faer_macros::math]
@@ -57,14 +57,10 @@ fn accum_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: M
 
 	match beta {
 		Accum::Add => {
-			zipped!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(dst, src)| {
-				*dst = *dst + *src
-			});
+			zip!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzip!(dst, src)| *dst = *dst + *src);
 		},
 		Accum::Replace => {
-			zipped!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(dst, src)| {
-				*dst = copy(*src)
-			});
+			zip!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzip!(dst, src)| *dst = copy(*src));
 		},
 	}
 }
@@ -903,10 +899,10 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 		beta,
 		lhs.as_dyn_stride().canonical().as_shape(M, K),
 		lhs_structure,
-		const { Conj::get::<LhsT>() },
+		try_const! { Conj::get::<LhsT>() },
 		rhs.as_dyn_stride().canonical().as_shape(K, N),
 		rhs_structure,
-		const { Conj::get::<RhsT>() },
+		try_const! { Conj::get::<RhsT>() },
 		alpha.by_ref(),
 		par,
 	);
@@ -980,7 +976,7 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	let clear_upper = |acc: MatMut<'_, T>, skip_diag: bool| match &beta {
 		Accum::Add => {},
 
-		Accum::Replace => zipped!(acc).for_each_triangular_upper(if skip_diag { Diag::Skip } else { Diag::Include }, |unzipped!(acc)| *acc = zero()),
+		Accum::Replace => zip!(acc).for_each_triangular_upper(if skip_diag { Diag::Skip } else { Diag::Include }, |unzip!(acc)| *acc = zero()),
 	};
 
 	let skip_diag = matches!(

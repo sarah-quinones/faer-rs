@@ -224,7 +224,7 @@ fn bidiag_fused_op<T: ComplexField>(
 ) {
 	let mut A22 = A22;
 
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(A22), Some(u), Some(up), Some(z)) = (
 			(&mut A22).try_as_col_major_mut(),
 			u.try_as_col_major(),
@@ -536,7 +536,7 @@ mod tests {
 				)),
 			);
 
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+			let approx_eq = CwiseMat(ApproxEq::eps());
 			for j in 0..n {
 				for i in 0..m {
 					if i > j || j > i + 1 {

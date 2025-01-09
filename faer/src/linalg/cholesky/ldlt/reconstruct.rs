@@ -83,7 +83,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * (n as f64));
+		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
 
 		let mut A_rec = Mat::zeros(n, n);
 		reconstruct::reconstruct(

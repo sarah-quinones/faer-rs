@@ -67,7 +67,7 @@ pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_,
 	let head_with_beta = *head + signed_norm;
 	let head_with_beta_inv = recip(head_with_beta);
 
-	zipped!(tail).for_each(|unzipped!(e)| {
+	zip!(tail).for_each(|unzip!(e)| {
 		*e = *e * head_with_beta_inv;
 	});
 
@@ -101,7 +101,7 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 
 	assert!(householder_factor.nrows() == householder_factor.ncols());
 
-	let block_count = householder_factor.nrows().div_ceil(blocksize);
+	let block_count = householder_factor.nrows().msrv_div_ceil(blocksize);
 	if block_count > 1 {
 		assert!(all(blocksize > prev_blocksize, blocksize % prev_blocksize == 0,));
 		let mid = block_count / 2;
@@ -146,7 +146,7 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 			par,
 		);
 	} else {
-		let prev_block_count = householder_factor.nrows().div_ceil(prev_blocksize);
+		let prev_block_count = householder_factor.nrows().msrv_div_ceil(prev_blocksize);
 
 		let mid = (prev_block_count / 2) * prev_blocksize;
 
@@ -340,7 +340,7 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 					let mut col = rhs.rb_mut().col_mut(idx);
 					let essential = essential;
 
-					let dot = if const { CONJ } {
+					let dot = if try_const! { CONJ } {
 						*col0 + dot::inner_prod_no_conj_simd(simd, essential.rb(), col.rb())
 					} else {
 						*col0 + dot::inner_prod_conj_lhs_simd(simd, essential.rb(), col.rb())
@@ -356,7 +356,7 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 							let mut a = simd.read(col.rb(), i);
 							let b = simd.read(essential.rb(), i);
 
-							if const { CONJ } {
+							if try_const! { CONJ } {
 								a = simd.conj_mul_add(b, k, a);
 							} else {
 								a = simd.mul_add(b, k, a);
@@ -387,7 +387,20 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 
 		let tau_inv: T = from_real(recip(real(householder_factor[(N0, N0)])));
 
-		if const { T::IS_REAL } || matches!(conj_lhs, Conj::No) {
+		if try_const! { T::IS_REAL } {
+			type Apply<'a, 'TAIL, 'K, T> = ApplyOnLeft<'a, 'TAIL, 'K, T, false>;
+
+			dispatch!(
+				Apply {
+					tau_inv: &tau_inv,
+					essential,
+					rhs,
+					rhs0,
+				},
+				Apply,
+				T
+			);
+		} else if matches!(conj_lhs, Conj::No) {
 			type Apply<'a, 'TAIL, 'K, T> = ApplyOnLeft<'a, 'TAIL, 'K, T, false>;
 
 			dispatch!(

@@ -708,8 +708,16 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 			let idx = idx(argsort[i].zx());
 			let idx @ (row, col) = (idx.row.unbound(), idx.col.unbound());
 
-			let valid_row = if const { Rows::IS_BOUND } { true } else { row.zx() < nrows.unbound() };
-			let valid_col = if const { Cols::IS_BOUND } { true } else { col.zx() < ncols.unbound() };
+			let valid_row = if try_const! { Rows::IS_BOUND } {
+				true
+			} else {
+				row.zx() < nrows.unbound()
+			};
+			let valid_col = if try_const! { Cols::IS_BOUND } {
+				true
+			} else {
+				col.zx() < ncols.unbound()
+			};
 
 			if !(valid_row && valid_col) {
 				return Err(CreationError::OutOfBounds {
@@ -896,7 +904,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 		let max = self.row_idx().len();
 		let mut new_col_ptr = try_zeroed::<I>(self.nrows().unbound() + 1)?;
 		let mut new_row_idx = try_zeroed::<I>(max)?;
-		let mut new_val = try_collect(iter::repeat_n(zero::<T::Canonical>(), max))?;
+		let mut new_val = try_collect(repeat_n!(zero::<T::Canonical>(), max))?;
 		let nnz = utils::transpose_dedup(
 			&mut new_val,
 			&mut new_col_ptr,
@@ -933,7 +941,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 
 			for j in N.indices() {
 				for (i, val) in iter::zip(src.row_idx_of_col(j), src.val_of_col(j)) {
-					if const { Conj::get::<T>().is_conj() } {
+					if try_const! { Conj::get::<T>().is_conj() } {
 						out[(i, j)] = add(&out[(i, j)], &conj(val));
 					} else {
 						out[(i, j)] = add(&out[(i, j)], val);

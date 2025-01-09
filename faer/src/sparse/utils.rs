@@ -179,7 +179,7 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	assert!(new_col_ptr.len() == n + 1);
 	let (_, perm_inv) = perm.bound_arrays();
 
-	let (mut cur_row_pos, _) = stack.collect(iter::repeat_n(I::truncate(0), n));
+	let (mut cur_row_pos, _) = stack.collect(repeat_n!(I::truncate(0), n));
 	let cur_row_pos = Array::from_mut(&mut cur_row_pos, N);
 
 	let col_counts = &mut *cur_row_pos;
@@ -227,7 +227,7 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 		let new_row_idx = Array::from_mut(new_row_idx, NNZ);
 
 		let conj_if = |cond: bool, x: &T| -> T {
-			if const { T::IS_REAL } {
+			if try_const! { T::IS_REAL } {
 				copy(x)
 			} else {
 				if cond != conj_A { conj(x) } else { copy(x) }
@@ -394,7 +394,7 @@ fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T>(
 ) -> SparseColMatMut<'out, I, T, Dim<'COLS>, Dim<'ROWS>> {
 	let (M, N) = A.shape();
 	assert!(new_col_ptr.len() == *M + 1);
-	let (mut col_count, _) = stack.collect(iter::repeat_n(I::truncate(0), *M));
+	let (mut col_count, _) = stack.collect(repeat_n!(I::truncate(0), *M));
 	let col_count = Array::from_mut(&mut col_count, M);
 
 	// can't overflow because the total count is A.compute_nnz() <= I::Signed::MAX
@@ -456,8 +456,8 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 	let A = A.canonical();
 
 	let sentinel = I::truncate(usize::MAX);
-	let (mut col_count, stack) = stack.collect(iter::repeat_n(I::truncate(0), *M));
-	let (mut last_seen, _) = stack.collect(iter::repeat_n(sentinel, *M));
+	let (mut col_count, stack) = stack.collect(repeat_n!(I::truncate(0), *M));
+	let (mut last_seen, _) = stack.collect(repeat_n!(sentinel, *M));
 
 	let col_count = Array::from_mut(&mut col_count, M);
 	let last_seen = Array::from_mut(&mut last_seen, M);

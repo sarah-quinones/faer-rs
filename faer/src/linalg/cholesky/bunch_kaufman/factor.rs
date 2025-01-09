@@ -25,16 +25,30 @@ pub struct BunchKaufmanParams {
 /// Dynamic Bunch-Kaufman regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
-pub struct BunchKaufmanRegularization<'a, T: ComplexField> {
+#[derive(Copy, Clone, Debug)]
+pub struct BunchKaufmanRegularization<'a, T> {
+	/// Expected signs for the diagonal at each step of the decomposition.
+	pub dynamic_regularization_signs: Option<&'a [i8]>,
+	/// Regularized value.
+	pub dynamic_regularization_delta: T,
+	/// Regularization threshold.
+	pub dynamic_regularization_epsilon: T,
+}
+
+/// Dynamic Bunch-Kaufman regularization.
+/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+/// their corrected sign.
+#[derive(Debug)]
+struct BunchKaufmanRegularizationInner<'a, T> {
 	/// Expected signs for the diagonal at each step of the decomposition.
 	pub dynamic_regularization_signs: Option<&'a mut [i8]>,
 	/// Regularized value.
-	pub dynamic_regularization_delta: T::Real,
+	pub dynamic_regularization_delta: T,
 	/// Regularization threshold.
-	pub dynamic_regularization_epsilon: T::Real,
+	pub dynamic_regularization_epsilon: T,
 }
 
-impl<T: ComplexField> Default for BunchKaufmanRegularization<'_, T> {
+impl<T: RealField> Default for BunchKaufmanRegularization<'_, T> {
 	fn default() -> Self {
 		Self {
 			dynamic_regularization_signs: None,
@@ -124,7 +138,7 @@ fn make_real<T: ComplexField>(mut a: MatMut<'_, T>, (i0, j0): (usize, usize)) {
 #[math]
 fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
 	mut a: MatMut<'_, T>,
-	regularization: BunchKaufmanRegularization<'_, T>,
+	regularization: BunchKaufmanRegularizationInner<'_, T::Real>,
 	mut w: MatMut<'_, T>,
 	pivots: &mut [I],
 	alpha: T::Real,
@@ -410,7 +424,7 @@ fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
 #[math]
 fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(
 	mut a: MatMut<'_, T>,
-	regularization: BunchKaufmanRegularization<'_, T>,
+	regularization: BunchKaufmanRegularizationInner<'_, T::Real>,
 	pivots: &mut [I],
 	alpha: T::Real,
 ) -> (usize, usize) {
@@ -648,8 +662,7 @@ fn convert<'N, I: Index, T: ComplexField>(mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>
 
 	let mut i = 0;
 	while let Some(i0) = N.try_check(i) {
-		guards!(head);
-		let a = a.rb_mut().get_mut(.., IdxInc::ZERO..i0.into()).bind_c(head);
+		let a = a.rb_mut().get_mut(.., IdxInc::ZERO..i0.into());
 
 		let p = pivots[i0].to_signed().sx();
 		if (p as isize) < 0 {
@@ -676,7 +689,7 @@ pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par
 	if bs < 2 || dim <= bs {
 		bs = 0;
 	}
-	StackReq::new::<I>(dim).and(temp_mat_scratch::<T>(dim, bs))
+	StackReq::new::<I>(dim).and(temp_mat_scratch::<T>(dim, bs)).and(StackReq::new::<i8>(dim))
 }
 
 /// Info about the result of the Bunch-Kaufman factorization.
@@ -706,7 +719,7 @@ pub struct BunchKaufmanInfo {
 pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	A: MatMut<'_, T>,
 	subdiag: DiagMut<'_, T>,
-	regularization: BunchKaufmanRegularization<'_, T>,
+	regularization: BunchKaufmanRegularization<'_, T::Real>,
 	perm: &'out mut [I],
 	perm_inv: &'out mut [I],
 	par: Par,
@@ -716,7 +729,6 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	let params = params.into_inner();
 
 	let truncate = <I::Signed as SignedIndex>::truncate;
-	let mut regularization = regularization;
 
 	let n = A.nrows();
 	assert!(all(A.nrows() == A.ncols(), subdiag.dim() == n, perm.len() == n, perm_inv.len() == n));
@@ -744,14 +756,26 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	if bs < 2 || n <= bs {
 		bs = 0;
 	}
-	let mut work = unsafe { temp_mat_uninit(n, bs, stack) }.0;
+	let (mut work, stack) = unsafe { temp_mat_uninit(n, bs, stack) };
 	let mut work = work.as_mat_mut();
 
 	let mut k = 0;
 	let mut dynamic_regularization_count = 0;
 	let mut transposition_count = 0;
+
+	let (signs, _) = unsafe { stack.make_raw::<i8>(n) };
+	if let Some(src) = regularization.dynamic_regularization_signs {
+		signs.copy_from_slice(src);
+	};
+
+	let mut regularization = BunchKaufmanRegularizationInner {
+		dynamic_regularization_signs: regularization.dynamic_regularization_signs.map(|_| signs),
+		dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+		dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
+	};
+
 	while k < n {
-		let regularization = BunchKaufmanRegularization {
+		let regularization = BunchKaufmanRegularizationInner {
 			dynamic_regularization_signs: regularization.dynamic_regularization_signs.rb_mut().map(|signs| &mut signs[k..]),
 			dynamic_regularization_delta: copy(regularization.dynamic_regularization_delta),
 			dynamic_regularization_epsilon: copy(regularization.dynamic_regularization_epsilon),

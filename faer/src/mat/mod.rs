@@ -201,7 +201,7 @@ mod tests {
 
 		for i in 0..3 {
 			for j in 0..4 {
-				zipped!(&mat).map(|x| x).as_ref().at(i, j);
+				zip!(&mat).map(|x| x).as_ref().at(i, j);
 			}
 		}
 	}
@@ -219,7 +219,7 @@ mod tests {
 
 		for i in 0..3 {
 			for j in 0..4 {
-				zipped!(&mat).map(|x| x).as_ref().at(i, j);
+				zip!(&mat).map(|x| x).as_ref().at(i, j);
 			}
 		}
 	}

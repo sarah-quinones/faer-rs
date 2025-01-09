@@ -1,5 +1,5 @@
 use crate::assert;
-use crate::operator::*;
+use crate::matrix_free::*;
 use linalg::cholesky::llt_pivoting::factor as piv_llt;
 use linalg::matmul::triangular::BlockStructure;
 
@@ -333,7 +333,7 @@ pub fn conjugate_gradient<T: ComplexField>(
 mod tests {
 	use super::*;
 	use crate::stats::prelude::*;
-	use crate::{mat, operator};
+	use crate::{mat, matrix_free};
 	use dyn_stack::MemBuffer;
 	use equator::assert;
 	use rand::prelude::*;
@@ -346,7 +346,7 @@ mod tests {
 		let ref mut out = Mat::<f64>::zeros(2, sol.ncols());
 		let mut params = CgParams::default();
 		params.max_iters = 10;
-		let precond = operator::IdentityPrecond { dim: 2 };
+		let precond = matrix_free::IdentityPrecond { dim: 2 };
 		let result = conjugate_gradient(
 			out.as_mut(),
 			precond,

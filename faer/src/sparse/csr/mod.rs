@@ -758,7 +758,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatRef<'a, I, T, Rows, 
 
 			for i in M.indices() {
 				for (j, val) in iter::zip(src.col_idx_of_row(i), src.val_of_row(i)) {
-					if const { Conj::get::<T>().is_conj() } {
+					if try_const! { Conj::get::<T>().is_conj() } {
 						out[(i, j)] = add(&out[(i, j)], &conj(val));
 					} else {
 						out[(i, j)] = add(&out[(i, j)], val);

@@ -588,7 +588,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		let this = self.as_dyn_cols();
 
 		assert!(chunk_size > 0);
-		let chunk_count = this.ncols().div_ceil(chunk_size);
+		let chunk_count = this.ncols().msrv_div_ceil(chunk_size);
 		(0..chunk_count).into_par_iter().map(move |chunk_idx| {
 			let pos = chunk_size * chunk_idx;
 			this.subcols(pos, Ord::min(chunk_size, this.ncols() - pos))
@@ -817,7 +817,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		T: Conjugate,
 	{
 		let val = linalg::reductions::sum::sum(self.canonical().as_dyn_stride().as_dyn());
-		if const { Conj::get::<T>().is_conj() } { conj(val) } else { val }
+		if try_const! { Conj::get::<T>().is_conj() } { conj(val) } else { val }
 	}
 
 	#[track_caller]

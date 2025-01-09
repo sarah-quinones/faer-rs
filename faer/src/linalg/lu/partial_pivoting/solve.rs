@@ -147,7 +147,7 @@ mod tests {
 		)
 		.1;
 
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 8.0 * (n as f64));
+		let approx_eq = CwiseMat(ApproxEq::eps() * 8.0 * (n as f64));
 
 		{
 			let mut X = B.to_owned();

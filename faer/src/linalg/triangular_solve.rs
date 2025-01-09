@@ -42,7 +42,7 @@ fn solve_unit_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: Complex
 			let (x1, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0, x1).for_each(|unzipped!(x0, x1)| *x1 = *x1 + nl10_div_l11 * *x0);
+			zip!(x0, x1).for_each(|unzip!(x0, x1)| *x1 = *x1 + nl10_div_l11 * *x0);
 		},
 		3 => {
 			let i0 = N.check(0);
@@ -58,7 +58,7 @@ fn solve_unit_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: Complex
 			let (x2, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0, x1, x2).for_each(|unzipped!(x0, x1, x2)| {
+			zip!(x0, x1, x2).for_each(|unzip!(x0, x1, x2)| {
 				let y0 = copy(*x0);
 				let mut y1 = copy(*x1);
 				let mut y2 = copy(*x2);
@@ -87,7 +87,7 @@ fn solve_unit_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: Complex
 			let (x3, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0, x1, x2, x3).for_each(|unzipped!(x0, x1, x2, x3)| {
+			zip!(x0, x1, x2, x3).for_each(|unzip!(x0, x1, x2, x3)| {
 				let y0 = copy(*x0);
 				let mut y1 = copy(*x1);
 				let mut y2 = copy(*x2);
@@ -125,7 +125,7 @@ fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField
 			let (x0, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0).for_each(|unzipped!(x0)| *x0 = *x0 * inv);
+			zip!(x0).for_each(|unzip!(x0)| *x0 = *x0 * inv);
 		},
 		2 => {
 			let i0 = N.check(0);
@@ -139,7 +139,7 @@ fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField
 			let (x1, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0, x1).for_each(|unzipped!(x0, x1)| {
+			zip!(x0, x1).for_each(|unzip!(x0, x1)| {
 				*x0 = *x0 * l00_inv;
 				*x1 = *x1 * l11_inv + nl10_div_l11 * x0;
 			});
@@ -161,7 +161,7 @@ fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField
 			let (x2, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0, x1, x2).for_each(|unzipped!(x0, x1, x2)| {
+			zip!(x0, x1, x2).for_each(|unzip!(x0, x1, x2)| {
 				let mut y0 = copy(*x0);
 				let mut y1 = copy(*x1);
 				let mut y2 = copy(*x2);
@@ -196,7 +196,7 @@ fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField
 			let (x3, rhs) = rhs.split_first_row_mut().unwrap();
 			_ = rhs;
 
-			zipped!(x0, x1, x2, x3).for_each(|unzipped!(x0, x1, x2, x3)| {
+			zip!(x0, x1, x2, x3).for_each(|unzip!(x0, x1, x2, x3)| {
 				let mut y0 = copy(*x0);
 				let mut y1 = copy(*x1);
 				let mut y2 = copy(*x2);

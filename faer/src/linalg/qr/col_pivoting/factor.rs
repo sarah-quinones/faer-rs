@@ -211,7 +211,7 @@ fn update_mat_and_best_norm2_fallback<T: ComplexField>(
 
 		let k = mul_real(-dot, tau_inv);
 		rhs[j] = rhs[j] + k;
-		zipped!(A.rb_mut().col_mut(j), lhs).for_each(|unzipped!(dst, src)| {
+		zip!(A.rb_mut().col_mut(j), lhs).for_each(|unzip!(dst, src)| {
 			*dst = *dst + k * *src;
 		});
 
@@ -232,7 +232,7 @@ fn update_mat_and_best_norm2<T: ComplexField>(
 	tau_inv: Real<T>,
 	align: usize,
 ) -> (usize, Real<T>) {
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		let mut A = A;
 
 		if let (Some(A), Some(lhs)) = (A.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {

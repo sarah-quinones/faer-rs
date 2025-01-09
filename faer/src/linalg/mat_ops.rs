@@ -520,7 +520,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 			let n = lhs.ncols();
 			for j in n.indices() {
 				for i in m.indices() {
-					if Conj::apply::<LhsT>(lhs.at(i, j)) != Conj::apply::<RhsT>(rhs.at(i, j)) {
+					if Conj::apply(lhs.at(i, j)) != Conj::apply(rhs.at(i, j)) {
 						return false;
 					}
 				}
@@ -585,7 +585,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 		) -> bool {
 			let n = lhs.ncols();
 			for j in n.indices() {
-				if Conj::apply::<LhsT>(lhs.at(j)) != Conj::apply::<RhsT>(rhs.at(j)) {
+				if Conj::apply(lhs.at(j)) != Conj::apply(rhs.at(j)) {
 					return false;
 				}
 			}
@@ -664,7 +664,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	fn add(self, rhs: MatRef<'_, RhsT, Rows, Cols>) -> Self::Output {
 		let lhs = self;
 		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zipped!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
+		zip!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -679,7 +679,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 		let lhs = self;
 		let rhs = rhs;
 		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zipped!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
+		zip!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -689,7 +689,7 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: S
 	#[math]
 	#[track_caller]
 	fn add_assign(&mut self, rhs: MatRef<'_, RhsT, Rows, Cols>) {
-		zipped!(self.rb_mut(), rhs).for_each(add_assign_fn::<_, _>())
+		zip!(self.rb_mut(), rhs).for_each(add_assign_fn::<_, _>())
 	}
 }
 
@@ -699,7 +699,7 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: S
 	#[math]
 	#[track_caller]
 	fn sub_assign(&mut self, rhs: MatRef<'_, RhsT, Rows, Cols>) {
-		zipped!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
+		zip!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
 	}
 }
 
@@ -709,7 +709,7 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Ne
 	#[math]
 	fn neg(self) -> Self::Output {
 		let this = self;
-		zipped!(this).map(neg_fn::<_>())
+		zip!(this).map(neg_fn::<_>())
 	}
 }
 
@@ -718,7 +718,7 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Ne
 fn add_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
 -> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
 	#[inline(always)]
-	move |unzipped!(a, b)| Conj::apply::<LhsT>(a) + Conj::apply::<RhsT>(b)
+	move |unzip!(a, b)| Conj::apply(a) + Conj::apply(b)
 }
 
 #[inline]
@@ -726,7 +726,7 @@ fn add_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = 
 fn sub_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
 -> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
 	#[inline(always)]
-	move |unzipped!(a, b)| Conj::apply::<LhsT>(a) - Conj::apply::<RhsT>(b)
+	move |unzip!(a, b)| Conj::apply(a) - Conj::apply(b)
 }
 
 #[inline]
@@ -734,28 +734,28 @@ fn sub_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = 
 fn mul_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
 -> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
 	#[inline(always)]
-	move |unzipped!(a, b)| Conj::apply::<LhsT>(a) * Conj::apply::<RhsT>(b)
+	move |unzip!(a, b)| Conj::apply(a) * Conj::apply(b)
 }
 
 #[inline]
 #[math]
 fn neg_fn<LhsT: Conjugate<Canonical: ComplexField>>() -> impl FnMut(linalg::zip::Last<&LhsT>) -> LhsT::Canonical {
 	#[inline(always)]
-	move |unzipped!(a)| -Conj::apply::<LhsT>(a)
+	move |unzip!(a)| -Conj::apply(a)
 }
 
 #[inline]
 #[math]
 fn add_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>() -> impl FnMut(linalg::zip::Zip<&mut LhsT, linalg::zip::Last<&RhsT>>) {
 	#[inline(always)]
-	move |unzipped!(a, b)| *a = Conj::apply::<LhsT>(a) + Conj::apply::<RhsT>(b)
+	move |unzip!(a, b)| *a = Conj::apply(a) + Conj::apply(b)
 }
 
 #[inline]
 #[math]
 fn sub_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>() -> impl FnMut(linalg::zip::Zip<&mut LhsT, linalg::zip::Last<&RhsT>>) {
 	#[inline(always)]
-	move |unzipped!(a, b)| *a = Conj::apply::<LhsT>(a) - Conj::apply::<RhsT>(b)
+	move |unzip!(a, b)| *a = Conj::apply(a) - Conj::apply(b)
 }
 
 impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<ColRef<'_, RhsT, Len>>
@@ -768,7 +768,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	fn add(self, rhs: ColRef<'_, RhsT, Len>) -> Self::Output {
 		let lhs = self;
 		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zipped!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
+		zip!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -782,7 +782,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	fn sub(self, rhs: ColRef<'_, RhsT, Len>) -> Self::Output {
 		let lhs = self;
 		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zipped!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
+		zip!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -790,7 +790,7 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> AddAssig
 	#[math]
 	#[track_caller]
 	fn add_assign(&mut self, rhs: ColRef<'_, RhsT, Len>) {
-		zipped!(self.rb_mut(), rhs).for_each(add_assign_fn::<_, _>())
+		zip!(self.rb_mut(), rhs).for_each(add_assign_fn::<_, _>())
 	}
 }
 
@@ -798,7 +798,7 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> SubAssig
 	#[math]
 	#[track_caller]
 	fn sub_assign(&mut self, rhs: ColRef<'_, RhsT, Len>) {
-		zipped!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
+		zip!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
 	}
 }
 
@@ -808,7 +808,7 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for ColRef<'
 	#[math]
 	fn neg(self) -> Self::Output {
 		let this = self;
-		zipped!(this).map(neg_fn::<_>())
+		zip!(this).map(neg_fn::<_>())
 	}
 }
 
@@ -822,7 +822,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 	fn add(self, rhs: RowRef<'_, RhsT, Len>) -> Self::Output {
 		let lhs = self;
 		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zipped!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
+		zip!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -837,7 +837,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical 
 		let lhs = self;
 		let rhs = rhs;
 		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zipped!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
+		zip!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -845,7 +845,7 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> AddAssig
 	#[math]
 	#[track_caller]
 	fn add_assign(&mut self, rhs: RowRef<'_, RhsT, Len>) {
-		zipped!(self.rb_mut(), rhs).for_each(add_assign_fn::<_, _>())
+		zip!(self.rb_mut(), rhs).for_each(add_assign_fn::<_, _>())
 	}
 }
 
@@ -853,7 +853,7 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> SubAssig
 	#[math]
 	#[track_caller]
 	fn sub_assign(&mut self, rhs: RowRef<'_, RhsT, Len>) {
-		zipped!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
+		zip!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
 	}
 }
 
@@ -863,7 +863,7 @@ impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for RowRef<'
 	#[math]
 	fn neg(self) -> Self::Output {
 		let this = self;
-		zipped!(this).map(neg_fn::<_>())
+		zip!(this).map(neg_fn::<_>())
 	}
 }
 impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<DiagRef<'_, RhsT, Len>>
@@ -1465,9 +1465,7 @@ mod matmul {
 			let rhs_nrows = rhs.nrows();
 			Assert!(lhs_dim == rhs_nrows);
 
-			Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| {
-				Conj::apply::<LhsT>(lhs.at(i)) * Conj::apply::<RhsT>(rhs.at(i, j))
-			})
+			Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| Conj::apply(lhs.at(i)) * Conj::apply(rhs.at(i, j)))
 		}
 	}
 
@@ -1521,7 +1519,7 @@ mod matmul {
 			let rhs_nrows = rhs.nrows();
 			Assert!(lhs_dim == rhs_nrows);
 
-			zipped!(lhs, rhs).map(mul_fn::<_, _>())
+			zip!(lhs, rhs).map(mul_fn::<_, _>())
 		}
 	}
 
@@ -1580,7 +1578,7 @@ mod matmul {
 
 			Mat::from_fn(lhs.nrows(), lhs.ncols(), |i, j| {
 				(i, j);
-				Conj::apply::<LhsT>(lhs.at(i, j)) * Conj::apply::<RhsT>(rhs.at(j))
+				Conj::apply(lhs.at(i, j)) * Conj::apply(rhs.at(j))
 			})
 		}
 	}
@@ -1636,7 +1634,7 @@ mod matmul {
 			let rhs_dim = rhs.ncols();
 			Assert!(lhs_ncols == rhs_dim);
 
-			zipped!(lhs, rhs).map(mul_fn::<_, _>())
+			zip!(lhs, rhs).map(mul_fn::<_, _>())
 		}
 	}
 
@@ -1689,7 +1687,7 @@ mod matmul {
 			let rhs = rhs.column_vector();
 			Assert!(lhs.nrows() == rhs.nrows());
 
-			zipped!(lhs, rhs).map(mul_fn::<_, _>()).into_diagonal()
+			zip!(lhs, rhs).map(mul_fn::<_, _>()).into_diagonal()
 		}
 	}
 
@@ -1796,7 +1794,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols:
 					let fwd = fwd[i];
 					let rhs = rhs.at(fwd.zx(), j);
 
-					*out.as_mut().at_mut(i, j) = Conj::apply::<TT>(rhs);
+					*out.as_mut().at_mut(i, j) = Conj::apply(rhs);
 				}
 			}
 		}
@@ -1857,7 +1855,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<Co
 				let fwd = fwd[i];
 				let rhs = rhs.at(fwd.zx());
 
-				*out.as_mut().at_mut(i) = Conj::apply::<TT>(rhs);
+				*out.as_mut().at_mut(i) = Conj::apply(rhs);
 			}
 		}
 
@@ -1917,7 +1915,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols:
 				for i in lhs.nrows().indices() {
 					let lhs = lhs.at(i, inv.zx());
 
-					*out.as_mut().at_mut(i, j) = Conj::apply::<TT>(lhs);
+					*out.as_mut().at_mut(i, j) = Conj::apply(lhs);
 				}
 			}
 		}
@@ -1979,7 +1977,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<Pe
 				let inv = inv[j];
 				let lhs = lhs.at(inv.zx());
 
-				*out.as_mut().at_mut(j) = Conj::apply::<TT>(lhs)
+				*out.as_mut().at_mut(j) = Conj::apply(lhs)
 			}
 		}
 
@@ -2023,7 +2021,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> 
 	fn mul(self, rhs: Scale<T>) -> Self::Output {
 		let rhs = &rhs.0;
 		let lhs = self;
-		zipped!(lhs).map(|unzipped!(x)| Conj::apply::<LhsT>(x) * rhs)
+		zip!(lhs).map(|unzip!(x)| Conj::apply(x) * rhs)
 	}
 }
 
@@ -2033,7 +2031,7 @@ impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> 
 	#[math]
 	fn mul(self, rhs: MatRef<'_, RhsT, Rows, Cols>) -> Self::Output {
 		let lhs = &self.0;
-		zipped!(rhs).map(|unzipped!(x)| *lhs * Conj::apply::<RhsT>(x))
+		zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
 	}
 }
 
@@ -2044,7 +2042,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<Scale<T>> 
 	fn mul(self, rhs: Scale<T>) -> Self::Output {
 		let rhs = &rhs.0;
 		let lhs = self;
-		zipped!(lhs).map(|unzipped!(x)| Conj::apply::<LhsT>(x) * *rhs)
+		zip!(lhs).map(|unzip!(x)| Conj::apply(x) * *rhs)
 	}
 }
 impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<ColRef<'_, RhsT, Len>> for Scale<T> {
@@ -2053,7 +2051,7 @@ impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<ColRef<'_,
 	#[math]
 	fn mul(self, rhs: ColRef<'_, RhsT, Len>) -> Self::Output {
 		let lhs = &self.0;
-		zipped!(rhs).map(|unzipped!(x)| *lhs * Conj::apply::<RhsT>(x))
+		zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
 	}
 }
 
@@ -2064,7 +2062,7 @@ impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<Scale<T>> 
 	fn mul(self, rhs: Scale<T>) -> Self::Output {
 		let rhs = &rhs.0;
 		let lhs = self;
-		zipped!(lhs).map(|unzipped!(x)| Conj::apply::<LhsT>(x) * *rhs)
+		zip!(lhs).map(|unzip!(x)| Conj::apply(x) * *rhs)
 	}
 }
 impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<RowRef<'_, RhsT, Len>> for Scale<T> {
@@ -2073,7 +2071,7 @@ impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<RowRef<'_,
 	#[math]
 	fn mul(self, rhs: RowRef<'_, RhsT, Len>) -> Self::Output {
 		let lhs = &self.0;
-		zipped!(rhs).map(|unzipped!(x)| *lhs * Conj::apply::<RhsT>(x))
+		zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
 	}
 }
 
@@ -2202,7 +2200,7 @@ impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<Scale<LhsT>> for Ma
 	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
 		let rhs = &rhs.0;
 
-		zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = *x * *rhs)
+		zip!(self.rb_mut()).for_each(|unzip!(x)| *x = *x * *rhs)
 	}
 }
 impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for ColMut<'_, LhsT, Len> {
@@ -2210,7 +2208,7 @@ impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for ColMut<'_, LhsT,
 	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
 		let rhs = &rhs.0;
 
-		zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = *x * *rhs)
+		zip!(self.rb_mut()).for_each(|unzip!(x)| *x = *x * *rhs)
 	}
 }
 impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for RowMut<'_, LhsT, Len> {
@@ -2218,7 +2216,7 @@ impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for RowMut<'_, LhsT,
 	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
 		let rhs = &rhs.0;
 
-		zipped!(self.rb_mut()).for_each(|unzipped!(x)| *x = *x * *rhs)
+		zip!(self.rb_mut()).for_each(|unzip!(x)| *x = *x * *rhs)
 	}
 }
 impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for DiagMut<'_, LhsT, Len> {

@@ -387,7 +387,7 @@ fn compute_squareish_svd<T: ComplexField>(
 	stack: &mut MemStack,
 	params: SvdParams,
 ) -> Result<(), SvdError> {
-	if const { T::IS_REAL } {
+	if try_const! { T::IS_REAL } {
 		svd_imp::<T::Real>(
 			unsafe { core::mem::transmute(matrix) },
 			unsafe { core::mem::transmute(s) },
@@ -426,7 +426,7 @@ pub fn svd_scratch<T: ComplexField>(
 		return StackReq::EMPTY;
 	}
 
-	let bidiag_svd_scratch = if const { T::IS_REAL } {
+	let bidiag_svd_scratch = if try_const! { T::IS_REAL } {
 		bidiag_real_svd_scratch::<T::Real>
 	} else {
 		bidiag_cplx_svd_scratch::<T>
@@ -657,7 +657,7 @@ mod tests {
 			..auto!(T)
 		});
 		use faer_traits::math_utils::*;
-		let approx_eq = CwiseMat(ApproxEq::<T>::eps() * sqrt(&from_f64(8.0 * Ord::max(m, n) as f64)));
+		let approx_eq = CwiseMat(ApproxEq::<T::Real>::eps() * sqrt(&from_f64(8.0 * Ord::max(m, n) as f64)));
 
 		{
 			let mut s = Mat::zeros(m, n);

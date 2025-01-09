@@ -692,7 +692,7 @@ fn divide_and_conquer_recurse<T: RealField>(
 			}
 
 			let inv_norm = recip(repaired_u.rb().col(j).norm_l2());
-			z!(repaired_u.rb_mut().col_mut(j)).for_each(|unzipped!(x)| *x = *x * inv_norm);
+			z!(repaired_u.rb_mut().col_mut(j)).for_each(|unzip!(x)| *x = *x * inv_norm);
 		}
 	}
 

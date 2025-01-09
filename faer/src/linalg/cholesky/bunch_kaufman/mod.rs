@@ -69,7 +69,7 @@ mod tests {
 
 			let err = &a * &x - &rhs;
 			let mut max = 0.0;
-			zipped!(err.as_ref()).for_each(|unzipped!(err)| {
+			zip!(err.as_ref()).for_each(|unzip!(err)| {
 				let err = err.abs();
 				if err > max {
 					max = err
@@ -138,7 +138,7 @@ mod tests {
 
 			let err = a.conjugate() * &x - &rhs;
 			let mut max = 0.0;
-			zipped!(err.as_ref()).for_each(|unzipped!(err)| {
+			zip!(err.as_ref()).for_each(|unzip!(err)| {
 				let err = err.abs();
 				if err > max {
 					max = err

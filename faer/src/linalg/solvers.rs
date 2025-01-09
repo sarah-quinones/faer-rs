@@ -2222,7 +2222,7 @@ mod tests {
 			let rng = &mut StdRng::seed_from_u64(0xC0FFEE);
 
 			let n = A.nrows();
-			let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 128.0 * (n as f64));
+			let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 			let k = 3;
 
@@ -2297,7 +2297,7 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let n = A.nrows();
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 128.0 * (n as f64));
+		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 		let evd = A.eigen().unwrap();
 		let e = A.eigenvalues().unwrap();
@@ -2318,7 +2318,7 @@ mod tests {
 		.rand::<Mat<f64>>(rng);
 
 		let n = A.nrows();
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps() * 128.0 * (n as f64));
+		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 		let evd = A.eigen_from_real().unwrap();
 		let e = A.eigenvalues_from_real().unwrap();

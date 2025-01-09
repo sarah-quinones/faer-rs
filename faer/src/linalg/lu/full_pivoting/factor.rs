@@ -84,7 +84,7 @@ fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	let (head, body4, body1, tail) = simd.batch_indices::<4>();
 
 	let iota = T::simd_iota(&simd.0);
-	let lane_count = size_of::<T::SimdVec<S>>() / size_of::<T>();
+	let lane_count = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 
 	let inc1 = simd.isplat(T::Index::truncate(lane_count));
 	let inc4 = simd.isplat(T::Index::truncate(4 * lane_count));
@@ -148,7 +148,7 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	let (head, body4, body1, tail) = simd.batch_indices::<3>();
 
 	let iota = T::simd_iota(&simd.0);
-	let lane_count = size_of::<T::SimdVec<S>>() / size_of::<T>();
+	let lane_count = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 
 	let inc1 = simd.isplat(T::Index::truncate(lane_count));
 	let inc3 = simd.isplat(T::Index::truncate(3 * lane_count));
@@ -358,7 +358,7 @@ fn best_in_matrix_fallback<T: ComplexField>(data: MatRef<'_, T>) -> (usize, usiz
 
 #[math]
 fn best_in_matrix<T: ComplexField>(data: MatRef<'_, T>) -> (usize, usize, Real<T>) {
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if let Some(dst) = data.try_as_col_major() {
 			best_in_mat_simd(dst)
 		} else {
@@ -375,7 +375,7 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
 	rhs: RowRef<'_, T>,
 	align: usize,
 ) -> (usize, usize, Real<T>) {
-	if const { T::SIMD_CAPABILITIES.is_simd() } {
+	if try_const! { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
 			update_and_best_in_mat_simd(dst, lhs, rhs, align)
 		} else {

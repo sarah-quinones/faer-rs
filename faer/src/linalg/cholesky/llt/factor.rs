@@ -1,16 +1,15 @@
-use crate::Real;
 use crate::internal_prelude::*;
 use crate::linalg::cholesky::ldlt::factor::cholesky_recursion;
 
 /// Dynamic LDLT regularization.
 /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
-#[derive(Clone, Debug)]
-pub struct LltRegularization<T: ComplexField> {
+#[derive(Copy, Clone, Debug)]
+pub struct LltRegularization<T> {
 	/// Regularized value.
-	pub dynamic_regularization_delta: Real<T>,
+	pub dynamic_regularization_delta: T,
 	/// Regularization threshold.
-	pub dynamic_regularization_epsilon: Real<T>,
+	pub dynamic_regularization_epsilon: T,
 }
 
 /// Info about the result of the LDLT factorization.
@@ -33,7 +32,7 @@ impl core::fmt::Display for LltError {
 }
 impl core::error::Error for LltError {}
 
-impl<T: ComplexField> Default for LltRegularization<T> {
+impl<T: RealField> Default for LltRegularization<T> {
 	fn default() -> Self {
 		Self {
 			dynamic_regularization_delta: zero(),
@@ -71,7 +70,7 @@ pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: 
 #[math]
 pub fn cholesky_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
-	regularization: LltRegularization<T>,
+	regularization: LltRegularization<T::Real>,
 	par: Par,
 	stack: &mut MemStack,
 	params: Spec<LltParams, T>,

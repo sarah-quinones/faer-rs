@@ -261,7 +261,7 @@ pub trait MatIndex {
 	/// Layout transformation type.
 	type LayoutTransform: Copy;
 
-	/// Item produced by the zipped views.
+	/// Item produced by the zip views.
 	type Item;
 
 	/// Matrix type with type erased dimensions.
@@ -280,7 +280,7 @@ pub trait MatIndex {
 	/// Get the item at the given slice position, skipping bound checks.
 	unsafe fn next_unchecked<'a>(slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice) -> Self::Item;
 
-	/// Checks if the zipped matrices are contiguous.
+	/// Checks if the zip matrices are contiguous.
 	fn is_contiguous(this: &Self) -> bool;
 	/// Computes the preferred iteration layout of the matrices.
 	fn preferred_layout(this: &Self) -> Self::LayoutTransform;
@@ -335,7 +335,7 @@ impl<
 	Tail: MatIndex<Rows = Rows, Cols = Cols>,
 > ZipEq<Rows, Cols, Head, Tail>
 {
-	/// Creates a zipped matrix, after asserting that the dimensions match.
+	/// Creates a zip matrix, after asserting that the dimensions match.
 	#[inline(always)]
 	#[track_caller]
 	pub fn new(head: Head, tail: Tail) -> Self {
@@ -343,7 +343,7 @@ impl<
 		Self(head, tail, PhantomData)
 	}
 
-	/// Creates a zipped matrix, assuming that the dimensions match.
+	/// Creates a zip matrix, assuming that the dimensions match.
 	#[inline(always)]
 	#[track_caller]
 	pub fn new_unchecked(head: Head, tail: Tail) -> Self {

@@ -8,10 +8,10 @@ use reborrow::*;
 #[inline]
 pub fn swap_cols<N: Shape, T>(a: ColMut<'_, T, N>, b: ColMut<'_, T, N>) {
 	fn swap<T>() -> impl FnMut(Zip<&mut T, Last<&mut T>>) {
-		|unzipped!(a, b)| core::mem::swap(a, b)
+		|unzip!(a, b)| core::mem::swap(a, b)
 	}
 
-	zipped!(a, b).for_each(swap::<T>());
+	zip!(a, b).for_each(swap::<T>());
 }
 
 #[track_caller]

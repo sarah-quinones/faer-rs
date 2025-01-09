@@ -67,7 +67,7 @@ pub fn lsmr_scratch<T: ComplexField>(right_precond: impl BiPrecond<T>, mat: impl
 
 		assert!(k < isize::MAX as usize);
 		if k > n {
-			k = k.checked_next_multiple_of(n).unwrap();
+			k = k.msrv_checked_next_multiple_of(n).unwrap();
 		}
 		assert!(k < isize::MAX as usize);
 
@@ -213,7 +213,7 @@ pub fn lsmr<T: ComplexField>(
 		let actual_k = k;
 		if k > n {
 			// pad to avoid last block slowing down the rest
-			k = k.checked_next_multiple_of(n).unwrap();
+			k = k.msrv_checked_next_multiple_of(n).unwrap();
 		}
 		debug_assert!(k < isize::MAX as usize);
 
@@ -617,7 +617,7 @@ mod tests {
 			);
 			assert!(result.is_ok());
 			let result = result.unwrap();
-			assert!(result.iter_count <= (4 * n).div_ceil(Ord::min(k, n)));
+			assert!(result.iter_count <= (4 * n).msrv_div_ceil(Ord::min(k, n)));
 		}
 	}
 
@@ -670,7 +670,7 @@ mod tests {
 			);
 			assert!(result.is_ok());
 			let result = result.unwrap();
-			assert!(result.iter_count <= (4 * n).div_ceil(Ord::min(k, n)));
+			assert!(result.iter_count <= (4 * n).msrv_div_ceil(Ord::min(k, n)));
 		}
 	}
 }

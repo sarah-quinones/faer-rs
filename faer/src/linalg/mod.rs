@@ -8,11 +8,11 @@ use crate::mat::matown::align_for;
 use crate::mat::{AsMatMut, MatMut};
 
 pub fn temp_mat_scratch<T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
-	let align = align_for(size_of::<T>(), align_of::<T>(), core::mem::needs_drop::<T>());
+	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows;
-	if align > size_of::<T>() {
-		col_stride = col_stride.next_multiple_of(align / size_of::<T>());
+	if align > core::mem::size_of::<T>() {
+		col_stride = col_stride.msrv_next_multiple_of(align / core::mem::size_of::<T>());
 	}
 	let len = col_stride.checked_mul(ncols).unwrap();
 	StackReq::new_aligned::<T>(len, align)
@@ -67,11 +67,11 @@ pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: 
 	ncols: Cols,
 	stack: &'a mut MemStack,
 ) -> (impl 'a + AsMatMut<T = T, Rows = Rows, Cols = Cols>, &'a mut MemStack) {
-	let align = align_for(size_of::<T>(), align_of::<T>(), core::mem::needs_drop::<T>());
+	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows.unbound();
-	if align > size_of::<T>() {
-		col_stride = col_stride.next_multiple_of(align / size_of::<T>());
+	if align > core::mem::size_of::<T>() {
+		col_stride = col_stride.msrv_next_multiple_of(align / core::mem::size_of::<T>());
 	}
 	let len = col_stride.checked_mul(ncols.unbound()).unwrap();
 
@@ -108,11 +108,11 @@ pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape +
 	ncols: Cols,
 	stack: &'a mut MemStack,
 ) -> (impl 'a + AsMatMut<T = T, Rows = Rows, Cols = Cols>, &'a mut MemStack) {
-	let align = align_for(size_of::<T>(), align_of::<T>(), core::mem::needs_drop::<T>());
+	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows.unbound();
-	if align > size_of::<T>() {
-		col_stride = col_stride.next_multiple_of(align / size_of::<T>());
+	if align > core::mem::size_of::<T>() {
+		col_stride = col_stride.msrv_next_multiple_of(align / core::mem::size_of::<T>());
 	}
 	let len = col_stride.checked_mul(ncols.unbound()).unwrap();
 	_ = stack.make_aligned_uninit::<T>(len, align);

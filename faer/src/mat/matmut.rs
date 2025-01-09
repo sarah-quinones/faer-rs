@@ -1,7 +1,7 @@
 use super::*;
 use crate::internal_prelude::*;
 use crate::utils::bound::{Dim, Partition};
-use crate::{Conj, ContiguousFwd, Idx, IdxInc, unzipped, zipped};
+use crate::{Conj, ContiguousFwd, Idx, IdxInc, unzip, zip};
 use core::ops::{Index, IndexMut};
 use equator::assert;
 use faer_traits::{ComplexField, Real};
@@ -1023,10 +1023,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
 			match conj_ {
 				Conj::No => {
-					zipped!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzipped!(dst, src)| *dst = copy(&src));
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzip!(dst, src)| *dst = copy(&src));
 				},
 				Conj::Yes => {
-					zipped!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzipped!(dst, src)| *dst = conj(&src));
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzip!(dst, src)| *dst = conj(&src));
 				},
 			}
 		}
@@ -1067,10 +1067,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
 			match conj_ {
 				Conj::No => {
-					zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = copy(&src));
+					zip!(this, other).for_each(|unzip!(dst, src)| *dst = copy(&src));
 				},
 				Conj::Yes => {
-					zipped!(this, other).for_each(|unzipped!(dst, src)| *dst = conj(&src));
+					zip!(this, other).for_each(|unzip!(dst, src)| *dst = conj(&src));
 				},
 			}
 		}
@@ -1099,10 +1099,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
 			match conj_ {
 				Conj::No => {
-					zipped!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(dst, src)| *dst = copy(&src));
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzip!(dst, src)| *dst = copy(&src));
 				},
 				Conj::Yes => {
-					zipped!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(dst, src)| *dst = conj(&src));
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzip!(dst, src)| *dst = conj(&src));
 				},
 			}
 		}

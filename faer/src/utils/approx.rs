@@ -4,25 +4,26 @@ use faer_traits::Real;
 
 extern crate alloc;
 
-pub struct ApproxEq<T: ComplexField> {
-	pub abs_tol: Real<T>,
-	pub rel_tol: Real<T>,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ApproxEq<T> {
+	pub abs_tol: T,
+	pub rel_tol: T,
 }
 
 pub struct CwiseMat<Cmp>(pub Cmp);
 
-impl<T: ComplexField> ApproxEq<T> {
+impl<T: RealField> ApproxEq<T> {
 	#[math]
 	#[inline]
 	pub fn eps() -> Self {
 		Self {
-			abs_tol: eps::<T::Real>() * from_f64::<T::Real>(128.0),
-			rel_tol: eps::<T::Real>() * from_f64::<T::Real>(128.0),
+			abs_tol: eps::<T>() * from_f64::<T>(128.0),
+			rel_tol: eps::<T>() * from_f64::<T>(128.0),
 		}
 	}
 }
 
-impl<T: ComplexField> Mul<Real<T>> for ApproxEq<T> {
+impl<T: RealField> Mul<T> for ApproxEq<T> {
 	type Output = ApproxEq<T>;
 
 	#[inline]
@@ -69,15 +70,15 @@ impl<
 	type Error = CwiseMatError<Rows, Cols, Error>;
 }
 
-impl<T: ComplexField> equator::CmpError<ApproxEq<T>, T, T> for ApproxEq<T> {
+impl<R: RealField, T: ComplexField<Real = R>> equator::CmpError<ApproxEq<R>, T, T> for ApproxEq<R> {
 	type Error = ApproxEqError;
 }
 
-impl<T: ComplexField> equator::CmpDisplay<ApproxEq<T>, T, T> for ApproxEqError {
+impl<R: RealField, T: ComplexField<Real = R>> equator::CmpDisplay<ApproxEq<R>, T, T> for ApproxEqError {
 	#[math]
 	fn fmt(
 		&self,
-		cmp: &ApproxEq<T>,
+		cmp: &ApproxEq<R>,
 		lhs: &T,
 		mut lhs_source: &str,
 		lhs_debug: &dyn core::fmt::Debug,
@@ -105,7 +106,7 @@ impl<T: ComplexField> equator::CmpDisplay<ApproxEq<T>, T, T> for ApproxEqError {
 	}
 }
 
-impl<T: ComplexField> equator::Cmp<T, T> for ApproxEq<T> {
+impl<R: RealField, T: ComplexField<Real = R>> equator::Cmp<T, T> for ApproxEq<R> {
 	#[math]
 	fn test(&self, lhs: &T, rhs: &T) -> Result<(), Self::Error> {
 		let Self { abs_tol, rel_tol } = self;

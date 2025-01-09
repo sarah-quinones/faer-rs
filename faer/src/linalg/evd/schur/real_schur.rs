@@ -509,7 +509,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
 		d.copy_from(ad_slice);
 		let mut dnorm = zero();
-		z!(d.rb()).for_each(|unzipped!(d)| dnorm = max(dnorm, abs((*d))));
+		z!(d.rb()).for_each(|unzip!(d)| dnorm = max(dnorm, abs((*d))));
 		let eps = epsilon;
 		let small_num = zero_threshold / eps;
 		let thresh = max(((from_f64::<T>(10.0) * eps) * dnorm), small_num);
@@ -689,7 +689,7 @@ fn aggressive_early_deflation<T: RealField>(
 	let a_window = a.rb().submatrix(kwtop, kwtop, ihi - kwtop, ihi - kwtop);
 	let mut s_re_window = unsafe { s_re.rb().subrows(kwtop, ihi - kwtop).const_cast() };
 	let mut s_im_window = unsafe { s_im.rb().subrows(kwtop, ihi - kwtop).const_cast() };
-	z!(tw.rb_mut()).for_each_triangular_lower(linalg::zip::Diag::Include, |unzipped!(x)| *x = zero());
+	z!(tw.rb_mut()).for_each_triangular_lower(linalg::zip::Diag::Include, |unzip!(x)| *x = zero());
 	for j in 0..jw {
 		for i in 0..Ord::min(j + 2, jw) {
 			tw.write(i, j, copy(a_window[(i, j)]));

@@ -1405,15 +1405,13 @@ mod tests {
 	#[test]
 	fn test_3() {
 		let n = 3;
-		let h = MatRef::from_row_major_array(
-			const {
-				&[
-					[c64::new(0.997386, 0.677592), c64::new(0.646064, 0.936948), c64::new(0.090948, 0.674011)],
-					[c64::new(0.212396, 0.976794), c64::new(0.460270, 0.926436), c64::new(0.494441, 0.888187)],
-					[c64::new(0.000000, 0.000000), c64::new(0.616652, 0.840012), c64::new(0.768245, 0.349193)],
-				]
-			},
-		);
+		let h = MatRef::from_row_major_array(try_const! {
+			&[
+				[c64::new(0.997386, 0.677592), c64::new(0.646064, 0.936948), c64::new(0.090948, 0.674011)],
+				[c64::new(0.212396, 0.976794), c64::new(0.460270, 0.926436), c64::new(0.494441, 0.888187)],
+				[c64::new(0.000000, 0.000000), c64::new(0.616652, 0.840012), c64::new(0.768245, 0.349193)],
+			]
+		});
 
 		let mut q = Mat::from_fn(n, n, |i, j| if i == j { c64::ONE } else { c64::ZERO });
 		let mut w = Col::zeros(n);
@@ -1422,7 +1420,7 @@ mod tests {
 
 		let h_reconstructed = &q * &t * q.adjoint();
 
-		let approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+		let approx_eq = CwiseMat(ApproxEq::eps());
 		assert!(h_reconstructed ~ h);
 	}
 
@@ -1451,7 +1449,7 @@ mod tests {
 
 					let h_reconstructed = &q * &t * q.adjoint();
 
-					let mut approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+					let mut approx_eq = CwiseMat(ApproxEq::eps());
 					approx_eq.0.abs_tol *= 10.0 * (n as f64).sqrt();
 					approx_eq.0.rel_tol *= 10.0 * (n as f64).sqrt();
 
@@ -1489,7 +1487,7 @@ mod tests {
 
 					let h_reconstructed = &q * &t * q.adjoint();
 
-					let mut approx_eq = CwiseMat(ApproxEq::<c64>::eps());
+					let mut approx_eq = CwiseMat(ApproxEq::eps());
 					approx_eq.0.abs_tol *= 10.0 * (n as f64);
 					approx_eq.0.rel_tol *= 10.0 * (n as f64);
 
