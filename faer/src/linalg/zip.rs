@@ -413,14 +413,10 @@ impl<
 	Rows: Copy + Eq + core::fmt::Debug,
 	Cols: Copy + Eq + core::fmt::Debug,
 	L: MatIndex<Rows = Rows, Cols = Cols>,
-	R: MatIndex<
-			Rows = Rows,
-			Cols = Cols,
-			Dyn: MatIndex<Rows = <L::Dyn as MatIndex>::Rows, Cols = <L::Dyn as MatIndex>::Cols, Index = <L::Dyn as MatIndex>::Index>,
-			Index = L::Index,
-			LayoutTransform = L::LayoutTransform,
-		>,
+	R: MatIndex<Rows = Rows, Cols = Cols, Index = L::Index, LayoutTransform = L::LayoutTransform>,
 > MatIndex for ZipEq<Rows, Cols, L, R>
+where
+	R::Dyn: MatIndex<Rows = <L::Dyn as MatIndex>::Rows, Cols = <L::Dyn as MatIndex>::Cols, Index = <L::Dyn as MatIndex>::Index>,
 {
 	type Cols = L::Cols;
 	type Dyn = ZipEq<<L::Dyn as MatIndex>::Rows, <L::Dyn as MatIndex>::Cols, L::Dyn, R::Dyn>;
@@ -947,7 +943,7 @@ fn annotate_noalias_mat<Z: MatIndex>(
 }
 
 #[inline(always)]
-fn annotate_noalias_mat_with_index<Z: MatIndex<Index = (RowIdx, ColIdx), Dyn: MatIndex<Index = (usize, usize)>>, RowIdx, ColIdx>(
+fn annotate_noalias_mat_with_index<Z: MatIndex<Index = (RowIdx, ColIdx)>, RowIdx, ColIdx>(
 	f: &mut impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
 	mut slice: <Z::Slice as SliceFamily<'_, Z::Item>>::Slice,
 	i_begin: usize,
@@ -955,7 +951,9 @@ fn annotate_noalias_mat_with_index<Z: MatIndex<Index = (RowIdx, ColIdx), Dyn: Ma
 	j: usize,
 	transpose: bool,
 	reverse_rows: bool,
-) {
+) where
+	Z::Dyn: MatIndex<Index = (usize, usize)>,
+{
 	if !transpose {
 		if !reverse_rows {
 			for i in i_begin..i_end {
@@ -1004,13 +1002,15 @@ fn annotate_noalias_col<Z: MatIndex>(
 }
 
 #[inline(always)]
-fn annotate_noalias_col_with_index<Z: MatIndex<Index = Idx, Dyn: MatIndex<Item = Z::Item, Index = usize>>, Idx>(
+fn annotate_noalias_col_with_index<Z: MatIndex<Index = Idx>, Idx>(
 	f: &mut impl FnMut(Idx, <Z as MatIndex>::Item),
 	mut slice: <Z::Slice as SliceFamily<'_, Z::Item>>::Slice,
 	i_begin: usize,
 	i_end: usize,
 	reverse: bool,
-) {
+) where
+	Z::Dyn: MatIndex<Item = Z::Item, Index = usize>,
+{
 	if !reverse {
 		for i in i_begin..i_end {
 			unsafe {
@@ -1029,10 +1029,10 @@ fn annotate_noalias_col_with_index<Z: MatIndex<Index = Idx, Dyn: MatIndex<Item =
 }
 
 #[inline(always)]
-fn for_each_mat<Z: MatIndex<Dyn: MatIndex<Item = Z::Item, Slice = Z::Slice, Rows = usize, Cols = usize, Index = (usize, usize)>>>(
-	z: Z,
-	mut f: impl FnMut(<Z as MatIndex>::Item),
-) {
+fn for_each_mat<Z: MatIndex>(z: Z, mut f: impl FnMut(<Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Item = Z::Item, Slice = Z::Slice, Rows = usize, Cols = usize, Index = (usize, usize)>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1061,18 +1061,12 @@ fn for_each_mat<Z: MatIndex<Dyn: MatIndex<Item = Z::Item, Slice = Z::Slice, Rows
 // - for_each_vec_with_index
 
 #[inline(always)]
-fn for_each_mat_with_index<
-	RowIdx,
-	ColIdx,
-	Z: MatIndex<
-			Index = (RowIdx, ColIdx),
-			Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize), Slice = Z::Slice, Item = Z::Item>,
-			LayoutTransform = MatLayoutTransform,
-		>,
->(
+fn for_each_mat_with_index<RowIdx, ColIdx, Z: MatIndex<Index = (RowIdx, ColIdx), LayoutTransform = MatLayoutTransform>>(
 	z: Z,
 	mut f: impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
-) {
+) where
+	Z::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize), Slice = Z::Slice, Item = Z::Item>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1143,19 +1137,13 @@ fn for_each_mat_with_index<
 }
 
 #[inline(always)]
-fn for_each_mat_triangular_lower_with_index<
-	RowIdx,
-	ColIdx,
-	Z: MatIndex<
-			Index = (RowIdx, ColIdx),
-			Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize), Item = Z::Item, Slice = Z::Slice>,
-			LayoutTransform = MatLayoutTransform,
-		>,
->(
+fn for_each_mat_triangular_lower_with_index<RowIdx, ColIdx, Z: MatIndex<Index = (RowIdx, ColIdx), LayoutTransform = MatLayoutTransform>>(
 	z: Z,
 	diag: Diag,
 	mut f: impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
-) {
+) where
+	Z::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize), Item = Z::Item, Slice = Z::Slice>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1304,19 +1292,13 @@ fn for_each_mat_triangular_lower_with_index<
 }
 
 #[inline(always)]
-fn for_each_mat_triangular_upper_with_index<
-	RowIdx,
-	ColIdx,
-	Z: MatIndex<
-			Index = (RowIdx, ColIdx),
-			Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize), Item = Z::Item, Slice = Z::Slice>,
-			LayoutTransform = MatLayoutTransform,
-		>,
->(
+fn for_each_mat_triangular_upper_with_index<RowIdx, ColIdx, Z: MatIndex<Index = (RowIdx, ColIdx), LayoutTransform = MatLayoutTransform>>(
 	z: Z,
 	diag: Diag,
 	mut f: impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
-) {
+) where
+	Z::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize), Item = Z::Item, Slice = Z::Slice>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1466,25 +1448,22 @@ fn for_each_mat_triangular_upper_with_index<
 }
 
 #[inline(always)]
-fn for_each_mat_triangular_lower<
-	Z: MatIndex<
-			LayoutTransform = MatLayoutTransform,
-			Dyn: MatIndex<
-				LayoutTransform = MatLayoutTransform,
-				Item = Z::Item,
-				Slice = Z::Slice,
-				Rows = usize,
-				Cols = usize,
-				Index = (usize, usize),
-				Dyn = Z::Dyn,
-			>,
-		>,
->(
+fn for_each_mat_triangular_lower<Z: MatIndex<LayoutTransform = MatLayoutTransform>>(
 	z: Z,
 	diag: Diag,
 	transpose: bool,
 	mut f: impl FnMut(<Z as MatIndex>::Item),
-) {
+) where
+	Z::Dyn: MatIndex<
+			LayoutTransform = MatLayoutTransform,
+			Item = Z::Item,
+			Slice = Z::Slice,
+			Rows = usize,
+			Cols = usize,
+			Index = (usize, usize),
+			Dyn = Z::Dyn,
+		>,
+{
 	use MatLayoutTransform::*;
 
 	let z = if transpose {
@@ -1548,10 +1527,10 @@ fn for_each_mat_triangular_lower<
 }
 
 #[inline(always)]
-fn for_each_col<Z: MatIndex<Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>>>(
-	z: Z,
-	mut f: impl FnMut(<Z as MatIndex>::Item),
-) {
+fn for_each_col<Z: MatIndex>(z: Z, mut f: impl FnMut(<Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1572,17 +1551,10 @@ fn for_each_col<Z: MatIndex<Dyn: MatIndex<Rows = usize, Cols = (), Index = usize
 }
 
 #[inline(always)]
-fn for_each_col_with_index<
-	Idx,
-	Z: MatIndex<
-			LayoutTransform = VecLayoutTransform,
-			Index = Idx,
-			Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
-		>,
->(
-	z: Z,
-	mut f: impl FnMut(Idx, <Z as MatIndex>::Item),
-) {
+fn for_each_col_with_index<Idx, Z: MatIndex<LayoutTransform = VecLayoutTransform, Index = Idx>>(z: Z, mut f: impl FnMut(Idx, <Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1616,17 +1588,10 @@ fn for_each_col_with_index<
 }
 
 #[inline(always)]
-fn for_each_row_with_index<
-	Idx,
-	Z: MatIndex<
-			LayoutTransform = VecLayoutTransform,
-			Index = Idx,
-			Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
-		>,
->(
-	z: Z,
-	mut f: impl FnMut(Idx, <Z as MatIndex>::Item),
-) {
+fn for_each_row_with_index<Idx, Z: MatIndex<LayoutTransform = VecLayoutTransform, Index = Idx>>(z: Z, mut f: impl FnMut(Idx, <Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1659,10 +1624,10 @@ fn for_each_row_with_index<
 	}
 }
 #[inline(always)]
-fn for_each_row<Z: MatIndex<Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>>>(
-	z: Z,
-	mut f: impl FnMut(<Z as MatIndex>::Item),
-) {
+fn for_each_row<Z: MatIndex>(z: Z, mut f: impl FnMut(<Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+{
 	let layout = Z::preferred_layout(&z);
 	let mut z = Z::with_layout(z, layout);
 
@@ -1682,17 +1647,10 @@ fn for_each_row<Z: MatIndex<Dyn: MatIndex<Rows = (), Cols = usize, Index = usize
 	}
 }
 
-impl<
-	Rows: Shape,
-	Cols: Shape,
-	M: MatIndex<
-			LayoutTransform = MatLayoutTransform,
-			Rows = Rows,
-			Cols = Cols,
-			Index = (Idx<Rows>, Idx<Cols>),
-			Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
-		>,
-> LastEq<Rows, Cols, M>
+impl<Rows: Shape, Cols: Shape, M: MatIndex<LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>>
+	LastEq<Rows, Cols, M>
+where
+	M::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 {
 	/// Applies `f` to each element of `self`.
 	#[inline(always)]
@@ -1774,21 +1732,12 @@ impl<
 impl<
 	Rows: Shape,
 	Cols: Shape,
-	L: MatIndex<
-			LayoutTransform = MatLayoutTransform,
-			Rows = Rows,
-			Cols = Cols,
-			Index = (Idx<Rows>, Idx<Cols>),
-			Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
-		>,
-	R: MatIndex<
-			LayoutTransform = MatLayoutTransform,
-			Rows = Rows,
-			Cols = Cols,
-			Index = (Idx<Rows>, Idx<Cols>),
-			Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
-		>,
+	L: MatIndex<LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
+	R: MatIndex<LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
 > ZipEq<Rows, Cols, L, R>
+where
+	L::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
+	R::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 {
 	/// Applies `f` to each element of `self`.
 	#[inline(always)]
@@ -1867,10 +1816,9 @@ impl<
 	}
 }
 
-impl<
-	Rows: Shape,
-	M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>, Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>>,
-> LastEq<Rows, (), M>
+impl<Rows: Shape, M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>> LastEq<Rows, (), M>
+where
+	M::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 {
 	/// Applies `f` to each element of `self`.
 	#[inline(always)]
@@ -1915,9 +1863,12 @@ impl<
 
 impl<
 	Rows: Shape,
-	L: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>, Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>>,
-	R: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>, Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>>,
+	L: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>,
+	R: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>,
 > ZipEq<Rows, (), L, R>
+where
+	L::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
+	R::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 {
 	/// Applies `f` to each element of `self`.
 	#[inline(always)]
@@ -1960,10 +1911,9 @@ impl<
 	}
 }
 
-impl<
-	Cols: Shape,
-	M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>, Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>>,
-> LastEq<(), Cols, M>
+impl<Cols: Shape, M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>> LastEq<(), Cols, M>
+where
+	M::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 {
 	/// Applies `f` to each element of `self`.
 	#[inline(always)]
@@ -2008,9 +1958,12 @@ impl<
 
 impl<
 	Cols: Shape,
-	L: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>, Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>>,
-	R: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>, Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>>,
+	L: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>,
+	R: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>,
 > ZipEq<(), Cols, L, R>
+where
+	L::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
+	R::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 {
 	/// Applies `f` to each element of `self`.
 	#[inline(always)]
