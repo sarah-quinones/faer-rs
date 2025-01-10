@@ -13,6 +13,7 @@ pub struct HessenbergParams {
 	pub blocking_threshold: usize,
 
 	#[doc(hidden)]
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -27,7 +28,7 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 }
 
 pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
-	let params = params.into_inner();
+	let params = params.config;
 	let _ = par;
 	let n = dim;
 	if n * n < params.blocking_threshold {
@@ -540,7 +541,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 
 #[track_caller]
 pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<HessenbergParams, T>) {
-	let params = params.into_inner();
+	let params = params.config;
 	assert!(all(A.nrows() == A.ncols(), H.ncols() == A.ncols().saturating_sub(1)));
 
 	let n = A.nrows().unbound();

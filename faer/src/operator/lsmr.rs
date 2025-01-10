@@ -3,18 +3,19 @@ use crate::{assert, debug_assert};
 use linalg::matmul::matmul;
 use linalg::{householder, qr};
 
-/// Algorithm parameters.
+/// algorithm parameters
 #[derive(Copy, Clone, Debug)]
 pub struct LsmrParams<T> {
-	/// Whether the initial guess is implicitly zero or not.
+	/// whether the initial guess is implicitly zero or not
 	pub initial_guess: InitialGuessStatus,
-	/// Absolute tolerance for convergence testing.
+	/// absolute tolerance for convergence testing
 	pub abs_tolerance: T,
-	/// Relative tolerance for convergence testing.
+	/// relative tolerance for convergence testing
 	pub rel_tolerance: T,
-	/// Maximum number of iterations.
+	/// maximum number of iterations
 	pub max_iters: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -31,34 +32,35 @@ impl<T: RealField> Default for LsmrParams<T> {
 	}
 }
 
-/// Algorithm result.
+/// algorithm result
 #[derive(Copy, Clone, Debug)]
 pub struct LsmrInfo<T> {
-	/// Absolute residual at the final step.
+	/// absolute residual at the final step
 	pub abs_residual: T,
-	/// Relative residual at the final step.
+	/// relative residual at the final step
 	pub rel_residual: T,
-	/// Number of iterations executed by the algorithm.
+	/// number of iterations executed by the algorithm
 	pub iter_count: usize,
 
+	#[doc(hidden)]
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
-/// Algorithm error.
+/// algorithm error
 #[derive(Copy, Clone, Debug)]
 pub enum LsmrError<T> {
-	/// Convergence failure.
+	/// convergence failure
 	NoConvergence {
-		/// Absolute residual at the final step.
+		/// absolute residual at the final step
 		abs_residual: T,
-		/// Relative residual at the final step.
+		/// relative residual at the final step
 		rel_residual: T,
 	},
 }
 
-/// Computes the size and alignment of required workspace for executing the LSMR
-/// algorithm.
+/// computes the size and alignment of required workspace for executing the lsmr
+/// algorithm
 pub fn lsmr_scratch<T: ComplexField>(right_precond: impl BiPrecond<T>, mat: impl BiLinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {
 	fn implementation<T: ComplexField>(M: &dyn BiPrecond<T>, A: &dyn BiLinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {
 		let m = A.nrows();
@@ -133,10 +135,10 @@ pub fn lsmr_scratch<T: ComplexField>(right_precond: impl BiPrecond<T>, mat: impl
 	implementation(&right_precond, &mat, rhs_ncols, par)
 }
 
-/// Executes LSMR using the provided preconditioner.
+/// executes lsmr using the provided preconditioner
 ///
-/// # Note
-/// This function is also optimized for a RHS with multiple columns.
+/// # note
+/// this function is also optimized for a rhs with multiple columns
 #[track_caller]
 pub fn lsmr<T: ComplexField>(
 	out: MatMut<'_, T>,

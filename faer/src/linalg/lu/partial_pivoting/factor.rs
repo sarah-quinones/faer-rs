@@ -70,7 +70,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	par: Par,
 	params: Spec<PartialPivLuParams, T>,
 ) -> usize {
-	let params = params.into_inner();
+	let params = params.config;
 	let mut A = A;
 	let m = A.nrows();
 	let ncols = A.ncols();
@@ -175,6 +175,7 @@ pub struct PartialPivLuParams {
 	pub recursion_threshold: usize,
 	pub blocksize: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 

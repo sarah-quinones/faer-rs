@@ -2,7 +2,7 @@ use super::*;
 use crate::utils::bound::{Array, Dim};
 use crate::{Idx, assert};
 
-/// Immutable permutation matrix view.
+/// immutable permutation matrix view
 #[derive(Debug)]
 pub struct PermRef<'a, I: Index, N: Shape = usize> {
 	pub(super) forward: &'a [N::Idx<I>],
@@ -43,7 +43,7 @@ impl<'a, I: Index, N: Shape> IntoConst for PermRef<'a, I, N> {
 }
 
 impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
-	/// Convert `self` to a permutation view.
+	/// convert `self` to a permutation view
 	#[inline]
 	pub fn as_ref(&self) -> PermRef<'_, I, N> {
 		PermRef {
@@ -52,8 +52,8 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		}
 	}
 
-	/// Returns the input permutation with the given shape after checking that it matches the
-	/// current shape.
+	/// returns the input permutation with the given shape after checking that it matches the
+	/// current shape
 	#[inline]
 	pub fn as_shape<M: Shape>(self, dim: M) -> PermRef<'a, I, M> {
 		assert!(self.len().unbound() == dim.unbound());
@@ -64,13 +64,13 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		}
 	}
 
-	/// Creates a new permutation, by checking the validity of the inputs.
+	/// creates a new permutation, by checking the validity of the inputs
 	///
-	/// # Panics
+	/// # panics
 	///
-	/// The function panics if any of the following conditions are violated:
-	/// `forward` and `inverse` must have the same length which must be less than or equal to
-	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+	/// the function panics if any of the following conditions are violated:
+	/// * `forward` and `inverse` must have the same length which must be less than or equal to
+	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other
 	#[inline]
 	#[track_caller]
 	pub fn new_checked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], dim: N) -> Self {
@@ -92,12 +92,12 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		Self { forward, inverse }
 	}
 
-	/// Creates a new permutation reference, without checking the validity of the inputs.
+	/// creates a new permutation reference, without checking the validity of the inputs
 	///
-	/// # Safety
+	/// # safety
 	///
 	/// `forward` and `inverse` must have the same length which must be less than or equal to
-	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other
 	#[inline]
 	#[track_caller]
 	pub unsafe fn new_unchecked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], dim: N) -> Self {
@@ -109,19 +109,19 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		Self { forward, inverse }
 	}
 
-	/// Returns the permutation as an array.
+	/// returns the permutation as an array
 	#[inline]
 	pub fn arrays(self) -> (&'a [Idx<N, I>], &'a [Idx<N, I>]) {
 		(self.forward, self.inverse)
 	}
 
-	/// Returns the dimension of the permutation.
+	/// returns the dimension of the permutation
 	#[inline]
 	pub fn len(&self) -> N {
 		unsafe { N::new_unbound(self.forward.len()) }
 	}
 
-	/// Returns the inverse permutation.
+	/// returns the inverse permutation
 	#[inline]
 	pub fn inverse(self) -> Self {
 		Self {
@@ -130,7 +130,7 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		}
 	}
 
-	/// Cast the permutation to the fixed width index type.
+	/// cast the permutation to the fixed width index type
 	#[inline(always)]
 	pub fn canonicalized(self) -> PermRef<'a, I::FixedWidth, N> {
 		unsafe {
@@ -141,7 +141,7 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		}
 	}
 
-	/// Cast the permutation from the fixed width index type.
+	/// cast the permutation from the fixed width index type
 	#[inline(always)]
 	pub fn uncanonicalized<J: Index>(self) -> PermRef<'a, J, N> {
 		assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());
@@ -155,7 +155,7 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 }
 
 impl<'a, 'N, I: Index> PermRef<'a, I, Dim<'N>> {
-	/// Returns the permutation as an array.
+	/// returns the permutation as an array
 	#[inline]
 	pub fn bound_arrays(self) -> (&'a Array<'N, Idx<Dim<'N>, I>>, &'a Array<'N, Idx<Dim<'N>, I>>) {
 		unsafe {

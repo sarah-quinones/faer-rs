@@ -11,6 +11,7 @@ pub struct TridiagParams {
 	pub par_threshold: usize,
 
 	#[doc(hidden)]
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -363,7 +364,7 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 #[azucar::reborrow]
 #[math]
 pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<TridiagParams, T>) {
-	let params = params.into_inner();
+	let params = params.config;
 	let mut A = A;
 	let mut H = H;
 	let mut par = par;

@@ -2,10 +2,14 @@ use crate::internal_prelude::*;
 use crate::utils::bound::{One, Zero};
 use core::ptr::NonNull;
 
+/// represents a type that can be used to slice a column, such as an index or a range of indices.
 pub trait ColIndex<RowRange> {
+	/// sliced view type
 	type Target;
 
+	/// slice `this` using `row`
 	fn get(this: Self, row: RowRange) -> Self::Target;
+	/// slice `this` using `row`, without bound checks
 	unsafe fn get_unchecked(this: Self, row: RowRange) -> Self::Target;
 }
 
@@ -34,10 +38,14 @@ pub use colown::Col;
 pub use colref::ColRef;
 use mat::AsMat;
 
+/// trait for types that can be converted to a column view.
 pub trait AsColMut: AsColRef {
+	/// returns a view over `self`
 	fn as_col_mut(&mut self) -> ColMut<'_, Self::T, Self::Rows>;
 }
+/// trait for types that can be converted to a column view.
 pub trait AsColRef: AsMatRef<Cols = One> {
+	/// returns a view over `self`
 	fn as_col_ref(&self) -> ColRef<'_, Self::T, Self::Rows>;
 }
 

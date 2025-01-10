@@ -317,7 +317,7 @@ fn compute_eigenvalues<T: RealField>(
 		let left = copy(d[i]);
 		let last = i == n - 1;
 
-		let right = if last { d[i] + rho * z.norm_l2_squared() } else { copy(d[i + 1]) };
+		let right = if last { d[i] + rho * z.squared_norm_l2() } else { copy(d[i + 1]) };
 
 		let d = d.subrows(0, n);
 		let z = z.subrows(0, n);

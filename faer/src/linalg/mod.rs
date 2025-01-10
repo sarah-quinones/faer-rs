@@ -1,3 +1,30 @@
+//! linear algebra module
+//!
+//! contains low level routines and the implementation of their corresponding high level
+//! wrappers
+//!
+//! # memory allocation
+//! since most `faer` crates aim to expose a low level api for optimal performance, most algorithms
+//! try to defer memory allocation to the user
+//!
+//! however, since a lot of algorithms need some form of temporary space for intermediate
+//! computations, they may ask for a slice of memory for that purpose, by taking a [`stack:
+//! MemStack`](dyn_stack::MemStack) parameter. a [`MemStack`] is a thin wrapper over a slice of
+//! memory bytes. this memory may come from any valid source (heap allocation, fixed-size array on
+//! the stack, etc.). the functions taking a [`MemStack`] parameter have a corresponding function
+//! with a similar name ending in `_scratch` that returns the memory requirements of the algorithm.
+//! for example:
+//! [`householder::apply_block_householder_on_the_left_in_place_with_conj`] and
+//! [`householder::apply_block_householder_on_the_left_in_place_scratch`]
+//!
+//! the memory stack may be reused in user-code to avoid repeated allocations, and it is also
+//! possible to compute the sum ([`dyn_stack::StackReq::all_of`]) or union
+//! ([`dyn_stack::StackReq::any_of`]) of multiple scratch requirements, in order to optimally
+//! combine them into a single allocation
+//!
+//! after computing a [`dyn_stack::StackReq`], one can query its size and alignment to allocate the
+//! required memory. the simplest way to do so is through [`dyn_stack::MemBuffer::new`]
+
 use crate::internal_prelude::*;
 use core::marker::PhantomData;
 use dyn_stack::StackReq;
@@ -7,6 +34,7 @@ use crate::Shape;
 use crate::mat::matown::align_for;
 use crate::mat::{AsMatMut, MatMut};
 
+/// returns the stack requirements for creating a temporary matrix with the given dimensions.
 pub fn temp_mat_scratch<T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
@@ -61,6 +89,7 @@ impl<T> Drop for DropGuard<T> {
 	}
 }
 
+/// creates a temporary matrix of uninit values, from the given memory stack.
 #[track_caller]
 pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape + 'a>(
 	nrows: Rows,
@@ -102,6 +131,7 @@ pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: 
 	)
 }
 
+/// creates a temporary matrix of zero values, from the given memory stack.
 #[track_caller]
 pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape + 'a>(
 	nrows: Rows,

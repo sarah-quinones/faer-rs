@@ -1,5 +1,6 @@
 use super::*;
 
+/// diagonal matrix view
 pub struct DiagRef<'a, T, Dim = usize, Stride = isize> {
 	pub(crate) inner: ColRef<'a, T, Dim, Stride>,
 }
@@ -47,18 +48,20 @@ unsafe impl<T: Sync, Dim: Sync, Stride: Sync> Sync for DiagRef<'_, T, Dim, Strid
 unsafe impl<T: Sync, Dim: Send, Stride: Send> Send for DiagRef<'_, T, Dim, Stride> {}
 
 impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
-	/// Returns the diagonal as a column vector view.
+	/// returns the diagonal as a column vector view.
 	#[inline(always)]
 	pub fn column_vector(self) -> ColRef<'a, T, Dim, Stride> {
 		self.inner
 	}
 
-	/// Returns a view over the matrix.
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_ref(&self) -> DiagRef<'_, T, Dim, Stride> {
 		*self
 	}
 
+	/// returns the input matrix with the given shape after checking that it matches the
+	/// current shape
 	#[inline]
 	#[track_caller]
 	pub fn as_shape<D: Shape>(self, len: D) -> DiagRef<'a, T, D, Stride> {
@@ -67,6 +70,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns the input matrix with dynamic shape
 	#[inline]
 	pub fn as_dyn(self) -> DiagRef<'a, T, usize, Stride> {
 		DiagRef {
@@ -74,6 +78,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns the input matrix with dynamic stride
 	#[inline]
 	pub fn as_dyn_stride(self) -> DiagRef<'a, T, Dim> {
 		DiagRef {
@@ -81,6 +86,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns a view over the conjugate of `self`
 	#[inline]
 	pub fn conjugate(self) -> DiagRef<'a, T::Conj, Dim, Stride>
 	where
@@ -91,6 +97,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns an unconjugated view over `self`
 	#[inline]
 	pub fn canonical(self) -> DiagRef<'a, T::Canonical, Dim, Stride>
 	where
@@ -101,6 +108,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns the dimension of `self`
 	#[inline]
 	pub fn dim(&self) -> Dim {
 		self.inner.nrows()

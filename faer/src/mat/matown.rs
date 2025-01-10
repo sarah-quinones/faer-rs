@@ -9,7 +9,7 @@ use matmut::MatMut;
 use matref::MatRef;
 
 #[inline]
-pub fn align_for(size: usize, align: usize, needs_drop: bool) -> usize {
+pub(crate) fn align_for(size: usize, align: usize, needs_drop: bool) -> usize {
 	if needs_drop || !size.is_power_of_two() {
 		align
 	} else {
@@ -41,7 +41,7 @@ unsafe fn noalias_annotate<T, Rows: Shape, Cols: Shape>(
 	core::mem::forget(guard);
 }
 
-pub struct DropIter<I: Iterator>(pub I);
+pub(crate) struct DropIter<I: Iterator>(pub I);
 impl<I: Iterator> Drop for DropIter<I> {
 	#[inline]
 	fn drop(&mut self) {
@@ -79,9 +79,8 @@ struct RawMat<T> {
 
 impl<T> RawMatUnit<T> {
 	fn try_with_capacity(mut row_capacity: usize, col_capacity: usize) -> Result<Self, TryReserveError> {
-		let mut layout = StackReq::new::<T>(1);
-		let size = layout.size_bytes();
-		let prev_align = layout.align_bytes();
+		let size = core::mem::size_of::<T>();
+		let prev_align = core::mem::align_of::<T>();
 		let align = align_for(size, prev_align, core::mem::needs_drop::<T>());
 
 		if align > size {
@@ -95,6 +94,7 @@ impl<T> RawMatUnit<T> {
 			.and_then(|size| size.checked_mul(col_capacity))
 			.ok_or(TryReserveError::CapacityOverflow)?;
 
+		let layout;
 		let ptr = if size == 0 {
 			layout = StackReq::empty();
 			core::ptr::null_mut::<u8>().wrapping_add(align)
@@ -232,6 +232,33 @@ impl<T> Drop for RawMat<T> {
 	}
 }
 
+/// heap allocated resizable matrix, similar to a 2d [`alloc::vec::Vec`]
+///
+/// # note
+///
+/// the memory layout of `Mat` is guaranteed to be column-major, meaning that it has a row stride
+/// of `1`, and an unspecified column stride that can be queried with [`Mat::col_stride`]
+///
+/// this implies that while each individual column is stored contiguously in memory, the matrix as
+/// a whole may not necessarily be contiguous. the implementation may add padding at the end of
+/// each column when overaligning each column can provide a performance gain
+///
+/// let us consider a 3×4 matrix
+///
+/// ```notcode
+///  0 │ 3 │ 6 │  9
+/// ───┼───┼───┼───
+///  1 │ 4 │ 7 │ 10
+/// ───┼───┼───┼───
+///  2 │ 5 │ 8 │ 11
+/// ```
+/// the memory representation of the data held by such a matrix could look like the following:
+///
+/// ```notcode
+/// [0, 1, 2, x, 3, 4, 5, x, 6, 7, 8, x, 9, 10, 11, x]
+/// ```
+///
+/// where `x` represents padding elements
 pub struct Mat<T, Rows: Shape = usize, Cols: Shape = usize> {
 	raw: RawMat<T>,
 	nrows: Rows,
@@ -241,12 +268,12 @@ pub struct Mat<T, Rows: Shape = usize, Cols: Shape = usize> {
 unsafe impl<T: Send, Rows: Shape, Cols: Shape> Send for Mat<T, Rows, Cols> {}
 unsafe impl<T: Sync, Rows: Shape, Cols: Shape> Sync for Mat<T, Rows, Cols> {}
 
-pub struct DropCol<T> {
+pub(crate) struct DropCol<T> {
 	ptr: *mut T,
 	nrows: usize,
 }
 
-pub struct DropMat<T> {
+pub(crate) struct DropMat<T> {
 	ptr: *mut T,
 	nrows: usize,
 	ncols: usize,
@@ -302,6 +329,24 @@ impl<T, Rows: Shape, Cols: Shape> Drop for Mat<T, Rows, Cols> {
 	}
 }
 
+impl<T> Mat<T> {
+	/// Returns an empty matrix of dimension `0×0`.
+	#[inline]
+	pub const fn new() -> Self {
+		Self {
+			raw: RawMat {
+				ptr: NonNull::dangling(),
+				row_capacity: 0,
+				col_capacity: 0,
+				layout: StackReq::EMPTY,
+				__marker: PhantomData,
+			},
+			nrows: 0,
+			ncols: 0,
+		}
+	}
+}
+
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	unsafe fn init_with(
 		ptr: *mut T,
@@ -339,6 +384,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		core::mem::forget(col_guard);
 	}
 
+	/// returns a new matrix with dimensions `(nrows, ncols)`, filled with the provided function
 	pub fn from_fn(nrows: Rows, ncols: Cols, f: impl FnMut(Idx<Rows>, Idx<Cols>) -> T) -> Self {
 		unsafe {
 			let raw = RawMat::<T>::try_with_capacity(nrows.unbound(), ncols.unbound()).unwrap();
@@ -350,6 +396,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		}
 	}
 
+	/// returns a new matrix with dimensions `(nrows, ncols)`, filled with zeros
 	#[inline]
 	pub fn zeros(nrows: Rows, ncols: Cols) -> Self
 	where
@@ -358,6 +405,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		Self::from_fn(nrows, ncols, |_, _| T::zero_impl())
 	}
 
+	/// returns a new matrix with dimensions `(nrows, ncols)`, filled with ones
 	#[inline]
 	pub fn ones(nrows: Rows, ncols: Cols) -> Self
 	where
@@ -366,6 +414,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		Self::from_fn(nrows, ncols, |_, _| T::one_impl())
 	}
 
+	/// returns a new identity matrix, with ones on the diagonal and zeros everywhere else
 	#[inline]
 	pub fn identity(nrows: Rows, ncols: Cols) -> Self
 	where
@@ -378,6 +427,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		)
 	}
 
+	/// returns a new matrix with dimensions `(nrows, ncols)`, filled with `value`
 	#[inline]
 	pub fn full(nrows: Rows, ncols: Cols, value: T) -> Self
 	where
@@ -386,16 +436,24 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		Self::from_fn(nrows, ncols, |_, _| value.clone())
 	}
 
+	/// reserves the minimum capacity for `row_capacity` rows and `col_capacity`
+	/// columns without reallocating, or returns an error in case of failure. does nothing if the
+	/// capacity is already sufficient
 	pub fn try_reserve(&mut self, new_row_capacity: usize, new_col_capacity: usize) -> Result<(), TryReserveError> {
 		self.raw
 			.try_reserve(self.nrows.unbound(), self.ncols.unbound(), new_row_capacity, new_col_capacity)
 	}
 
+	/// reserves the minimum capacity for `row_capacity` rows and `col_capacity`
+	/// columns without reallocating. does nothing if the capacity is already sufficient
 	#[track_caller]
 	pub fn reserve(&mut self, new_row_capacity: usize, new_col_capacity: usize) {
 		self.try_reserve(new_row_capacity, new_col_capacity).unwrap()
 	}
 
+	/// resizes the matrix in-place so that the new dimensions are `(new_nrows, new_ncols)`.
+	/// new elements are created with the given function `f`, so that elements at index `(i, j)`
+	/// are created by calling `f(i, j)`.
 	pub fn resize_with(&mut self, new_nrows: Rows, new_ncols: Cols, f: impl FnMut(Idx<Rows>, Idx<Cols>) -> T) {
 		unsafe {
 			let this = &mut *self;
@@ -440,6 +498,13 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		};
 	}
 
+	/// truncates the matrix so that its new dimensions are `new_nrows` and `new_ncols`.  
+	/// both of the new dimensions must be smaller than or equal to the current dimensions
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// - `new_nrows > self.nrows()`
+	/// - `new_ncols > self.ncols()`
 	pub fn truncate(&mut self, new_nrows: Rows, new_ncols: Cols) {
 		if new_ncols < self.ncols {
 			let stride = self.raw.row_capacity;
@@ -466,6 +531,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		}
 	}
 
+	/// see [`MatRef::as_shape`]
 	pub fn into_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> Mat<T, V, H> {
 		let this = core::mem::ManuallyDrop::new(self);
 
@@ -484,16 +550,19 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 }
 
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
+	/// returns the number of rows of the matrix
 	#[inline]
 	pub fn nrows(&self) -> Rows {
 		self.nrows
 	}
 
+	/// returns the number of columns of the matrix
 	#[inline]
 	pub fn ncols(&self) -> Cols {
 		self.ncols
 	}
 
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_ref(&self) -> MatRef<'_, T, Rows, Cols> {
 		unsafe {
@@ -507,6 +576,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		}
 	}
 
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_mut(&mut self) -> MatMut<'_, T, Rows, Cols> {
 		unsafe { MatMut::from_raw_parts_mut(self.raw.ptr.as_ptr(), self.nrows, self.ncols, 1, self.raw.row_capacity as isize) }
@@ -548,31 +618,43 @@ impl<T: core::fmt::Debug, Rows: Shape, Cols: Shape> core::fmt::Debug for Mat<T, 
 }
 
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
+	/// returns a pointer to the matrix data
 	#[inline(always)]
 	pub fn as_ptr(&self) -> *const T {
 		self.as_ref().as_ptr()
 	}
 
+	/// returns the number of rows and columns of the matrix
 	#[inline(always)]
 	pub fn shape(&self) -> (Rows, Cols) {
 		(self.nrows(), self.ncols())
 	}
 
+	/// returns the row stride of the matrix, specified in number of elements, not in bytes
 	#[inline(always)]
 	pub fn row_stride(&self) -> isize {
 		1
 	}
 
+	/// returns the column stride of the matrix, specified in number of elements, not in bytes
 	#[inline(always)]
 	pub fn col_stride(&self) -> isize {
 		self.raw.row_capacity as isize
 	}
 
+	/// returns a raw pointer to the element at the given index
 	#[inline(always)]
 	pub fn ptr_at(&self, row: IdxInc<Rows>, col: IdxInc<Cols>) -> *const T {
 		self.as_ref().ptr_at(row, col)
 	}
 
+	/// returns a raw pointer to the element at the given index, assuming the provided index
+	/// is within the matrix bounds
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * `row < self.nrows()`
+	/// * `col < self.ncols()`
 	#[inline(always)]
 	#[track_caller]
 	pub unsafe fn ptr_inbounds_at(&self, row: Idx<Rows>, col: Idx<Cols>) -> *const T {
@@ -581,6 +663,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatRef::split_at`]
 	pub fn split_at(
 		&self,
 		row: IdxInc<Rows>,
@@ -596,22 +679,26 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatRef::split_at_row`]
 	pub fn split_at_row(&self, row: IdxInc<Rows>) -> (MatRef<'_, T, usize, Cols>, MatRef<'_, T, usize, Cols>) {
 		self.as_ref().split_at_row(row)
 	}
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatRef::split_at_col`]
 	pub fn split_at_col(&self, col: IdxInc<Cols>) -> (MatRef<'_, T, Rows, usize>, MatRef<'_, T, Rows, usize>) {
 		self.as_ref().split_at_col(col)
 	}
 
 	#[inline(always)]
+	/// see [`MatRef::transpose`]
 	pub fn transpose(&self) -> MatRef<'_, T, Cols, Rows> {
 		self.as_ref().transpose()
 	}
 
 	#[inline(always)]
+	/// see [`MatRef::conjugate`]
 	pub fn conjugate(&self) -> MatRef<'_, T::Conj, Rows, Cols>
 	where
 		T: Conjugate,
@@ -620,6 +707,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline(always)]
+	/// see [`MatRef::canonical`]
 	pub fn canonical(&self) -> MatRef<'_, T::Canonical, Rows, Cols>
 	where
 		T: Conjugate,
@@ -628,6 +716,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline(always)]
+	/// see [`MatRef::adjoint`]
 	pub fn adjoint(&self) -> MatRef<'_, T::Conj, Cols, Rows>
 	where
 		T: Conjugate,
@@ -636,87 +725,104 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatRef::reverse_rows`]
 	pub fn reverse_rows(&self) -> MatRef<'_, T, Rows, Cols> {
 		self.as_ref().reverse_rows()
 	}
 
 	#[inline]
+	/// see [`MatRef::reverse_cols`]
 	pub fn reverse_cols(&self) -> MatRef<'_, T, Rows, Cols> {
 		self.as_ref().reverse_cols()
 	}
 
 	#[inline]
+	/// see [`MatRef::reverse_rows_and_cols`]
 	pub fn reverse_rows_and_cols(&self) -> MatRef<'_, T, Rows, Cols> {
 		self.as_ref().reverse_rows_and_cols()
 	}
 
 	#[inline]
+	/// see [`MatRef::submatrix`]
 	pub fn submatrix<V: Shape, H: Shape>(&self, row_start: IdxInc<Rows>, col_start: IdxInc<Cols>, nrows: V, ncols: H) -> MatRef<'_, T, V, H> {
 		self.as_ref().submatrix(row_start, col_start, nrows, ncols)
 	}
 
 	#[inline]
+	/// see [`MatRef::subrows`]
 	pub fn subrows<V: Shape>(&self, row_start: IdxInc<Rows>, nrows: V) -> MatRef<'_, T, V, Cols> {
 		self.as_ref().subrows(row_start, nrows)
 	}
 
 	#[inline]
+	/// see [`MatRef::subcols`]
 	pub fn subcols<H: Shape>(&self, col_start: IdxInc<Cols>, ncols: H) -> MatRef<'_, T, Rows, H> {
 		self.as_ref().subcols(col_start, ncols)
 	}
 
 	#[inline]
+	/// see [`MatRef::as_shape`]
 	pub fn as_shape<V: Shape, H: Shape>(&self, nrows: V, ncols: H) -> MatRef<'_, T, V, H> {
 		self.as_ref().as_shape(nrows, ncols)
 	}
 
 	#[inline]
+	/// see [`MatRef::as_row_shape`]
 	pub fn as_row_shape<V: Shape>(&self, nrows: V) -> MatRef<'_, T, V, Cols> {
 		self.as_ref().as_row_shape(nrows)
 	}
 
 	#[inline]
+	/// see [`MatRef::as_col_shape`]
 	pub fn as_col_shape<H: Shape>(&self, ncols: H) -> MatRef<'_, T, Rows, H> {
 		self.as_ref().as_col_shape(ncols)
 	}
 
 	#[inline]
+	/// see [`MatRef::as_dyn_stride`]
 	pub fn as_dyn_stride(&self) -> MatRef<'_, T, Rows, Cols, isize, isize> {
 		self.as_ref().as_dyn_stride()
 	}
 
 	#[inline]
+	/// see [`MatRef::as_dyn`]
 	pub fn as_dyn(&self) -> MatRef<'_, T, usize, usize> {
 		self.as_ref().as_dyn()
 	}
 
 	#[inline]
+	/// see [`MatRef::as_dyn_rows`]
 	pub fn as_dyn_rows(&self) -> MatRef<'_, T, usize, Cols> {
 		self.as_ref().as_dyn_rows()
 	}
 
 	#[inline]
+	/// see [`MatRef::as_dyn_cols`]
 	pub fn as_dyn_cols(&self) -> MatRef<'_, T, Rows, usize> {
 		self.as_ref().as_dyn_cols()
 	}
 
 	#[inline]
+	/// see [`MatRef::row`]
 	pub fn row(&self, i: Idx<Rows>) -> RowRef<'_, T, Cols> {
 		self.as_ref().row(i)
 	}
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatRef::col`]
 	pub fn col(&self, j: Idx<Cols>) -> ColRef<'_, T, Rows> {
 		self.as_ref().col(j)
 	}
 
 	#[inline]
+	/// see [`MatRef::col_iter`]
 	pub fn col_iter(&self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = ColRef<'_, T, Rows>> {
 		self.as_ref().col_iter()
 	}
 
 	#[inline]
+	/// see [`MatRef::row_iter`]
 	pub fn row_iter(&self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = RowRef<'_, T, Cols>> {
 		self.as_ref().row_iter()
 	}
@@ -724,6 +830,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatRef::par_col_iter`]
 	pub fn par_col_iter(&self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColRef<'_, T, Rows>>
 	where
 		T: Sync,
@@ -734,6 +841,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatRef::par_row_iter`]
 	pub fn par_row_iter(&self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = RowRef<'_, T, Cols>>
 	where
 		T: Sync,
@@ -744,6 +852,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatRef::par_col_chunks`]
 	pub fn par_col_chunks(&self, chunk_size: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, T, Rows, usize>>
 	where
 		T: Sync,
@@ -754,6 +863,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatRef::par_col_partition`]
 	pub fn par_col_partition(&self, count: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, T, Rows, usize>>
 	where
 		T: Sync,
@@ -764,6 +874,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatRef::par_row_chunks`]
 	pub fn par_row_chunks(&self, chunk_size: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, T, usize, Cols>>
 	where
 		T: Sync,
@@ -774,6 +885,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatRef::par_row_partition`]
 	pub fn par_row_partition(&self, count: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, T, usize, Cols>>
 	where
 		T: Sync,
@@ -782,16 +894,19 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatRef::try_as_col_major`]
 	pub fn try_as_col_major(&self) -> Option<MatRef<'_, T, Rows, Cols, ContiguousFwd>> {
 		self.as_ref().try_as_col_major()
 	}
 
 	#[inline]
+	/// see [`MatRef::try_as_row_major`]
 	pub fn try_as_row_major(&self) -> Option<MatRef<'_, T, Rows, Cols, isize, ContiguousFwd>> {
 		self.as_ref().try_as_row_major()
 	}
 
 	#[inline]
+	/// see [`MatRef::norm_max`]
 	pub fn norm_max(&self) -> Real<T>
 	where
 		T: Conjugate,
@@ -800,6 +915,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatRef::norm_l2`]
 	pub fn norm_l2(&self) -> Real<T>
 	where
 		T: Conjugate,
@@ -809,6 +925,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[track_caller]
 	#[inline]
+	/// see [`MatRef::get`]
 	pub fn get<RowRange, ColRange>(&self, row: RowRange, col: ColRange) -> <MatRef<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
 	where
 		for<'a> MatRef<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
@@ -818,6 +935,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[track_caller]
 	#[inline]
+	/// see [`MatRef::get_unchecked`]
 	pub unsafe fn get_unchecked<RowRange, ColRange>(
 		&self,
 		row: RowRange,
@@ -831,6 +949,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[track_caller]
 	#[inline]
+	/// see [`MatMut::get_mut`]
 	pub fn get_mut<RowRange, ColRange>(&mut self, row: RowRange, col: ColRange) -> <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target
 	where
 		for<'a> MatMut<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
@@ -840,6 +959,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[track_caller]
 	#[inline]
+	/// see [`MatMut::get_mut_unchecked`]
 	pub unsafe fn get_mut_unchecked<RowRange, ColRange>(
 		&mut self,
 		row: RowRange,
@@ -852,6 +972,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatRef::cloned`]
 	pub fn cloned(&self) -> Mat<T, Rows, Cols>
 	where
 		T: Clone,
@@ -860,6 +981,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatRef::to_owned`]
 	pub fn to_owned(&self) -> Mat<T::Canonical, Rows, Cols>
 	where
 		T: Conjugate,
@@ -870,23 +992,33 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline(always)]
+	/// returns a pointer to the matrix data
 	pub fn as_ptr_mut(&mut self) -> *mut T {
 		self.as_mut().as_ptr_mut()
 	}
 
 	#[inline(always)]
+	/// returns a raw pointer to the element at the given index
 	pub fn ptr_at_mut(&mut self, row: IdxInc<Rows>, col: IdxInc<Cols>) -> *mut T {
 		self.as_mut().ptr_at_mut(row, col)
 	}
 
 	#[inline(always)]
 	#[track_caller]
+	/// returns a raw pointer to the element at the given index, assuming the provided index
+	/// is within the matrix bounds
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * `row < self.nrows()`
+	/// * `col < self.ncols()`
 	pub unsafe fn ptr_inbounds_at_mut(&mut self, row: Idx<Rows>, col: Idx<Cols>) -> *mut T {
 		self.as_mut().ptr_inbounds_at_mut(row, col)
 	}
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatMut::split_at_mut`]
 	pub fn split_at_mut(
 		&mut self,
 		row: IdxInc<Rows>,
@@ -902,22 +1034,26 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatMut::split_at_row_mut`]
 	pub fn split_at_row_mut(&mut self, row: IdxInc<Rows>) -> (MatMut<'_, T, usize, Cols>, MatMut<'_, T, usize, Cols>) {
 		self.as_mut().split_at_row_mut(row)
 	}
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatMut::split_at_col_mut`]
 	pub fn split_at_col_mut(&mut self, col: IdxInc<Cols>) -> (MatMut<'_, T, Rows, usize>, MatMut<'_, T, Rows, usize>) {
 		self.as_mut().split_at_col_mut(col)
 	}
 
 	#[inline(always)]
+	/// see [`MatMut::transpose_mut`]
 	pub fn transpose_mut(&mut self) -> MatMut<'_, T, Cols, Rows> {
 		self.as_mut().transpose_mut()
 	}
 
 	#[inline(always)]
+	/// see [`MatMut::conjugate_mut`]
 	pub fn conjugate_mut(&mut self) -> MatMut<'_, T::Conj, Rows, Cols>
 	where
 		T: Conjugate,
@@ -926,6 +1062,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline(always)]
+	/// see [`MatMut::canonical_mut`]
 	pub fn canonical_mut(&mut self) -> MatMut<'_, T::Canonical, Rows, Cols>
 	where
 		T: Conjugate,
@@ -934,6 +1071,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline(always)]
+	/// see [`MatMut::adjoint_mut`]
 	pub fn adjoint_mut(&mut self) -> MatMut<'_, T::Conj, Cols, Rows>
 	where
 		T: Conjugate,
@@ -942,87 +1080,104 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatMut::reverse_rows_mut`]
 	pub fn reverse_rows_mut(&mut self) -> MatMut<'_, T, Rows, Cols> {
 		self.as_mut().reverse_rows_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::reverse_cols_mut`]
 	pub fn reverse_cols_mut(&mut self) -> MatMut<'_, T, Rows, Cols> {
 		self.as_mut().reverse_cols_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::reverse_rows_and_cols_mut`]
 	pub fn reverse_rows_and_cols_mut(&mut self) -> MatMut<'_, T, Rows, Cols> {
 		self.as_mut().reverse_rows_and_cols_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::submatrix_mut`]
 	pub fn submatrix_mut<V: Shape, H: Shape>(&mut self, row_start: IdxInc<Rows>, col_start: IdxInc<Cols>, nrows: V, ncols: H) -> MatMut<'_, T, V, H> {
 		self.as_mut().submatrix_mut(row_start, col_start, nrows, ncols)
 	}
 
 	#[inline]
+	/// see [`MatMut::subrows_mut`]
 	pub fn subrows_mut<V: Shape>(&mut self, row_start: IdxInc<Rows>, nrows: V) -> MatMut<'_, T, V, Cols> {
 		self.as_mut().subrows_mut(row_start, nrows)
 	}
 
 	#[inline]
+	/// see [`MatMut::subcols_mut`]
 	pub fn subcols_mut<H: Shape>(&mut self, col_start: IdxInc<Cols>, ncols: H) -> MatMut<'_, T, Rows, H> {
 		self.as_mut().subcols_mut(col_start, ncols)
 	}
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatMut::as_shape_mut`]
 	pub fn as_shape_mut<V: Shape, H: Shape>(&mut self, nrows: V, ncols: H) -> MatMut<'_, T, V, H> {
 		self.as_mut().as_shape_mut(nrows, ncols)
 	}
 
 	#[inline]
+	/// see [`MatMut::as_row_shape_mut`]
 	pub fn as_row_shape_mut<V: Shape>(&mut self, nrows: V) -> MatMut<'_, T, V, Cols> {
 		self.as_mut().as_row_shape_mut(nrows)
 	}
 
 	#[inline]
+	/// see [`MatMut::as_col_shape_mut`]
 	pub fn as_col_shape_mut<H: Shape>(&mut self, ncols: H) -> MatMut<'_, T, Rows, H> {
 		self.as_mut().as_col_shape_mut(ncols)
 	}
 
 	#[inline]
+	/// see [`MatMut::as_dyn_stride_mut`]
 	pub fn as_dyn_stride_mut(&mut self) -> MatMut<'_, T, Rows, Cols, isize, isize> {
 		self.as_mut().as_dyn_stride_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::as_dyn_mut`]
 	pub fn as_dyn_mut(&mut self) -> MatMut<'_, T, usize, usize> {
 		self.as_mut().as_dyn_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::as_dyn_rows_mut`]
 	pub fn as_dyn_rows_mut(&mut self) -> MatMut<'_, T, usize, Cols> {
 		self.as_mut().as_dyn_rows_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::as_dyn_cols_mut`]
 	pub fn as_dyn_cols_mut(&mut self) -> MatMut<'_, T, Rows, usize> {
 		self.as_mut().as_dyn_cols_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::row_mut`]
 	pub fn row_mut(&mut self, i: Idx<Rows>) -> RowMut<'_, T, Cols> {
 		self.as_mut().row_mut(i)
 	}
 
 	#[inline]
+	/// see [`MatMut::col_mut`]
 	pub fn col_mut(&mut self, j: Idx<Cols>) -> ColMut<'_, T, Rows> {
 		self.as_mut().col_mut(j)
 	}
 
 	#[inline]
+	/// see [`MatMut::col_iter_mut`]
 	pub fn col_iter_mut(&mut self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = ColMut<'_, T, Rows>> {
 		self.as_mut().col_iter_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::row_iter_mut`]
 	pub fn row_iter_mut(&mut self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = RowMut<'_, T, Cols>> {
 		self.as_mut().row_iter_mut()
 	}
@@ -1030,6 +1185,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatMut::par_col_iter_mut`]
 	pub fn par_col_iter_mut(&mut self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColMut<'_, T, Rows>>
 	where
 		T: Send,
@@ -1040,6 +1196,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatMut::par_row_iter_mut`]
 	pub fn par_row_iter_mut(&mut self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = RowMut<'_, T, Cols>>
 	where
 		T: Send,
@@ -1050,6 +1207,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatMut::par_col_chunks_mut`]
 	pub fn par_col_chunks_mut(&mut self, chunk_size: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, T, Rows, usize>>
 	where
 		T: Send,
@@ -1060,6 +1218,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatMut::par_col_partition_mut`]
 	pub fn par_col_partition_mut(&mut self, count: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, T, Rows, usize>>
 	where
 		T: Send,
@@ -1070,6 +1229,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatMut::par_row_chunks_mut`]
 	pub fn par_row_chunks_mut(&mut self, chunk_size: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, T, usize, Cols>>
 	where
 		T: Send,
@@ -1080,6 +1240,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
+	/// see [`MatMut::par_row_partition_mut`]
 	pub fn par_row_partition_mut(&mut self, count: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, T, usize, Cols>>
 	where
 		T: Send,
@@ -1088,39 +1249,39 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatMut::split_first_row_mut`]
 	pub fn split_first_row_mut(&mut self) -> Option<(RowMut<'_, T, Cols>, MatMut<'_, T, usize, Cols>)> {
 		self.as_mut().split_first_row_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::try_as_col_major_mut`]
 	pub fn try_as_col_major_mut(&mut self) -> Option<MatMut<'_, T, Rows, Cols, ContiguousFwd>> {
 		self.as_mut().try_as_col_major_mut()
 	}
 
 	#[inline]
+	/// see [`MatMut::try_as_row_major_mut`]
 	pub fn try_as_row_major_mut(&mut self) -> Option<MatMut<'_, T, Rows, Cols, isize, ContiguousFwd>> {
 		self.as_mut().try_as_row_major_mut()
 	}
 
 	#[inline]
 	#[track_caller]
-	pub fn write(&mut self, i: Idx<Rows>, j: Idx<Cols>) -> &'_ mut T {
-		self.as_mut().at_mut(i, j)
-	}
-
-	#[inline]
-	#[track_caller]
+	/// see [`MatMut::two_cols_mut`]
 	pub fn two_cols_mut(&mut self, i0: Idx<Cols>, i1: Idx<Cols>) -> (ColMut<'_, T, Rows>, ColMut<'_, T, Rows>) {
 		self.as_mut().two_cols_mut(i0, i1)
 	}
 
 	#[inline]
 	#[track_caller]
+	/// see [`MatMut::two_rows_mut`]
 	pub fn two_rows_mut(&mut self, i0: Idx<Rows>, i1: Idx<Rows>) -> (RowMut<'_, T, Cols>, RowMut<'_, T, Cols>) {
 		self.as_mut().two_rows_mut(i0, i1)
 	}
 
 	#[inline]
+	/// see [`MatMut::copy_from`]
 	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
 	where
 		T: ComplexField,
@@ -1129,6 +1290,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatMut::copy_from_triangular_lower`]
 	pub fn copy_from_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
 	where
 		T: ComplexField,
@@ -1137,6 +1299,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatMut::copy_from_strict_triangular_lower`]
 	pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
 	where
 		T: ComplexField,
@@ -1145,6 +1308,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatMut::copy_from_triangular_upper`]
 	pub fn copy_from_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
 	where
 		T: ComplexField,
@@ -1153,6 +1317,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	#[inline]
+	/// see [`MatMut::copy_from_strict_triangular_upper`]
 	pub fn copy_from_strict_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
 	where
 		T: ComplexField,
@@ -1163,11 +1328,13 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 
 impl<T, Dim: Shape> Mat<T, Dim, Dim> {
 	#[inline]
+	/// see [`MatRef::diagonal`]
 	pub fn diagonal(&self) -> DiagRef<'_, T, Dim, isize> {
 		self.as_ref().diagonal()
 	}
 
 	#[inline]
+	/// see [`MatMut::diagonal_mut`]
 	pub fn diagonal_mut(&mut self) -> DiagMut<'_, T, Dim, isize> {
 		self.as_mut().diagonal_mut()
 	}

@@ -1,4 +1,4 @@
-//! Approximate minimum degree column ordering.
+//! approximate minimum degree column ordering.
 
 // COLAMD, Copyright (c) 1998-2022, Timothy A. Davis and Stefan Larimore,
 // All Rights Reserved.
@@ -81,8 +81,8 @@ fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I
 	}
 }
 
-/// Computes the size and alignment of required workspace for computing the COLAMD ordering of a
-/// matrix.
+/// computes the size and alignment of required workspace for computing the colamd ordering of a
+/// matrix
 pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> StackReq {
 	let m = nrows;
 	let n = ncols;
@@ -112,11 +112,11 @@ pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> Stac
 	)
 }
 
-/// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
-/// QR factorization of a matrix with the sparsity pattern of `A`.
+/// computes the approximate minimum degree ordering for reducing the fill-in during the sparse
+/// qr factorization of a matrix with the sparsity pattern of $A$
 ///
-/// # Note
-/// Allows unsorted matrices.
+/// # note
+/// allows unsorted matrices
 pub fn order<I: Index>(
 	perm: &mut [I],
 	perm_inv: &mut [I],
@@ -834,14 +834,14 @@ unsafe impl<I: Index> bytemuck::Pod for ColamdCol<I> {}
 unsafe impl<I: Index> bytemuck::Zeroable for ColamdRow<I> {}
 unsafe impl<I: Index> bytemuck::Pod for ColamdRow<I> {}
 
-/// Tuning parameters for the AMD implementation.
+/// tuning parameters for the amd implementation
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Control {
 	/// "dense" if degree > dense_row * sqrt(ncols)
 	pub dense_row: f64,
 	/// "dense" if degree > dense_col * sqrt(min(nrows, ncols))
 	pub dense_col: f64,
-	/// Do aggressive absorption.
+	/// do aggressive absorption
 	pub aggressive: bool,
 }
 

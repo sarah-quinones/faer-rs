@@ -19,6 +19,7 @@ pub enum EvdError {
 #[derive(Clone, Copy, Debug)]
 pub struct EvdFromSchurParams {
 	pub recursion_threshold: usize,
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -28,6 +29,7 @@ pub struct EvdParams {
 	pub schur: SchurParams,
 	pub evd_from_schur: EvdFromSchurParams,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -36,6 +38,7 @@ pub struct SelfAdjointEvdParams {
 	pub tridiag: TridiagParams,
 	pub recursion_threshold: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -958,7 +961,7 @@ pub fn evd_cplx<T: RealField>(
 		assert!(all(u.nrows() == n, u.ncols() == n));
 	}
 
-	evd_imp(A, s.column_vector_mut(), None, u_left, u_right, par, stack, params.into_inner())
+	evd_imp(A, s.column_vector_mut(), None, u_left, u_right, par, stack, params.config)
 }
 
 #[track_caller]
@@ -989,7 +992,7 @@ pub fn evd_real<T: RealField>(
 		u_right,
 		par,
 		stack,
-		params.into_inner(),
+		params.config,
 	)
 }
 

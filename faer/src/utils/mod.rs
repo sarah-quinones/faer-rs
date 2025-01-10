@@ -1,11 +1,14 @@
-pub mod bound;
-pub mod slice;
+#![allow(missing_docs)]
 
+/// compile-time bound-checked indexing types
+pub mod bound;
+
+#[doc(hidden)]
 pub mod thread {
 	use crate::*;
 
-	/// Executes the two operations, possibly in parallel, while splitting the amount of parallelism
-	/// between the two.
+	/// executes the two operations, possibly in parallel, while splitting the amount of parallelism
+	/// between the two
 	#[inline]
 	pub fn join_raw(op_a: impl Send + FnOnce(Par), op_b: impl Send + FnOnce(Par), parallelism: Par) {
 		fn implementation(op_a: &mut (dyn Send + FnMut(Par)), op_b: &mut (dyn Send + FnMut(Par)), parallelism: Par) {
@@ -32,7 +35,7 @@ pub mod thread {
 		)
 	}
 
-	/// Unsafe [`Send`] and [`Sync`] pointer type.
+	/// unsafe [`Send`] and [`Sync`] pointer type
 	pub struct Ptr<T>(pub *mut T);
 	unsafe impl<T> Send for Ptr<T> {}
 	unsafe impl<T> Sync for Ptr<T> {}
@@ -44,7 +47,7 @@ pub mod thread {
 		}
 	}
 
-	/// The amount of threads that should ideally execute an operation with the given parallelism.
+	/// the amount of threads that should ideally execute an operation with the given parallelism
 	#[inline]
 	pub fn parallelism_degree(parallelism: Par) -> usize {
 		match parallelism {
@@ -54,11 +57,11 @@ pub mod thread {
 		}
 	}
 
-	/// Returns the start and length of a subsegment of `0..n`, split between `chunk_count`
-	/// consumers, for the consumer at index `idx`.
+	/// returns the start and length of a subsegment of `0..n`, split between `chunk_count`
+	/// consumers, for the consumer at index `idx`
 	///
-	/// For the same `n` and `chunk_count`, different values of `idx` between in `0..chunk_count`
-	/// will represent distinct subsegments.
+	/// for the same `n` and `chunk_count`, different values of `idx` between in `0..chunk_count`
+	/// will represent distinct subsegments
 	#[inline]
 	pub fn par_split_indices(n: usize, idx: usize, chunk_count: usize) -> (usize, usize) {
 		let chunk_size = n / chunk_count;
@@ -74,6 +77,8 @@ pub mod thread {
 	}
 }
 
+/// simd helper utilities based on lifetime-bound indices
 pub mod simd;
 
+/// approximate comparators for testing purposes
 pub mod approx;

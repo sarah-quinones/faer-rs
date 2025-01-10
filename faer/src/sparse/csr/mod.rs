@@ -695,6 +695,24 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatRef<'a, I, T, Rows, 
 		}
 	}
 
+	/// returns a reference to the value at the given index, or `None` if the symbolic structure
+	/// doesn't contain it, or contains multiple indices with the given index
+	///
+	/// # panics
+	/// - panics if `row >= self.nrows()`
+	/// - panics if `col >= self.ncols()`
+	#[track_caller]
+	pub fn get(self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&'a T> {
+		assert!(row < self.nrows());
+		assert!(col < self.ncols());
+		let col = I::truncate(col.unbound());
+		let rowl = row.unbound();
+		let start = self.symbolic().as_dyn().col_idx_of_row_raw(rowl).partition_point(partition_by_lt(col));
+		let end = start + self.symbolic().as_dyn().col_idx_of_row_raw(rowl)[start..].partition_point(partition_by_le(col));
+
+		if end == start + 1 { Some(&self.val_of_row(row)[start]) } else { None }
+	}
+
 	#[inline]
 	pub fn as_dyn(self) -> SparseRowMatRef<'a, I, T> {
 		SparseRowMatRef {
@@ -836,6 +854,28 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatMut<'a, I, T, Rows, 
 		SparseRowMatMut {
 			symbolic: self.symbolic.as_shape(nrows, ncols),
 			val: self.val,
+		}
+	}
+
+	/// returns a reference to the value at the given index, or `None` if the symbolic structure
+	/// doesn't contain it, or contains multiple indices with the given index
+	///
+	/// # panics
+	/// - panics if `row >= self.nrows()`
+	/// - panics if `col >= self.ncols()`
+	#[track_caller]
+	pub fn get_mut(self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&'a mut T> {
+		assert!(row < self.nrows());
+		assert!(col < self.ncols());
+		let col = I::truncate(col.unbound());
+		let rowl = row.unbound();
+		let start = self.symbolic().as_dyn().col_idx_of_row_raw(rowl).partition_point(partition_by_lt(col));
+		let end = start + self.symbolic().as_dyn().col_idx_of_row_raw(rowl)[start..].partition_point(partition_by_le(col));
+
+		if end == start + 1 {
+			Some(&mut self.val_of_row_mut(row)[start])
+		} else {
+			None
 		}
 	}
 

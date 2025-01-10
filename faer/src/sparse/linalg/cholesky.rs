@@ -1,3 +1,495 @@
+//! computes the Cholesky decomposition (either $LL^\top$, $LTL^\top$, or bunch-kaufman) of a given
+//! sparse matrix. see [`crate::linalg::cholesky`] for more info.
+//!
+//! the entry point in this module is [`SymbolicCholesky`] and [`factorize_symbolic_cholesky`].
+//!
+//! # note
+//! the functions in this module accept unsorted input, producing a sorted decomposition factor
+//! (simplicial).
+//!
+//! # example (low level api)
+//! simplicial:
+//! ```
+//! fn simplicial_cholesky() -> Result<(), faer::sparse::FaerError> {
+//! 	use faer::Par;
+//! 	use faer::dyn_stack::{MemBuffer, MemStack, StackReq};
+//! 	use faer::reborrow::*;
+//!
+//! 	use faer::linalg::cholesky::ldlt::factor::LdltRegularization;
+//! 	use faer::linalg::cholesky::llt::factor::LltRegularization;
+//!
+//! 	use faer::sparse::linalg::amd;
+//! 	use faer::sparse::linalg::cholesky::simplicial;
+//! 	use faer::sparse::{CreationError, SparseColMat, SymbolicSparseColMat, Triplet};
+//!
+//! 	use rand::prelude::*;
+//!
+//! 	// the simplicial cholesky api takes an upper triangular matrix as input, to be
+//! 	// interpreted as self-adjoint.
+//! 	let dim = 4;
+//! 	let A_upper = match SparseColMat::<usize, f64>::try_new_from_triplets(dim, dim, &[
+//! 		// diagonal entries
+//! 		Triplet::new(0, 0, 10.0),
+//! 		Triplet::new(1, 1, 11.0),
+//! 		Triplet::new(2, 2, 12.0),
+//! 		Triplet::new(3, 3, 13.0),
+//! 		// non diagonal entries
+//! 		Triplet::new(0, 1, 1.0),
+//! 		Triplet::new(0, 3, 1.5),
+//! 		Triplet::new(1, 3, -3.2),
+//! 	]) {
+//! 		Ok(A) => Ok(A),
+//! 		Err(CreationError::Generic(err)) => Err(err),
+//! 		Err(CreationError::OutOfBounds { .. }) => panic!(),
+//! 	}?;
+//!
+//! 	let mut A = faer::sparse::ops::add(A_upper.rb(), A_upper.to_row_major()?.rb().transpose())?;
+//! 	for i in 0..dim {
+//! 		A[(i, i)] /= 2.0;
+//! 	}
+//!
+//! 	let A_nnz = A_upper.compute_nnz();
+//! 	let mut rhs = Vec::new();
+//! 	let mut rng = StdRng::seed_from_u64(0);
+//! 	rhs.try_reserve_exact(dim)?;
+//! 	rhs.resize_with(dim, || rng.gen::<f64>());
+//!
+//! 	let mut sol = Vec::new();
+//! 	sol.try_reserve_exact(dim)?;
+//! 	sol.resize(dim, 0.0f64);
+//!
+//! 	let rhs = faer::MatRef::from_column_major_slice(&rhs, dim, 1);
+//! 	let mut sol = faer::MatMut::from_column_major_slice_mut(&mut sol, dim, 1);
+//!
+//! 	// optional: fill reducing permutation
+//! 	let (perm, perm_inv) = {
+//! 		let mut perm = Vec::new();
+//! 		let mut perm_inv = Vec::new();
+//! 		perm.try_reserve_exact(dim)?;
+//! 		perm_inv.try_reserve_exact(dim)?;
+//! 		perm.resize(dim, 0usize);
+//! 		perm_inv.resize(dim, 0usize);
+//!
+//! 		let mut mem = MemBuffer::try_new(amd::order_scratch::<usize>(dim, A_nnz))?;
+//! 		amd::order(
+//! 			&mut perm,
+//! 			&mut perm_inv,
+//! 			A_upper.symbolic(),
+//! 			amd::Control::default(),
+//! 			MemStack::new(&mut mem),
+//! 		)?;
+//!
+//! 		(perm, perm_inv)
+//! 	};
+//!
+//! 	let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv, dim) };
+//!
+//! 	let A_perm_upper = {
+//! 		let mut A_perm_col_ptrs = Vec::new();
+//! 		let mut A_perm_row_indices = Vec::new();
+//! 		let mut A_perm_values = Vec::new();
+//!
+//! 		A_perm_col_ptrs.try_reserve_exact(dim + 1)?;
+//! 		A_perm_col_ptrs.resize(dim + 1, 0usize);
+//! 		A_perm_row_indices.try_reserve_exact(A_nnz)?;
+//! 		A_perm_row_indices.resize(A_nnz, 0usize);
+//! 		A_perm_values.try_reserve_exact(A_nnz)?;
+//! 		A_perm_values.resize(A_nnz, 0.0f64);
+//!
+//! 		let mut mem = MemBuffer::try_new(faer::sparse::utils::permute_self_adjoint_scratch::<
+//! 			usize,
+//! 		>(dim))?;
+//! 		faer::sparse::utils::permute_self_adjoint_to_unsorted(
+//! 			&mut A_perm_values,
+//! 			&mut A_perm_col_ptrs,
+//! 			&mut A_perm_row_indices,
+//! 			A_upper.rb(),
+//! 			perm,
+//! 			faer::Side::Upper,
+//! 			faer::Side::Upper,
+//! 			MemStack::new(&mut mem),
+//! 		);
+//!
+//! 		SparseColMat::<usize, f64>::new(
+//! 			unsafe {
+//! 				SymbolicSparseColMat::new_unchecked(
+//! 					dim,
+//! 					dim,
+//! 					A_perm_col_ptrs,
+//! 					None,
+//! 					A_perm_row_indices,
+//! 				)
+//! 			},
+//! 			A_perm_values,
+//! 		)
+//! 	};
+//!
+//! 	// symbolic analysis
+//! 	let symbolic = {
+//! 		let mut mem = MemBuffer::try_new(StackReq::any_of(&[
+//! 			simplicial::prefactorize_symbolic_cholesky_scratch::<usize>(dim, A_nnz),
+//! 			simplicial::factorize_simplicial_symbolic_cholesky_scratch::<usize>(dim),
+//! 		]))?;
+//! 		let stack = MemStack::new(&mut mem);
+//!
+//! 		let mut etree = Vec::new();
+//! 		let mut col_counts = Vec::new();
+//! 		etree.try_reserve_exact(dim)?;
+//! 		etree.resize(dim, 0isize);
+//! 		col_counts.try_reserve_exact(dim)?;
+//! 		col_counts.resize(dim, 0usize);
+//!
+//! 		simplicial::prefactorize_symbolic_cholesky(
+//! 			&mut etree,
+//! 			&mut col_counts,
+//! 			A_perm_upper.symbolic(),
+//! 			stack,
+//! 		);
+//! 		simplicial::factorize_simplicial_symbolic_cholesky(
+//! 			A_perm_upper.symbolic(),
+//! 			// SAFETY: `etree` was filled correctly by
+//! 			// `simplicial::prefactorize_symbolic_cholesky`.
+//! 			unsafe { simplicial::EliminationTreeRef::from_inner(&etree) },
+//! 			&col_counts,
+//! 			stack,
+//! 		)?
+//! 	};
+//!
+//! 	// numerical factorization
+//! 	let mut mem = MemBuffer::try_new(StackReq::all_of(&[
+//! 		simplicial::factorize_simplicial_numeric_llt_scratch::<usize, f64>(dim),
+//! 		simplicial::factorize_simplicial_numeric_ldlt_scratch::<usize, f64>(dim),
+//! 		faer::perm::permute_rows_in_place_scratch::<usize, f64>(dim, 1),
+//! 		symbolic.solve_in_place_scratch::<f64>(dim),
+//! 	]))?;
+//! 	let stack = MemStack::new(&mut mem);
+//!
+//! 	// numerical llt factorization
+//! 	{
+//! 		let mut L_values = Vec::new();
+//! 		L_values.try_reserve_exact(symbolic.len_val())?;
+//! 		L_values.resize(symbolic.len_val(), 0.0f64);
+//!
+//! 		match simplicial::factorize_simplicial_numeric_llt::<usize, f64>(
+//! 			&mut L_values,
+//! 			A_perm_upper.rb(),
+//! 			LltRegularization::default(),
+//! 			&symbolic,
+//! 			stack,
+//! 		) {
+//! 			Ok(_) => {},
+//! 			Err(err) => panic!("matrix is not positive definite: {err}"),
+//! 		};
+//!
+//! 		let llt = simplicial::SimplicialLltRef::<'_, usize, f64>::new(&symbolic, &L_values);
+//!
+//! 		sol.copy_from(rhs);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack);
+//! 		llt.solve_in_place_with_conj(faer::Conj::No, sol.rb_mut(), faer::Par::Seq, stack);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack);
+//!
+//! 		assert!((&A * &sol - &rhs).norm_max() <= 1e-14);
+//! 	}
+//!
+//! 	// numerical ldlt factorization
+//! 	{
+//! 		let mut L_values = Vec::new();
+//! 		L_values.try_reserve_exact(symbolic.len_val())?;
+//! 		L_values.resize(symbolic.len_val(), 0.0f64);
+//!
+//! 		simplicial::factorize_simplicial_numeric_ldlt::<usize, f64>(
+//! 			&mut L_values,
+//! 			A_perm_upper.rb(),
+//! 			LdltRegularization::default(),
+//! 			&symbolic,
+//! 			stack,
+//! 		);
+//!
+//! 		let ldlt = simplicial::SimplicialLdltRef::<'_, usize, f64>::new(&symbolic, &L_values);
+//!
+//! 		sol.copy_from(rhs);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack);
+//! 		ldlt.solve_in_place_with_conj(faer::Conj::No, sol.rb_mut(), faer::Par::Seq, stack);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack);
+//!
+//! 		assert!((&A * &sol - &rhs).norm_max() <= 1e-14);
+//! 	}
+//! 	Ok(())
+//! }
+//! simplicial_cholesky().unwrap()
+//! ```
+//! supernodal:
+//! ```
+//! fn supernodal_cholesky() -> Result<(), faer::sparse::FaerError> {
+//! 	use faer::Par;
+//! 	use faer::dyn_stack::{MemBuffer, MemStack, StackReq};
+//! 	use faer::reborrow::*;
+//!
+//! 	use faer::linalg::cholesky::bunch_kaufman::factor::BunchKaufmanRegularization;
+//! 	use faer::linalg::cholesky::ldlt::factor::LdltRegularization;
+//!
+//! 	use faer::sparse::linalg::amd;
+//! 	use faer::sparse::linalg::cholesky::{simplicial, supernodal};
+//! 	use faer::sparse::{CreationError, SparseColMat, SymbolicSparseColMat, Triplet};
+//! 	use rand::prelude::*;
+//!
+//! 	// the supernodal cholesky api takes a lower triangular matrix as input, to be
+//! 	// interpreted as self-adjoint.
+//! 	let dim = 8;
+//! 	let A_lower = match SparseColMat::<usize, f64>::try_new_from_triplets(dim, dim, &[
+//! 		// diagonal entries
+//! 		Triplet::new(0, 0, 11.0),
+//! 		Triplet::new(1, 1, 11.0),
+//! 		Triplet::new(2, 2, 12.0),
+//! 		Triplet::new(3, 3, 13.0),
+//! 		Triplet::new(4, 4, 14.0),
+//! 		Triplet::new(5, 5, 16.0),
+//! 		Triplet::new(6, 6, 16.0),
+//! 		Triplet::new(7, 7, 16.0),
+//! 		// non diagonal entries
+//! 		Triplet::new(1, 0, 10.0),
+//! 		Triplet::new(3, 0, 10.5),
+//! 		Triplet::new(4, 0, 10.0),
+//! 		Triplet::new(7, 0, 10.5),
+//! 		Triplet::new(3, 1, 10.5),
+//! 		Triplet::new(4, 1, 10.0),
+//! 		Triplet::new(7, 1, 10.5),
+//! 		Triplet::new(3, 2, 10.5),
+//! 		Triplet::new(4, 2, 10.0),
+//! 		Triplet::new(7, 2, 10.0),
+//! 	]) {
+//! 		Ok(A) => Ok(A),
+//! 		Err(CreationError::Generic(err)) => Err(err),
+//! 		Err(CreationError::OutOfBounds { .. }) => panic!(),
+//! 	}?;
+//!
+//! 	let mut A = faer::sparse::ops::add(A_lower.rb(), A_lower.to_row_major()?.rb().transpose())?;
+//! 	for i in 0..dim {
+//! 		A[(i, i)] /= 2.0;
+//! 	}
+//!
+//! 	let A_nnz = A_lower.compute_nnz();
+//! 	let mut rhs = Vec::new();
+//! 	let mut rng = StdRng::seed_from_u64(0);
+//! 	rhs.try_reserve_exact(dim)?;
+//! 	rhs.resize_with(dim, || rng.gen::<f64>());
+//!
+//! 	let mut sol = Vec::new();
+//! 	sol.try_reserve_exact(dim)?;
+//! 	sol.resize(dim, 0.0f64);
+//!
+//! 	let rhs = faer::MatRef::from_column_major_slice(&rhs, dim, 1);
+//! 	let mut sol = faer::MatMut::from_column_major_slice_mut(&mut sol, dim, 1);
+//!
+//! 	// optional: fill reducing permutation
+//! 	let (perm, perm_inv) = {
+//! 		let mut perm = Vec::new();
+//! 		let mut perm_inv = Vec::new();
+//! 		perm.try_reserve_exact(dim)?;
+//! 		perm_inv.try_reserve_exact(dim)?;
+//! 		perm.resize(dim, 0usize);
+//! 		perm_inv.resize(dim, 0usize);
+//!
+//! 		let mut mem = MemBuffer::try_new(amd::order_scratch::<usize>(dim, A_nnz))?;
+//! 		amd::order(
+//! 			&mut perm,
+//! 			&mut perm_inv,
+//! 			A_lower.symbolic(),
+//! 			amd::Control::default(),
+//! 			MemStack::new(&mut mem),
+//! 		)?;
+//!
+//! 		(perm, perm_inv)
+//! 	};
+//!
+//! 	let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv, dim) };
+//!
+//! 	let A_perm_lower = {
+//! 		let mut A_perm_col_ptrs = Vec::new();
+//! 		let mut A_perm_row_indices = Vec::new();
+//! 		let mut A_perm_values = Vec::new();
+//!
+//! 		A_perm_col_ptrs.try_reserve_exact(dim + 1)?;
+//! 		A_perm_col_ptrs.resize(dim + 1, 0usize);
+//! 		A_perm_row_indices.try_reserve_exact(A_nnz)?;
+//! 		A_perm_row_indices.resize(A_nnz, 0usize);
+//! 		A_perm_values.try_reserve_exact(A_nnz)?;
+//! 		A_perm_values.resize(A_nnz, 0.0f64);
+//!
+//! 		let mut mem = MemBuffer::try_new(faer::sparse::utils::permute_self_adjoint_scratch::<
+//! 			usize,
+//! 		>(dim))?;
+//! 		faer::sparse::utils::permute_self_adjoint_to_unsorted(
+//! 			&mut A_perm_values,
+//! 			&mut A_perm_col_ptrs,
+//! 			&mut A_perm_row_indices,
+//! 			A_lower.rb(),
+//! 			perm,
+//! 			faer::Side::Lower,
+//! 			faer::Side::Lower,
+//! 			MemStack::new(&mut mem),
+//! 		);
+//!
+//! 		SparseColMat::<usize, f64>::new(
+//! 			unsafe {
+//! 				SymbolicSparseColMat::new_unchecked(
+//! 					dim,
+//! 					dim,
+//! 					A_perm_col_ptrs,
+//! 					None,
+//! 					A_perm_row_indices,
+//! 				)
+//! 			},
+//! 			A_perm_values,
+//! 		)
+//! 	};
+//!
+//! 	let A_perm_upper = A_perm_lower.rb().transpose().symbolic().to_col_major()?;
+//!
+//! 	// symbolic analysis
+//! 	let symbolic = {
+//! 		let mut mem = MemBuffer::try_new(StackReq::any_of(&[
+//! 			simplicial::prefactorize_symbolic_cholesky_scratch::<usize>(dim, A_nnz),
+//! 			supernodal::factorize_supernodal_symbolic_cholesky_scratch::<usize>(dim),
+//! 		]))?;
+//! 		let stack = MemStack::new(&mut mem);
+//!
+//! 		let mut etree = Vec::new();
+//! 		let mut col_counts = Vec::new();
+//! 		etree.try_reserve_exact(dim)?;
+//! 		etree.resize(dim, 0isize);
+//! 		col_counts.try_reserve_exact(dim)?;
+//! 		col_counts.resize(dim, 0usize);
+//!
+//! 		simplicial::prefactorize_symbolic_cholesky(
+//! 			&mut etree,
+//! 			&mut col_counts,
+//! 			A_perm_upper.rb(),
+//! 			stack,
+//! 		);
+//! 		supernodal::factorize_supernodal_symbolic_cholesky(
+//! 			A_perm_upper.rb(),
+//! 			// SAFETY: `etree` was filled correctly by
+//! 			// `simplicial::prefactorize_symbolic_cholesky`.
+//! 			unsafe { simplicial::EliminationTreeRef::from_inner(&etree) },
+//! 			&col_counts,
+//! 			stack,
+//! 			faer::sparse::linalg::SymbolicSupernodalParams {
+//! 				relax: Some(&[(usize::MAX, 1.0)]),
+//! 			},
+//! 		)?
+//! 	};
+//!
+//! 	// numerical factorization
+//! 	let mut mem = MemBuffer::try_new(StackReq::any_of(&[
+//! 		supernodal::factorize_supernodal_numeric_llt_scratch::<usize, f64>(
+//! 			&symbolic,
+//! 			faer::Par::Seq,
+//! 			Default::default(),
+//! 		),
+//! 		supernodal::factorize_supernodal_numeric_ldlt_scratch::<usize, f64>(
+//! 			&symbolic,
+//! 			faer::Par::Seq,
+//! 			Default::default(),
+//! 		),
+//! 		supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<usize, f64>(
+//! 			&symbolic,
+//! 			faer::Par::Seq,
+//! 			Default::default(),
+//! 		),
+//! 		faer::perm::permute_rows_in_place_scratch::<usize, f64>(dim, 1),
+//! 		symbolic.solve_in_place_scratch::<f64>(dim, Par::Seq),
+//! 	]))?;
+//! 	let stack = MemStack::new(&mut mem);
+//!
+//! 	// llt skipped since a is not positive-definite
+//!
+//! 	// numerical ldlt factorization
+//! 	{
+//! 		let mut L_values = Vec::new();
+//! 		L_values.try_reserve_exact(symbolic.len_val())?;
+//! 		L_values.resize(symbolic.len_val(), 0.0f64);
+//!
+//! 		supernodal::factorize_supernodal_numeric_ldlt::<usize, f64>(
+//! 			&mut L_values,
+//! 			A_perm_lower.rb(),
+//! 			LdltRegularization::default(),
+//! 			&symbolic,
+//! 			faer::Par::Seq,
+//! 			stack,
+//! 			Default::default(),
+//! 		);
+//!
+//! 		let ldlt = supernodal::SupernodalLdltRef::<'_, usize, f64>::new(&symbolic, &L_values);
+//!
+//! 		sol.copy_from(rhs);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack);
+//! 		ldlt.solve_in_place_with_conj(faer::Conj::No, sol.rb_mut(), faer::Par::Seq, stack);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack);
+//!
+//! 		assert!((&A * &sol - &rhs).norm_max() <= 1e-14);
+//! 	}
+//!
+//! 	// numerical intranodal bunch-kaufman factorization
+//! 	{
+//! 		let mut L_values = Vec::new();
+//! 		let mut subdiag = Vec::new();
+//! 		let mut pivot_perm = Vec::new();
+//! 		let mut pivot_perm_inv = Vec::new();
+//!
+//! 		L_values.try_reserve_exact(symbolic.len_val())?;
+//! 		L_values.resize(symbolic.len_val(), 0.0f64);
+//! 		subdiag.try_reserve_exact(dim)?;
+//! 		subdiag.resize(dim, 0.0f64);
+//! 		pivot_perm.try_reserve(dim)?;
+//! 		pivot_perm.resize(dim, 0usize);
+//! 		pivot_perm_inv.try_reserve(dim)?;
+//! 		pivot_perm_inv.resize(dim, 0usize);
+//!
+//! 		supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman::<usize, f64>(
+//! 			&mut L_values,
+//! 			&mut subdiag,
+//! 			&mut pivot_perm,
+//! 			&mut pivot_perm_inv,
+//! 			A_perm_lower.rb(),
+//! 			BunchKaufmanRegularization::default(),
+//! 			&symbolic,
+//! 			faer::Par::Seq,
+//! 			stack,
+//! 			Default::default(),
+//! 		);
+//!
+//! 		let piv_perm =
+//! 			unsafe { faer::perm::PermRef::new_unchecked(&pivot_perm, &pivot_perm_inv, dim) };
+//! 		let lblt = supernodal::SupernodalIntranodeBunchKaufmanRef::<'_, usize, f64>::new(
+//! 			&symbolic, &L_values, &subdiag, piv_perm,
+//! 		);
+//!
+//! 		sol.copy_from(rhs);
+//! 		// we can merge these two permutations if we want to be optimal
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), piv_perm, stack);
+//!
+//! 		lblt.solve_in_place_no_numeric_permute_with_conj(
+//! 			faer::Conj::No,
+//! 			sol.rb_mut(),
+//! 			faer::Par::Seq,
+//! 			stack,
+//! 		);
+//!
+//! 		// we can also merge these two permutations if we want to be optimal
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), piv_perm.inverse(), stack);
+//! 		faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack);
+//!
+//! 		assert!((&A * &sol - &rhs).norm_max() <= 1e-14);
+//! 	}
+//! 	Ok(())
+//! }
+//!
+//! supernodal_cholesky().unwrap()
+//! ```
+// implementation inspired by https://gitlab.com/hodge_star/catamari
+
 use super::super::utils::*;
 use super::ghost;
 use crate::assert;
@@ -7,55 +499,57 @@ use linalg::cholesky::ldlt::factor::{LdltError, LdltInfo, LdltParams, LdltRegula
 use linalg::cholesky::llt::factor::{LltError, LltInfo, LltParams, LltRegularization};
 use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, amd, triangular_solve};
 
+/// fill reducing ordering to use for the cholesky factorization
 #[derive(Copy, Clone, Debug, Default)]
 pub enum SymmetricOrdering<'a, I: Index> {
-	/// Approximate minimum degree ordering. Default option.
+	/// approximate minimum degree ordering. default option
 	#[default]
 	Amd,
-	/// No reordering.
+	/// no reordering
 	Identity,
-	/// Custom reordering.
+	/// custom reordering
 	Custom(PermRef<'a, I>),
 }
 
-/// Simplicial factorization module.
+/// simplicial factorization module
 ///
-/// A simplicial factorization is one that processes the elements of the Cholesky factor of the
-/// input matrix single elements, rather than by blocks. This is more efficient if the Cholesky
-/// factor is very sparse.
+/// a simplicial factorization is one that processes the elements of the cholesky factor of the
+/// input matrix single elements, rather than by blocks. this is more efficient if the cholesky
+/// factor is very sparse
 pub mod simplicial {
 	use super::*;
 	use crate::assert;
 
-	/// Reference to a slice containing the Cholesky factor's elimination tree.
+	/// reference to a slice containing the cholesky factor's elimination tree
 	///
-	/// The elimination tree (or elimination forest, in the general case) is a structure
-	/// representing the relationship between the columns of the Cholesky factor, and the way
-	/// how earlier columns contribute their sparsity pattern to later columns of the factor.
+	/// the elimination tree (or elimination forest, in the general case) is a structure
+	/// representing the relationship between the columns of the cholesky factor, and the way
+	/// how earlier columns contribute their sparsity pattern to later columns of the factor
 	#[derive(Copy, Clone, Debug)]
 	pub struct EliminationTreeRef<'a, I: Index> {
 		pub(crate) inner: &'a [I::Signed],
 	}
 
 	impl<'a, I: Index> EliminationTreeRef<'a, I> {
+		/// dimension of the original matrix
 		pub fn len(&self) -> usize {
 			self.inner.len()
 		}
 
-		/// Returns the raw elimination tree.
+		/// returns the raw elimination tree
 		///
-		/// A value can be either nonnegative to represent the index of the parent of a given node,
-		/// or `-1` to signify that it has no parent.
+		/// a value can be either nonnegative to represent the index of the parent of a given node,
+		/// or `-1` to signify that it has no parent
 		#[inline]
 		pub fn into_inner(self) -> &'a [I::Signed] {
 			self.inner
 		}
 
-		/// Creates an elimination tree reference from the underlying array.
+		/// creates an elimination tree reference from the underlying array
 		///
-		/// # Safety
-		/// The elimination tree must come from an array that was previously filled with
-		/// [`prefactorize_symbolic_cholesky`].
+		/// # safety
+		/// the elimination tree must come from an array that was previously filled with
+		/// [`prefactorize_symbolic_cholesky`]
 		#[inline]
 		pub unsafe fn from_inner(inner: &'a [I::Signed]) -> Self {
 			Self { inner }
@@ -69,18 +563,18 @@ pub mod simplicial {
 		}
 	}
 
-	/// Computes the size and alignment of the workspace required to compute the elimination tree
-	/// and column counts of a matrix of size `n` with `nnz` non-zero entries.
+	/// computes the size and alignment of the workspace required to compute the elimination tree
+	/// and column counts of a matrix of size `n` with `nnz` non-zero entries
 	pub fn prefactorize_symbolic_cholesky_scratch<I: Index>(n: usize, nnz: usize) -> StackReq {
 		_ = nnz;
 		StackReq::new::<I>(n)
 	}
 
-	/// Computes the elimination tree and column counts of the Cholesky factorization of the matrix
-	/// `A`.
+	/// computes the elimination tree and column counts of the cholesky factorization of the matrix
+	/// $A$
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is analyzed.
+	/// # note
+	/// only the upper triangular part of $A$ is analyzed
 	pub fn prefactorize_symbolic_cholesky<'out, I: Index>(
 		etree: &'out mut [I::Signed],
 		col_counts: &mut [I],
@@ -188,22 +682,22 @@ pub mod simplicial {
 		unsafe { Idx::from_slice_ref_unchecked(stack) }
 	}
 
-	/// Computes the size and alignment of the workspace required to compute the symbolic
-	/// Cholesky factorization of a square matrix with size `n`.
+	/// computes the size and alignment of the workspace required to compute the symbolic
+	/// cholesky factorization of a square matrix with size `n`
 	pub fn factorize_simplicial_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
 		let n_scratch = StackReq::new::<I>(n);
 		StackReq::all_of(&[n_scratch, n_scratch, n_scratch])
 	}
 
-	/// Computes the symbolic structure of the Cholesky factor of the matrix `A`.
+	/// computes the symbolic structure of the cholesky factor of the matrix $A$
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is analyzed.
+	/// # note
+	/// only the upper triangular part of $A$ is analyzed
 	///
-	/// # Panics
-	/// The elimination tree and column counts must be computed by calling
-	/// [`prefactorize_symbolic_cholesky`] with the same matrix. Otherwise, the behavior is
-	/// unspecified and panics may occur.
+	/// # panics
+	/// the elimination tree and column counts must be computed by calling
+	/// [`prefactorize_symbolic_cholesky`] with the same matrix. otherwise, the behavior is
+	/// unspecified and panics may occur
 	pub fn factorize_simplicial_symbolic_cholesky<I: Index>(
 		A: SymbolicSparseColMatRef<'_, I>,
 		etree: EliminationTreeRef<'_, I>,
@@ -563,16 +1057,16 @@ pub mod simplicial {
 		})
 	}
 
-	/// Computes the numeric values of the Cholesky LLT factor of the matrix `A`, and stores them in
-	/// `L_values`.
+	/// computes the numeric values of the cholesky $LL^H$ factor of the matrix $A$, and stores them
+	/// in `l_values`
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is accessed.
+	/// # note
+	/// only the upper triangular part of $A$ is accessed
 	///
-	/// # Panics
-	/// The symbolic structure must be computed by calling
-	/// [`factorize_simplicial_symbolic_cholesky`] on a matrix with the same symbolic structure.
-	/// Otherwise, the behavior is unspecified and panics may occur.
+	/// # panics
+	/// the symbolic structure must be computed by calling
+	/// [`factorize_simplicial_symbolic_cholesky`] on a matrix with the same symbolic structure
+	/// otherwise, the behavior is unspecified and panics may occur
 	pub fn factorize_simplicial_numeric_llt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		A: SparseColMatRef<'_, I, T>,
@@ -594,17 +1088,17 @@ pub mod simplicial {
 		)
 	}
 
-	/// Computes the row indices and  numeric values of the Cholesky LLT factor of the matrix `A`,
-	/// and stores them in `L_row_idx` and `L_values`.
+	/// computes the row indices and  numeric values of the cholesky $LL^H$ factor of the matrix
+	/// $A$, and stores them in `l_row_idx` and `l_values`
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is accessed.
+	/// # note
+	/// only the upper triangular part of $A$ is accessed
 	///
-	/// # Panics
-	/// The elimination tree and column counts must be computed by calling
+	/// # panics
+	/// the elimination tree and column counts must be computed by calling
 	/// [`prefactorize_symbolic_cholesky`] with the same matrix, then the column pointers are
-	/// computed from a prefix sum of the column counts. Otherwise, the behavior is unspecified
-	/// and panics may occur.
+	/// computed from a prefix sum of the column counts. otherwise, the behavior is unspecified
+	/// and panics may occur
 	pub fn factorize_simplicial_numeric_llt_with_row_idx<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		L_row_idx: &mut [I],
@@ -632,16 +1126,16 @@ pub mod simplicial {
 		)
 	}
 
-	/// Computes the numeric values of the Cholesky LDLT factors of the matrix `A`, and stores them
-	/// in `L_values`.
+	/// computes the numeric values of the cholesky $LDL^H$ factors of the matrix $A$, and stores
+	/// them in `l_values`
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is accessed.
+	/// # note
+	/// only the upper triangular part of $A$ is accessed
 	///
-	/// # Panics
-	/// The symbolic structure must be computed by calling
-	/// [`factorize_simplicial_symbolic_cholesky`] on a matrix with the same symbolic structure.
-	/// Otherwise, the behavior is unspecified and panics may occur.
+	/// # panics
+	/// the symbolic structure must be computed by calling
+	/// [`factorize_simplicial_symbolic_cholesky`] on a matrix with the same symbolic structure
+	/// otherwise, the behavior is unspecified and panics may occur
 	pub fn factorize_simplicial_numeric_ldlt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		A: SparseColMatRef<'_, I, T>,
@@ -657,17 +1151,17 @@ pub mod simplicial {
 		}
 	}
 
-	/// Computes the row indices and  numeric values of the Cholesky LDLT factor of the matrix `A`,
-	/// and stores them in `L_row_idx` and `L_values`.
+	/// computes the row indices and  numeric values of the cholesky $LDL^H$ factor of the matrix
+	/// $A$, and stores them in `l_row_idx` and `l_values`
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is accessed.
+	/// # note
+	/// only the upper triangular part of $A$ is accessed
 	///
-	/// # Panics
-	/// The elimination tree and column counts must be computed by calling
+	/// # panics
+	/// the elimination tree and column counts must be computed by calling
 	/// [`prefactorize_symbolic_cholesky`] with the same matrix, then the column pointers are
-	/// computed from a prefix sum of the column counts. Otherwise, the behavior is unspecified
-	/// and panics may occur.
+	/// computed from a prefix sum of the column counts. otherwise, the behavior is unspecified
+	/// and panics may occur
 	pub fn factorize_simplicial_numeric_ldlt_with_row_idx<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		L_row_idx: &mut [I],
@@ -688,33 +1182,33 @@ pub mod simplicial {
 	}
 
 	impl<'a, I: Index, T> SimplicialLltRef<'a, I, T> {
-		/// Creates a new Cholesky LLT factor from the symbolic part and numerical values.
+		/// creates a new cholesky $LL^H$ factor from the symbolic part and numerical values
 		///
-		/// # Panics
-		/// Panics if `values.len() != symbolic.len_val()`>
+		/// # panics
+		/// panics if `values.len() != symbolic.len_val()`>
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSimplicialCholesky<I>, values: &'a [T]) -> Self {
 			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
-		/// Returns the symbolic part of the Cholesky factor.
+		/// returns the symbolic part of the cholesky factor
 		#[inline]
 		pub fn symbolic(self) -> &'a SymbolicSimplicialCholesky<I> {
 			self.symbolic
 		}
 
-		/// Returns the numerical values of the Cholesky LLT factor.
+		/// returns the numerical values of the cholesky $LL^H$ factor
 		#[inline]
 		pub fn values(self) -> &'a [T] {
 			self.values
 		}
 
-		/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-		/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+		/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+		/// conjugating $A$ if needed
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 		where
 			T: ComplexField,
@@ -732,33 +1226,33 @@ pub mod simplicial {
 	}
 
 	impl<'a, I: Index, T> SimplicialLdltRef<'a, I, T> {
-		/// Creates a new Cholesky LDLT factor from the symbolic part and numerical values.
+		/// creates a new cholesky $LDL^H$ factor from the symbolic part and numerical values
 		///
-		/// # Panics
-		/// Panics if `values.len() != symbolic.len_val()`>
+		/// # panics
+		/// panics if `values.len() != symbolic.len_val()`>
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSimplicialCholesky<I>, values: &'a [T]) -> Self {
 			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
-		/// Returns the symbolic part of the Cholesky factor.
+		/// returns the symbolic part of the cholesky factor
 		#[inline]
 		pub fn symbolic(self) -> &'a SymbolicSimplicialCholesky<I> {
 			self.symbolic
 		}
 
-		/// Returns the numerical values of the Cholesky LDLT factor.
+		/// returns the numerical values of the cholesky $LDL^H$ factor
 		#[inline]
 		pub fn values(self) -> &'a [T] {
 			self.values
 		}
 
-		/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-		/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+		/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+		/// conjugating $A$ if needed
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 		where
 			T: ComplexField,
@@ -776,79 +1270,79 @@ pub mod simplicial {
 	}
 
 	impl<I: Index> SymbolicSimplicialCholesky<I> {
-		/// Returns the number of rows of the Cholesky factor.
+		/// returns the number of rows of the cholesky factor
 		#[inline]
 		pub fn nrows(&self) -> usize {
 			self.dimension
 		}
 
-		/// Returns the number of columns of the Cholesky factor.
+		/// returns the number of columns of the cholesky factor
 		#[inline]
 		pub fn ncols(&self) -> usize {
 			self.nrows()
 		}
 
-		/// Returns the length of the slice that can be used to contain the numerical values of the
-		/// Cholesky factor.
+		/// returns the length of the slice that can be used to contain the numerical values of the
+		/// cholesky factor
 		#[inline]
 		pub fn len_val(&self) -> usize {
 			self.row_idx.len()
 		}
 
-		/// Returns the column pointers of the Cholesky factor.
+		/// returns the column pointers of the cholesky factor
 		#[inline]
 		pub fn col_ptr(&self) -> &[I] {
 			&self.col_ptr
 		}
 
-		/// Returns the row indices of the Cholesky factor.
+		/// returns the row indices of the cholesky factor
 		#[inline]
 		pub fn row_idx(&self) -> &[I] {
 			&self.row_idx
 		}
 
-		/// Returns the Cholesky factor's symbolic structure.
+		/// returns the cholesky factor's symbolic structure
 		#[inline]
 		pub fn factor(&self) -> SymbolicSparseColMatRef<'_, I> {
 			unsafe { SymbolicSparseColMatRef::new_unchecked(self.dimension, self.dimension, &self.col_ptr, None, &self.row_idx) }
 		}
 
-		/// Returns the size and alignment of the workspace required to solve the system `A×x =
-		/// rhs`.
+		/// returns the size and alignment of the workspace required to solve the system
+		/// $A x = rhs$
 		pub fn solve_in_place_scratch<T>(&self, rhs_ncols: usize) -> StackReq {
 			let _ = rhs_ncols;
 			StackReq::EMPTY
 		}
 	}
 
-	/// Returns the size and alignment of the workspace required to compute the numeric
-	/// Cholesky LDLT factorization of a matrix `A` with dimension `n`.
+	/// returns the size and alignment of the workspace required to compute the numeric
+	/// cholesky $LDL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_simplicial_numeric_ldlt_scratch<I: Index, T: ComplexField>(n: usize) -> StackReq {
 		let n_scratch = StackReq::new::<I>(n);
 		StackReq::all_of(&[temp_mat_scratch::<T>(n, 1), n_scratch, n_scratch, n_scratch])
 	}
 
-	/// Returns the size and alignment of the workspace required to compute the numeric
-	/// Cholesky LLT factorization of a matrix `A` with dimension `n`.
+	/// returns the size and alignment of the workspace required to compute the numeric
+	/// cholesky $LL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_simplicial_numeric_llt_scratch<I: Index, T: ComplexField>(n: usize) -> StackReq {
 		factorize_simplicial_numeric_ldlt_scratch::<I, T>(n)
 	}
 
-	/// Cholesky LLT factor containing both its symbolic and numeric representations.
+	/// cholesky $LL^H$ factor containing both its symbolic and numeric representations
 	#[derive(Debug)]
 	pub struct SimplicialLltRef<'a, I: Index, T> {
 		symbolic: &'a SymbolicSimplicialCholesky<I>,
 		values: &'a [T],
 	}
 
-	/// Cholesky LDLT factors containing both the symbolic and numeric representations.
+	/// cholesky $LDL^H$ factors containing both the symbolic and numeric representations
 	#[derive(Debug)]
 	pub struct SimplicialLdltRef<'a, I: Index, T> {
 		symbolic: &'a SymbolicSimplicialCholesky<I>,
 		values: &'a [T],
 	}
 
-	/// Cholesky factor structure containing its symbolic structure.
+	/// cholesky factor structure containing its symbolic structure
 	#[derive(Debug, Clone)]
 	pub struct SymbolicSimplicialCholesky<I> {
 		dimension: usize,
@@ -872,11 +1366,11 @@ pub mod simplicial {
 	}
 }
 
-/// Supernodal factorization module.
+/// supernodal factorization module
 ///
-/// A supernodal factorization is one that processes the elements of the Cholesky factor of the
-/// input matrix by blocks, rather than single elements. This is more efficient if the Cholesky
-/// factor is somewhat dense.
+/// a supernodal factorization is one that processes the elements of the cholesky factor of the
+/// input matrix by blocks, rather than single elements. this is more efficient if the cholesky
+/// factor is somewhat dense
 pub mod supernodal {
 	use super::*;
 	use crate::{Shape, assert, debug_assert};
@@ -950,14 +1444,14 @@ pub mod supernodal {
 		}
 	}
 
-	/// Symbolic structure of a single supernode from the Cholesky factor.
+	/// symbolic structure of a single supernode from the cholesky factor
 	#[derive(Debug)]
 	pub struct SymbolicSupernodeRef<'a, I> {
 		start: usize,
 		pattern: &'a [I],
 	}
 
-	/// A single supernode from the Cholesky factor.
+	/// a single supernode from the cholesky factor
 	#[derive(Debug)]
 	pub struct SupernodeRef<'a, I: Index, T> {
 		matrix: MatRef<'a, T>,
@@ -979,53 +1473,53 @@ pub mod supernodal {
 	}
 
 	impl<'a, I: Index> SymbolicSupernodeRef<'a, I> {
-		/// Returns the starting index of the supernode.
+		/// returns the starting index of the supernode
 		#[inline]
 		pub fn start(self) -> usize {
 			self.start
 		}
 
-		/// Returns the pattern of the row indices in the supernode, excluding those on the block
-		/// diagonal.
+		/// returns the pattern of the row indices in the supernode, excluding those on the block
+		/// diagonal
 		pub fn pattern(self) -> &'a [I] {
 			self.pattern
 		}
 	}
 
 	impl<'a, I: Index, T> SupernodeRef<'a, I, T> {
-		/// Returns the starting index of the supernode.
+		/// returns the starting index of the supernode
 		#[inline]
 		pub fn start(self) -> usize {
 			self.symbolic.start
 		}
 
-		/// Returns the pattern of the row indices in the supernode, excluding those on the block
-		/// diagonal.
+		/// returns the pattern of the row indices in the supernode, excluding those on the block
+		/// diagonal
 		pub fn pattern(self) -> &'a [I] {
 			self.symbolic.pattern
 		}
 
-		/// Returns a view over the numerical values of the supernode.
+		/// returns a view over the numerical values of the supernode
 		pub fn val(self) -> MatRef<'a, T> {
 			self.matrix
 		}
 	}
 
-	/// Cholesky LLT factor containing both its symbolic and numeric representations.
+	/// cholesky $LL^H$ factor containing both its symbolic and numeric representations
 	#[derive(Debug)]
 	pub struct SupernodalLltRef<'a, I: Index, T> {
 		symbolic: &'a SymbolicSupernodalCholesky<I>,
 		values: &'a [T],
 	}
 
-	/// Cholesky LDLT factors containing both the symbolic and numeric representations.
+	/// cholesky $LDL^H$ factors containing both the symbolic and numeric representations
 	#[derive(Debug)]
 	pub struct SupernodalLdltRef<'a, I: Index, T> {
 		symbolic: &'a SymbolicSupernodalCholesky<I>,
 		values: &'a [T],
 	}
 
-	/// Cholesky Bunch-Kaufman factors containing both the symbolic and numeric representations.
+	/// cholesky bunch-kaufman factors containing both the symbolic and numeric representations
 	#[derive(Debug)]
 	pub struct SupernodalIntranodeBunchKaufmanRef<'a, I: Index, T> {
 		symbolic: &'a SymbolicSupernodalCholesky<I>,
@@ -1034,7 +1528,7 @@ pub mod supernodal {
 		pub(super) perm: PermRef<'a, I>,
 	}
 
-	/// Cholesky factor structure containing its symbolic structure.
+	/// cholesky factor structure containing its symbolic structure
 	#[derive(Debug)]
 	pub struct SymbolicSupernodalCholesky<I> {
 		pub(crate) dimension: usize,
@@ -1051,68 +1545,68 @@ pub mod supernodal {
 	}
 
 	impl<I: Index> SymbolicSupernodalCholesky<I> {
-		/// Returns the number of supernodes in the Cholesky factor.
+		/// returns the number of supernodes in the cholesky factor
 		#[inline]
 		pub fn n_supernodes(&self) -> usize {
 			self.supernode_postorder.len()
 		}
 
-		/// Returns the number of rows of the Cholesky factor.
+		/// returns the number of rows of the cholesky factor
 		#[inline]
 		pub fn nrows(&self) -> usize {
 			self.dimension
 		}
 
-		/// Returns the number of columns of the Cholesky factor.
+		/// returns the number of columns of the cholesky factor
 		#[inline]
 		pub fn ncols(&self) -> usize {
 			self.nrows()
 		}
 
-		/// Returns the length of the slice that can be used to contain the numerical values of the
-		/// Cholesky factor.
+		/// returns the length of the slice that can be used to contain the numerical values of the
+		/// cholesky factor
 		#[inline]
 		pub fn len_val(&self) -> usize {
 			self.col_ptr_for_val()[self.n_supernodes()].zx()
 		}
 
-		/// Returns a slice of length `self.n_supernodes()` containing the beginning index of each
-		/// supernode.
+		/// returns a slice of length `self.n_supernodes()` containing the beginning index of each
+		/// supernode
 		#[inline]
 		pub fn supernode_begin(&self) -> &[I] {
 			&self.supernode_begin[..self.n_supernodes()]
 		}
 
-		/// Returns a slice of length `self.n_supernodes()` containing the past-the-end index of
+		/// returns a slice of length `self.n_supernodes()` containing the past-the-end index of
 		/// each
 		#[inline]
 		pub fn supernode_end(&self) -> &[I] {
 			&self.supernode_begin[1..]
 		}
 
-		/// Returns the column pointers for row indices of each supernode.
+		/// returns the column pointers for row indices of each supernode
 		#[inline]
 		pub fn col_ptr_for_row_idx(&self) -> &[I] {
 			&self.col_ptr_for_row_idx
 		}
 
-		/// Returns the column pointers for numerical values of each supernode.
+		/// returns the column pointers for numerical values of each supernode
 		#[inline]
 		pub fn col_ptr_for_val(&self) -> &[I] {
 			&self.col_ptr_for_val
 		}
 
-		/// Returns the row indices of the Cholesky factor.
+		/// returns the row indices of the cholesky factor
 		///
-		/// # Note
-		/// Note that the row indices of each supernode do not contain those of the block diagonal
-		/// part.
+		/// # note
+		/// note that the row indices of each supernode do not contain those of the block diagonal
+		/// part
 		#[inline]
 		pub fn row_idx(&self) -> &[I] {
 			&self.row_idx
 		}
 
-		/// Returns the symbolic structure of the `s`'th supernode.
+		/// returns the symbolic structure of the `s`'th supernode
 		#[inline]
 		pub fn supernode(&self, s: usize) -> supernodal::SymbolicSupernodeRef<'_, I> {
 			let symbolic = self;
@@ -1121,8 +1615,8 @@ pub mod supernodal {
 			supernodal::SymbolicSupernodeRef { start, pattern }
 		}
 
-		/// Returns the size and alignment of the workspace required to solve the system `A×x =
-		/// rhs`.
+		/// returns the size and alignment of the workspace required to solve the system
+		/// $A x = rhs$
 		pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 			_ = par;
 			let mut req = StackReq::EMPTY;
@@ -1252,30 +1746,30 @@ pub mod supernodal {
 	}
 
 	impl<'a, I: Index, T> SupernodalLdltRef<'a, I, T> {
-		/// Creates new Cholesky LDLT factors from the symbolic part and
-		/// numerical values.
+		/// creates new cholesky $LDL^H$ factors from the symbolic part and
+		/// numerical values
 		///
-		/// # Panics
-		/// - Panics if `values.len() != symbolic.len_val()`.
+		/// # panics
+		/// - panics if `values.len() != symbolic.len_val()`
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: &'a [T]) -> Self {
 			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
-		/// Returns the symbolic part of the Cholesky factor.
+		/// returns the symbolic part of the cholesky factor
 		#[inline]
 		pub fn symbolic(self) -> &'a SymbolicSupernodalCholesky<I> {
 			self.symbolic
 		}
 
-		/// Returns the numerical values of the L factor.
+		/// returns the numerical values of the l factor
 		#[inline]
 		pub fn values(self) -> &'a [T] {
 			self.values
 		}
 
-		/// Returns the `s`'th supernode.
+		/// returns the `s`'th supernode
 		#[inline]
 		pub fn supernode(self, s: usize) -> SupernodeRef<'a, I, T> {
 			let symbolic = self.symbolic();
@@ -1302,11 +1796,11 @@ pub mod supernodal {
 			}
 		}
 
-		/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-		/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+		/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+		/// conjugating $A$ if needed
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		#[math]
 		pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 		where
@@ -1386,30 +1880,30 @@ pub mod supernodal {
 	}
 
 	impl<'a, I: Index, T> SupernodalLltRef<'a, I, T> {
-		/// Creates a new Cholesky LLT factor from the symbolic part and
-		/// numerical values.
+		/// creates a new cholesky $LL^H$ factor from the symbolic part and
+		/// numerical values
 		///
-		/// # Panics
-		/// - Panics if `values.len() != symbolic.len_val()`.
+		/// # panics
+		/// - panics if `values.len() != symbolic.len_val()`
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: &'a [T]) -> Self {
 			assert!(values.len() == symbolic.len_val());
 			Self { symbolic, values }
 		}
 
-		/// Returns the symbolic part of the Cholesky factor.
+		/// returns the symbolic part of the cholesky factor
 		#[inline]
 		pub fn symbolic(self) -> &'a SymbolicSupernodalCholesky<I> {
 			self.symbolic
 		}
 
-		/// Returns the numerical values of the L factor.
+		/// returns the numerical values of the l factor
 		#[inline]
 		pub fn values(self) -> &'a [T] {
 			self.values
 		}
 
-		/// Returns the `s`'th supernode.
+		/// returns the `s`'th supernode
 		#[inline]
 		pub fn supernode(self, s: usize) -> SupernodeRef<'a, I, T> {
 			let symbolic = self.symbolic();
@@ -1436,11 +1930,11 @@ pub mod supernodal {
 			}
 		}
 
-		/// Solves the equation $\text{Op}(L) x = \text{rhs}$ and stores the result in `rhs`, where
-		/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+		/// solves the equation $L x = \text{rhs}$ and stores the result in `rhs`,
+		/// implicitly conjugating $L$ if needed
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		#[math]
 		pub fn l_solve_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 		where
@@ -1473,12 +1967,11 @@ pub mod supernodal {
 			}
 		}
 
-		/// Solves the equation $\text{Op}(L^\top) x = \text{rhs}$ and stores the result in `rhs`,
-		/// where $\text{Op}$ is either the identity or the conjugate, depending on the
-		/// value of `conj`.
+		/// solves the equation $L^\top x = \text{rhs}$ and stores the result in `rhs`,
+		/// implicitly conjugating $L$ if needed
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		#[inline]
 		#[math]
 		pub fn l_transpose_solve_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
@@ -1512,11 +2005,11 @@ pub mod supernodal {
 			}
 		}
 
-		/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-		/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+		/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+		/// conjugating $A$ if needed
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		#[math]
 		pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 		where
@@ -1579,13 +2072,13 @@ pub mod supernodal {
 	}
 
 	impl<'a, I: Index, T> SupernodalIntranodeBunchKaufmanRef<'a, I, T> {
-		/// Creates a new Cholesky intranodal Bunch-Kaufman factor from the symbolic part and
-		/// numerical values, as well as the pivoting permutation.
+		/// creates a new cholesky intranodal bunch-kaufman factor from the symbolic part and
+		/// numerical values, as well as the pivoting permutation
 		///
-		/// # Panics
-		/// - Panics if `values.len() != symbolic.len_val()`.
-		/// - Panics if `subdiag.len() != symbolic.nrows()`.
-		/// - Panics if `perm.len() != symbolic.nrows()`.
+		/// # panics
+		/// - panics if `values.len() != symbolic.len_val()`
+		/// - panics if `subdiag.len() != symbolic.nrows()`
+		/// - panics if `perm.len() != symbolic.nrows()`
 		#[inline]
 		pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: &'a [T], subdiag: &'a [T], perm: PermRef<'a, I>) -> Self {
 			assert!(all(
@@ -1601,19 +2094,19 @@ pub mod supernodal {
 			}
 		}
 
-		/// Returns the symbolic part of the Cholesky factor.
+		/// returns the symbolic part of the cholesky factor
 		#[inline]
 		pub fn symbolic(self) -> &'a SymbolicSupernodalCholesky<I> {
 			self.symbolic
 		}
 
-		/// Returns the numerical values of the L factor.
+		/// returns the numerical values of the l factor
 		#[inline]
 		pub fn val(self) -> &'a [T] {
 			self.values
 		}
 
-		/// Returns the `s`'th supernode.
+		/// returns the `s`'th supernode
 		#[inline]
 		pub fn supernode(self, s: usize) -> SupernodeRef<'a, I, T> {
 			let symbolic = self.symbolic();
@@ -1640,20 +2133,21 @@ pub mod supernodal {
 			}
 		}
 
+		/// returns the pivoting permutation
 		#[inline]
 		pub fn perm(&self) -> PermRef<'a, I> {
 			self.perm
 		}
 
-		/// Solves the system $\text{Op}(L B L^H) x = \text{rhs}$, where $\text{Op}$ is either the
-		/// identity or the conjugate depending on the value of `conj`.
+		/// solves the system $L B L^H x = \text{rhs}$, implicitly conjugating $L$ and
+		/// $B$ if needed
 		///
-		/// # Note
-		/// Note that this function doesn't apply the pivoting permutation. Users are expected to
-		/// apply it manually to `rhs` before and after calling this function.
+		/// # note
+		/// note that this function doesn't apply the pivoting permutation. users are expected to
+		/// apply it manually to `rhs` before and after calling this function
 		///
-		/// # Panics
-		/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+		/// # panics
+		/// panics if `rhs.nrows() != self.symbolic().nrows()`
 		#[math]
 		pub fn solve_in_place_no_numeric_permute_with_conj(self, conj_lb: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 		where
@@ -1760,21 +2254,21 @@ pub mod supernodal {
 		}
 	}
 
-	/// Returns the size and alignment of the workspace required to compute the symbolic supernodal
-	/// factorization of a matrix of size `n`.
+	/// returns the size and alignment of the workspace required to compute the symbolic supernodal
+	/// factorization of a matrix of size `n`
 	pub fn factorize_supernodal_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
 		StackReq::new::<I>(n).array(4)
 	}
 
-	/// Computes the supernodal symbolic structure of the Cholesky factor of the matrix `A`.
+	/// computes the supernodal symbolic structure of the cholesky factor of the matrix $A$
 	///
-	/// # Note
-	/// Only the upper triangular part of `A` is analyzed.
+	/// # note
+	/// only the upper triangular part of $A$ is analyzed
 	///
-	/// # Panics
-	/// The elimination tree and column counts must be computed by calling
-	/// [`simplicial::prefactorize_symbolic_cholesky`] with the same matrix. Otherwise, the behavior
-	/// is unspecified and panics may occur.
+	/// # panics
+	/// the elimination tree and column counts must be computed by calling
+	/// [`simplicial::prefactorize_symbolic_cholesky`] with the same matrix. otherwise, the behavior
+	/// is unspecified and panics may occur
 	pub fn factorize_supernodal_symbolic_cholesky<I: Index>(
 		A: SymbolicSparseColMatRef<'_, I>,
 		etree: simplicial::EliminationTreeRef<'_, I>,
@@ -2242,8 +2736,8 @@ pub mod supernodal {
 		move |&i| i < idx
 	}
 
-	/// Returns the size and alignment of the workspace required to compute the numeric
-	/// Cholesky LLT factorization of a matrix `A` with dimension `n`.
+	/// returns the size and alignment of the workspace required to compute the numeric
+	/// cholesky $LL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_supernodal_numeric_llt_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
@@ -2284,8 +2778,8 @@ pub mod supernodal {
 		req.and(StackReq::new::<I>(n))
 	}
 
-	/// Returns the size and alignment of the workspace required to compute the numeric
-	/// Cholesky LDLT factorization of a matrix `A` with dimension `n`.
+	/// returns the size and alignment of the workspace required to compute the numeric
+	/// cholesky $LDL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_supernodal_numeric_ldlt_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
@@ -2333,9 +2827,9 @@ pub mod supernodal {
 		req.and(StackReq::new::<I>(n))
 	}
 
-	/// Returns the size and alignment of the workspace required to compute the numeric
-	/// Cholesky Bunch-Kaufman factorization with intranodal pivoting of a matrix `A` with dimension
-	/// `n`.
+	/// returns the size and alignment of the workspace required to compute the numeric
+	/// cholesky bunch-kaufman factorization with intranodal pivoting of a matrix $A$ with dimension
+	/// `n`
 	pub fn factorize_supernodal_numeric_intranode_bunch_kaufman_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
@@ -2388,17 +2882,17 @@ pub mod supernodal {
 		req.and(StackReq::new::<I>(n))
 	}
 
-	/// Computes the numeric values of the Cholesky LLT factor of the matrix `A`, and stores them in
-	/// `L_values`.
+	/// computes the numeric values of the cholesky $LL^H$ factor of the matrix $A$, and stores them
+	/// in `l_values`
 	///
-	/// # Warning
-	/// Only the *lower* (not upper, unlike the other functions) triangular part of `A` is
-	/// accessed.
+	/// # warning
+	/// only the *lower* (not upper, unlike the other functions) triangular part of $A$ is
+	/// accessed
 	///
-	/// # Panics
-	/// The symbolic structure must be computed by calling
-	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure.
-	/// Otherwise, the behavior is unspecified and panics may occur.
+	/// # panics
+	/// the symbolic structure must be computed by calling
+	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure
+	/// otherwise, the behavior is unspecified and panics may occur
 	#[math]
 	pub fn factorize_supernodal_numeric_llt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
@@ -2552,17 +3046,17 @@ pub mod supernodal {
 		})
 	}
 
-	/// Computes the numeric values of the Cholesky LDLT factors of the matrix `A`, and stores them
-	/// in `L_values`.
+	/// computes the numeric values of the cholesky $LDL^H$ factors of the matrix $A$, and stores
+	/// them in `l_values`
 	///
-	/// # Note
-	/// Only the *lower* (not upper, unlike the other functions) triangular part of `A` is
-	/// accessed.
+	/// # note
+	/// only the *lower* (not upper, unlike the other functions) triangular part of $A$ is
+	/// accessed
 	///
-	/// # Panics
-	/// The symbolic structure must be computed by calling
-	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure.
-	/// Otherwise, the behavior is unspecified and panics may occur.
+	/// # panics
+	/// the symbolic structure must be computed by calling
+	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure
+	/// otherwise, the behavior is unspecified and panics may occur
 	#[math]
 	pub fn factorize_supernodal_numeric_ldlt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
@@ -2748,17 +3242,17 @@ pub mod supernodal {
 		})
 	}
 
-	/// Computes the numeric values of the Cholesky Bunch-Kaufman factors of the matrix `A` with
-	/// intranodal pivoting, and stores them in `L_values`.
+	/// computes the numeric values of the cholesky bunch-kaufman factors of the matrix $A$ with
+	/// intranodal pivoting, and stores them in `l_values`
 	///
-	/// # Note
-	/// Only the *lower* (not upper, unlike the other functions) triangular part of `A` is
-	/// accessed.
+	/// # note
+	/// only the *lower* (not upper, unlike the other functions) triangular part of $A$ is
+	/// accessed
 	///
-	/// # Panics
-	/// The symbolic structure must be computed by calling
-	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure.
-	/// Otherwise, the behavior is unspecified and panics may occur.
+	/// # panics
+	/// the symbolic structure must be computed by calling
+	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure
+	/// otherwise, the behavior is unspecified and panics may occur
 	#[math]
 	pub fn factorize_supernodal_numeric_intranode_bunch_kaufman<I: Index, T: ComplexField>(
 		L_values: &mut [T],
@@ -3059,27 +3553,27 @@ pub(crate) fn ghost_postorder<'n, I: Index>(post: &mut Array<'n, I>, etree: &Arr
 	}
 }
 
-/// Tuning parameters for the symbolic Cholesky factorization.
+/// tuning parameters for the symbolic cholesky factorization
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CholeskySymbolicParams<'a> {
-	/// Parameters for computing the fill-reducing permutation.
+	/// parameters for computing the fill-reducing permutation
 	pub amd_params: amd::Control,
-	/// Threshold for selecting the supernodal factorization.
+	/// threshold for selecting the supernodal factorization
 	pub supernodal_flop_ratio_threshold: SupernodalThreshold,
-	/// Supernodal factorization parameters.
+	/// supernodal factorization parameters
 	pub supernodal_params: SymbolicSupernodalParams<'a>,
 }
 
-/// The inner factorization used for the symbolic Cholesky, either simplicial or symbolic.
+/// the inner factorization used for the symbolic cholesky, either simplicial or symbolic
 #[derive(Debug)]
 pub enum SymbolicCholeskyRaw<I> {
-	/// Simplicial structure.
+	/// simplicial structure
 	Simplicial(simplicial::SymbolicSimplicialCholesky<I>),
-	/// Supernodal structure.
+	/// supernodal structure
 	Supernodal(supernodal::SymbolicSupernodalCholesky<I>),
 }
 
-/// The symbolic structure of a sparse Cholesky decomposition.
+/// the symbolic structure of a sparse cholesky decomposition
 #[derive(Debug)]
 pub struct SymbolicCholesky<I> {
 	raw: SymbolicCholeskyRaw<I>,
@@ -3089,7 +3583,7 @@ pub struct SymbolicCholesky<I> {
 }
 
 impl<I: Index> SymbolicCholesky<I> {
-	/// Returns the number of rows of the matrix.
+	/// returns the number of rows of the matrix
 	#[inline]
 	pub fn nrows(&self) -> usize {
 		match &self.raw {
@@ -3098,19 +3592,19 @@ impl<I: Index> SymbolicCholesky<I> {
 		}
 	}
 
-	/// Returns the number of columns of the matrix.
+	/// returns the number of columns of the matrix
 	#[inline]
 	pub fn ncols(&self) -> usize {
 		self.nrows()
 	}
 
-	/// Returns the inner type of the factorization, either simplicial or symbolic.
+	/// returns the inner type of the factorization, either simplicial or symbolic
 	#[inline]
 	pub fn raw(&self) -> &SymbolicCholeskyRaw<I> {
 		&self.raw
 	}
 
-	/// Returns the permutation that was computed during symbolic analysis.
+	/// returns the permutation that was computed during symbolic analysis
 	#[inline]
 	pub fn perm(&self) -> Option<PermRef<'_, I>> {
 		match (&self.perm_fwd, &self.perm_inv) {
@@ -3119,8 +3613,8 @@ impl<I: Index> SymbolicCholesky<I> {
 		}
 	}
 
-	/// Returns the length of the slice needed to store the numerical values of the Cholesky
-	/// decomposition.
+	/// returns the length of the slice needed to store the numerical values of the cholesky
+	/// decomposition
 	#[inline]
 	pub fn len_val(&self) -> usize {
 		match &self.raw {
@@ -3129,7 +3623,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		}
 	}
 
-	/// Computes the required workspace size and alignment for a numerical LLT factorization.
+	/// computes the required workspace size and alignment for a numerical $LL^H$ factorization
 	#[inline]
 	pub fn factorize_numeric_llt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LltParams, T>) -> StackReq {
 		let n = self.nrows();
@@ -3147,7 +3641,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		StackReq::all_of(&[A_scratch, StackReq::or(permute_scratch, factor_scratch)])
 	}
 
-	/// Computes the required workspace size and alignment for a numerical LDLT factorization.
+	/// computes the required workspace size and alignment for a numerical $LDL^H$ factorization
 	#[inline]
 	pub fn factorize_numeric_ldlt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LdltParams, T>) -> StackReq {
 		let n = self.nrows();
@@ -3167,8 +3661,8 @@ impl<I: Index> SymbolicCholesky<I> {
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
 	}
 
-	/// Computes the required workspace size and alignment for a numerical intranodal Bunch-Kaufman
-	/// factorization.
+	/// computes the required workspace size and alignment for a numerical intranodal bunch-kaufman
+	/// factorization
 	#[inline]
 	pub fn factorize_numeric_intranode_bunch_kaufman_scratch<T: ComplexField>(&self, par: Par, params: Spec<BunchKaufmanParams, T>) -> StackReq {
 		let n = self.nrows();
@@ -3190,8 +3684,8 @@ impl<I: Index> SymbolicCholesky<I> {
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
 	}
 
-	/// Computes a numerical LLT factorization of A, or returns a [`LltError`] if the matrix
-	/// is not numerically positive definite.
+	/// computes a numerical llt factorization of a, or returns a [`LltError`] if the matrix
+	/// is not numerically positive definite
 	#[track_caller]
 	pub fn factorize_numeric_llt<'out, T: ComplexField>(
 		&'out self,
@@ -3245,7 +3739,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		Ok(LltRef::<'out, I, T>::new(self, L_values))
 	}
 
-	/// Computes a numerical LDLT factorization of A.
+	/// computes a numerical $LDL^H$ factorization of a
 	#[inline]
 	pub fn factorize_numeric_ldlt<'out, T: ComplexField>(
 		&'out self,
@@ -3329,7 +3823,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		Ok(LdltRef::<'out, I, T>::new(self, L_values))
 	}
 
-	/// Computes a numerical intranodal Bunch-Kaufman factorization of A.
+	/// computes a numerical intranodal bunch-kaufman factorization of a
 	#[inline]
 	pub fn factorize_numeric_intranode_bunch_kaufman<'out, T: ComplexField>(
 		&'out self,
@@ -3436,8 +3930,8 @@ impl<I: Index> SymbolicCholesky<I> {
 		})
 	}
 
-	/// Computes the required workspace size and alignment for a dense solve in place using an LLT,
-	/// LDLT or intranodal Bunch-Kaufman factorization.
+	/// computes the required workspace size and alignment for a dense solve in place using an
+	/// $LL^H$, $LDL^H$ or intranodal bunch-kaufman factorization
 	pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(match self.raw() {
 			SymbolicCholeskyRaw::Simplicial(this) => this.solve_in_place_scratch::<T>(rhs_ncols),
@@ -3446,21 +3940,21 @@ impl<I: Index> SymbolicCholesky<I> {
 	}
 }
 
-/// Sparse LLT factorization wrapper.
+/// sparse $LL^H$ factorization wrapper
 #[derive(Debug)]
 pub struct LltRef<'a, I: Index, T> {
 	symbolic: &'a SymbolicCholesky<I>,
 	values: &'a [T],
 }
 
-/// Sparse LDLT factorization wrapper.
+/// sparse $LDL^H$ factorization wrapper
 #[derive(Debug)]
 pub struct LdltRef<'a, I: Index, T> {
 	symbolic: &'a SymbolicCholesky<I>,
 	values: &'a [T],
 }
 
-/// Sparse intranodal Bunch-Kaufman factorization wrapper.
+/// sparse intranodal bunch-kaufman factorization wrapper
 #[derive(Debug)]
 pub struct IntranodeBunchKaufmanRef<'a, I: Index, T> {
 	symbolic: &'a SymbolicCholesky<I>,
@@ -3515,13 +4009,13 @@ impl<'a, I: Index, T> Clone for IntranodeBunchKaufmanRef<'a, I, T> {
 }
 
 impl<'a, I: Index, T> IntranodeBunchKaufmanRef<'a, I, T> {
-	/// Creates a new Cholesky intranodal Bunch-Kaufman factor from the symbolic part and
-	/// numerical values, as well as the pivoting permutation.
+	/// creates a new cholesky intranodal bunch-kaufman factor from the symbolic part and
+	/// numerical values, as well as the pivoting permutation
 	///
-	/// # Panics
-	/// - Panics if `values.len() != symbolic.len_val()`.
-	/// - Panics if `subdiag.len() != symbolic.nrows()`.
-	/// - Panics if `perm.len() != symbolic.nrows()`.
+	/// # panics
+	/// - panics if `values.len() != symbolic.len_val()`
+	/// - panics if `subdiag.len() != symbolic.nrows()`
+	/// - panics if `perm.len() != symbolic.nrows()`
 	#[inline]
 	pub fn new(symbolic: &'a SymbolicCholesky<I>, values: &'a [T], subdiag: &'a [T], perm: PermRef<'a, I>) -> Self {
 		assert!(all(
@@ -3537,17 +4031,17 @@ impl<'a, I: Index, T> IntranodeBunchKaufmanRef<'a, I, T> {
 		}
 	}
 
-	/// Returns the symbolic part of the Cholesky factor.
+	/// returns the symbolic part of the cholesky factor
 	#[inline]
 	pub fn symbolic(self) -> &'a SymbolicCholesky<I> {
 		self.symbolic
 	}
 
-	/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-	/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+	/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+	/// conjugating $A$ if needed
 	///
-	/// # Panics
-	/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+	/// # panics
+	/// panics if `rhs.nrows() != self.symbolic().nrows()`
 	pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 	where
 		T: ComplexField,
@@ -3626,28 +4120,28 @@ impl<'a, I: Index, T> IntranodeBunchKaufmanRef<'a, I, T> {
 }
 
 impl<'a, I: Index, T> LltRef<'a, I, T> {
-	/// Creates a new Cholesky LLT factor from the symbolic part and
-	/// numerical values.
+	/// creates a new cholesky $LL^H$ factor from the symbolic part and
+	/// numerical values
 	///
-	/// # Panics
-	/// - Panics if `values.len() != symbolic.len_val()`.
+	/// # panics
+	/// - panics if `values.len() != symbolic.len_val()`
 	#[inline]
 	pub fn new(symbolic: &'a SymbolicCholesky<I>, values: &'a [T]) -> Self {
 		assert!(symbolic.len_val() == values.len());
 		Self { symbolic, values }
 	}
 
-	/// Returns the symbolic part of the Cholesky factor.
+	/// returns the symbolic part of the cholesky factor
 	#[inline]
 	pub fn symbolic(self) -> &'a SymbolicCholesky<I> {
 		self.symbolic
 	}
 
-	/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-	/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+	/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+	/// conjugating $A$ if needed
 	///
-	/// # Panics
-	/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+	/// # panics
+	/// panics if `rhs.nrows() != self.symbolic().nrows()`
 	pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 	where
 		T: ComplexField,
@@ -3690,28 +4184,28 @@ impl<'a, I: Index, T> LltRef<'a, I, T> {
 }
 
 impl<'a, I: Index, T> LdltRef<'a, I, T> {
-	/// Creates new Cholesky LDLT factors from the symbolic part and
-	/// numerical values.
+	/// creates new cholesky $LDL^H$ factors from the symbolic part and
+	/// numerical values
 	///
-	/// # Panics
-	/// - Panics if `values.len() != symbolic.len_val()`.
+	/// # panics
+	/// - panics if `values.len() != symbolic.len_val()`
 	#[inline]
 	pub fn new(symbolic: &'a SymbolicCholesky<I>, values: &'a [T]) -> Self {
 		assert!(symbolic.len_val() == values.len());
 		Self { symbolic, values }
 	}
 
-	/// Returns the symbolic part of the Cholesky factor.
+	/// returns the symbolic part of the cholesky factor
 	#[inline]
 	pub fn symbolic(self) -> &'a SymbolicCholesky<I> {
 		self.symbolic
 	}
 
-	/// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
-	/// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+	/// solves the equation $A x = \text{rhs}$ and stores the result in `rhs`, implicitly
+	/// conjugating $A$ if needed
 	///
-	/// # Panics
-	/// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+	/// # panics
+	/// panics if `rhs.nrows() != self.symbolic().nrows()`
 	pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack)
 	where
 		T: ComplexField,
@@ -3753,8 +4247,8 @@ impl<'a, I: Index, T> LdltRef<'a, I, T> {
 	}
 }
 
-/// Computes the symbolic Cholesky factorization of the matrix `A`, or returns an error if the
-/// operation could not be completed.
+/// computes the symbolic cholesky factorization of the matrix $A$, or returns an error if the
+/// operation could not be completed
 pub fn factorize_symbolic_cholesky<I: Index>(
 	A: SymbolicSparseColMatRef<'_, I>,
 	side: Side,

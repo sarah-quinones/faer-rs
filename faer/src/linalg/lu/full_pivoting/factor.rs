@@ -397,7 +397,7 @@ fn lu_in_place_unblocked<T: ComplexField>(
 	transpose: bool,
 	params: Spec<FullPivLuParams, T>,
 ) -> usize {
-	let params = params.into_inner();
+	let params = params.config;
 	let mut n_trans = 0;
 
 	let (m, n) = A.shape();
@@ -505,6 +505,7 @@ pub struct FullPivLuParams {
 	/// threshold at which size the parallelism should be disabled.
 	pub par_threshold: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 

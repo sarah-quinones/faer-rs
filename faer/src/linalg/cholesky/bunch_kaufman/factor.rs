@@ -19,6 +19,7 @@ pub struct BunchKaufmanParams {
 	/// Block size of the algorithm.
 	pub blocksize: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -683,7 +684,7 @@ fn convert<'N, I: Index, T: ComplexField>(mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>
 /// Computes the size and alignment of required workspace for performing a Cholesky
 /// decomposition with Bunch-Kaufman pivoting.
 pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<BunchKaufmanParams, T>) -> StackReq {
-	let params = params.into_inner();
+	let params = params.config;
 	let _ = par;
 	let mut bs = params.blocksize;
 	if bs < 2 || dim <= bs {
@@ -726,7 +727,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 	params: Spec<BunchKaufmanParams, T>,
 ) -> (BunchKaufmanInfo, PermRef<'out, I>) {
-	let params = params.into_inner();
+	let params = params.config;
 
 	let truncate = <I::Signed as SignedIndex>::truncate;
 

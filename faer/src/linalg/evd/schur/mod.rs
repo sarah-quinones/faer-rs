@@ -15,6 +15,7 @@ pub struct SchurParams {
 	/// sweep
 	pub nibble_threshold: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 use crate::internal_prelude::{DiagMut, DiagRef};
 
-/// Diagonal matrix.
+/// diagonal matrix
 #[derive(Clone)]
 pub struct Diag<T, Dim: Shape = usize> {
 	pub(crate) inner: Col<T, Dim>,
@@ -14,31 +14,31 @@ impl<T: core::fmt::Debug, Dim: Shape> core::fmt::Debug for Diag<T, Dim> {
 }
 
 impl<T, Dim: Shape> Diag<T, Dim> {
-	/// Returns the diagonal as a column vector view.
+	/// returns the diagonal as a column vector
 	#[inline(always)]
 	pub fn column_vector(&self) -> ColRef<'_, T, Dim> {
 		self.as_ref().column_vector()
 	}
 
-	/// Returns the diagonal as a mutable column vector view.
+	/// returns the diagonal as a column vector
 	#[inline(always)]
 	pub fn column_vector_mut(&mut self) -> ColMut<'_, T, Dim> {
 		self.as_mut().column_vector_mut()
 	}
 
-	/// Returns the diagonal as a column vector.
+	/// returns the diagonal as a column vector
 	#[inline(always)]
 	pub fn into_column_vector(self) -> Col<T, Dim> {
 		self.inner
 	}
 
-	/// Returns a view over `self`.
+	/// returns a view over `self`
 	#[inline(always)]
 	pub fn as_ref(&self) -> DiagRef<'_, T, Dim> {
 		DiagRef { inner: self.inner.as_ref() }
 	}
 
-	/// Returns a mutable view over `self`.
+	/// returns a view over `self`
 	#[inline(always)]
 	pub fn as_mut(&mut self) -> DiagMut<'_, T, Dim> {
 		DiagMut { inner: self.inner.as_mut() }
@@ -46,6 +46,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`DiagRef::as_shape`]
 	pub fn as_shape<D: Shape>(&self, len: D) -> DiagRef<'_, T, D> {
 		DiagRef {
 			inner: self.inner.as_row_shape(len),
@@ -53,16 +54,19 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::as_dyn`]
 	pub fn as_dyn(&self) -> DiagRef<'_, T> {
 		self.as_ref().as_dyn()
 	}
 
 	#[inline]
+	/// see [`DiagMut::as_dyn_mut`]
 	pub fn as_dyn_mut(&mut self) -> DiagMut<'_, T> {
 		self.as_mut().as_dyn_mut()
 	}
 
 	#[inline]
+	/// see [`DiagRef::conjugate`]
 	pub fn conjugate(&self) -> DiagRef<'_, T::Conj, Dim>
 	where
 		T: Conjugate,
@@ -73,6 +77,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::canonical`]
 	pub fn canonical(&self) -> DiagRef<'_, T::Canonical, Dim>
 	where
 		T: Conjugate,
@@ -84,6 +89,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`DiagMut::as_shape_mut`]
 	pub fn as_shape_mut<D: Shape>(&mut self, len: D) -> DiagMut<'_, T, D> {
 		DiagMut {
 			inner: self.inner.as_row_shape_mut(len),
@@ -91,6 +97,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	}
 
 	#[inline]
+	/// see [`DiagMut::conjugate_mut`]
 	pub fn conjugate_mut(&mut self) -> DiagMut<'_, T::Conj, Dim>
 	where
 		T: Conjugate,
@@ -101,6 +108,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	}
 
 	#[inline]
+	/// see [`DiagMut::canonical_mut`]
 	pub fn canonical_mut(&mut self) -> DiagMut<'_, T::Canonical, Dim>
 	where
 		T: Conjugate,
@@ -110,11 +118,13 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		}
 	}
 
+	/// returns the dimension of `self`
 	#[inline]
 	pub fn dim(&self) -> Dim {
 		self.inner.nrows()
 	}
 
+	/// returns a new diagonal with dimension `dim`, filled with zeros
 	#[inline]
 	pub fn zeros(dim: Dim) -> Self
 	where
@@ -123,6 +133,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		Self { inner: Col::zeros(dim) }
 	}
 
+	/// returns a new diagonal with dimension `dim`, filled with ones
 	#[inline]
 	pub fn ones(dim: Dim) -> Self
 	where
@@ -131,6 +142,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		Self { inner: Col::ones(dim) }
 	}
 
+	/// returns a new diagonal with dimension `dim`, filled with `value`
 	#[inline]
 	pub fn full(dim: Dim, value: T) -> Self
 	where
@@ -141,6 +153,7 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		}
 	}
 
+	/// copies `other` into `self`
 	#[inline]
 	#[track_caller]
 	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, rhs: impl AsDiagRef<T = RhsT, Dim = Dim>)

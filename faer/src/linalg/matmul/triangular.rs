@@ -702,49 +702,49 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 	}
 }
 
-/// Describes the parts of the matrix that must be accessed.
+/// describes the parts of the matrix that must be accessed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockStructure {
-	/// The full matrix is accessed.
+	/// the full matrix is accessed.
 	Rectangular,
-	/// The lower triangular half (including the diagonal) is accessed.
+	/// the lower triangular half (including the diagonal) is accessed.
 	TriangularLower,
-	/// The lower triangular half (excluding the diagonal) is accessed.
+	/// the lower triangular half (excluding the diagonal) is accessed.
 	StrictTriangularLower,
-	/// The lower triangular half (excluding the diagonal, which is assumed to be equal to
+	/// the lower triangular half (excluding the diagonal, which is assumed to be equal to
 	/// `1.0`) is accessed.
 	UnitTriangularLower,
-	/// The upper triangular half (including the diagonal) is accessed.
+	/// the upper triangular half (including the diagonal) is accessed.
 	TriangularUpper,
-	/// The upper triangular half (excluding the diagonal) is accessed.
+	/// the upper triangular half (excluding the diagonal) is accessed.
 	StrictTriangularUpper,
-	/// The upper triangular half (excluding the diagonal, which is assumed to be equal to
+	/// the upper triangular half (excluding the diagonal, which is assumed to be equal to
 	/// `1.0`) is accessed.
 	UnitTriangularUpper,
 }
 
 impl BlockStructure {
-	/// Checks if `self` is full.
+	/// checks if `self` is full.
 	#[inline]
 	pub fn is_dense(self) -> bool {
 		matches!(self, BlockStructure::Rectangular)
 	}
 
-	/// Checks if `self` is triangular lower (either inclusive or exclusive).
+	/// checks if `self` is triangular lower (either inclusive or exclusive).
 	#[inline]
 	pub fn is_lower(self) -> bool {
 		use BlockStructure::*;
 		matches!(self, TriangularLower | StrictTriangularLower | UnitTriangularLower)
 	}
 
-	/// Checks if `self` is triangular upper (either inclusive or exclusive).
+	/// checks if `self` is triangular upper (either inclusive or exclusive).
 	#[inline]
 	pub fn is_upper(self) -> bool {
 		use BlockStructure::*;
 		matches!(self, TriangularUpper | StrictTriangularUpper | UnitTriangularUpper)
 	}
 
-	/// Returns the block structure corresponding to the transposed matrix.
+	/// returns the block structure corresponding to the transposed matrix.
 	#[inline]
 	pub fn transpose(self) -> Self {
 		use BlockStructure::*;
@@ -802,6 +802,72 @@ fn precondition<M: Shape, N: Shape, K: Shape>(
 	}
 }
 
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly conjugating the
+/// operands if needed) and stores the result in `acc`
+///
+/// performs the operation:
+/// - `acc = alpha * lhs * rhs` if `beta` is `accum::replace` (in this case, the preexisting
+/// values in `acc` are not read)
+/// - `acc = acc + alpha * lhs * rhs` if `beta` is `accum::add`
+///
+/// the left hand side and right hand side may be interpreted as triangular depending on the
+/// given corresponding matrix structure.
+///
+/// for the destination matrix, the result is:
+/// - fully computed if the structure is rectangular,
+/// - only the triangular half (including the diagonal) is computed if the structure is
+/// triangular
+/// - only the strict triangular half (excluding the diagonal) is computed if the structure is
+/// strictly triangular or unit triangular
+///
+/// # panics
+///
+/// panics if the matrix dimensions are not compatible for matrix multiplication.
+/// i.e.  
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
+///  - `lhs.ncols() == rhs.nrows()`
+///
+/// additionally, matrices that are marked as triangular must be square, i.e., they must have
+/// the same number of rows and columns.
+///
+/// # example
+///
+/// ```
+/// use faer::linalg::matmul::triangular::{BlockStructure, matmul_with_conj};
+/// use faer::{Accum, Conj, Mat, Par, mat, unzip, zip};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+/// 	[
+/// 		2.5 * (lhs[(0, 0)] * rhs[(0, 0)] + lhs[(0, 1)] * rhs[(1, 0)]),
+/// 		0.0,
+/// 	],
+/// 	[
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 0)] + lhs[(1, 1)] * rhs[(1, 0)]),
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 1)] + lhs[(1, 1)] * rhs[(1, 1)]),
+/// 	],
+/// ];
+///
+/// matmul_with_conj(
+/// 	&mut acc,
+/// 	BlockStructure::TriangularLower,
+/// 	Accum::Replace,
+/// 	&lhs,
+/// 	BlockStructure::Rectangular,
+/// 	Conj::No,
+/// 	&rhs,
+/// 	BlockStructure::Rectangular,
+/// 	Conj::No,
+/// 	2.5,
+/// 	Par::Seq,
+/// );
+///
+/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// ```
 #[track_caller]
 #[inline]
 pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
@@ -856,6 +922,70 @@ pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
 	);
 }
 
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly conjugating the
+/// operands if needed) and stores the result in `acc`
+///
+/// performs the operation:
+/// - `acc = alpha * lhs * rhs` if `beta` is `accum::replace` (in this case, the preexisting
+/// values in `acc` are not read)
+/// - `acc = acc + alpha * lhs * rhs` if `beta` is `accum::add`
+///
+/// the left hand side and right hand side may be interpreted as triangular depending on the
+/// given corresponding matrix structure.
+///
+/// for the destination matrix, the result is:
+/// - fully computed if the structure is rectangular,
+/// - only the triangular half (including the diagonal) is computed if the structure is
+/// triangular
+/// - only the strict triangular half (excluding the diagonal) is computed if the structure is
+/// strictly triangular or unit triangular
+///
+/// # panics
+///
+/// panics if the matrix dimensions are not compatible for matrix multiplication.
+/// i.e.  
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
+///  - `lhs.ncols() == rhs.nrows()`
+///
+/// additionally, matrices that are marked as triangular must be square, i.e., they must have
+/// the same number of rows and columns.
+///
+/// # example
+///
+/// ```
+/// use faer::linalg::matmul::triangular::{BlockStructure, matmul};
+/// use faer::{Accum, Conj, Mat, Par, mat, unzip, zip};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+/// 	[
+/// 		2.5 * (lhs[(0, 0)] * rhs[(0, 0)] + lhs[(0, 1)] * rhs[(1, 0)]),
+/// 		0.0,
+/// 	],
+/// 	[
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 0)] + lhs[(1, 1)] * rhs[(1, 0)]),
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 1)] + lhs[(1, 1)] * rhs[(1, 1)]),
+/// 	],
+/// ];
+///
+/// matmul(
+/// 	&mut acc,
+/// 	BlockStructure::TriangularLower,
+/// 	Accum::Replace,
+/// 	&lhs,
+/// 	BlockStructure::Rectangular,
+/// 	&rhs,
+/// 	BlockStructure::Rectangular,
+/// 	2.5,
+/// 	Par::Seq,
+/// );
+///
+/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// ```
 #[track_caller]
 #[inline]
 pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape>(

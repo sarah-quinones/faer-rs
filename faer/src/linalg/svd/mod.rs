@@ -39,6 +39,7 @@ pub struct SvdParams {
 	pub qr_ratio_threshold: f64,
 
 	#[doc(hidden)]
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -411,7 +412,7 @@ pub fn svd_scratch<T: ComplexField>(
 	par: Par,
 	params: Spec<SvdParams, T>,
 ) -> StackReq {
-	let params = params.into_inner();
+	let params = params.config;
 	let mut m = nrows;
 	let mut n = ncols;
 	let mut compute_u = compute_u;
@@ -464,7 +465,7 @@ pub fn svd<T: ComplexField>(
 	stack: &mut MemStack,
 	params: Spec<SvdParams, T>,
 ) -> Result<(), SvdError> {
-	let params = params.into_inner();
+	let params = params.config;
 
 	let (m, n) = A.shape();
 	let size = Ord::min(m, n);

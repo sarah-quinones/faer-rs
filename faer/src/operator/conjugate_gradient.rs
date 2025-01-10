@@ -3,46 +3,48 @@ use crate::matrix_free::*;
 use linalg::cholesky::llt_pivoting::factor as piv_llt;
 use linalg::matmul::triangular::BlockStructure;
 
-/// Algorithm parameters.
+/// algorithm parameters
 #[derive(Copy, Clone, Debug)]
 pub struct CgParams<T: RealField> {
-	/// Whether the initial guess is implicitly zero or not.
+	/// whether the initial guess is implicitly zero or not
 	pub initial_guess: InitialGuessStatus,
-	/// Absolute tolerance for convergence testing.
+	/// absolute tolerance for convergence testing
 	pub abs_tolerance: T,
-	/// Relative tolerance for convergence testing.
+	/// relative tolerance for convergence testing
 	pub rel_tolerance: T,
-	/// Maximum number of iterations.
+	/// maximum number of iterations
 	pub max_iters: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
-/// Algorithm result.
+/// algorithm result
 #[derive(Copy, Clone, Debug)]
 pub struct CgInfo<T: RealField> {
-	/// Absolute residual at the final step.
+	/// absolute residual at the final step
 	pub abs_residual: T,
-	/// Relative residual at the final step.
+	/// relative residual at the final step
 	pub rel_residual: T,
-	/// Number of iterations executed by the algorithm.
+	/// number of iterations executed by the algorithm
 	pub iter_count: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
-/// Algorithm error.
+/// algorithm error
 #[derive(Copy, Clone, Debug)]
 pub enum CgError<T: ComplexField> {
-	/// Operator was detected to not be positive definite.
+	/// operator was detected to not be positive definite
 	NonPositiveDefiniteOperator,
-	/// Preconditioner was detected to not be positive definite.
+	/// preconditioner was detected to not be positive definite
 	NonPositiveDefinitePreconditioner,
-	/// Convergence failure.
+	/// convergence failure
 	NoConvergence {
-		/// Absolute residual at the final step.
+		/// absolute residual at the final step
 		abs_residual: T::Real,
-		/// Relative residual at the final step.
+		/// relative residual at the final step
 		rel_residual: T::Real,
 	},
 }
@@ -61,8 +63,8 @@ impl<T: RealField> Default for CgParams<T> {
 	}
 }
 
-/// Computes the size and alignment of required workspace for executing the conjugate gradient
-/// algorithm.
+/// computes the size and alignment of required workspace for executing the conjugate gradient
+/// algorithm
 pub fn conjugate_gradient_scratch<T: ComplexField>(precond: impl Precond<T>, mat: impl LinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {
 	fn implementation<T: ComplexField>(M: &dyn Precond<T>, A: &dyn LinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {
 		let n = A.nrows();
@@ -99,10 +101,10 @@ pub fn conjugate_gradient_scratch<T: ComplexField>(precond: impl Precond<T>, mat
 	implementation(&precond, &mat, rhs_ncols, par)
 }
 
-/// Executes the conjugate gradient using the provided preconditioner.
+/// executes the conjugate gradient using the provided preconditioner
 ///
-/// # Note
-/// This function is also optimized for a RHS with multiple columns.
+/// # note
+/// this function is also optimized for a rhs with multiple columns
 #[inline]
 #[track_caller]
 pub fn conjugate_gradient<T: ComplexField>(

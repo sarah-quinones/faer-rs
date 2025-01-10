@@ -4,14 +4,14 @@ const CHOLESKY_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const QR_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const LU_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 
-/// Tuning parameters for the supernodal factorizations.
+/// tuning parameters for the supernodal factorizations
 #[derive(Copy, Clone, Debug)]
 pub struct SymbolicSupernodalParams<'a> {
-	/// Supernode relaxation thresholds.
+	/// supernode relaxation thresholds
 	///
-	/// Let `n` be the total number of columns in two adjacent supernodes.
-	/// Let `z` be the fraction of zero entries in the two supernodes if they
-	/// are merged (z includes zero entries from prior amalgamations). The
+	/// let `n` be the total number of columns in two adjacent supernodes.
+	/// let `z` be the fraction of zero entries in the two supernodes if they
+	/// are merged (z includes zero entries from prior amalgamations). the
 	/// two supernodes are merged if:
 	///
 	/// `(n <= relax[0].0 && z < relax[0].1) || (n <= relax[1].0 && z < relax[1].1) || ...`
@@ -27,12 +27,12 @@ impl Default for SymbolicSupernodalParams<'_> {
 	}
 }
 
-/// Nonnegative threshold controlling when the supernodal factorization is used.
+/// nonnegative threshold controlling when the supernodal factorization is used
 ///
-/// Increasing it makes it more likely for the simplicial factorization to be used,
-/// while decreasing it makes it more likely for the supernodal factorization to be used.
+/// increasing it makes it more likely for the simplicial factorization to be used,
+/// while decreasing it makes it more likely for the supernodal factorization to be used
 ///
-/// A value of `1.0` is the default.
+/// `1.0` is the default value
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SupernodalThreshold(pub f64);
 
@@ -44,17 +44,20 @@ impl Default for SupernodalThreshold {
 }
 
 impl SupernodalThreshold {
-	/// Determine automatically which variant to select.
+	/// determine automatically which variant to select
 	pub const AUTO: Self = Self(1.0);
-	/// Simplicial factorization is always selected.
+	/// simplicial factorization is always selected
 	pub const FORCE_SIMPLICIAL: Self = Self(f64::INFINITY);
-	/// Supernodal factorization is always selected.
+	/// supernodal factorization is always selected
 	pub const FORCE_SUPERNODAL: Self = Self(0.0);
 }
 
+/// sparse $ll^\top$ error
 #[derive(Copy, Clone, Debug)]
 pub enum LltError {
+	/// numerical error
 	Numeric(linalg::cholesky::llt::factor::LltError),
+	/// non algorithmic error
 	Generic(FaerError),
 }
 impl core::fmt::Display for LltError {
@@ -71,15 +74,16 @@ impl From<linalg::cholesky::llt::factor::LltError> for LltError {
 		Self::Numeric(value)
 	}
 }
-/// Sparse LU error.
+/// sparse $lu$ error.
 #[derive(Copy, Clone, Debug)]
 pub enum LuError {
-	/// Generic sparse error.
+	/// rank deficient symbolic structure
+	SymbolicSingular {
+		/// iteration at which a pivot could not be found
+		index: usize,
+	},
+	/// non algorithmic error
 	Generic(FaerError),
-	/// Rank deficient symbolic structure.
-	///
-	/// Contains the iteration at which a pivot could not be found.
-	SymbolicSingular(usize),
 }
 
 impl core::fmt::Display for LuError {
@@ -102,9 +106,12 @@ impl<T: Into<FaerError>> From<T> for LuError {
 	}
 }
 
+/// sparse matrix multiplication
 pub mod matmul;
+/// sparse matrix triangular solve
 pub mod triangular_solve;
 
+/// high-level sparse matrix solvers
 #[path = "../solvers.rs"]
 pub mod solvers;
 

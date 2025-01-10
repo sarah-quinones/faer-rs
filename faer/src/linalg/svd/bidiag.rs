@@ -14,6 +14,7 @@ pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par:
 pub struct BidiagParams {
 	/// At which size the parallelism should be disabled.
 	pub par_threshold: usize,
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -37,7 +38,7 @@ pub fn bidiag_in_place<T: ComplexField>(
 	stack: &mut MemStack,
 	params: Spec<BidiagParams, T>,
 ) {
-	let params = params.into_inner();
+	let params = params.config;
 	let m = A.nrows();
 	let n = A.ncols();
 	let size = Ord::min(m, n);

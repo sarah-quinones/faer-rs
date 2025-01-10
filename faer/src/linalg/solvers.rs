@@ -193,7 +193,7 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 	}
 }
 
-impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
+impl<C: Conjugate> MatRef<'_, C> {
 	#[track_caller]
 	pub fn partial_piv_lu(&self) -> PartialPivLu<C::Canonical> {
 		PartialPivLu::new(self.as_mat_ref())
@@ -217,6 +217,11 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
 	#[track_caller]
 	pub fn svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
 		Svd::new(self.as_mat_ref())
+	}
+
+	#[track_caller]
+	pub fn thin_svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
+		Svd::new_thin(self.as_mat_ref())
 	}
 
 	#[track_caller]
@@ -274,6 +279,7 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
 	}
 
 	#[azucar::infer]
+	#[track_caller]
 	pub fn singular_values(&self) -> Result<Vec<Real<C>>, SvdError> {
 		pub fn imp<T: ComplexField>(A: MatRef<'_, T>) -> Result<Vec<T::Real>, SvdError> {
 			let par = get_global_parallelism();
@@ -306,7 +312,7 @@ impl<C: Conjugate> dyn crate::mat::MatExt<C> + '_ {
 	}
 }
 
-impl<T: RealField> dyn crate::mat::MatExt<T> + '_ {
+impl<T: RealField> MatRef<'_, T> {
 	#[track_caller]
 	pub fn eigen_from_real(&self) -> Result<Eigen<T>, EvdError> {
 		Eigen::new_from_real(self.as_mat_ref())
@@ -350,7 +356,7 @@ impl<T: RealField> dyn crate::mat::MatExt<T> + '_ {
 	}
 }
 
-impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> + '_ {
+impl<T: RealField> MatRef<'_, Complex<T>> {
 	#[track_caller]
 	pub fn eigen(&self) -> Result<Eigen<T>, EvdError> {
 		Eigen::new(self.as_mat_ref())
@@ -386,6 +392,179 @@ impl<T: RealField> dyn crate::mat::MatExt<Complex<T>> + '_ {
 		Ok(s.column_vector().iter().cloned().collect())
 	}
 }
+
+impl<C: Conjugate> MatMut<'_, C> {
+	#[track_caller]
+	pub fn partial_piv_lu(&self) -> PartialPivLu<C::Canonical> {
+		self.rb().partial_piv_lu()
+	}
+
+	#[track_caller]
+	pub fn full_piv_lu(&self) -> FullPivLu<C::Canonical> {
+		self.rb().full_piv_lu()
+	}
+
+	#[track_caller]
+	pub fn qr(&self) -> Qr<C::Canonical> {
+		self.rb().qr()
+	}
+
+	#[track_caller]
+	pub fn col_piv_qr(&self) -> ColPivQr<C::Canonical> {
+		self.rb().col_piv_qr()
+	}
+
+	#[track_caller]
+	pub fn svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
+		self.rb().svd()
+	}
+
+	#[track_caller]
+	pub fn thin_svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
+		self.rb().thin_svd()
+	}
+
+	#[track_caller]
+	pub fn llt(&self, side: Side) -> Result<Llt<C::Canonical>, LltError> {
+		self.rb().llt(side)
+	}
+
+	#[track_caller]
+	pub fn ldlt(&self, side: Side) -> Result<Ldlt<C::Canonical>, LdltError> {
+		self.rb().ldlt(side)
+	}
+
+	#[track_caller]
+	pub fn lblt(&self, side: Side) -> Lblt<C::Canonical> {
+		self.rb().lblt(side)
+	}
+
+	#[track_caller]
+	pub fn self_adjoint_eigen(&self, side: Side) -> Result<SelfAdjointEigen<C::Canonical>, EvdError> {
+		self.rb().self_adjoint_eigen(side)
+	}
+
+	#[track_caller]
+	pub fn self_adjoint_eigenvalues(&self, side: Side) -> Result<Vec<Real<C>>, EvdError> {
+		self.rb().self_adjoint_eigenvalues(side)
+	}
+
+	#[track_caller]
+	pub fn singular_values(&self) -> Result<Vec<Real<C>>, SvdError> {
+		self.rb().singular_values()
+	}
+}
+
+impl<T: RealField> MatMut<'_, T> {
+	#[track_caller]
+	pub fn eigen_from_real(&self) -> Result<Eigen<T>, EvdError> {
+		self.rb().eigen_from_real()
+	}
+
+	#[track_caller]
+	pub fn eigenvalues_from_real(&self) -> Result<Vec<Complex<T>>, EvdError> {
+		self.rb().eigenvalues_from_real()
+	}
+}
+
+impl<T: RealField> MatMut<'_, Complex<T>> {
+	#[track_caller]
+	pub fn eigen(&self) -> Result<Eigen<T>, EvdError> {
+		self.rb().eigen()
+	}
+
+	#[track_caller]
+	pub fn eigenvalues(&self) -> Result<Vec<Complex<T>>, EvdError> {
+		self.rb().eigenvalues()
+	}
+}
+
+impl<C: Conjugate> Mat<C> {
+	#[track_caller]
+	pub fn partial_piv_lu(&self) -> PartialPivLu<C::Canonical> {
+		self.rb().partial_piv_lu()
+	}
+
+	#[track_caller]
+	pub fn full_piv_lu(&self) -> FullPivLu<C::Canonical> {
+		self.rb().full_piv_lu()
+	}
+
+	#[track_caller]
+	pub fn qr(&self) -> Qr<C::Canonical> {
+		self.rb().qr()
+	}
+
+	#[track_caller]
+	pub fn col_piv_qr(&self) -> ColPivQr<C::Canonical> {
+		self.rb().col_piv_qr()
+	}
+
+	#[track_caller]
+	pub fn svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
+		self.rb().svd()
+	}
+
+	#[track_caller]
+	pub fn thin_svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
+		self.rb().thin_svd()
+	}
+
+	#[track_caller]
+	pub fn llt(&self, side: Side) -> Result<Llt<C::Canonical>, LltError> {
+		self.rb().llt(side)
+	}
+
+	#[track_caller]
+	pub fn ldlt(&self, side: Side) -> Result<Ldlt<C::Canonical>, LdltError> {
+		self.rb().ldlt(side)
+	}
+
+	#[track_caller]
+	pub fn lblt(&self, side: Side) -> Lblt<C::Canonical> {
+		self.rb().lblt(side)
+	}
+
+	#[track_caller]
+	pub fn self_adjoint_eigen(&self, side: Side) -> Result<SelfAdjointEigen<C::Canonical>, EvdError> {
+		self.rb().self_adjoint_eigen(side)
+	}
+
+	#[track_caller]
+	pub fn self_adjoint_eigenvalues(&self, side: Side) -> Result<Vec<Real<C>>, EvdError> {
+		self.rb().self_adjoint_eigenvalues(side)
+	}
+
+	#[track_caller]
+	pub fn singular_values(&self) -> Result<Vec<Real<C>>, SvdError> {
+		self.rb().singular_values()
+	}
+}
+
+impl<T: RealField> Mat<T> {
+	#[track_caller]
+	pub fn eigen_from_real(&self) -> Result<Eigen<T>, EvdError> {
+		self.rb().eigen_from_real()
+	}
+
+	#[track_caller]
+	pub fn eigenvalues_from_real(&self) -> Result<Vec<Complex<T>>, EvdError> {
+		self.rb().eigenvalues_from_real()
+	}
+}
+
+impl<T: RealField> Mat<Complex<T>> {
+	#[track_caller]
+	pub fn eigen(&self) -> Result<Eigen<T>, EvdError> {
+		self.rb().eigen()
+	}
+
+	#[track_caller]
+	pub fn eigenvalues(&self) -> Result<Vec<Complex<T>>, EvdError> {
+		self.rb().eigenvalues()
+	}
+}
+
 pub trait SolveLstsq<T: ComplexField>: SolveLstsqCore<T> {}
 pub trait DenseSolve<T: ComplexField>: DenseSolveCore<T> {}
 

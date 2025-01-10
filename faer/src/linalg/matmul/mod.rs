@@ -1,3 +1,5 @@
+//! matrix multiplication
+
 use super::temp_mat_scratch;
 use crate::col::ColRef;
 use crate::internal_prelude::*;
@@ -14,12 +16,16 @@ use generativity::make_guard;
 use pulp::Simd;
 use reborrow::*;
 
+/// triangular matrix multiplication module, where some of the operands are treated as triangular
+/// matrices
 pub mod triangular;
 
+/// dot product
 pub mod dot {
 	use super::*;
 	use faer_traits::SimdArch;
 
+	/// returns `lhs * rhs`, implicitly conjugating the operands if needed
 	pub fn inner_prod<K: Shape, T: ComplexField>(lhs: RowRef<T, K>, conj_lhs: Conj, rhs: ColRef<T, K>, conj_rhs: Conj) -> T {
 		#[math]
 		pub fn imp<'K, T: ComplexField>(lhs: RowRef<T, Dim<'K>>, conj_lhs: Conj, rhs: ColRef<T, Dim<'K>>, conj_rhs: Conj) -> T {
@@ -97,7 +103,7 @@ pub mod dot {
 	}
 
 	#[inline(always)]
-	pub fn inner_prod_no_conj_simd<'K, T: ComplexField, S: Simd>(
+	pub(crate) fn inner_prod_no_conj_simd<'K, T: ComplexField, S: Simd>(
 		simd: SimdCtx<'K, T, S>,
 		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
 		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
@@ -151,7 +157,7 @@ pub mod dot {
 	}
 
 	#[inline(always)]
-	pub fn inner_prod_conj_lhs_simd<'K, T: ComplexField, S: Simd>(
+	pub(crate) fn inner_prod_conj_lhs_simd<'K, T: ComplexField, S: Simd>(
 		simd: SimdCtx<'K, T, S>,
 		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
 		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
@@ -205,7 +211,12 @@ pub mod dot {
 	}
 
 	#[math]
-	pub fn inner_prod_schoolbook<'K, T: ComplexField>(lhs: RowRef<'_, T, Dim<'K>>, conj_lhs: Conj, rhs: ColRef<'_, T, Dim<'K>>, conj_rhs: Conj) -> T {
+	pub(crate) fn inner_prod_schoolbook<'K, T: ComplexField>(
+		lhs: RowRef<'_, T, Dim<'K>>,
+		conj_lhs: Conj,
+		rhs: ColRef<'_, T, Dim<'K>>,
+		conj_rhs: Conj,
+	) -> T {
 		let mut acc = zero();
 
 		for k in lhs.ncols().indices() {
@@ -686,6 +697,46 @@ fn precondition<M: Shape, N: Shape, K: Shape>(dst_nrows: M, dst_ncols: N, lhs_nr
 	assert!(all(dst_nrows == lhs_nrows, dst_ncols == rhs_ncols, lhs_ncols == rhs_nrows,));
 }
 
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` and stores the result in `acc`
+///
+/// performs the operation:
+/// - `acc = alpha * lhs * rhs` if `beta` is `Accum::Replace` (in this case, the preexisting
+/// values in `acc` are not read)
+/// - `acc = acc + alpha * lhs * rhs` if `beta` is `Accum::Add`
+///
+/// # panics
+///
+/// panics if the matrix dimensions are not compatible for matrix multiplication.
+/// i.e.  
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
+///  - `lhs.ncols() == rhs.nrows()`
+///
+/// # Example
+///
+/// ```
+/// use faer::linalg::matmul::matmul;
+/// use faer::{Accum, Conj, Mat, Par, mat, unzip, zip};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+/// 	[
+/// 		2.5 * (lhs[(0, 0)] * rhs[(0, 0)] + lhs[(0, 1)] * rhs[(1, 0)]),
+/// 		2.5 * (lhs[(0, 0)] * rhs[(0, 1)] + lhs[(0, 1)] * rhs[(1, 1)]),
+/// 	],
+/// 	[
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 0)] + lhs[(1, 1)] * rhs[(1, 0)]),
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 1)] + lhs[(1, 1)] * rhs[(1, 1)]),
+/// 	],
+/// ];
+///
+/// matmul(&mut acc, Accum::Replace, &lhs, &rhs, 2.5, Par::Seq);
+///
+/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// ```
 #[track_caller]
 #[inline]
 pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape>(
@@ -722,6 +773,56 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 	);
 }
 
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly conjugating the
+/// operands if needed) and stores the result in `acc`
+///
+/// performs the operation:
+/// - `acc = alpha * lhs * rhs` if `beta` is `Accum::Replace` (in this case, the preexisting
+/// values in `acc` are not read)
+/// - `acc = acc + alpha * lhs * rhs` if `beta` is `Accum::Add`
+///
+/// # panics
+///
+/// panics if the matrix dimensions are not compatible for matrix multiplication.
+/// i.e.  
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
+///  - `lhs.ncols() == rhs.nrows()`
+///
+/// # example
+///
+/// ```
+/// use faer::linalg::matmul::matmul_with_conj;
+/// use faer::{Accum, Conj, Mat, Par, mat, unzip, zip};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+/// 	[
+/// 		2.5 * (lhs[(0, 0)] * rhs[(0, 0)] + lhs[(0, 1)] * rhs[(1, 0)]),
+/// 		2.5 * (lhs[(0, 0)] * rhs[(0, 1)] + lhs[(0, 1)] * rhs[(1, 1)]),
+/// 	],
+/// 	[
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 0)] + lhs[(1, 1)] * rhs[(1, 0)]),
+/// 		2.5 * (lhs[(1, 0)] * rhs[(0, 1)] + lhs[(1, 1)] * rhs[(1, 1)]),
+/// 	],
+/// ];
+///
+/// matmul_with_conj(
+/// 	&mut acc,
+/// 	Accum::Replace,
+/// 	&lhs,
+/// 	Conj::No,
+/// 	&rhs,
+/// 	Conj::No,
+/// 	2.5,
+/// 	Par::Seq,
+/// );
+///
+/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// ```
 #[track_caller]
 #[inline]
 pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(

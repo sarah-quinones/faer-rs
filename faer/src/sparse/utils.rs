@@ -1,6 +1,7 @@
 use crate::internal_prelude_sp::*;
 use crate::{assert, debug_assert};
 
+/// sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
 pub fn sort_indices<I: Index, T>(col_ptr: &[I], col_nnz: Option<&[I]>, row_idx: &mut [I], val: &mut [T]) {
 	assert!(col_ptr.len() > 0);
 
@@ -12,6 +13,8 @@ pub fn sort_indices<I: Index, T>(col_ptr: &[I], col_nnz: Option<&[I]>, row_idx: 
 	}
 }
 
+/// sorts and deduplicates `row_indices` and `values` simultaneously so that `row_indices` is
+/// nonincreasing and contains no duplicate indices.
 pub fn sort_dedup_indices<I: Index, T: ComplexField>(col_ptr: &[I], col_nnz: &mut [I], row_idx: &mut [I], val: &mut [T]) {
 	assert!(col_ptr.len() > 0);
 
@@ -43,14 +46,24 @@ pub fn sort_dedup_indices<I: Index, T: ComplexField>(col_ptr: &[I], col_nnz: &mu
 	}
 }
 
+/// computes the workspace size and alignment required to apply a two sided permutation to a
+/// self-adjoint sparse matrix
 pub fn permute_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
 	StackReq::new::<I>(dim)
 }
 
+/// computes the workspace size and alignment required to apply a two sided permutation to a
+/// self-adjoint sparse matrix and deduplicate its elements
 pub fn permute_dedup_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
 	StackReq::new::<I>(dim)
 }
 
+/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$
+///
+/// the result is stored in `new_col_ptrs`, `new_row_indices`
+///
+/// # note
+/// allows unsorted matrices, producing a sorted output. duplicate entries are kept, however
 pub fn permute_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -79,6 +92,13 @@ pub fn permute_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjug
 	.as_shape_mut(n, n)
 }
 
+/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$ without sorting the row
+/// indices, and returns a view over it
+///
+/// the result is stored in `new_col_ptrs`, `new_row_indices`
+///
+/// # note
+/// allows unsorted matrices, producing an sorted output
 pub fn permute_self_adjoint_to_unsorted<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -107,6 +127,13 @@ pub fn permute_self_adjoint_to_unsorted<'out, N: Shape, I: Index, T: ComplexFiel
 	.as_shape_mut(n, n)
 }
 
+/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$ and deduplicate the
+/// elements of the output matrix
+///
+/// the result is stored in `new_col_ptrs`, `new_row_indices`
+///
+/// # note
+/// allows unsorted matrices, producing a sorted output. duplicate entries are merged
 pub fn permute_dedup_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -332,16 +359,25 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, N, new_col_ptr, None, new_row_idx), new_val) }
 }
 
+/// computes the workspace size and alignment required to transpose a matrix
 pub fn transpose_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
 	StackReq::new::<usize>(nrows)
 }
 
+/// computes the workspace size and alignment required to transpose a matrix and deduplicate the
+/// output elements
 pub fn transpose_dedup_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
 	StackReq::new::<usize>(nrows).array(2)
 }
 
+/// computes the transpose of the matrix $A$ and returns a view over it.
+///
+/// the result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+///
+/// # note
+/// allows unsorted matrices, producing a sorted output. duplicate entries are kept, however
 pub fn transpose<'out, Rows: Shape, Cols: Shape, I: Index, T: Clone>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -356,6 +392,12 @@ pub fn transpose<'out, Rows: Shape, Cols: Shape, I: Index, T: Clone>(
 	transpose_imp(T::clone, new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
 }
 
+/// computes the adjoint of the matrix $A$ and returns a view over it.
+///
+/// the result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+///
+/// # note
+/// allows unsorted matrices, producing a sorted output. duplicate entries are kept, however
 pub fn adjoint<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -370,6 +412,12 @@ pub fn adjoint<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField>(
 	transpose_imp(conj::<T>, new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
 }
 
+/// computes the transpose of the matrix $A$ and returns a view over it.
+///
+/// the result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+///
+/// # note
+/// allows unsorted matrices, producing a sorted output. duplicate entries are merged
 pub fn transpose_dedup<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],

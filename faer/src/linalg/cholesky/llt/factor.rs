@@ -46,6 +46,7 @@ pub struct LltParams {
 	pub recursion_threshold: usize,
 	pub blocksize: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -75,7 +76,7 @@ pub fn cholesky_in_place<T: ComplexField>(
 	stack: &mut MemStack,
 	params: Spec<LltParams, T>,
 ) -> Result<LltInfo, LltError> {
-	let params = params.into_inner();
+	let params = params.config;
 	let N = A.nrows();
 	let mut D = unsafe { temp_mat_uninit(N, 1, stack).0 };
 	let D = D.as_mat_mut();

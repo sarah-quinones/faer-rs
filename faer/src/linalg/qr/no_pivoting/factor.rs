@@ -67,6 +67,7 @@ pub struct QrParams {
 	/// At which size the parallelism should be disabled.
 	pub par_threshold: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -83,7 +84,7 @@ impl<T: ComplexField> Auto<T> for QrParams {
 
 #[math]
 fn qr_in_place_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<QrParams, T>) {
-	let params = params.into_inner();
+	let params = params.config;
 
 	let m = A.nrows();
 	let n = A.ncols();

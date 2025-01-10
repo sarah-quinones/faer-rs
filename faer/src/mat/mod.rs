@@ -12,11 +12,15 @@ pub(crate) struct MatView<T: ?Sized, Rows, Cols, RStride, CStride> {
 	col_stride: CStride,
 }
 
+/// represents a type that can be used to slice a matrix, such as an index or a range of indices.
 pub trait MatIndex<RowRange, ColRange> {
+	/// sliced view type
 	type Target;
 
+	/// slice `this` using `row` and `col`
 	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target;
 
+	/// slice `this` using `row` and `col` without bound checks
 	unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target;
 }
 
@@ -45,56 +49,33 @@ pub use matmut::MatMut;
 pub use matown::Mat;
 pub use matref::MatRef;
 
-pub trait MatExt<T, Rows: Shape = usize, Cols: Shape = usize>: AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = Mat<T, Rows, Cols>> {}
+/// trait for types that can be converted to a matrix view.
+pub trait AsMatRef {
+	/// scalar type
+	type T;
+	/// row dimension type
+	type Rows: Shape;
+	/// column dimension type
+	type Cols: Shape;
+	/// owned matrix type
+	type Owned: AsMat<Self::T, T = Self::T, Rows = Self::Rows, Cols = Self::Cols, Owned = Self::Owned>;
 
-impl<T, Rows: Shape, Cols: Shape, M: AsMatRef<T = T, Rows = Rows, Cols = Cols, Owned = Mat<T, Rows, Cols>>> MatExt<T, Rows, Cols> for M {}
-
-impl<'a, T: ComplexField, Rows: 'a + Shape, Cols: 'a + Shape, Rs: Stride, Cs: Stride> core::ops::Deref for MatRef<'a, T, Rows, Cols, Rs, Cs> {
-	type Target = dyn 'a + MatExt<T, Rows, Cols>;
-
-	fn deref(&self) -> &Self::Target {
-		self as &(dyn 'a + MatExt<T, Rows, Cols>)
-	}
+	/// returns a view over `self`
+	fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols>;
 }
 
-impl<'a, T: ComplexField, Rows: 'a + Shape, Cols: 'a + Shape, Rs: Stride, Cs: Stride> core::ops::Deref for MatMut<'a, T, Rows, Cols, Rs, Cs> {
-	type Target = dyn 'a + MatExt<T, Rows, Cols>;
-
-	fn deref(&self) -> &Self::Target {
-		self as &(dyn 'a + MatExt<T, Rows, Cols>)
-	}
-}
-
-impl<T: ComplexField, Rows: Shape, Cols: Shape> core::ops::Deref for Mat<T, Rows, Cols> {
-	type Target = dyn MatExt<T, Rows, Cols>;
-
-	fn deref<'a>(&'a self) -> &'a Self::Target {
-		// UNSAFETY: not 100% sure if this is fine
-		unsafe {
-			core::mem::transmute::<&'a (dyn 'a + MatExt<T, Rows, Cols>), &'a (dyn 'static + MatExt<T, Rows, Cols>)>(
-				self as &'a (dyn 'a + MatExt<T, Rows, Cols>),
-			)
-		}
-	}
-}
-
+/// trait for types that can be converted to a matrix view.
 pub trait AsMatMut: AsMatRef {
+	/// returns a view over `self`
 	fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols>;
 }
 
+/// trait for owning matrix types.
 pub trait AsMat<T>: AsMatMut {
+	/// returns a matrix with dimensions `(rows, cols)` filled with zeros
 	fn zeros(rows: Self::Rows, cols: Self::Cols) -> Self
 	where
 		T: ComplexField;
-}
-
-pub trait AsMatRef {
-	type T;
-	type Rows: Shape;
-	type Cols: Shape;
-	type Owned: AsMat<Self::T, T = Self::T, Rows = Self::Rows, Cols = Self::Cols, Owned = Self::Owned>;
-
-	fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols>;
 }
 
 impl<M: AsMatRef> AsMatRef for &M {

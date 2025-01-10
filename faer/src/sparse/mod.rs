@@ -1,32 +1,75 @@
+//! sparse matrix data structures
+//!
+//! most sparse matrix algorithms accept matrices in sparse column-oriented format.
+//! this format represents each column of the matrix by storing the row indices of its non-zero
+//! elements, as well as their values
+//!
+//! the indices and the values are each stored in a contiguous slice (or group of slices for
+//! arbitrary values). in order to specify where each column starts and ends, a slice of size
+//! `ncols + 1` stores the start of each column, with the last element being equal to the total
+//! number of non-zeros (or the capacity in uncompressed mode)
+//!
+//! # example
+//!
+//! consider the 4-by-5 matrix:
+//! ```notcode
+//! [[10.0, 0.0, 12.0, -1.0, 13.0]
+//!  [ 0.0, 0.0, 25.0, -2.0,  0.0]
+//!  [ 1.0, 0.0,  0.0,  0.0,  0.0]
+//!  [ 4.0, 0.0,  0.0,  0.0,  5.0]]
+//! ```
+//!
+//! the matrix is stored as follows:
+//! ```notcode
+//! column pointers: | 0                  | 3,3         | 5           | 7           | 9
+//!
+//! row indices    : |    0 |    2 |    3 |    0 |    1 |    0 |    1 |    0 |    3 |
+//! values         : | 10.0 |  1.0 |  4.0 | 12.0 | 25.0 | -1.0 | -2.0 | 13.0 |  5.0 |
+//! ```
+
 mod csc;
 mod csr;
 
 pub(crate) const NONE: usize = usize::MAX;
 
+/// sparse linear algebra module.
+/// contains low level routines and the implementation of their corresponding high level wrappers
 pub mod linalg;
+/// sparse matrix binary and ternary operation implementations
 pub mod ops;
+
+use crate::internal_prelude_sp::Index;
+use reborrow::*;
 
 pub use csc::*;
 pub use csr::*;
 
 extern crate alloc;
 
+/// pair of indices with `C`-compatible layout
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct Pair<Row, Col> {
+	/// row index
 	pub row: Row,
+	/// column index
 	pub col: Col,
 }
 
+/// triplet of indices and value with `C`-compatible layout
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Triplet<Row, Col, T> {
+	/// row index
 	pub row: Row,
+	/// column index
 	pub col: Col,
+	/// value
 	pub val: T,
 }
 
 impl<Row, Col> Pair<Row, Col> {
+	/// creates a new pair of indices
 	#[inline]
 	pub const fn new(row: Row, col: Col) -> Self {
 		Pair { row, col }
@@ -34,6 +77,7 @@ impl<Row, Col> Pair<Row, Col> {
 }
 
 impl<Row, Col, T> Triplet<Row, Col, T> {
+	/// creates a new pair of indices and value
 	#[inline]
 	pub const fn new(row: Row, col: Col, val: T) -> Self {
 		Triplet { row, col, val }
@@ -153,7 +197,90 @@ pub enum FillMode {
 	Add,
 }
 
+/// algorithmic primitives for sparse matrices
 pub mod utils;
+
+impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMatRef<'_, I, T> {
+	type Output = T;
+
+	#[track_caller]
+	fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+		self.get(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMatRef<'_, I, T> {
+	type Output = T;
+
+	#[track_caller]
+	fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+		self.get(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMatMut<'_, I, T> {
+	type Output = T;
+
+	#[track_caller]
+	fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+		self.rb().get(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMatMut<'_, I, T> {
+	type Output = T;
+
+	#[track_caller]
+	fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+		self.rb().get(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::IndexMut<(usize, usize)> for SparseColMatMut<'_, I, T> {
+	#[track_caller]
+	fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+		self.rb_mut().get_mut(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::IndexMut<(usize, usize)> for SparseRowMatMut<'_, I, T> {
+	#[track_caller]
+	fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+		self.rb_mut().get_mut(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMat<I, T> {
+	type Output = T;
+
+	#[track_caller]
+	fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+		self.rb().get(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMat<I, T> {
+	type Output = T;
+
+	#[track_caller]
+	fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+		self.rb().get(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::IndexMut<(usize, usize)> for SparseColMat<I, T> {
+	#[track_caller]
+	fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+		self.rb_mut().get_mut(row, col).unwrap()
+	}
+}
+
+impl<I: Index, T> core::ops::IndexMut<(usize, usize)> for SparseRowMat<I, T> {
+	#[track_caller]
+	fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+		self.rb_mut().get_mut(row, col).unwrap()
+	}
+}
 
 #[cfg(test)]
 mod tests {

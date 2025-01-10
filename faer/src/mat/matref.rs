@@ -11,6 +11,14 @@ use generativity::Guard;
 use matmut::MatMut;
 use matown::Mat;
 
+/// immutable view over a matrix, similar to an immutable reference to a 2d strided [prim@slice]
+///
+/// # Note
+///
+/// unlike a slice, the data pointed to by `MatRef<'_, T>` is allowed to be partially or fully
+/// uninitialized under certain conditions. in this case, care must be taken to not perform any
+/// operations that read the uninitialized values, either directly or indirectly through any of the
+/// numerical library routines, unless it is explicitly permitted
 pub struct MatRef<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> {
 	pub(super) imp: MatView<T, Rows, Cols, RStride, CStride>,
 	pub(super) __marker: PhantomData<&'a T>,
@@ -65,16 +73,19 @@ fn from_strided_column_major_slice_assert(nrows: usize, ncols: usize, col_stride
 }
 
 impl<'a, T> MatRef<'a, T> {
+	/// equivalent to `MatRef::from_row_major_slice(array.as_flattened(), ROWS, COLS)`
 	#[inline]
 	pub fn from_row_major_array<const ROWS: usize, const COLS: usize>(array: &'a [[T; COLS]; ROWS]) -> Self {
 		unsafe { Self::from_raw_parts(array as *const _ as *const T, ROWS, COLS, COLS as isize, 1) }
 	}
 
+	/// equivalent to `MatRef::from_column_major_slice(array.as_flattened(), ROWS, COLS)`
 	#[inline]
 	pub fn from_column_major_array<const ROWS: usize, const COLS: usize>(array: &'a [[T; ROWS]; COLS]) -> Self {
 		unsafe { Self::from_raw_parts(array as *const _ as *const T, ROWS, COLS, 1, ROWS as isize) }
 	}
 
+	/// creates a `1×1` view over the given element
 	#[inline]
 	pub fn from_ref(value: &'a T) -> Self
 	where
@@ -84,17 +95,8 @@ impl<'a, T> MatRef<'a, T> {
 	}
 }
 
-impl<'a, T> MatRef<'a, T, Dim<'static>, Dim<'static>> {
-	#[inline]
-	pub fn from_ref_bound(value: &'a T) -> Self
-	where
-		T: Sized,
-	{
-		unsafe { MatRef::from_raw_parts(value as *const T, Dim::ONE, Dim::ONE, 0, 0) }
-	}
-}
-
 impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
+	/// creates a `MatRef` from a view over a single element, repeated `nrows×ncols` times
 	#[inline]
 	pub fn from_repeated_ref(value: &'a T, nrows: Rows, ncols: Cols) -> Self
 	where
@@ -103,6 +105,25 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 		unsafe { MatRef::from_raw_parts(value as *const T, nrows, ncols, 0, 0) }
 	}
 
+	/// creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+	/// the data is interpreted in a column-major format, so that the first chunk of `nrows`
+	/// values from the slices goes in the first column of the matrix, the second chunk of `nrows`
+	/// values goes in the second column, and so on
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `nrows * ncols == slice.len()`
+	///
+	/// # example
+	/// ```
+	/// use faer::{MatRef, mat};
+	///
+	/// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+	/// let view = MatRef::from_column_major_slice(&slice, 3, 2);
+	///
+	/// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+	/// assert_eq!(expected, view);
+	/// ```
 	#[inline]
 	#[track_caller]
 	pub fn from_column_major_slice(slice: &'a [T], nrows: Rows, ncols: Cols) -> Self
@@ -114,6 +135,9 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 		unsafe { MatRef::from_raw_parts(slice.as_ptr(), nrows, ncols, 1, nrows.unbound() as isize) }
 	}
 
+	/// creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+	/// the data is interpreted in a column-major format, where the beginnings of two consecutive
+	/// columns are separated by `col_stride` elements
 	#[inline]
 	#[track_caller]
 	pub fn from_column_major_slice_with_stride(slice: &'a [T], nrows: Rows, ncols: Cols, col_stride: usize) -> Self
@@ -125,6 +149,25 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 		unsafe { MatRef::from_raw_parts(slice.as_ptr(), nrows, ncols, 1, col_stride as isize) }
 	}
 
+	/// creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+	/// the data is interpreted in a row-major format, so that the first chunk of `ncols`
+	/// values from the slices goes in the first column of the matrix, the second chunk of `ncols`
+	/// values goes in the second column, and so on
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `nrows * ncols == slice.len()`
+	///
+	/// # example
+	/// ```
+	/// use faer::{MatRef, mat};
+	///
+	/// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+	/// let view = MatRef::from_row_major_slice(&slice, 3, 2);
+	///
+	/// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
+	/// assert_eq!(expected, view);
+	/// ```
 	#[inline]
 	#[track_caller]
 	pub fn from_row_major_slice(slice: &'a [T], nrows: Rows, ncols: Cols) -> Self
@@ -134,6 +177,9 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 		MatRef::from_column_major_slice(slice, ncols, nrows).transpose()
 	}
 
+	/// creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+	/// the data is interpreted in a row-major format, where the beginnings of two consecutive
+	/// rows are separated by `row_stride` elements
 	#[inline]
 	#[track_caller]
 	pub fn from_row_major_slice_with_stride(slice: &'a [T], nrows: Rows, ncols: Cols, row_stride: usize) -> Self
@@ -145,6 +191,42 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 }
 
 impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Rows, Cols, RStride, CStride> {
+	/// creates a `MatRef` from a pointer to the matrix data, dimensions, and strides
+	///
+	/// the row (resp. column) stride is the offset from the memory address of a given matrix
+	/// element at index `(row: i, col: j)`, to the memory address of the matrix element at
+	/// index `(row: i + 1, col: 0)` (resp. `(row: 0, col: i + 1)`). this offset is specified in
+	/// number of elements, not in bytes
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * for each matrix unit, the entire memory region addressed by the matrix must be contained
+	/// within a single allocation, accessible in its entirety by the corresponding pointer in
+	/// `ptr`
+	/// * for each matrix unit, the corresponding pointer must be properly aligned,
+	/// even for a zero-sized matrix
+	/// * the values accessible by the matrix must be initialized at some point before they are
+	/// read, or references to them are formed
+	/// * no mutable aliasing is allowed. in other words, none of the elements accessible by any
+	/// matrix unit may be accessed for writes by any other means for the duration of the lifetime
+	/// `'a`
+	///
+	/// # example
+	///
+	/// ```
+	/// use faer::{MatRef, mat};
+	///
+	/// // row major matrix with 2 rows, 3 columns, with a column at the end that we want to skip.
+	/// // the row stride is the pointer offset from the address of 1.0 to the address of 4.0,
+	/// // which is 4
+	/// // the column stride is the pointer offset from the address of 1.0 to the address of 2.0,
+	/// // which is 1
+	/// let data = [[1.0, 2.0, 3.0, f64::NAN], [4.0, 5.0, 6.0, f64::NAN]];
+	/// let matrix = unsafe { MatRef::from_raw_parts(data.as_ptr() as *const f64, 2, 3, 4, 1) };
+	///
+	/// let expected = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+	/// assert_eq!(expected.as_ref(), matrix);
+	/// ```
 	#[inline]
 	#[track_caller]
 	pub unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, ncols: Cols, row_stride: RStride, col_stride: CStride) -> Self {
@@ -160,36 +242,43 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a pointer to the matrix data
 	#[inline]
 	pub fn as_ptr(&self) -> *const T {
 		self.imp.ptr.as_ptr() as *const T
 	}
 
+	/// returns the number of rows of the matrix
 	#[inline]
 	pub fn nrows(&self) -> Rows {
 		self.imp.nrows
 	}
 
+	/// returns the number of columns of the matrix
 	#[inline]
 	pub fn ncols(&self) -> Cols {
 		self.imp.ncols
 	}
 
+	/// returns the number of rows and columns of the matrix
 	#[inline]
 	pub fn shape(&self) -> (Rows, Cols) {
 		(self.nrows(), self.ncols())
 	}
 
+	/// returns the row stride of the matrix, specified in number of elements, not in bytes
 	#[inline]
 	pub fn row_stride(&self) -> RStride {
 		self.imp.row_stride
 	}
 
+	/// returns the column stride of the matrix, specified in number of elements, not in bytes
 	#[inline]
 	pub fn col_stride(&self) -> CStride {
 		self.imp.col_stride
 	}
 
+	/// returns a raw pointer to the element at the given index
 	#[inline]
 	pub fn ptr_at(&self, row: IdxInc<Rows>, col: IdxInc<Cols>) -> *const T {
 		let ptr = self.as_ptr();
@@ -202,6 +291,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a raw pointer to the element at the given index, assuming the provided index
+	/// is within the matrix bounds
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * `row < self.nrows()`
+	/// * `col < self.ncols()`
 	#[inline]
 	#[track_caller]
 	pub unsafe fn ptr_inbounds_at(&self, row: Idx<Rows>, col: Idx<Cols>) -> *const T {
@@ -211,6 +307,17 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 			.offset(col.unbound() as isize * self.col_stride().element_stride())
 	}
 
+	/// splits the matrix horizontally and vertically at the given index into four corners and
+	/// returns an array of each submatrix, in the following order:
+	/// * top left
+	/// * top right
+	/// * bottom left
+	/// * bottom right
+	///
+	/// # safety
+	/// the function panics if any of the following conditions are violated:
+	/// * `row <= self.nrows()`
+	/// * `col <= self.ncols()`
 	#[inline]
 	#[track_caller]
 	pub fn split_at(
@@ -249,6 +356,14 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// splits the matrix horizontally at the given row into two parts and returns an array of
+	/// each submatrix, in the following order:
+	/// * top
+	/// * bottom
+	///
+	/// # panics
+	/// the function panics if the following condition is violated:
+	/// * `row <= self.nrows()`
 	#[inline]
 	#[track_caller]
 	pub fn split_at_row(self, row: IdxInc<Rows>) -> (MatRef<'a, T, usize, Cols, RStride, CStride>, MatRef<'a, T, usize, Cols, RStride, CStride>) {
@@ -268,6 +383,14 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// splits the matrix vertically at the given column into two parts and returns an array of
+	/// each submatrix, in the following order:
+	/// * left
+	/// * right
+	///
+	/// # panics
+	/// the function panics if the following condition is violated:
+	/// * `col <= self.ncols()`
 	#[inline]
 	#[track_caller]
 	pub fn split_at_col(self, col: IdxInc<Cols>) -> (MatRef<'a, T, Rows, usize, RStride, CStride>, MatRef<'a, T, Rows, usize, RStride, CStride>) {
@@ -287,6 +410,19 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a view over the transpose of `self`
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+	/// let view = matrix.as_ref();
+	/// let transpose = view.transpose();
+	///
+	/// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+	/// assert_eq!(expected.as_ref(), transpose);
+	/// ```
 	#[inline]
 	pub fn transpose(self) -> MatRef<'a, T, Cols, Rows, CStride, RStride> {
 		MatRef {
@@ -301,6 +437,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a view over the conjugate of `self`
 	#[inline]
 	pub fn conjugate(self) -> MatRef<'a, T::Conj, Rows, Cols, RStride, CStride>
 	where
@@ -317,6 +454,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns an unconjugated view over `self`
 	#[inline]
 	pub fn canonical(self) -> MatRef<'a, T::Canonical, Rows, Cols, RStride, CStride>
 	where
@@ -342,6 +480,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		(self.canonical(), Conj::get::<T>())
 	}
 
+	/// returns a view over the conjugate transpose of `self`.
 	#[inline]
 	pub fn adjoint(self) -> MatRef<'a, T::Conj, Cols, Rows, CStride, RStride>
 	where
@@ -372,6 +511,19 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		&*self.ptr_inbounds_at(row, col)
 	}
 
+	/// returns a view over the `self`, with the rows in reversed order
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+	/// let view = matrix.as_ref();
+	/// let reversed_rows = view.reverse_rows();
+	///
+	/// let expected = mat![[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]];
+	/// assert_eq!(expected.as_ref(), reversed_rows);
+	/// ```
 	#[inline]
 	pub fn reverse_rows(self) -> MatRef<'a, T, Rows, Cols, RStride::Rev, CStride> {
 		let row = unsafe { IdxInc::<Rows>::new_unbound(self.nrows().unbound().saturating_sub(1)) };
@@ -379,6 +531,19 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride().rev(), self.col_stride()) }
 	}
 
+	/// returns a view over the `self`, with the columns in reversed order
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+	/// let view = matrix.as_ref();
+	/// let reversed_cols = view.reverse_cols();
+	///
+	/// let expected = mat![[3.0, 2.0, 1.0], [6.0, 5.0, 4.0]];
+	/// assert_eq!(expected.as_ref(), reversed_cols);
+	/// ```
 	#[inline]
 	pub fn reverse_cols(self) -> MatRef<'a, T, Rows, Cols, RStride, CStride::Rev> {
 		let col = unsafe { IdxInc::<Cols>::new_unbound(self.ncols().unbound().saturating_sub(1)) };
@@ -386,11 +551,53 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), self.col_stride().rev()) }
 	}
 
+	/// returns a view over the `self`, with the rows and the columns in reversed order
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+	/// let view = matrix.as_ref();
+	/// let reversed = view.reverse_rows_and_cols();
+	///
+	/// let expected = mat![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]];
+	/// assert_eq!(expected.as_ref(), reversed);
+	/// ```
 	#[inline]
 	pub fn reverse_rows_and_cols(self) -> MatRef<'a, T, Rows, Cols, RStride::Rev, CStride::Rev> {
 		self.reverse_rows().reverse_cols()
 	}
 
+	/// returns a view over the submatrix starting at index `(row_start, col_start)`, and with
+	/// dimensions `(nrows, ncols)`
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `row_start <= self.nrows()`
+	/// * `col_start <= self.ncols()`
+	/// * `nrows <= self.nrows() - row_start`
+	/// * `ncols <= self.ncols() - col_start`
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![
+	/// 	[1.0, 5.0, 9.0], //
+	/// 	[2.0, 6.0, 10.0],
+	/// 	[3.0, 7.0, 11.0],
+	/// 	[4.0, 8.0, 12.0f64],
+	/// ];
+	///
+	/// let view = matrix.as_ref();
+	/// let submatrix = view.submatrix(
+	/// 	/* row_start: */ 2, /* col_start: */ 1, /* nrows: */ 2, /* ncols: */ 2,
+	/// );
+	///
+	/// let expected = mat![[7.0, 11.0], [8.0, 12.0f64]];
+	/// assert_eq!(expected.as_ref(), submatrix);
+	/// ```
 	#[inline]
 	#[track_caller]
 	pub fn submatrix<V: Shape, H: Shape>(
@@ -416,6 +623,31 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(self.ptr_at(row_start, col_start), nrows, ncols, rs, cs) }
 	}
 
+	/// returns a view over the submatrix starting at row `row_start`, and with number of rows
+	/// `nrows`
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `row_start <= self.nrows()`
+	/// * `nrows <= self.nrows() - row_start`
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![
+	/// 	[1.0, 5.0, 9.0], //
+	/// 	[2.0, 6.0, 10.0],
+	/// 	[3.0, 7.0, 11.0],
+	/// 	[4.0, 8.0, 12.0f64],
+	/// ];
+	///
+	/// let view = matrix.as_ref();
+	/// let subrows = view.subrows(/* row_start: */ 1, /* nrows: */ 2);
+	///
+	/// let expected = mat![[2.0, 6.0, 10.0], [3.0, 7.0, 11.0],];
+	/// assert_eq!(expected.as_ref(), subrows);
+	/// ```
 	#[inline]
 	#[track_caller]
 	pub fn subrows<V: Shape>(self, row_start: IdxInc<Rows>, nrows: V) -> MatRef<'a, T, V, Cols, RStride, CStride> {
@@ -432,6 +664,31 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(self.ptr_at(row_start, Cols::start()), nrows, self.ncols(), rs, cs) }
 	}
 
+	/// returns a view over the submatrix starting at column `col_start`, and with number of
+	/// columns `ncols`
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `col_start <= self.ncols()`
+	/// * `ncols <= self.ncols() - col_start`
+	///
+	/// # example
+	/// ```
+	/// use faer::mat;
+	///
+	/// let matrix = mat![
+	/// 	[1.0, 5.0, 9.0], //
+	/// 	[2.0, 6.0, 10.0],
+	/// 	[3.0, 7.0, 11.0],
+	/// 	[4.0, 8.0, 12.0f64],
+	/// ];
+	///
+	/// let view = matrix.as_ref();
+	/// let subcols = view.subcols(/* col_start: */ 2, /* ncols: */ 1);
+	///
+	/// let expected = mat![[9.0], [10.0], [11.0], [12.0f64]];
+	/// assert_eq!(expected.as_ref(), subcols);
+	/// ```
 	#[inline]
 	#[track_caller]
 	pub fn subcols<H: Shape>(self, col_start: IdxInc<Cols>, ncols: H) -> MatRef<'a, T, Rows, H, RStride, CStride> {
@@ -448,6 +705,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(self.ptr_at(Rows::start(), col_start), self.nrows(), ncols, rs, cs) }
 	}
 
+	/// returns the input matrix with the given shape after checking that it matches the
+	/// current shape
 	#[inline]
 	#[track_caller]
 	pub fn as_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> MatRef<'a, T, V, H, RStride, CStride> {
@@ -455,6 +714,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), nrows, ncols, self.row_stride(), self.col_stride()) }
 	}
 
+	/// returns the input matrix with the given row shape after checking that it matches the
+	/// current row shape
 	#[inline]
 	#[track_caller]
 	pub fn as_row_shape<V: Shape>(self, nrows: V) -> MatRef<'a, T, V, Cols, RStride, CStride> {
@@ -462,6 +723,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), nrows, self.ncols(), self.row_stride(), self.col_stride()) }
 	}
 
+	/// returns the input matrix with the given column shape after checking that it matches the
+	/// current column shape
 	#[inline]
 	#[track_caller]
 	pub fn as_col_shape<H: Shape>(self, ncols: H) -> MatRef<'a, T, Rows, H, RStride, CStride> {
@@ -469,6 +732,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows(), ncols, self.row_stride(), self.col_stride()) }
 	}
 
+	/// returns the input matrix with dynamic stride
 	#[inline]
 	pub fn as_dyn_stride(self) -> MatRef<'a, T, Rows, Cols, isize, isize> {
 		unsafe {
@@ -482,6 +746,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns the input matrix with dynamic shape
 	#[inline]
 	pub fn as_dyn(self) -> MatRef<'a, T, usize, usize, RStride, CStride> {
 		unsafe {
@@ -495,16 +760,23 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns the input matrix with dynamic row shape
 	#[inline]
 	pub fn as_dyn_rows(self) -> MatRef<'a, T, usize, Cols, RStride, CStride> {
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows().unbound(), self.ncols(), self.row_stride(), self.col_stride()) }
 	}
 
+	/// returns the input matrix with dynamic column shape
 	#[inline]
 	pub fn as_dyn_cols(self) -> MatRef<'a, T, Rows, usize, RStride, CStride> {
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows(), self.ncols().unbound(), self.row_stride(), self.col_stride()) }
 	}
 
+	/// returns a view over the row at the given index
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `row_idx < self.nrows()`
 	#[inline]
 	#[track_caller]
 	pub fn row(self, i: Idx<Rows>) -> RowRef<'a, T, Cols, CStride> {
@@ -513,6 +785,11 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { RowRef::from_raw_parts(self.ptr_at(i.into(), Cols::start()), self.ncols(), self.col_stride()) }
 	}
 
+	/// returns a view over the column at the given index
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `col_idx < self.ncols()`
 	#[inline]
 	#[track_caller]
 	pub fn col(self, j: Idx<Cols>) -> ColRef<'a, T, Rows, RStride> {
@@ -521,6 +798,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		unsafe { ColRef::from_raw_parts(self.ptr_at(Rows::start(), j.into()), self.nrows(), self.row_stride()) }
 	}
 
+	/// returns an iterator over the columns of the matrix
 	#[inline]
 	pub fn col_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = ColRef<'a, T, Rows, RStride>>
 	where
@@ -530,6 +808,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		Cols::indices(Cols::start(), self.ncols().end()).map(move |j| self.col(j))
 	}
 
+	/// returns an iterator over the rows of the matrix
 	#[inline]
 	pub fn row_iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = RowRef<'a, T, Cols, CStride>>
 	where
@@ -539,6 +818,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		Rows::indices(Rows::start(), self.nrows().end()).map(move |i| self.row(i))
 	}
 
+	/// returns a parallel iterator over the columns of the matrix
 	#[inline]
 	#[cfg(feature = "rayon")]
 	pub fn par_col_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, T, Rows, RStride>>
@@ -559,6 +839,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		self.par_col_chunks(1).map(col_fn)
 	}
 
+	/// returns a parallel iterator over the rows of the matrix
 	#[inline]
 	#[cfg(feature = "rayon")]
 	pub fn par_row_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, Cols, CStride>>
@@ -571,6 +852,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		self.transpose().par_col_iter().map(ColRef::transpose)
 	}
 
+	/// returns a parallel iterator that provides successive chunks of the columns of this
+	/// matrix, with each having at most `chunk_size` columns
+	///
+	/// if the number of columns is a multiple of `chunk_size`, then all chunks have
+	/// `chunk_size` columns
+	///
+	/// only available with the `rayon` feature
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
@@ -595,6 +883,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		})
 	}
 
+	/// returns a parallel iterator that provides exactly `count` successive chunks of the columns
+	/// of this matrix
+	///
+	/// only available with the `rayon` feature
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
@@ -618,6 +910,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		})
 	}
 
+	/// returns a parallel iterator that provides successive chunks of the rows of this matrix,
+	/// with each having at most `chunk_size` rows
+	///
+	/// if the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+	/// rows
+	///
+	/// only available with the `rayon` feature
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
@@ -634,6 +933,10 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		self.transpose().par_col_chunks(chunk_size).map(MatRef::transpose)
 	}
 
+	/// returns a parallel iterator that provides exactly `count` successive chunks of the rows
+	/// of this matrix
+	///
+	/// only available with the `rayon` feature
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
@@ -650,6 +953,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		self.transpose().par_col_partition(count).map(MatRef::transpose)
 	}
 
+	/// returns a reference to the first row and a view over the remaining ones if the matrix has
+	/// at least one row, otherwise `None`
 	#[inline]
 	pub fn split_first_row(self) -> Option<(RowRef<'a, T, Cols, CStride>, MatRef<'a, T, usize, Cols, RStride, CStride>)> {
 		if let Some(i0) = self.nrows().idx_inc(1) {
@@ -660,6 +965,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a reference to the first column and a view over the remaining ones if the matrix has
+	/// at least one column, otherwise `None`
 	#[inline]
 	pub fn split_first_col(self) -> Option<(ColRef<'a, T, Rows, RStride>, MatRef<'a, T, Rows, usize, RStride, CStride>)> {
 		if let Some(i0) = self.ncols().idx_inc(1) {
@@ -670,6 +977,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a reference to the last row and a view over the remaining ones if the matrix has
+	/// at least one row, otherwise `None`
 	#[inline]
 	pub fn split_last_row(self) -> Option<(RowRef<'a, T, Cols, CStride>, MatRef<'a, T, usize, Cols, RStride, CStride>)> {
 		if self.nrows().unbound() > 0 {
@@ -681,6 +990,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a reference to the last column and a view over the remaining ones if the matrix has
+	/// at least one column, otherwise `None`
 	#[inline]
 	pub fn split_last_col(self) -> Option<(ColRef<'a, T, Rows, RStride>, MatRef<'a, T, Rows, usize, RStride, CStride>)> {
 		if self.ncols().unbound() > 0 {
@@ -692,6 +1003,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a newly allocated matrix holding the cloned values of `self`
 	#[inline]
 	pub fn cloned(&self) -> Mat<T, Rows, Cols>
 	where
@@ -708,6 +1020,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		imp(self.as_shape(M, N)).into_shape(self.nrows(), self.ncols())
 	}
 
+	/// returns a newly allocated matrix holding the (possibly conjugated) values of `self`
 	#[inline]
 	pub fn to_owned(&self) -> Mat<T::Canonical, Rows, Cols>
 	where
@@ -727,11 +1040,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		imp(self.as_shape(M, N)).into_shape(self.nrows(), self.ncols())
 	}
 
+	#[doc(hidden)]
 	#[inline]
 	pub unsafe fn const_cast(self) -> MatMut<'a, T, Rows, Cols, RStride, CStride> {
 		MatMut::from_raw_parts_mut(self.as_ptr() as *mut T, self.nrows(), self.ncols(), self.row_stride(), self.col_stride())
 	}
 
+	/// returns a view over the matrix with a static row stride equal to `+1`, or `None` otherwise
 	#[inline]
 	pub fn try_as_col_major(self) -> Option<MatRef<'a, T, Rows, Cols, ContiguousFwd, CStride>> {
 		if self.row_stride().element_stride() == 1 {
@@ -741,6 +1056,8 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a view over the matrix with a static column stride equal to `+1`, or `None`
+	/// otherwise
 	#[inline]
 	pub fn try_as_row_major(self) -> Option<MatRef<'a, T, Rows, Cols, RStride, ContiguousFwd>> {
 		if self.col_stride().element_stride() == 1 {
@@ -750,11 +1067,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_ref(&self) -> MatRef<'_, T, Rows, Cols, RStride, CStride> {
 		*self
 	}
 
+	#[doc(hidden)]
 	#[inline]
 	pub fn bind<'M, 'N>(self, row: Guard<'M>, col: Guard<'N>) -> MatRef<'a, T, Dim<'M>, Dim<'N>, RStride, CStride> {
 		unsafe {
@@ -768,16 +1087,19 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		}
 	}
 
+	#[doc(hidden)]
 	#[inline]
 	pub fn bind_r<'M>(self, row: Guard<'M>) -> MatRef<'a, T, Dim<'M>, Cols, RStride, CStride> {
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows().bind(row), self.ncols(), self.row_stride(), self.col_stride()) }
 	}
 
+	#[doc(hidden)]
 	#[inline]
 	pub fn bind_c<'N>(self, col: Guard<'N>) -> MatRef<'a, T, Rows, Dim<'N>, RStride, CStride> {
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows(), self.ncols().bind(col), self.row_stride(), self.col_stride()) }
 	}
 
+	/// returns the maximum norm of `self`
 	#[inline]
 	pub fn norm_max(&self) -> Real<T>
 	where
@@ -786,6 +1108,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		linalg::reductions::norm_max::norm_max(self.canonical().as_dyn_stride().as_dyn())
 	}
 
+	/// returns the l2 norm of `self`
 	#[inline]
 	pub fn norm_l2(&self) -> Real<T>
 	where
@@ -794,6 +1117,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		linalg::reductions::norm_l2::norm_l2(self.canonical().as_dyn_stride().as_dyn())
 	}
 
+	/// returns the squared l2 norm of `self`
 	#[inline]
 	pub fn squared_norm_l2(&self) -> Real<T>
 	where
@@ -802,6 +1126,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		linalg::reductions::norm_l2_sqr::norm_l2_sqr(self.canonical().as_dyn_stride().as_dyn())
 	}
 
+	/// returns the l1 norm of `self`
 	#[inline]
 	pub fn norm_l1(&self) -> Real<T>
 	where
@@ -810,6 +1135,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		linalg::reductions::norm_l1::norm_l1(self.canonical().as_dyn_stride().as_dyn())
 	}
 
+	/// returns the sum of the elements of `self`
 	#[inline]
 	#[math]
 	pub fn sum(&self) -> T::Canonical
@@ -820,6 +1146,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		if try_const! { Conj::get::<T>().is_conj() } { conj(val) } else { val }
 	}
 
+	/// returns references to the element at the given index, or submatrices if either `row`
+	/// or `col` is a range, with bound checks
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `row` must be contained in `[0, self.nrows())`
+	/// * `col` must be contained in `[0, self.ncols())`
 	#[track_caller]
 	#[inline]
 	pub fn get<RowRange, ColRange>(
@@ -833,6 +1166,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		<MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::get(self, row, col)
 	}
 
+	/// equivalent to `self.get(row, ..)`
 	#[track_caller]
 	#[inline]
 	pub fn get_r<RowRange>(self, row: RowRange) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, core::ops::RangeFull>>::Target
@@ -842,6 +1176,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		<MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, core::ops::RangeFull>>::get(self, row, ..)
 	}
 
+	/// equivalent to `self.get(.., col)`
 	#[track_caller]
 	#[inline]
 	pub fn get_c<ColRange>(self, col: ColRange) -> <MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<core::ops::RangeFull, ColRange>>::Target
@@ -851,6 +1186,13 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		<MatRef<'a, T, Rows, Cols, RStride, CStride> as MatIndex<core::ops::RangeFull, ColRange>>::get(self, .., col)
 	}
 
+	/// returns references to the element at the given index, or submatrices if either `row`
+	/// or `col` is a range, without bound checks
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * `row` must be contained in `[0, self.nrows())`
+	/// * `col` must be contained in `[0, self.ncols())`
 	#[track_caller]
 	#[inline]
 	pub unsafe fn get_unchecked<RowRange, ColRange>(
@@ -871,6 +1213,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 }
 
 impl<'a, T, Dim: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim, Dim, RStride, CStride> {
+	/// returns the diagonal of the matrix
 	#[inline]
 	pub fn diagonal(self) -> DiagRef<'a, T, Dim, isize> {
 		let k = Ord::min(self.nrows(), self.ncols());
@@ -881,6 +1224,7 @@ impl<'a, T, Dim: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim, Dim
 }
 
 impl<'ROWS, 'COLS, 'a, T, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim<'ROWS>, Dim<'COLS>, RStride, CStride> {
+	#[doc(hidden)]
 	#[inline]
 	pub fn split_with<'TOP, 'BOT, 'LEFT, 'RIGHT>(
 		self,
@@ -903,6 +1247,7 @@ impl<'ROWS, 'COLS, 'a, T, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim<'R
 }
 
 impl<'ROWS, 'a, T, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim<'ROWS>, Cols, RStride, CStride> {
+	#[doc(hidden)]
 	#[inline]
 	pub fn split_rows_with<'TOP, 'BOT>(
 		self,
@@ -917,6 +1262,7 @@ impl<'ROWS, 'a, T, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, 
 }
 
 impl<'COLS, 'a, T, Rows: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Rows, Dim<'COLS>, RStride, CStride> {
+	#[doc(hidden)]
 	#[inline]
 	pub fn split_cols_with<'LEFT, 'RIGHT>(
 		self,

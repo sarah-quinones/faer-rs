@@ -539,6 +539,7 @@ impl<T: RealField> Default for LdltRegularization<'_, T> {
 pub struct LdltParams {
 	pub recursion_threshold: usize,
 	pub blocksize: usize,
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -568,7 +569,7 @@ pub fn cholesky_in_place<T: ComplexField>(
 	stack: &mut MemStack,
 	params: Spec<LdltParams, T>,
 ) -> Result<LdltInfo, LdltError> {
-	let params = params.into_inner();
+	let params = params.config;
 
 	let n = A.nrows();
 	let mut D = unsafe { temp_mat_uninit(n, 1, stack).0 };

@@ -3,7 +3,7 @@ use crate::Idx;
 use crate::internal_prelude::DiagRef;
 use core::ops::{Index, IndexMut};
 
-/// Diagonal mutable matrix view.
+/// diagonal mutable matrix view
 pub struct DiagMut<'a, T, Dim = usize, Stride = isize> {
 	pub(crate) inner: ColMut<'a, T, Dim, Stride>,
 }
@@ -15,30 +15,31 @@ impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for DiagMut<'_
 }
 
 impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
-	/// Returns the diagonal as a column vector view.
+	/// returns the diagonal as a column vector view
 	#[inline(always)]
 	pub fn column_vector(self) -> ColRef<'a, T, Dim, Stride> {
 		self.into_const().column_vector()
 	}
 
-	/// Returns the diagonal as a mutable column vector view.
+	/// returns the diagonal as a mutable column vector view
 	#[inline(always)]
 	pub fn column_vector_mut(self) -> ColMut<'a, T, Dim, Stride> {
 		self.inner
 	}
 
-	/// Returns a view over the matrix.
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_ref(&self) -> DiagRef<'_, T, Dim, Stride> {
 		self.rb()
 	}
 
-	/// Returns a mutable view over the matrix.
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_mut(&mut self) -> DiagMut<'_, T, Dim, Stride> {
 		self.rb_mut()
 	}
 
+	/// fills all the elements of `self` with `value`
 	#[inline]
 	pub fn fill(&mut self, value: T)
 	where
@@ -49,6 +50,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`DiagRef::as_shape`]
 	pub fn as_shape<D: Shape>(self, len: D) -> DiagRef<'a, T, D, Stride> {
 		DiagRef {
 			inner: self.inner.as_row_shape(len),
@@ -56,6 +58,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::as_dyn`]
 	pub fn as_dyn(self) -> DiagRef<'a, T, usize, Stride> {
 		DiagRef {
 			inner: self.inner.as_dyn_rows(),
@@ -63,6 +66,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::as_dyn_stride`]
 	pub fn as_dyn_stride(self) -> DiagRef<'a, T, Dim> {
 		DiagRef {
 			inner: self.inner.as_dyn_stride(),
@@ -70,6 +74,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::conjugate`]
 	pub fn conjugate(self) -> DiagRef<'a, T::Conj, Dim, Stride>
 	where
 		T: Conjugate,
@@ -80,6 +85,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::canonical`]
 	pub fn canonical(self) -> DiagRef<'a, T::Canonical, Dim, Stride>
 	where
 		T: Conjugate,
@@ -91,6 +97,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 
 	#[inline]
 	#[track_caller]
+	/// see [`DiagRef::as_shape`]
 	pub fn as_shape_mut<D: Shape>(self, len: D) -> DiagMut<'a, T, D, Stride> {
 		DiagMut {
 			inner: self.inner.as_row_shape_mut(len),
@@ -98,6 +105,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::as_dyn`]
 	pub fn as_dyn_mut(self) -> DiagMut<'a, T, usize, Stride> {
 		DiagMut {
 			inner: self.inner.as_dyn_rows_mut(),
@@ -105,6 +113,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::as_dyn_stride`]
 	pub fn as_dyn_stride_mut(self) -> DiagMut<'a, T, Dim> {
 		DiagMut {
 			inner: self.inner.as_dyn_stride_mut(),
@@ -112,6 +121,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::conjugate`]
 	pub fn conjugate_mut(self) -> DiagMut<'a, T::Conj, Dim, Stride>
 	where
 		T: Conjugate,
@@ -122,6 +132,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	}
 
 	#[inline]
+	/// see [`DiagRef::canonical`]
 	pub fn canonical_mut(self) -> DiagMut<'a, T::Canonical, Dim, Stride>
 	where
 		T: Conjugate,
@@ -131,11 +142,13 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns the dimension of `self`
 	#[inline]
 	pub fn dim(&self) -> Dim {
 		self.inner.nrows()
 	}
 
+	/// copies `other` into `self`
 	#[inline]
 	#[track_caller]
 	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, rhs: impl AsDiagRef<T = RhsT, Dim = Dim>)

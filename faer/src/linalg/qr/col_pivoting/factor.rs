@@ -253,6 +253,7 @@ pub struct ColPivQrParams {
 	/// At which size the parallelism should be disabled.
 	pub par_threshold: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -278,7 +279,7 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 	params: Spec<ColPivQrParams, T>,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
-	let params = params.into_inner();
+	let params = params.config;
 	let mut A = A;
 	let mut H = H;
 	let mut par = par;

@@ -4,6 +4,36 @@ use dyn_stack::StackReq;
 use linalg::zip::{Last, Zip};
 use reborrow::*;
 
+/// swaps the values in the columns `a` and `b`
+///
+/// # panics
+///
+/// panics if `a` and `b` don't have the same number of columns
+///
+/// # example
+///
+/// ```
+/// use faer::{mat, perm};
+///
+/// let mut m = mat![
+/// 	[1.0, 2.0, 3.0], //
+/// 	[4.0, 5.0, 6.0],
+/// 	[7.0, 8.0, 9.0],
+/// 	[10.0, 14.0, 12.0],
+/// ];
+///
+/// let (a, b) = m.two_cols_mut(0, 2);
+/// perm::swap_cols(a, b);
+///
+/// let swapped = mat![
+/// 	[3.0, 2.0, 1.0], //
+/// 	[6.0, 5.0, 4.0],
+/// 	[9.0, 8.0, 7.0],
+/// 	[12.0, 14.0, 10.0],
+/// ];
+///
+/// assert_eq!(m, swapped);
+/// ```
 #[track_caller]
 #[inline]
 pub fn swap_cols<N: Shape, T>(a: ColMut<'_, T, N>, b: ColMut<'_, T, N>) {
@@ -14,12 +44,71 @@ pub fn swap_cols<N: Shape, T>(a: ColMut<'_, T, N>, b: ColMut<'_, T, N>) {
 	zip!(a, b).for_each(swap::<T>());
 }
 
+/// swaps the values in the rows `a` and `b`
+///
+/// # panics
+///
+/// panics if `a` and `b` don't have the same number of columns
+///
+/// # example
+///
+/// ```
+/// use faer::{mat, perm};
+///
+/// let mut m = mat![
+/// 	[1.0, 2.0, 3.0], //
+/// 	[4.0, 5.0, 6.0],
+/// 	[7.0, 8.0, 9.0],
+/// 	[10.0, 14.0, 12.0],
+/// ];
+///
+/// let (a, b) = m.two_rows_mut(0, 2);
+/// perm::swap_rows(a, b);
+///
+/// let swapped = mat![
+/// 	[7.0, 8.0, 9.0], //
+/// 	[4.0, 5.0, 6.0],
+/// 	[1.0, 2.0, 3.0],
+/// 	[10.0, 14.0, 12.0],
+/// ];
+///
+/// assert_eq!(m, swapped);
+/// ```
 #[track_caller]
 #[inline]
 pub fn swap_rows<N: Shape, T>(a: RowMut<'_, T, N>, b: RowMut<'_, T, N>) {
 	swap_cols(a.transpose_mut(), b.transpose_mut())
 }
 
+/// swaps the two rows at indices `a` and `b` in the given matrix
+///
+/// # panics
+///
+/// panics if either `a` or `b` is out of bounds
+///
+/// # example
+///
+/// ```
+/// use faer::{mat, perm};
+///
+/// let mut m = mat![
+/// 	[1.0, 2.0, 3.0], //
+/// 	[4.0, 5.0, 6.0],
+/// 	[7.0, 8.0, 9.0],
+/// 	[10.0, 14.0, 12.0],
+/// ];
+///
+/// perm::swap_rows_idx(m.as_mut(), 0, 2);
+///
+/// let swapped = mat![
+/// 	[7.0, 8.0, 9.0], //
+/// 	[4.0, 5.0, 6.0],
+/// 	[1.0, 2.0, 3.0],
+/// 	[10.0, 14.0, 12.0],
+/// ];
+///
+/// assert_eq!(m, swapped);
+/// ```
 #[track_caller]
 #[inline]
 pub fn swap_rows_idx<M: Shape, N: Shape, T>(mat: MatMut<'_, T, M, N>, a: Idx<M>, b: Idx<M>) {
@@ -29,6 +118,35 @@ pub fn swap_rows_idx<M: Shape, N: Shape, T>(mat: MatMut<'_, T, M, N>, a: Idx<M>,
 	}
 }
 
+/// swaps the two columns at indices `a` and `b` in the given matrix
+///
+/// # panics
+///
+/// panics if either `a` or `b` is out of bounds
+///
+/// # example
+///
+/// ```
+/// use faer::{mat, perm};
+///
+/// let mut m = mat![
+/// 	[1.0, 2.0, 3.0], //
+/// 	[4.0, 5.0, 6.0],
+/// 	[7.0, 8.0, 9.0],
+/// 	[10.0, 14.0, 12.0],
+/// ];
+///
+/// perm::swap_cols_idx(m.as_mut(), 0, 2);
+///
+/// let swapped = mat![
+/// 	[3.0, 2.0, 1.0], //
+/// 	[6.0, 5.0, 4.0],
+/// 	[9.0, 8.0, 7.0],
+/// 	[12.0, 14.0, 10.0],
+/// ];
+///
+/// assert_eq!(m, swapped);
+/// ```
 #[track_caller]
 #[inline]
 pub fn swap_cols_idx<M: Shape, N: Shape, T>(mat: MatMut<'_, T, M, N>, a: Idx<N>, b: Idx<N>) {
@@ -46,13 +164,13 @@ pub use permref::PermRef;
 
 use self::linalg::temp_mat_scratch;
 
-/// Computes a permutation of the columns of the source matrix using the given permutation, and
-/// stores the result in the destination matrix.
+/// computes a permutation of the columns of the source matrix using the given permutation, and
+/// stores the result in the destination matrix
 ///
-/// # Panics
+/// # panics
 ///
-/// - Panics if the matrices do not have the same shape.
-/// - Panics if the size of the permutation doesn't match the number of columns of the matrices.
+/// - panics if the matrices do not have the same shape
+/// - panics if the size of the permutation doesn't match the number of columns of the matrices
 #[inline]
 #[track_caller]
 pub fn permute_cols<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, perm_indices: PermRef<'_, I>) {
@@ -65,13 +183,13 @@ pub fn permute_cols<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'
 	permute_rows(dst.transpose_mut(), src.transpose(), perm_indices.canonicalized());
 }
 
-/// Computes a permutation of the rows of the source matrix using the given permutation, and
-/// stores the result in the destination matrix.
+/// computes a permutation of the rows of the source matrix using the given permutation, and
+/// stores the result in the destination matrix
 ///
-/// # Panics
+/// # panics
 ///
-/// - Panics if the matrices do not have the same shape.
-/// - Panics if the size of the permutation doesn't match the number of rows of the matrices.
+/// - panics if the matrices do not have the same shape
+/// - panics if the size of the permutation doesn't match the number of rows of the matrices
 #[inline]
 #[track_caller]
 pub fn permute_rows<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, perm_indices: PermRef<'_, I>) {
@@ -109,24 +227,24 @@ pub fn permute_rows<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'
 	implementation(dst, src, perm_indices.canonicalized())
 }
 
-/// Computes the size and alignment of required workspace for applying a row permutation to a
-/// matrix in place.
+/// computes the size and alignment of required workspace for applying a row permutation to a
+/// matrix in place
 pub fn permute_rows_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	temp_mat_scratch::<T>(nrows, ncols)
 }
 
-/// Computes the size and alignment of required workspace for applying a column permutation to a
-/// matrix in place.
+/// computes the size and alignment of required workspace for applying a column permutation to a
+/// matrix in place
 pub fn permute_cols_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	temp_mat_scratch::<T>(nrows, ncols)
 }
 
-/// Computes a permutation of the rows of the matrix using the given permutation, and
-/// stores the result in the same matrix.
+/// computes a permutation of the rows of the matrix using the given permutation, and
+/// stores the result in the same matrix
 ///
-/// # Panics
+/// # panics
 ///
-/// - Panics if the size of the permutation doesn't match the number of rows of the matrix.
+/// - panics if the size of the permutation doesn't match the number of rows of the matrix
 #[inline]
 #[track_caller]
 pub fn permute_rows_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut MemStack) {
@@ -143,12 +261,12 @@ pub fn permute_rows_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, p
 	implementation(matrix, perm_indices.canonicalized(), stack)
 }
 
-/// Computes a permutation of the columns of the matrix using the given permutation, and
+/// computes a permutation of the columns of the matrix using the given permutation, and
 /// stores the result in the same matrix.
 ///
-/// # Panics
+/// # panics
 ///
-/// - Panics if the size of the permutation doesn't match the number of columns of the matrix.
+/// - panics if the size of the permutation doesn't match the number of columns of the matrix
 #[inline]
 #[track_caller]
 pub fn permute_cols_in_place<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, perm_indices: PermRef<'_, I>, stack: &mut MemStack) {

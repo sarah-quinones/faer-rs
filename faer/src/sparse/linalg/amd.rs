@@ -1,4 +1,4 @@
-//! Approximate minimum degree ordering.
+//! approximate minimum degree ordering.
 
 // AMD, Copyright (c), 1996-2022, Timothy A. Davis,
 // Patrick R. Amestoy, and Iain S. Duff.  All Rights Reserved.
@@ -1010,8 +1010,8 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 	nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }
 
-/// Computes the size and alignment of required workspace for computing the AMD ordering of a sorted
-/// matrix.
+/// computes the size and alignment of required workspace for computing the amd ordering of a sorted
+/// matrix
 pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	let n_scratch = StackReq::new::<I>(n);
 	let nzaat = nnz_upper.checked_mul(2).unwrap_or(usize::MAX);
@@ -1042,14 +1042,14 @@ pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	])
 }
 
-/// Computes the size and alignment of required workspace for computing the AMD ordering of an
-/// unsorted matrix.
+/// computes the size and alignment of required workspace for computing the amd ordering of an
+/// unsorted matrix
 pub fn order_maybe_unsorted_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	StackReq::all_of(&[order_scratch::<I>(n, nnz_upper), StackReq::new::<I>(n + 1), StackReq::new::<I>(nnz_upper)])
 }
 
-/// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
-/// Cholesky factorization of a matrix with the sparsity pattern of `A + A.T`.
+/// computes the approximate minimum degree ordering for reducing the fill-in during the sparse
+/// cholesky factorization of a matrix with the sparsity pattern of $A + A^\top$
 pub fn order<I: Index>(
 	perm: &mut [I],
 	perm_inv: &mut [I],
@@ -1084,11 +1084,11 @@ pub fn order<I: Index>(
 	))
 }
 
-/// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
-/// Cholesky factorization of a matrix with the sparsity pattern of `A + A.T`.
+/// computes the approximate minimum degree ordering for reducing the fill-in during the sparse
+/// cholesky factorization of a matrix with the sparsity pattern of $A + A^\top$
 ///
-/// # Note
-/// Allows unsorted matrices.
+/// # note
+/// allows unsorted matrices
 pub fn order_maybe_unsorted<I: Index>(
 	perm: &mut [I],
 	perm_inv: &mut [I],
@@ -1112,12 +1112,12 @@ pub fn order_maybe_unsorted<I: Index>(
 	order(perm, perm_inv, A, control, stack)
 }
 
-/// Tuning parameters for the AMD implementation.
+/// tuning parameters for the amd implementation
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Control {
 	/// "dense" if degree > dense * sqrt(n)
 	pub dense: f64,
-	/// Do aggressive absorption.
+	/// do aggressive absorption
 	pub aggressive: bool,
 }
 
@@ -1131,13 +1131,13 @@ impl Default for Control {
 	}
 }
 
-/// Flop count of the LDLT and LU factorizations if the provided ordering is used.
+/// flop count of the ldlt and lu factorizations if the provided ordering is used
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct FlopCount {
-	/// Number of division.
+	/// number of division
 	pub n_div: f64,
-	/// Number of multiplications and subtractions for the LDLT factorization.
+	/// number of multiplications and subtractions for the ldlt factorization
 	pub n_mult_subs_ldl: f64,
-	/// Number of multiplications and subtractions for the LU factorization.
+	/// number of multiplications and subtractions for the lu factorization
 	pub n_mult_subs_lu: f64,
 }

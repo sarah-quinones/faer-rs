@@ -1,7 +1,7 @@
 use super::*;
 use crate::assert;
 
-/// Computes the size and alignment of required workspace for executing the BiCGSTAB algorithm.
+/// computes the size and alignment of required workspace for executing the bicgstab algorithm
 pub fn bicgstab_scratch<T: ComplexField>(
 	left_precond: impl Precond<T>,
 	right_precond: impl Precond<T>,
@@ -50,18 +50,19 @@ pub fn bicgstab_scratch<T: ComplexField>(
 	implementation(&left_precond, &right_precond, &mat, rhs_ncols, par)
 }
 
-/// Algorithm parameters.
+/// algorithm parameters
 #[derive(Copy, Clone, Debug)]
 pub struct BicgParams<T> {
-	/// Whether the initial guess is implicitly zero or not.
+	/// whether the initial guess is implicitly zero or not
 	pub initial_guess: InitialGuessStatus,
-	/// Absolute tolerance for convergence testing.
+	/// absolute tolerance for convergence testing
 	pub abs_tolerance: T,
-	/// Relative tolerance for convergence testing.
+	/// relative tolerance for convergence testing
 	pub rel_tolerance: T,
-	/// Maximum number of iterations.
+	/// maximum number of iterations
 	pub max_iters: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
@@ -79,35 +80,36 @@ impl<T: RealField> Default for BicgParams<T> {
 	}
 }
 
-/// Algorithm result.
+/// algorithm result
 #[derive(Copy, Clone, Debug)]
 pub struct BicgInfo<T> {
-	/// Absolute residual at the final step.
+	/// absolute residual at the final step
 	pub abs_residual: T,
-	/// Relative residual at the final step.
+	/// relative residual at the final step
 	pub rel_residual: T,
-	/// Number of iterations executed by the algorithm.
+	/// number of iterations executed by the algorithm
 	pub iter_count: usize,
 
+	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
-/// Algorithm error.
+/// algorithm error
 #[derive(Copy, Clone, Debug)]
 pub enum BicgError<T> {
-	/// Convergence failure.
+	/// convergence failure
 	NoConvergence {
-		/// Absolute residual at the final step.
+		/// absolute residual at the final step
 		abs_residual: T,
-		/// Relative residual at the final step.
+		/// relative residual at the final step
 		rel_residual: T,
 	},
 }
 
-/// Executes BiCGSTAB using the provided preconditioners.
+/// executes bicgstab using the provided preconditioners
 ///
-/// # Note
-/// This function is also optimized for a RHS with multiple columns.
+/// # note
+/// this function is also optimized for a rhs with multiple columns
 #[track_caller]
 pub fn bicgstab<T: ComplexField>(
 	out: MatMut<'_, T>,

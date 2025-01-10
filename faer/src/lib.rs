@@ -1,13 +1,175 @@
+//! `faer` is a general-purpose linear algebra library for rust, with a focus on high performance
+//! for algebraic operations on medium/large matrices, as well as matrix decompositions
+//!
+//! most of the high-level functionality in this library is provided through associated functions in
+//! its vocabulary types: [`Mat`]/[`MatRef`]/[`MatMut`]
+//!
+//! `faer` is recommended for applications that handle medium to large dense matrices, and its
+//! design is not well suited for applications that operate mostly on low dimensional vectors and
+//! matrices such as computer graphics or game development. for such applications, `nalgebra` and
+//! `cgmath` may be better suited
+//!
+//! # basic usage
+//!
+//! [`Mat`] is a resizable matrix type with dynamic capacity, which can be created using
+//! [`Mat::new`] to produce an empty $0\times 0$ matrix, [`Mat::zeros`] to create a rectangular
+//! matrix filled with zeros, [`Mat::identity`] to create an identity matrix, or [`Mat::from_fn`]
+//! for the more general case
+//!
+//! Given a `&Mat<T>` (resp. `&mut Mat<T>`), a [`MatRef<'_, T>`](MatRef) (resp. [`MatMut<'_,
+//! T>`](MatMut)) can be created by calling [`Mat::as_ref`] (resp. [`Mat::as_mut`]), which allow
+//! for more flexibility than `Mat` in that they allow slicing ([`MatRef::get`]) and splitting
+//! ([`MatRef::split_at`])
+//!
+//! `MatRef` and `MatMut` are lightweight view objects. the former can be copied freely while the
+//! latter has move and reborrow semantics, as described in its documentation
+//!
+//! most of the matrix operations can be used through the corresponding math operators: `+` for
+//! matrix addition, `-` for subtraction, `*` for either scalar or matrix multiplication depending
+//! on the types of the operands.
+//!
+//! ## example
+//! ```
+//! use faer::{Mat, Scale, mat};
+//!
+//! let a = mat![
+//! 	[1.0, 5.0, 9.0], //
+//! 	[2.0, 6.0, 10.0],
+//! 	[3.0, 7.0, 11.0],
+//! 	[4.0, 8.0, 12.0f64],
+//! ];
+//!
+//! let b = Mat::from_fn(4, 3, |i, j| (i + j) as f64);
+//!
+//! let add = &a + &b;
+//! let sub = &a - &b;
+//! let scale = Scale(3.0) * &a;
+//! let mul = &a * b.transpose();
+//!
+//! let a00 = a[(0, 0)];
+//! ```
+//!
+//! # matrix decompositions
+//! `faer` provides a variety of matrix factorizations, each with its own advantages and drawbacks:
+//!
+//! ## $LL^\top$ decomposition
+//! [`Mat::llt`] decomposes a self-adjoint positive definite matrix $A$ such that
+//! $$A = LL^H,$$
+//! where $L$ is a lower triangular matrix. this decomposition is highly efficient and has good
+//! stability properties
+//!
+//! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Llt)
+//!
+//! ## bunch-kaufman decomposition
+//! [`Mat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
+//! $$P A P^\top = LBL^H,$$
+//! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$ is a block
+//! diagonal matrix, with $1 \times 1$ or $2 \times 2$ diagonal blocks.
+//! this decomposition is efficient and has good stability properties
+//!
+//! ## $LU$ decomposition with partial pivoting
+//! [`Mat::partial_piv_lu`] decomposes a square invertible matrix $A$ into a lower triangular
+//! matrix $L$, a unit upper triangular matrix $U$, and a permutation matrix $P$, such that
+//! $$PA = LU$$
+//! it is used by default for computing the determinant, and is generally the recommended method
+//! for solving a square linear system or computing the inverse of a matrix (although we generally
+//! recommend using a [`faer::linalg::solvers::Solve`](crate::linalg::solvers::Solve) instead of
+//! computing the inverse explicitly)
+//!
+//! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Lu)
+//!
+//! ## $LU$ decomposition with full pivoting
+//! [`Mat::full_piv_lu`] decomposes a generic rectangular matrix $A$ into a lower triangular
+//! matrix $L$, a unit upper triangular matrix $U$, and permutation matrices $P$ and $Q$, such that
+//! $$PAQ^\top = LU$$
+//! it can be more stable than the LU decomposition with partial pivoting, in exchange for being
+//! more computationally expensive
+//!
+//! ## $QR$ decomposition
+//! [`Mat::qr`] decomposes a matrix $A$ into the product $$A = QR,$$
+//! where $Q$ is a unitary matrix, and $R$ is an upper trapezoidal matrix. it is often used for
+//! solving least squares problems
+//!
+//! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Qr)
+//!
+//! ## $QR$ decomposition with column pivoting
+//! ([`Mat::col_piv_qr`]) decomposes a matrix $A$ into the product $$AP^\top = QR,$$
+//! where $P$ is a permutation matrix, $Q$ is a unitary matrix, and $R$ is an upper trapezoidal
+//! matrix
+//!
+//! it is slower than the version with no pivoting, in exchange for being more numerically stable
+//! for rank-deficient matrices
+//!
+//! ## singular value decomposition
+//! the SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
+//! and $V$, such that:
+//!
+//! - $U$ has shape $(m, m)$ and is a unitary matrix,
+//! - $V$ has shape $(n, n)$ and is a unitary matrix,
+//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal, with nonnegative
+//! diagonal values in nonincreasing order,
+//! - and finally:
+//!
+//! $$M = U S V^H$$
+//!
+//! the SVD is provided in two forms: either the full matrices $U$ and $V$ are computed, using
+//! [`Mat::svd`], or only their first $\min(m, n)$ columns are computed, using
+//! [`Mat::thin_svd`]
+//!
+//! if only the singular values (elements of $S$) are desired, they can be obtained in
+//! nonincreasing order using [`Mat::singular_values`]
+//!
+//! ## eigendecomposition
+//! **note**: the order of the eigenvalues is currently unspecified and may be changed in a future
+//! release
+//!
+//! the eigenvalue decomposition of a square matrix $M$ of shape $(n, n)$ is a decomposition into
+//! two components $U$, $S$:
+//!
+//! - $U$ has shape $(n, n)$ and is invertible,
+//! - $S$ has shape $(n, n)$ and is a diagonal matrix,
+//! - and finally:
+//!
+//! $$M = U S U^{-1}$$
+//!
+//! if $M$ is hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
+//! additionally, the eigenvalues are sorted in nondecreasing order
+//!
+//! Depending on the domain of the input matrix and whether it is self-adjoint, multiple methods
+//! are provided to compute the eigendecomposition:
+//! * [`Mat::self_adjoint_eigen`] can be used with either real or complex matrices,
+//! producing an eigendecomposition of the same type
+//! * [`Mat::eigen`] can be used with complex matrices
+//! * [`Mat::eigen_from_real`] can only be used with real matrices, and produces a complex
+//!   eigendecomposition
+//!
+//! if only the eigenvalues (elements of $S$) are desired, they can be obtained using
+//! [`Mat::self_adjoint_eigenvalues`] (nondecreasing order), [`Mat::eigenvalues`], or
+//! [`Mat::eigenvalues_from_real`], with the same conditions described above
+//!
+//! # crate features
+//!
+//! - `std`: enabled by default. links with the standard library to enable additional features such
+//!   as cpu feature detection at runtime
+//! - `rayon`: enabled by default. enables the `rayon` parallel backend and enables global
+//!   parallelism by default
+//! - `serde`: Enables serialization and deserialization of [`Mat`]
+//! - `npy`: enables conversions to/from numpy's matrix file format
+//! - `perf-warn`: produces performance warnings when matrix operations are called with suboptimal
+//! data layout
+//! - `nightly`: requires the nightly compiler. enables experimental simd features such as avx512
+
 #![no_std]
 #![allow(non_snake_case)]
-#![allow(unused_parens)]
+#![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 
 extern crate alloc;
 extern crate std;
 
 macro_rules! repeat_n {
 	($e: expr, $n: expr) => {
-		iter::repeat($e).take($n)
+		iter::repeat_n($e, $n)
 	};
 }
 
@@ -102,6 +264,7 @@ macro_rules! __perf_warn {
 	}};
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! with_dim {
 	($name: ident, $value: expr $(,)?) => {
@@ -111,6 +274,33 @@ macro_rules! with_dim {
 	};
 }
 
+/// zips together matrix of the same size, so that coefficient-wise operations can be performed on
+/// their elements.
+///
+/// # note
+/// the order in which the matrix elements are traversed is unspecified.
+///
+/// # example
+/// ```
+/// use faer::{Mat, mat, unzip, zip};
+///
+/// let nrows = 2;
+/// let ncols = 3;
+///
+/// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
+/// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
+/// let mut sum = Mat::<f64>::zeros(nrows, ncols);
+///
+/// zip!(&mut sum, &a, &b).for_each(|unzip!(sum, a, b)| {
+/// 	*sum = a + b;
+/// });
+///
+/// for i in 0..nrows {
+/// 	for j in 0..ncols {
+/// 		assert_eq!(sum[(i, j)], a[(i, j)] + b[(i, j)]);
+/// 	}
+/// }
+/// ```
 #[macro_export]
 macro_rules! zip {
     ($head: expr $(,)?) => {
@@ -122,6 +312,29 @@ macro_rules! zip {
     };
 }
 
+/// used to undo the zipping by the [`zip!`] macro.
+///
+/// # example
+/// ```
+/// use faer::{Mat, mat, unzip, zip};
+///
+/// let nrows = 2;
+/// let ncols = 3;
+///
+/// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
+/// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
+/// let mut sum = Mat::<f64>::zeros(nrows, ncols);
+///
+/// zip!(&mut sum, &a, &b).for_each(|unzip!(sum, a, b)| {
+/// 	*sum = a + b;
+/// });
+///
+/// for i in 0..nrows {
+/// 	for j in 0..ncols {
+/// 		assert_eq!(sum[(i, j)], a[(i, j)] + b[(i, j)]);
+/// 	}
+/// }
+/// ```
 #[macro_export]
 macro_rules! unzip {
     ($head: pat $(,)?) => {
@@ -144,6 +357,33 @@ macro_rules! __transpose_impl {
     };
 }
 
+/// creates a [`Mat`] containing the arguments.
+///
+/// ```
+/// use faer::mat;
+///
+/// let matrix = mat![
+/// 	[1.0, 5.0, 9.0], //
+/// 	[2.0, 6.0, 10.0],
+/// 	[3.0, 7.0, 11.0],
+/// 	[4.0, 8.0, 12.0f64],
+/// ];
+///
+/// assert_eq!(matrix[(0, 0)], 1.0);
+/// assert_eq!(matrix[(1, 0)], 2.0);
+/// assert_eq!(matrix[(2, 0)], 3.0);
+/// assert_eq!(matrix[(3, 0)], 4.0);
+///
+/// assert_eq!(matrix[(0, 1)], 5.0);
+/// assert_eq!(matrix[(1, 1)], 6.0);
+/// assert_eq!(matrix[(2, 1)], 7.0);
+/// assert_eq!(matrix[(3, 1)], 8.0);
+///
+/// assert_eq!(matrix[(0, 2)], 9.0);
+/// assert_eq!(matrix[(1, 2)], 10.0);
+/// assert_eq!(matrix[(2, 2)], 11.0);
+/// assert_eq!(matrix[(3, 2)], 12.0);
+/// ```
 #[macro_export]
 macro_rules! mat {
     () => {
@@ -167,6 +407,18 @@ macro_rules! mat {
     };
 }
 
+/// creates a [`col::Col`] containing the arguments
+///
+/// ```
+/// use faer::col;
+///
+/// let col_vec = col![3.0, 5.0, 7.0, 9.0];
+///
+/// assert_eq!(col_vec[0], 3.0);
+/// assert_eq!(col_vec[1], 5.0);
+/// assert_eq!(col_vec[2], 7.0);
+/// assert_eq!(col_vec[3], 9.0);
+/// ```
 #[macro_export]
 macro_rules! col {
     ($($v: expr),* $(,)?) => {
@@ -183,6 +435,18 @@ macro_rules! col {
     };
 }
 
+/// creates a [`row::Row`] containing the arguments
+///
+/// ```
+/// use faer::row;
+///
+/// let row_vec = row![3.0, 5.0, 7.0, 9.0];
+///
+/// assert_eq!(row_vec[0], 3.0);
+/// assert_eq!(row_vec[1], 5.0);
+/// assert_eq!(row_vec[2], 7.0);
+/// assert_eq!(row_vec[3], 9.0);
+/// ```
 #[macro_export]
 macro_rules! row {
     ($($v: expr),* $(,)?) => {
@@ -199,21 +463,21 @@ macro_rules! row {
     };
 }
 
-/// Convenience function to concatenate a nested list of matrices into a single
-/// big ['Mat']. Concatonation pattern follows the numpy.block convention that
+/// convenience function to concatenate a nested list of matrices into a single
+/// big ['Mat']. concatonation pattern follows the numpy.block convention that
 /// each sub-list must have an equal number of columns (net) but the boundaries
-/// do not need to align. In other words, this sort of thing:
+/// do not need to align. in other words, this sort of thing:
 /// ```notcode
 ///   AAAbb
 ///   AAAbb
 ///   cDDDD
 /// ```
-/// is perfectly acceptable.
+/// is perfectly acceptable
 #[doc(hidden)]
 #[track_caller]
-pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) -> mat::Mat<E> {
+pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) -> mat::Mat<T> {
 	#[inline(always)]
-	fn count_total_columns<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
+	fn count_total_columns<T: ComplexField>(block_row: &[(mat::MatRef<'_, T>, Conj)]) -> usize {
 		let mut out: usize = 0;
 		for (elem, _) in block_row.iter() {
 			out += elem.ncols();
@@ -223,7 +487,7 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) ->
 
 	#[inline(always)]
 	#[track_caller]
-	fn count_rows<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
+	fn count_rows<T: ComplexField>(block_row: &[(mat::MatRef<'_, T>, Conj)]) -> usize {
 		let mut out: usize = 0;
 		for (i, (e, _)) in block_row.iter().enumerate() {
 			if i == 0 {
@@ -250,7 +514,7 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) ->
 		}
 	}
 
-	let mut mat = mat::Mat::<E>::zeros(n, m);
+	let mut mat = mat::Mat::<T>::zeros(n, m);
 	let mut ni: usize = 0;
 	let mut mj: usize;
 	for row in blocks.iter() {
@@ -271,8 +535,8 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) ->
 	mat
 }
 
-/// Concatenates the matrices in each row horizontally,
-/// then concatenates the results vertically.
+/// concatenates the matrices in each row horizontally,
+/// then concatenates the results vertically
 ///
 /// `concat![[a0, a1, a2], [b1, b2]]` results in the matrix
 /// ```notcode
@@ -293,12 +557,19 @@ macro_rules! concat {
     };
 }
 
+/// helper utilities
 pub mod utils;
 
-pub mod col;
+/// diagonal matrix
 pub mod diag;
+/// rectangular matrix
 pub mod mat;
+/// permutation matrix
 pub mod perm;
+
+/// column vector
+pub mod col;
+/// row vector
 pub mod row;
 
 pub mod linalg;
@@ -306,6 +577,7 @@ pub mod linalg;
 pub mod matrix_free;
 pub mod sparse;
 
+/// native unsigned integer type
 pub trait Index: faer_traits::Index + seal::Seal {}
 impl<T: faer_traits::Index<Signed: seal::Seal> + seal::Seal> Index for T {}
 
@@ -320,79 +592,81 @@ mod seal {
 	impl<I: crate::Index> Seal for crate::utils::bound::MaybeIdxOne<I> {}
 	impl Seal for crate::utils::bound::One {}
 	impl Seal for crate::utils::bound::Zero {}
+	impl Seal for crate::ContiguousFwd {}
+	impl Seal for crate::ContiguousBwd {}
 }
 
-/// Sealed trait for types that can be created from "unbound" values, as long as their
-/// struct preconditions are upheld.
+/// sealed trait for types that can be created from "unbound" values, as long as their
+/// struct preconditions are upheld
 pub trait Unbind<I = usize>: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
-	/// Create new value.
-	/// # Safety
-	/// Safety invariants must be upheld.
+	/// creates new value
+	/// # safety
+	/// safety invariants must be upheld
 	unsafe fn new_unbound(idx: I) -> Self;
 
-	/// Returns the unbound value, unconstrained by safety invariants.
+	/// returns the unbound value, unconstrained by safety invariants
 	fn unbound(self) -> I;
 }
 
-/// Type that can be used to index into a range.
+/// type that can be used to index into a range
 pub type Idx<Dim, I = usize> = <Dim as ShapeIdx>::Idx<I>;
-/// Type that can be used to partition a range.
+/// type that can be used to partition a range
 pub type IdxInc<Dim, I = usize> = <Dim as ShapeIdx>::IdxInc<I>;
-/// Either an index or a negative value.
+/// either an index or a negative value
 pub type MaybeIdx<Dim, I = usize> = <Dim as ShapeIdx>::MaybeIdx<I>;
 
-/// Base trait for [`Shape`].
+/// base trait for [`Shape`]
 pub trait ShapeIdx {
-	/// Type that can be used to index into a range.
+	/// type that can be used to index into a range
 	type Idx<I: Index>: Unbind<I> + Ord + Eq;
-	/// Type that can be used to partition a range.
+	/// type that can be used to partition a range
 	type IdxInc<I: Index>: Unbind<I> + Ord + Eq + From<Idx<Self, I>>;
-	/// Either an index or a negative value.
+	/// either an index or a negative value
 	type MaybeIdx<I: Index>: Unbind<I::Signed> + Ord + Eq;
 }
 
-/// Matrix dimension.
+/// matrix dimension
 pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>, IdxInc<usize>: Ord + Eq + PartialOrd<Self>> {
-	/// Whether the types involved have any safety invariants.
+	/// whether the types involved have any safety invariants
 	const IS_BOUND: bool = true;
 
-	/// Bind the current value using a invariant lifetime guard.
+	/// bind the current value using a invariant lifetime guard
 	#[inline]
 	fn bind<'n>(self, guard: generativity::Guard<'n>) -> utils::bound::Dim<'n> {
 		utils::bound::Dim::new(self.unbound(), guard)
 	}
 
-	/// Cast a slice of bound values to unbound values.
+	/// cast a slice of bound values to unbound values
 	#[inline]
 	fn cast_idx_slice<I: Index>(slice: &[Idx<Self, I>]) -> &[I] {
 		unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
 	}
 
-	/// Cast a slice of bound values to unbound values.
+	/// cast a slice of bound values to unbound values
 	#[inline]
 	fn cast_idx_inc_slice<I: Index>(slice: &[IdxInc<Self, I>]) -> &[I] {
 		unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
 	}
 
-	/// Returns the index `0`, which is always valid.
+	/// returns the index `0`, which is always valid
 	#[inline(always)]
 	fn start() -> IdxInc<Self> {
 		unsafe { IdxInc::<Self>::new_unbound(0) }
 	}
 
-	/// Returns the incremented value, as an inclusive index.
+	/// returns the incremented value, as an inclusive index
 	#[inline(always)]
 	fn next(idx: Idx<Self>) -> IdxInc<Self> {
 		unsafe { IdxInc::<Self>::new_unbound(idx.unbound() + 1) }
 	}
 
-	/// Returns the last value, equal to the dimension.
+	/// returns the last value, equal to the dimension
 	#[inline(always)]
 	fn end(self) -> IdxInc<Self> {
 		unsafe { IdxInc::<Self>::new_unbound(self.unbound()) }
 	}
 
-	/// Checks if the index is valid, returning `Some(_)` in that case.
+	/// checks if the index is valid, returning `Some(_)` in that case
 	#[inline(always)]
 	fn idx(self, idx: usize) -> Option<Idx<Self>> {
 		if idx < self.unbound() {
@@ -402,7 +676,7 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 		}
 	}
 
-	/// Checks if the index is valid, returning `Some(_)` in that case.
+	/// checks if the index is valid, returning `Some(_)` in that case
 	#[inline(always)]
 	fn idx_inc(self, idx: usize) -> Option<IdxInc<Self>> {
 		if idx <= self.unbound() {
@@ -412,39 +686,39 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 		}
 	}
 
-	/// Checks if the index is valid, and panics otherwise.
+	/// checks if the index is valid, and panics otherwise
 	#[inline(always)]
 	fn checked_idx(self, idx: usize) -> Idx<Self> {
 		equator::assert!(idx < self.unbound());
 		unsafe { Idx::<Self>::new_unbound(idx) }
 	}
 
-	/// Checks if the index is valid, and panics otherwise.
+	/// checks if the index is valid, and panics otherwise
 	#[inline(always)]
 	fn checked_idx_inc(self, idx: usize) -> IdxInc<Self> {
 		equator::assert!(idx <= self.unbound());
 		unsafe { IdxInc::<Self>::new_unbound(idx) }
 	}
 
-	/// Assumes the index is valid.
-	/// # Safety
-	/// The index must be valid.
+	/// assumes the index is valid
+	/// # safety
+	/// the index must be valid
 	#[inline(always)]
 	unsafe fn unchecked_idx(self, idx: usize) -> Idx<Self> {
 		equator::debug_assert!(idx < self.unbound());
 		unsafe { Idx::<Self>::new_unbound(idx) }
 	}
 
-	/// Assumes the index is valid.
-	/// # Safety
-	/// The index must be valid.
+	/// assumes the index is valid
+	/// # safety
+	/// the index must be valid
 	#[inline(always)]
 	unsafe fn unchecked_idx_inc(self, idx: usize) -> IdxInc<Self> {
 		equator::debug_assert!(idx <= self.unbound());
 		unsafe { IdxInc::<Self>::new_unbound(idx) }
 	}
 
-	/// Returns an iterator over the indices between `from` and `to`.
+	/// returns an iterator over the indices between `from` and `to`
 	#[inline(always)]
 	fn indices(from: IdxInc<Self>, to: IdxInc<Self>) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<Self>> {
 		(from.unbound()..to.unbound()).map(
@@ -475,11 +749,14 @@ impl Shape for usize {
 	const IS_BOUND: bool = false;
 }
 
-/// Stride distance between two consecutive elements along a given dimension.
-pub trait Stride: core::fmt::Debug + Copy + Send + Sync + 'static {
+/// stride distance between two consecutive elements along a given dimension
+pub trait Stride: seal::Seal + core::fmt::Debug + Copy + Send + Sync + 'static {
+	/// the reversed stride type
 	type Rev: Stride<Rev = Self>;
+	/// returns the reversed stride
 	fn rev(self) -> Self::Rev;
 
+	/// returns the stride in elements
 	fn element_stride(self) -> isize;
 }
 
@@ -497,10 +774,10 @@ impl Stride for isize {
 	}
 }
 
-/// Contiguous stride equal to `+1`.
+/// contiguous stride equal to `+1`
 #[derive(Copy, Clone, Debug)]
 pub struct ContiguousFwd;
-/// Contiguous stride equal to `-1`.
+/// contiguous stride equal to `-1`
 #[derive(Copy, Clone, Debug)]
 pub struct ContiguousBwd;
 
@@ -532,21 +809,24 @@ impl Stride for ContiguousBwd {
 	}
 }
 
-/// Memoy allocation error.
+/// memory allocation error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TryReserveError {
-	/// Required allocation does not fit within `isize` bytes.
+	///rRequired allocation does not fit within `isize` bytes
 	CapacityOverflow,
-	/// Allocator could not provide an allocation with the requested layout.
-	AllocError { layout: core::alloc::Layout },
+	/// allocator could not provide an allocation with the requested layout
+	AllocError {
+		/// requested layout
+		layout: core::alloc::Layout,
+	},
 }
 
-/// Determines whether the input should be implicitly conjugated or not.
+/// determines whether the input should be implicitly conjugated or not
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Conj {
-	/// No implicit conjugation.
+	/// no implicit conjugation
 	No,
-	/// Implicit conjugation.
+	/// implicit conjugation
 	Yes,
 }
 
@@ -556,30 +836,32 @@ pub(crate) enum DiagStatus {
 	Generic,
 }
 
-/// Determines whether to replace or add to the result of a matmul operation
+/// determines whether to replace or add to the result of a matmul operatio
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Accum {
-	/// Overwrites the output buffer.
+	/// overwrites the output buffer
 	Replace,
-	/// Adds the result to the output buffer.
+	/// adds the result to the output buffer
 	Add,
 }
 
-/// Determines which side of a self-adjoint matrix should be accessed.
+/// determines which side of a self-adjoint matrix should be accessed
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Side {
-	/// Lower triangular half.
+	/// lower triangular half
 	Lower,
-	/// Upper triangular half.
+	/// upper triangular half
 	Upper,
 }
 
 impl Conj {
+	/// returns `self == Conj::Yes`
 	#[inline]
 	pub const fn is_conj(self) -> bool {
 		matches!(self, Conj::Yes)
 	}
 
+	/// returns the composition of `self` and `other`
 	#[inline]
 	pub const fn compose(self, other: Self) -> Self {
 		match (self, other) {
@@ -590,6 +872,7 @@ impl Conj {
 		}
 	}
 
+	/// returns `Conj::No` if `T` is the canonical representation, otherwise `Conj::Yes`
 	#[inline]
 	pub const fn get<T: Conjugate>() -> Self {
 		if T::IS_CANONICAL { Self::No } else { Self::Yes }
@@ -612,17 +895,19 @@ impl Conj {
 	}
 }
 
-/// Determines the parallelization configuration.
+/// determines the parallelization configuration
 #[derive(Copy, Clone, Debug)]
 pub enum Par {
-	/// Sequential, non portable across different platforms.
+	/// sequential, non portable across different platforms
 	Seq,
-	/// Parallelized using the global rayon threadpool, non portable across different platforms.
+	/// parallelized using the global rayon threadpool, non portable across different platforms
 	#[cfg(feature = "rayon")]
 	Rayon(NonZeroUsize),
 }
 
 impl Par {
+	/// returns `Par::Rayon(nthreads)` if `nthreads` is non-zero, or
+	/// `Par::Rayon(rayon::current_num_threads())` otherwise
 	#[inline]
 	#[cfg(feature = "rayon")]
 	pub fn rayon(nthreads: usize) -> Self {
@@ -633,6 +918,7 @@ impl Par {
 		}
 	}
 
+	/// the number of threads that should ideally execute an operation with the given parallelism
 	#[inline]
 	pub fn degree(&self) -> usize {
 		utils::thread::parallelism_degree(*self)
@@ -737,6 +1023,7 @@ pub(crate) mod internal_prelude_sp {
 	pub(crate) use dyn_stack::MemBuffer;
 }
 
+/// useful imports for general usage of the library
 pub mod prelude {
 	use super::*;
 
@@ -751,15 +1038,15 @@ pub mod prelude {
 	}
 }
 
-/// Scaling factor for multiplying matrices.
+/// scaling factor for multiplying matrices.
 #[derive(Copy, Clone, Debug)]
 pub struct Scale<T>(pub T);
 
-/// 0: Disable
-/// 1: None
-/// n >= 2: Rayon(n - 2)
+/// 0: disabled
+/// 1: `Seq`
+/// n >= 2: `Rayon(n - 2)`
 ///
-/// default: Rayon(0)
+/// default: `Rayon(0)`
 static GLOBAL_PARALLELISM: AtomicUsize = {
 	#[cfg(all(not(miri), feature = "rayon"))]
 	{
@@ -771,12 +1058,12 @@ static GLOBAL_PARALLELISM: AtomicUsize = {
 	}
 };
 
-/// Causes functions that access global parallelism settings to panic.
+/// causes functions that access global parallelism settings to panic.
 pub fn disable_global_parallelism() {
 	GLOBAL_PARALLELISM.store(0, core::sync::atomic::Ordering::Relaxed);
 }
 
-/// Sets the global parallelism settings.
+/// sets the global parallelism settings.
 pub fn set_global_parallelism(parallelism: Par) {
 	let value = match parallelism {
 		Par::Seq => 1,
@@ -786,10 +1073,10 @@ pub fn set_global_parallelism(parallelism: Par) {
 	GLOBAL_PARALLELISM.store(value, core::sync::atomic::Ordering::Relaxed);
 }
 
-/// Gets the global parallelism settings.
+/// gets the global parallelism settings.
 ///
-/// # Panics
-/// Panics if global parallelism is disabled.
+/// # panics
+/// panics if global parallelism is disabled.
 #[track_caller]
 pub fn get_global_parallelism() -> Par {
 	let value = GLOBAL_PARALLELISM.load(core::sync::atomic::Ordering::Relaxed);
@@ -806,6 +1093,7 @@ pub fn get_global_parallelism() -> Par {
 #[doc(hidden)]
 pub mod hacks;
 
+/// statistics and randomness functionality
 pub mod stats;
 
 mod non_exhaustive {
@@ -815,15 +1103,17 @@ mod non_exhaustive {
 }
 pub(crate) use non_exhaustive::NonExhaustive;
 
-/// Like `Default`, but with an extra type parameter so algorithm hyperparameters can be tuned per
-/// scalar type.
+/// like `Default`, but with an extra type parameter so that algorithm hyperparameters can be tuned
+/// per scalar type.
 pub trait Auto<T> {
+	/// returns the default value for the type `T`
 	fn auto() -> Self;
 }
 
-/// Implements [`Default`] based on `Config`'s [`Auto`] implementation for the type `T`.
+/// implements [`Default`] based on `Config`'s [`Auto`] implementation for the type `T`.
 pub struct Spec<Config, T> {
-	config: Config,
+	/// wrapped config value
+	pub config: Config,
 	__marker: core::marker::PhantomData<fn() -> T>,
 }
 
@@ -858,27 +1148,13 @@ impl<Config: core::fmt::Debug, T> core::fmt::Debug for Spec<Config, T> {
 }
 
 impl<Config, T> Spec<Config, T> {
+	/// wraps the given config value
 	#[inline]
 	pub fn new(config: Config) -> Self {
 		Spec {
 			config,
 			__marker: core::marker::PhantomData,
 		}
-	}
-
-	#[inline]
-	pub fn into_inner(self) -> Config {
-		self.config
-	}
-
-	#[inline]
-	pub fn as_ref(&self) -> &Config {
-		&self.config
-	}
-
-	#[inline]
-	pub fn as_mut(&mut self) -> &mut Config {
-		&mut self.config
 	}
 }
 
@@ -953,3 +1229,5 @@ mod into_range {
 }
 
 mod sort;
+
+pub use {dyn_stack, reborrow};

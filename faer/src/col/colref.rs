@@ -8,6 +8,15 @@ use equator::assert;
 use faer_traits::Real;
 use generativity::Guard;
 
+/// immutable view over a column vector, similar to an immutable reference to a strided
+/// [prim@slice]
+///
+/// # note
+///
+/// unlike a slice, the data pointed to by `ColRef<'_, T>` is allowed to be partially or fully
+/// uninitialized under certain conditions. in this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly or
+/// indirectly through any of the numerical library routines, unless it is explicitly permitted
 pub struct ColRef<'a, T, Rows = usize, RStride = isize> {
 	pub(super) imp: ColView<T, Rows, RStride>,
 	pub(super) __marker: PhantomData<&'a T>,
@@ -50,6 +59,8 @@ unsafe impl<T: Sync, Rows: Sync, RStride: Sync> Sync for ColRef<'_, T, Rows, RSt
 unsafe impl<T: Sync, Rows: Send, RStride: Send> Send for ColRef<'_, T, Rows, RStride> {}
 
 impl<'a, T> ColRef<'a, T> {
+	/// creates a `ColRef` from slice views over the column vector data, the result has the same
+	/// number of rows as the length of the input slice
 	#[inline]
 	pub fn from_slice(slice: &'a [T]) -> Self {
 		let len = slice.len();
@@ -58,6 +69,11 @@ impl<'a, T> ColRef<'a, T> {
 }
 
 impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
+	/// creates a `ColRef` from pointers to the column vector data, number of rows, and row stride
+	///
+	/// # safety
+	/// this function has the same safety requirements as
+	/// [`MatRef::from_raw_parts(ptr, nrows, 1, row_stride, 0)`]
 	#[inline(always)]
 	#[track_caller]
 	pub unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, row_stride: RStride) -> Self {
@@ -71,31 +87,37 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		}
 	}
 
+	/// returns a pointer to the column data
 	#[inline(always)]
 	pub fn as_ptr(&self) -> *const T {
 		self.imp.ptr.as_ptr() as *const T
 	}
 
+	/// returns the number of rows of the column
 	#[inline(always)]
 	pub fn nrows(&self) -> Rows {
 		self.imp.nrows
 	}
 
+	/// returns the number of columns of the column (always `1`)
 	#[inline(always)]
 	pub fn ncols(&self) -> usize {
 		1
 	}
 
+	/// returns the number of rows and columns of the column
 	#[inline(always)]
 	pub fn shape(&self) -> (Rows, usize) {
 		(self.nrows(), self.ncols())
 	}
 
+	/// returns the row stride of the column, specified in number of elements, not in bytes
 	#[inline(always)]
 	pub fn row_stride(&self) -> RStride {
 		self.imp.row_stride
 	}
 
+	/// returns a raw pointer to the element at the given index
 	#[inline(always)]
 	pub fn ptr_at(&self, row: IdxInc<Rows>) -> *const T {
 		let ptr = self.as_ptr();
@@ -107,12 +129,26 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		}
 	}
 
+	/// returns a raw pointer to the element at the given index, assuming the provided index
+	/// is within the column bounds
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * `row < self.nrows()`
 	#[inline(always)]
 	#[track_caller]
 	pub unsafe fn ptr_inbounds_at(&self, row: Idx<Rows>) -> *const T {
 		self.as_ptr().offset(row.unbound() as isize * self.row_stride().element_stride())
 	}
 
+	/// splits the column horizontally at the given row into two parts and returns an array of
+	/// each submatrix, in the following order:
+	/// * top
+	/// * bottom
+	///
+	/// # panics
+	/// the function panics if the following condition is violated:
+	/// * `row <= self.nrows()`
 	#[inline]
 	#[track_caller]
 	pub fn split_at_row(self, row: IdxInc<Rows>) -> (ColRef<'a, T, usize, RStride>, ColRef<'a, T, usize, RStride>) {
@@ -129,11 +165,13 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		}
 	}
 
+	/// returns a view over the transpose of `self`
 	#[inline(always)]
 	pub fn transpose(self) -> RowRef<'a, T, Rows, RStride> {
 		RowRef { trans: self }
 	}
 
+	/// returns a view over the conjugate of `self`
 	#[inline(always)]
 	pub fn conjugate(self) -> ColRef<'a, T::Conj, Rows, RStride>
 	where
@@ -142,6 +180,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr() as *const T::Conj, self.nrows(), self.row_stride()) }
 	}
 
+	/// returns an unconjugated view over `self`
 	#[inline(always)]
 	pub fn canonical(self) -> ColRef<'a, T::Canonical, Rows, RStride>
 	where
@@ -150,6 +189,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr() as *const T::Canonical, self.nrows(), self.row_stride()) }
 	}
 
+	/// returns a view over the conjugate transpose of `self`.
 	#[inline(always)]
 	pub fn adjoint(self) -> RowRef<'a, T::Conj, Rows, RStride>
 	where
@@ -171,6 +211,11 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		&*self.ptr_inbounds_at(row)
 	}
 
+	/// returns a reference to the element at the given index, or a subcolumn if `row` is a range
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `row` must be contained in `[0, self.nrows())`
 	#[track_caller]
 	#[inline(always)]
 	pub fn get<RowRange>(self, row: RowRange) -> <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
@@ -180,6 +225,12 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		<ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::get(self, row)
 	}
 
+	/// returns a reference to the element at the given index, or a subcolumn if `row` is a range,
+	/// without bound checks
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// * `row` must be contained in `[0, self.nrows())`
 	#[track_caller]
 	#[inline(always)]
 	pub unsafe fn get_unchecked<RowRange>(self, row: RowRange) -> <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::Target
@@ -189,6 +240,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { <ColRef<'a, T, Rows, RStride> as ColIndex<RowRange>>::get_unchecked(self, row) }
 	}
 
+	/// returns a view over the `self`, with the rows in reversed order
 	#[inline]
 	pub fn reverse_rows(self) -> ColRef<'a, T, Rows, RStride::Rev> {
 		let row = unsafe { IdxInc::<Rows>::new_unbound(self.nrows().unbound().saturating_sub(1)) };
@@ -196,6 +248,13 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { ColRef::from_raw_parts(ptr, self.nrows(), self.row_stride().rev()) }
 	}
 
+	/// returns a view over the column starting at row `row_start`, and with number of rows
+	/// `nrows`
+	///
+	/// # panics
+	/// the function panics if any of the following conditions are violated:
+	/// * `row_start <= self.nrows()`
+	/// * `nrows <= self.nrows() - row_start`
 	#[inline]
 	#[track_caller]
 	pub fn subrows<V: Shape>(self, row_start: IdxInc<Rows>, nrows: V) -> ColRef<'a, T, V, RStride> {
@@ -211,6 +270,8 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { ColRef::from_raw_parts(self.ptr_at(row_start), nrows, rs) }
 	}
 
+	/// returns the input column with the given row shape after checking that it matches the
+	/// current row shape
 	#[inline]
 	#[track_caller]
 	pub fn as_row_shape<V: Shape>(self, nrows: V) -> ColRef<'a, T, V, RStride> {
@@ -218,16 +279,19 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr(), nrows, self.row_stride()) }
 	}
 
+	/// returns the input column with dynamic row shape
 	#[inline]
 	pub fn as_dyn_rows(self) -> ColRef<'a, T, usize, RStride> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr(), self.nrows().unbound(), self.row_stride()) }
 	}
 
+	/// returns the input column with dynamic stride
 	#[inline]
 	pub fn as_dyn_stride(self) -> ColRef<'a, T, Rows, isize> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr(), self.nrows(), self.row_stride().element_stride()) }
 	}
 
+	/// returns an iterator over the elements of the column
 	#[inline]
 	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
 	where
@@ -236,6 +300,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		Rows::indices(Rows::start(), self.nrows().end()).map(move |j| unsafe { self.at_unchecked(j) })
 	}
 
+	/// returns a parallel iterator over the elements of the column
 	#[inline]
 	#[cfg(feature = "rayon")]
 	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
@@ -249,6 +314,10 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 			.map(move |j| unsafe { self.at_unchecked(Idx::<Rows>::new_unbound(j)) })
 	}
 
+	/// returns a parallel iterator that provides exactly `count` successive chunks of the elements
+	/// of this column
+	///
+	/// only available with the `rayon` feature
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
@@ -268,8 +337,9 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		})
 	}
 
+	/// returns a newly allocated column holding the cloned values of `self`
 	#[inline]
-	pub fn cloned(self) -> Col<T, Rows>
+	pub fn cloned(&self) -> Col<T, Rows>
 	where
 		T: Clone,
 	{
@@ -281,6 +351,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		imp(self.as_row_shape(M)).into_row_shape(self.nrows())
 	}
 
+	/// returns a newly allocated column holding the (possibly conjugated) values of `self`
 	#[inline]
 	pub fn to_owned(&self) -> Col<T::Canonical, Rows>
 	where
@@ -297,6 +368,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		imp(self.as_row_shape(M)).into_row_shape(self.nrows())
 	}
 
+	/// returns a view over the column with a static row stride equal to `+1`, or `None` otherwise
 	#[inline]
 	pub fn try_as_col_major(self) -> Option<ColRef<'a, T, Rows, ContiguousFwd>> {
 		if self.row_stride().element_stride() == 1 {
@@ -307,28 +379,32 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	}
 
 	#[inline(always)]
+	#[doc(hidden)]
 	pub unsafe fn const_cast(self) -> ColMut<'a, T, Rows, RStride> {
 		ColMut::from_raw_parts_mut(self.as_ptr() as *mut T, self.nrows(), self.row_stride())
 	}
 
+	/// returns a matrix view over `self`
 	#[inline]
 	pub fn as_mat(self) -> MatRef<'a, T, Rows, usize, RStride, isize> {
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows(), self.ncols(), self.row_stride(), 0) }
 	}
 
+	/// returns a view over `self`
 	#[inline]
 	pub fn as_ref(&self) -> ColRef<'_, T, Rows, RStride> {
 		*self
 	}
 
 	#[inline]
+	#[doc(hidden)]
 	pub fn bind_r<'N>(self, row: Guard<'N>) -> ColRef<'a, T, Dim<'N>, RStride> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr(), self.nrows().bind(row), self.row_stride()) }
 	}
 
 	#[inline(always)]
 	#[track_caller]
-	pub fn read(&self, row: Idx<Rows>) -> T
+	pub(crate) fn read(&self, row: Idx<Rows>) -> T
 	where
 		T: Clone,
 	{
@@ -341,37 +417,60 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		self.at(i)
 	}
 
+	/// interprets the column as a diagonal matrix
 	#[inline]
 	pub fn as_diagonal(self) -> DiagRef<'a, T, Rows, RStride> {
 		DiagRef { inner: self }
 	}
 
+	/// returns the maximum norm of `self`
 	#[inline]
 	pub fn norm_max(&self) -> Real<T>
 	where
 		T: Conjugate,
 	{
-		linalg::reductions::norm_max::norm_max(self.canonical().as_dyn_stride().as_dyn_rows().as_mat())
+		self.rb().as_mat().norm_max()
 	}
 
+	/// returns the l2 norm of `self`
 	#[inline]
 	pub fn norm_l2(&self) -> Real<T>
 	where
 		T: Conjugate,
 	{
-		linalg::reductions::norm_l2::norm_l2(self.canonical().as_dyn_stride().as_dyn_rows().as_mat())
+		self.rb().as_mat().norm_l2()
 	}
 
+	/// returns the squared l2 norm of `self`
 	#[inline]
-	pub fn norm_l2_squared(&self) -> Real<T>
+	pub fn squared_norm_l2(&self) -> Real<T>
 	where
 		T: Conjugate,
 	{
-		linalg::reductions::norm_l2_sqr::norm_l2_sqr(self.canonical().as_dyn_stride().as_dyn_rows().as_mat())
+		self.rb().as_mat().squared_norm_l2()
+	}
+
+	/// returns the l1 norm of `self`
+	#[inline]
+	pub fn norm_l1(&self) -> Real<T>
+	where
+		T: Conjugate,
+	{
+		self.rb().as_mat().norm_l1()
+	}
+
+	/// returns the sum of the elements of `self`
+	#[inline]
+	pub fn sum(&self) -> T::Canonical
+	where
+		T: Conjugate,
+	{
+		self.rb().as_mat().sum()
 	}
 }
 
 impl<'a, T, Rows: Shape> ColRef<'a, T, Rows, ContiguousFwd> {
+	/// returns a reference over the elements as a slice
 	#[inline]
 	pub fn as_slice(self) -> &'a [T] {
 		unsafe { core::slice::from_raw_parts(self.as_ptr(), self.nrows().unbound()) }
@@ -379,6 +478,7 @@ impl<'a, T, Rows: Shape> ColRef<'a, T, Rows, ContiguousFwd> {
 }
 
 impl<'a, 'ROWS, T> ColRef<'a, T, Dim<'ROWS>, ContiguousFwd> {
+	/// returns a reference over the elements as a lifetime-bound slice
 	#[inline]
 	pub fn as_array(self) -> &'a Array<'ROWS, T> {
 		unsafe { &*(self.as_slice() as *const [_] as *const Array<'ROWS, T>) }
@@ -386,6 +486,7 @@ impl<'a, 'ROWS, T> ColRef<'a, T, Dim<'ROWS>, ContiguousFwd> {
 }
 
 impl<'ROWS, 'a, T, RStride: Stride> ColRef<'a, T, Dim<'ROWS>, RStride> {
+	#[doc(hidden)]
 	#[inline]
 	pub fn split_rows_with<'TOP, 'BOT>(
 		self,
