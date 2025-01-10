@@ -39,7 +39,6 @@ pub struct SvdParams {
 	pub qr_ratio_threshold: f64,
 
 	#[doc(hidden)]
-	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
