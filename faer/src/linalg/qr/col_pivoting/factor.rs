@@ -245,12 +245,12 @@ fn update_mat_and_best_norm2<T: ComplexField>(
 	}
 }
 
-/// QR factorization with column pivoting tuning parameters.
+/// $QR$ factorization with column pivoting tuning parameters
 #[derive(Copy, Clone, Debug)]
 pub struct ColPivQrParams {
-	/// At which size blocking algorithms should be disabled.
+	/// threshold at which blocking algorithms should be disabled
 	pub blocking_threshold: usize,
-	/// At which size the parallelism should be disabled.
+	/// threshold at which the parallelism should be disabled
 	pub par_threshold: usize,
 
 	#[doc(hidden)]
@@ -386,8 +386,8 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 	)
 }
 
-/// Computes the size and alignment of required workspace for performing a QR decomposition
-/// with column pivoting.
+/// computes the size and alignment of required workspace for performing a qr decomposition
+/// with column pivoting
 pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
 	nrows: usize,
 	ncols: usize,
@@ -403,10 +403,10 @@ pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
 	StackReq::EMPTY
 }
 
-/// Information about the resulting QR factorization.
+/// information about the resulting $QR$ factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct ColPivQrInfo {
-	/// Number of transpositions that were performed, can be used to compute the determinant of
+	/// number of transpositions that were performed, can be used to compute the determinant of
 	/// $P$.
 	pub transposition_count: usize,
 }

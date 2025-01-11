@@ -3,50 +3,45 @@ use crate::internal_prelude::*;
 use crate::perm::{swap_cols_idx, swap_rows_idx};
 use linalg::matmul::triangular::{self, BlockStructure};
 
-/// Pivoting strategy for choosing the pivots.
+/// pivoting strategy for choosing the pivots
 #[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub enum PivotingStrategy {
-	/// Diagonal pivoting.
+	/// diagonal pivoting
 	Diagonal,
 }
 
-/// Tuning parameters for the decomposition.
+/// tuning parameters for the decomposition
 #[derive(Copy, Clone, Debug)]
 pub struct BunchKaufmanParams {
-	/// Pivoting strategy.
+	/// pivoting strategy
 	pub pivoting: PivotingStrategy,
-	/// Block size of the algorithm.
+	/// block size of the algorithm
 	pub blocksize: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
-/// Dynamic Bunch-Kaufman regularization.
-/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
-/// their corrected sign.
+/// dynamic bunch-kaufman regularization
+///
+/// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+/// their corrected sign
 #[derive(Copy, Clone, Debug)]
 pub struct BunchKaufmanRegularization<'a, T> {
-	/// Expected signs for the diagonal at each step of the decomposition.
+	/// expected signs for the diagonal at each step of the decomposition
 	pub dynamic_regularization_signs: Option<&'a [i8]>,
-	/// Regularized value.
+	/// regularized value
 	pub dynamic_regularization_delta: T,
-	/// Regularization threshold.
+	/// regularization threshold
 	pub dynamic_regularization_epsilon: T,
 }
 
-/// Dynamic Bunch-Kaufman regularization.
-/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
-/// their corrected sign.
 #[derive(Debug)]
 struct BunchKaufmanRegularizationInner<'a, T> {
-	/// Expected signs for the diagonal at each step of the decomposition.
-	pub dynamic_regularization_signs: Option<&'a mut [i8]>,
-	/// Regularized value.
-	pub dynamic_regularization_delta: T,
-	/// Regularization threshold.
-	pub dynamic_regularization_epsilon: T,
+	dynamic_regularization_signs: Option<&'a mut [i8]>,
+	dynamic_regularization_delta: T,
+	dynamic_regularization_epsilon: T,
 }
 
 impl<T: RealField> Default for BunchKaufmanRegularization<'_, T> {
@@ -681,8 +676,8 @@ fn convert<'N, I: Index, T: ComplexField>(mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>
 	}
 }
 
-/// Computes the size and alignment of required workspace for performing a Cholesky
-/// decomposition with Bunch-Kaufman pivoting.
+/// computes the size and alignment of required workspace for performing a bunch-kaufman
+/// decomposition
 pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<BunchKaufmanParams, T>) -> StackReq {
 	let params = params.config;
 	let _ = par;
@@ -693,26 +688,26 @@ pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par
 	StackReq::new::<I>(dim).and(temp_mat_scratch::<T>(dim, bs)).and(StackReq::new::<i8>(dim))
 }
 
-/// Info about the result of the Bunch-Kaufman factorization.
+/// info about the result of the bunch-kaufman factorization
 #[derive(Copy, Clone, Debug)]
 pub struct BunchKaufmanInfo {
-	/// Number of pivots whose value or sign had to be corrected.
+	/// number of pivots whose value or sign had to be corrected
 	pub dynamic_regularization_count: usize,
-	/// Number of pivoting transpositions.
+	/// number of pivoting transpositions
 	pub transposition_count: usize,
 }
 
-/// Computes the Cholesky factorization with Bunch-Kaufman  pivoting of the input matrix and
-/// stores the factorization in `matrix` and `subdiag`.
+/// computes the bunch-kaufman factorization of $A$ and stores the factorization in `matrix` and
+/// `subdiag`
 ///
-/// The diagonal of the block diagonal matrix is stored on the diagonal
-/// of `matrix`, while the subdiagonal elements of the blocks are stored in `subdiag`.
+/// the diagonal of the block diagonal matrix is stored on the diagonal
+/// of `matrix`, while the subdiagonal elements of the blocks are stored in `subdiag`
 ///
-/// # Panics
+/// # panics
 ///
-/// Panics if the input matrix is not squa
+/// panics if the input matrix is not square
 ///
-/// This can also panic if the provided memory in `stack` is insufficient (see
+/// this can also panic if the provided memory in `stack` is insufficient (see
 /// [`cholesky_in_place_scratch`]).
 
 #[track_caller]

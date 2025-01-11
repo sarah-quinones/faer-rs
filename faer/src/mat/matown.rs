@@ -330,7 +330,7 @@ impl<T, Rows: Shape, Cols: Shape> Drop for Mat<T, Rows, Cols> {
 }
 
 impl<T> Mat<T> {
-	/// Returns an empty matrix of dimension `0×0`.
+	/// returns an empty matrix of dimension `0×0`.
 	#[inline]
 	pub const fn new() -> Self {
 		Self {

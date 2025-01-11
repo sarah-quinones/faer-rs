@@ -235,6 +235,7 @@ fn recursion_threshold() -> usize {
 	4
 }
 
+/// solves $L x = b$, implicitly conjugating $L$ if needed, and stores the result in `rhs`
 #[track_caller]
 #[inline]
 pub fn solve_lower_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: Shape>(
@@ -261,6 +262,7 @@ pub fn solve_lower_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: S
 	);
 }
 
+/// solves $L x = b$, implicitly conjugating $L$ if needed, and stores the result in `rhs`
 #[inline]
 #[track_caller]
 pub fn solve_lower_triangular_in_place<T: ComplexField, LhsT: Conjugate<Canonical = T>, N: Shape, K: Shape>(
@@ -272,6 +274,8 @@ pub fn solve_lower_triangular_in_place<T: ComplexField, LhsT: Conjugate<Canonica
 	solve_lower_triangular_in_place_with_conj(tri, Conj::get::<LhsT>(), rhs, par)
 }
 
+/// solves $L x = b$, replacing the diagonal of $L$ with ones, and implicitly conjugating $L$ if
+/// needed, and stores the result in `rhs`
 #[track_caller]
 #[inline]
 pub fn solve_unit_lower_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: Shape>(
@@ -298,6 +302,8 @@ pub fn solve_unit_lower_triangular_in_place_with_conj<T: ComplexField, N: Shape,
 	);
 }
 
+/// solves $L x = b$, replacing the diagonal of $L$ with ones, and implicitly conjugating $L$ if
+/// needed, and stores the result in `rhs`
 #[inline]
 #[track_caller]
 pub fn solve_unit_lower_triangular_in_place<T: ComplexField, LhsT: Conjugate<Canonical = T>, N: Shape, K: Shape>(
@@ -309,6 +315,7 @@ pub fn solve_unit_lower_triangular_in_place<T: ComplexField, LhsT: Conjugate<Can
 	solve_unit_lower_triangular_in_place_with_conj(tri, Conj::get::<LhsT>(), rhs, par)
 }
 
+/// solves $U x = b$, implicitly conjugating $U$ if needed, and stores the result in `rhs`
 #[track_caller]
 #[inline]
 pub fn solve_upper_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: Shape>(
@@ -335,6 +342,7 @@ pub fn solve_upper_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: S
 	);
 }
 
+/// solves $U x = b$, implicitly conjugating $U$ if needed, and stores the result in `rhs`
 #[inline]
 #[track_caller]
 pub fn solve_upper_triangular_in_place<T: ComplexField, LhsT: Conjugate<Canonical = T>, N: Shape, K: Shape>(
@@ -346,6 +354,8 @@ pub fn solve_upper_triangular_in_place<T: ComplexField, LhsT: Conjugate<Canonica
 	solve_upper_triangular_in_place_with_conj(tri, Conj::get::<LhsT>(), rhs, par)
 }
 
+/// solves $U x = b$, replacing the diagonal of $U$ with ones, and implicitly conjugating $U$ if
+/// needed, and stores the result in `rhs`
 #[track_caller]
 #[inline]
 pub fn solve_unit_upper_triangular_in_place_with_conj<T: ComplexField, N: Shape, K: Shape>(
@@ -372,6 +382,8 @@ pub fn solve_unit_upper_triangular_in_place_with_conj<T: ComplexField, N: Shape,
 	);
 }
 
+/// solves $U x = b$, replacing the diagonal of $U$ with ones, and implicitly conjugating $U$ if
+/// needed, and stores the result in `rhs`
 #[inline]
 #[track_caller]
 pub fn solve_unit_upper_triangular_in_place<T: ComplexField, LhsT: Conjugate<Canonical = T>, N: Shape, K: Shape>(

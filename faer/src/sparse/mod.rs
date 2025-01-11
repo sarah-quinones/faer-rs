@@ -84,13 +84,13 @@ impl<Row, Col, T> Triplet<Row, Col, T> {
 	}
 }
 
-/// Errors that can occur in sparse algorithms.
+/// errors that can occur in sparse algorithms
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
 pub enum FaerError {
-	/// An index exceeding the maximum value (`I::Signed::MAX` for a given index type `I`).
+	/// an index exceeding the maximum value (`I::Signed::MAX` for a given index type `I`)
 	IndexOverflow,
-	/// Memory allocation failed.
+	/// memory allocation failed
 	OutOfMemory,
 }
 
@@ -119,16 +119,16 @@ impl core::fmt::Display for FaerError {
 
 impl core::error::Error for FaerError {}
 
-/// Errors that can occur during the creation of sparse matrices from user input.
+/// errors that can occur during the creation of sparse matrices from user input
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum CreationError {
-	/// Generic error (allocation or index overflow).
+	/// generic error (allocation or index overflow)
 	Generic(FaerError),
-	/// Matrix index out-of-bounds error.
+	/// matrix index out-of-bounds error
 	OutOfBounds {
-		/// Row of the out-of-bounds index.
+		/// row of the out-of-bounds index
 		row: usize,
-		/// Column of the out-of-bounds index.
+		/// column of the out-of-bounds index
 		col: usize,
 	},
 }
@@ -178,23 +178,14 @@ pub(crate) fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I:
 	Ok(v)
 }
 
-/// The order values should be read in, when constructing/filling from indices and values.
+/// the order values should be read in, when constructing/filling from indices and values
 ///
-/// Allows separately creating the symbolic structure and filling the numerical values.
+/// allows separately creating the symbolic structure and filling the numerical values
 #[derive(Debug, Clone)]
 pub struct Argsort<I> {
 	idx: alloc::vec::Vec<I>,
 	all_nnz: usize,
 	nnz: usize,
-}
-
-/// Whether the filled values should replace the current matrix values or be added to them.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum FillMode {
-	/// New filled values should replace the old values.
-	Replace,
-	/// New filled values should be added to the old values.
-	Add,
 }
 
 /// algorithmic primitives for sparse matrices

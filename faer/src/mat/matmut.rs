@@ -1346,7 +1346,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 
 impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols> {
 	/// creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
-	/// The data is interpreted in a column-major format, so that the first chunk of `nrows`
+	/// the data is interpreted in a column-major format, so that the first chunk of `nrows`
 	/// values from the slices goes in the first column of the matrix, the second chunk of `nrows`
 	/// values goes in the second column, and so on
 	///
@@ -1376,7 +1376,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols> {
 	}
 
 	/// creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
-	/// The data is interpreted in a column-major format, where the beginnings of two consecutive
+	/// the data is interpreted in a column-major format, where the beginnings of two consecutive
 	/// columns are separated by `col_stride` elements.
 	#[inline]
 	#[track_caller]
@@ -1390,7 +1390,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols> {
 	}
 
 	/// creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
-	/// The data is interpreted in a row-major format, so that the first chunk of `ncols`
+	/// the data is interpreted in a row-major format, so that the first chunk of `ncols`
 	/// values from the slices goes in the first column of the matrix, the second chunk of `ncols`
 	/// values goes in the second column, and so on
 	///
@@ -1418,7 +1418,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols> {
 	}
 
 	/// creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
-	/// The data is interpreted in a row-major format, where the beginnings of two consecutive
+	/// the data is interpreted in a row-major format, where the beginnings of two consecutive
 	/// rows are separated by `row_stride` elements.
 	#[inline]
 	#[track_caller]

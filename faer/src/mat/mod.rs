@@ -12,7 +12,7 @@ pub(crate) struct MatView<T: ?Sized, Rows, Cols, RStride, CStride> {
 	col_stride: CStride,
 }
 
-/// represents a type that can be used to slice a matrix, such as an index or a range of indices.
+/// represents a type that can be used to slice a matrix, such as an index or a range of indices
 pub trait MatIndex<RowRange, ColRange> {
 	/// sliced view type
 	type Target;
@@ -49,7 +49,7 @@ pub use matmut::MatMut;
 pub use matown::Mat;
 pub use matref::MatRef;
 
-/// trait for types that can be converted to a matrix view.
+/// trait for types that can be converted to a matrix view
 pub trait AsMatRef {
 	/// scalar type
 	type T;
@@ -64,13 +64,13 @@ pub trait AsMatRef {
 	fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols>;
 }
 
-/// trait for types that can be converted to a matrix view.
+/// trait for types that can be converted to a matrix view
 pub trait AsMatMut: AsMatRef {
 	/// returns a view over `self`
 	fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols>;
 }
 
-/// trait for owning matrix types.
+/// trait for owning matrix types
 pub trait AsMat<T>: AsMatMut {
 	/// returns a matrix with dimensions `(rows, cols)` filled with zeros
 	fn zeros(rows: Self::Rows, cols: Self::Cols) -> Self

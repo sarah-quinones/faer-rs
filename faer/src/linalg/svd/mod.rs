@@ -1,14 +1,14 @@
-//! Low level implementation of the SVD of a matrix.
+//! low level implementation of the svd of a matrix
 //!
-//! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
+//! the svd of a matrix $A$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
 //! and $V$, such that:
 //!
-//! - $U$ has shape $(m, m)$ and is a unitary matrix,
-//! - $V$ has shape $(n, n)$ and is a unitary matrix,
-//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal,
+//! - $U$ has shape $(m, m)$ and is a unitary matrix
+//! - $V$ has shape $(n, n)$ and is a unitary matrix
+//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal
 //! - and finally:
 //!
-//! $$M = U S V^H.$$
+//! $$A = U S V^H$$
 
 use bidiag::BidiagParams;
 use linalg::qr::no_pivoting::factor::QrParams;
@@ -16,26 +16,38 @@ use linalg::qr::no_pivoting::factor::QrParams;
 use crate::assert;
 use crate::internal_prelude::*;
 
+/// bidiagonalization
 pub mod bidiag;
 pub(crate) mod bidiag_svd;
 
+/// whether the singular vectors should be computed
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeSvdVectors {
+	/// do not compute singular vectors
 	No,
+	/// compute the first $\min(\text{nrows}, \text{ncols})$ singular vectors
 	Thin,
+	/// compute singular vectors
 	Full,
 }
 
+/// svd error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SvdError {
+	/// reached max iterations
 	NoConvergence,
 }
 
+/// svd tuning parameters
 #[derive(Debug, Copy, Clone)]
 pub struct SvdParams {
+	/// bidiagonalization parameters
 	pub bidiag: BidiagParams,
+	/// $QR$ parameters
 	pub qr: QrParams,
+	/// threshold at which the implementation should stop recursing
 	pub recursion_threshold: usize,
+	/// threshold at which parallelism should be disabled
 	pub qr_ratio_threshold: f64,
 
 	#[doc(hidden)]
@@ -403,6 +415,7 @@ fn compute_squareish_svd<T: ComplexField>(
 	}
 }
 
+/// computes the size and alignment of the workspace required to compute a matrix's svd
 pub fn svd_scratch<T: ComplexField>(
 	nrows: usize,
 	ncols: usize,
@@ -454,6 +467,10 @@ pub fn svd_scratch<T: ComplexField>(
 	}
 }
 
+/// computes the svd of $A$, with the singular vectors being omitted, thin or full
+///
+/// the singular are stored in $S$, and the singular vectors in $U$ and $V$ such that the singular
+/// values are sorted in nonincreasing order
 #[math]
 pub fn svd<T: ComplexField>(
 	A: MatRef<'_, T>,
@@ -565,12 +582,15 @@ pub fn svd<T: ComplexField>(
 	Ok(())
 }
 
+/// computes the size and alignment of the workspace required to compute a matrix's
+/// pseudoinverse, given the svd
 pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> StackReq {
 	_ = par;
 	let size = Ord::min(nrows, ncols);
 	StackReq::all_of(&[temp_mat_scratch::<T>(nrows, size), temp_mat_scratch::<T>(ncols, size)])
 }
 
+/// computes a self-adjoint matrix's pseudoinverse, given the svd factors $S$, $U$ and $V$
 #[math]
 pub fn pseudoinverse_from_svd<T: ComplexField>(
 	pinv: MatMut<'_, T>,
@@ -592,6 +612,8 @@ pub fn pseudoinverse_from_svd<T: ComplexField>(
 	);
 }
 
+/// computes a self-adjoint matrix's pseudoinverse, given the svd factors $S$, $U$ and $V$, and
+/// tolerance parameters for determining zero singular values
 #[math]
 pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	pinv: MatMut<'_, T>,

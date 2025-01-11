@@ -492,27 +492,27 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 	}
 }
 
-/// Dynamic LDLT regularization.
-/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+/// dynamic $LDL^\top$ regularization.
+/// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign.
 #[derive(Copy, Clone, Debug)]
 pub struct LdltRegularization<'a, T> {
-	/// Expected signs for the diagonal at each step of the decomposition.
+	/// expected signs for the diagonal at each step of the decomposition.
 	pub dynamic_regularization_signs: Option<&'a [i8]>,
-	/// Regularized value.
+	/// regularized value.
 	pub dynamic_regularization_delta: T,
-	/// Regularization threshold.
+	/// regularization threshold.
 	pub dynamic_regularization_epsilon: T,
 }
 
-/// Info about the result of the LDLT factorization.
+/// info about the result of the $LDL^\top$ factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct LdltInfo {
-	/// Number of pivots whose value or sign had to be corrected.
+	/// number of pivots whose value or sign had to be corrected.
 	pub dynamic_regularization_count: usize,
 }
 
-/// Error in the LDLT factorization.
+/// error in the $LDL^\top$ factorization.
 #[derive(Copy, Clone, Debug)]
 pub enum LdltError {
 	ZeroPivot { index: usize },

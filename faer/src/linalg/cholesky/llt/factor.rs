@@ -1,25 +1,26 @@
 use crate::internal_prelude::*;
 use crate::linalg::cholesky::ldlt::factor::cholesky_recursion;
 
-/// Dynamic LDLT regularization.
-/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
-/// their corrected sign.
+/// dynamic $LL^\top$ regularization.
+///
+/// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+/// their corrected sign
 #[derive(Copy, Clone, Debug)]
 pub struct LltRegularization<T> {
-	/// Regularized value.
+	/// regularized value
 	pub dynamic_regularization_delta: T,
-	/// Regularization threshold.
+	/// regularization threshold
 	pub dynamic_regularization_epsilon: T,
 }
 
-/// Info about the result of the LDLT factorization.
+/// info about the result of the $LL^\top$ factorization
 #[derive(Copy, Clone, Debug)]
 pub struct LltInfo {
-	/// Number of pivots whose value or sign had to be corrected.
+	/// number of pivots whose value or sign had to be corrected
 	pub dynamic_regularization_count: usize,
 }
 
-/// Error in the LDLT factorization.
+/// error in the $LL^\top$ factorization
 #[derive(Copy, Clone, Debug)]
 pub enum LltError {
 	NonPositivePivot { index: usize },

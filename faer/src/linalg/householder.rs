@@ -1,32 +1,32 @@
-//! Block Householder transformations.
+//! block householder transformations
 //!
-//! A Householder reflection is linear transformation that describes a reflection about a
-//! hyperplane that crosses the origin of the space.
+//! a householder reflection is linear transformation that describes a reflection about a
+//! hyperplane that crosses the origin of the space
 //!
-//! Let $v$ be a unit vector that is orthogonal to the hyperplane. Then the corresponding
-//! Householder transformation in matrix form is $I - 2vv^H$, where $I$ is the identity matrix.
+//! let $v$ be a unit vector that is orthogonal to the hyperplane. then the corresponding
+//! householder transformation in matrix form is $I - 2vv^H$, where $I$ is the identity matrix
 //!
-//! In practice, a non unit vector $v$ is used, so the transformation is written as
-//! $$H = I - \frac{vv^H}{\tau}.$$
+//! in practice, a non unit vector $v$ is used, so the transformation is written as
+//! $$H = I - \frac{vv^H}{\tau}$$
 //!
-//! A block Householder transformation is a sequence of such transformations
+//! a block householder transformation is a sequence of such transformations
 //! $H_0, H_1, \dots, H_{b -1 }$ applied one after the other, with the restriction that the first
 //! $i$ components of the vector $v_i$ of the $i$-th transformation are zero, and the component at
-//! index $i$ is one.
+//! index $i$ is one
 //!
-//! The matrix $V = [v_0\ v_1\ \dots\ v_{b-1}]$ is thus a lower trapezoidal matrix with unit
-//! diagonal. We call it the Householder basis.
+//! the matrix $V = [v_0\ v_1\ \dots\ v_{b-1}]$ is thus a lower trapezoidal matrix with unit
+//! diagonal. we call it the householder basis
 //!
-//! There exists a unique upper triangular matrix $T$, that we call the Householder factor, such
-//! that $$H_0 \times \dots \times H_{b-1} = I - VT^{-1}V^H.$$
+//! there exists a unique upper triangular matrix $T$, that we call the householder factor, such
+//! that $$H_0 \times \dots \times H_{b-1} = I - VT^{-1}V^H$$
 //!
-//! A block Householder sequence is a sequence of such transformations, composed of two matrices:
+//! a block householder sequence is a sequence of such transformations, composed of two matrices:
 //! - a lower trapezoidal matrix with unit diagonal, which is the horizontal concatenation of the
-//! bases of each block Householder transformation,
-//! - a horizontal concatenation of the Householder factors.
+//! bases of each block householder transformation,
+//! - a horizontal concatenation of the householder factors.
 //!
-//! Examples on how to create and manipulate block Householder sequences are provided in the
-//! documentation of the QR module.
+//! examples on how to create and manipulate block householder sequences are provided in the
+//! documentation of the $QR$ module.
 
 use crate::assert;
 use crate::internal_prelude::*;
@@ -36,12 +36,12 @@ use crate::linalg::triangular_solve;
 use crate::utils::simd::SimdCtx;
 use crate::utils::thread::join_raw;
 
-/// Computes the Householder reflection $I - \frac{v v^H}{\tau}$ such that when multiplied by $x$
-/// from the left, The result is $\beta e_0$. $\tau$ and $\beta$ are returned and $\tau$ is
-/// real-valued.
+/// computes the householder reflection $I - \frac{v v^H}{\tau}$ such that when multiplied by $x$
+/// from the left, the result is $\beta e_0$. $\tau$ and $(\text{head} - \beta)^{-1}$ are returned
+/// and $\tau$ is real-valued. $\beta$ is stored in `head`
 ///
 /// $x$ is determined by $x_0$, contained in `head`, and $|x_{1\dots}|$, contained in `tail_norm`.
-/// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
+/// the vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided)
 #[math]
 #[inline]
 pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_, T>) -> (T, Option<T>) {
@@ -187,8 +187,8 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 	}
 }
 
-/// Computes the size and alignment of required workspace for applying a block Householder
-/// transformation to a right-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying a block householder
+/// transformation to a right-hand-side matrix in place
 pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -198,8 +198,8 @@ pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// Computes the size and alignment of required workspace for applying the transpose of a block
-/// Householder transformation to a right-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying the transpose of a block
+/// householder transformation to a right-hand-side matrix in place
 pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -209,8 +209,8 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: Complex
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// Computes the size and alignment of required workspace for applying a block Householder
-/// transformation to a left-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying a block householder
+/// transformation to a left-hand-side matrix in place
 pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -220,8 +220,8 @@ pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
-/// Computes the size and alignment of required workspace for applying the transpose of a block
-/// Householder transformation to a left-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying the transpose of a block
+/// householder transformation to a left-hand-side matrix in place
 pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -231,8 +231,8 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: Comple
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
-/// Computes the size and alignment of required workspace for applying the transpose of a sequence
-/// of block Householder transformations to a right-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying the transpose of a sequence
+/// of block householder transformations to a right-hand-side matrix in place
 pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -242,8 +242,8 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// Computes the size and alignment of required workspace for applying a sequence of block
-/// Householder transformations to a right-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying a sequence of block
+/// householder transformations to a right-hand-side matrix in place
 pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -253,8 +253,8 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexF
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// Computes the size and alignment of required workspace for applying the transpose of a sequence
-/// of block Householder transformations to a left-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying the transpose of a sequence
+/// of block householder transformations to a left-hand-side matrix in place
 pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -264,8 +264,8 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
-/// Computes the size and alignment of required workspace for applying a sequence of block
-/// Householder transformations to a left-hand-side matrix in place.
+/// computes the size and alignment of required workspace for applying a sequence of block
+/// householder transformations to a left-hand-side matrix in place
 pub fn apply_block_householder_sequence_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
 	blocksize: usize,
@@ -538,8 +538,8 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 	}
 }
 
-/// Computes the product of the matrix, multiplied by the given block Householder transformation,
-/// and stores the result in `matrix`.
+/// computes the product of the matrix, multiplied by the given block householder transformation,
+/// and stores the result in `matrix`
 #[track_caller]
 pub fn apply_block_householder_on_the_right_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -559,8 +559,8 @@ pub fn apply_block_householder_on_the_right_in_place_with_conj<T: ComplexField>(
 	)
 }
 
-/// Computes the product of the matrix, multiplied by the transpose of the given block Householder
-/// transformation, and stores the result in `matrix`.
+/// computes the product of the matrix, multiplied by the transpose of the given block householder
+/// transformation, and stores the result in `matrix`
 #[track_caller]
 pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -573,8 +573,8 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<T: Comp
 	apply_block_householder_on_the_left_in_place_with_conj(householder_basis, householder_factor, conj_rhs, matrix.transpose_mut(), par, stack)
 }
 
-/// Computes the product of the given block Householder transformation, multiplied by `matrix`, and
-/// stores the result in `matrix`.
+/// computes the product of the given block householder transformation, multiplied by `matrix`, and
+/// stores the result in `matrix`
 #[track_caller]
 pub fn apply_block_householder_on_the_left_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -602,8 +602,8 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<T: ComplexField>(
 	)
 }
 
-/// Computes the product of the transpose of the given block Householder transformation, multiplied
-/// by `matrix`, and stores the result in `matrix`.
+/// computes the product of the transpose of the given block householder transformation, multiplied
+/// by `matrix`, and stores the result in `matrix`
 #[track_caller]
 pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -628,9 +628,9 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<T: Compl
 	)
 }
 
-/// Computes the product of a sequence of block Householder transformations given by
+/// computes the product of a sequence of block householder transformations given by
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
-/// `matrix`.
+/// `matrix`
 #[track_caller]
 pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -670,9 +670,9 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<T: Comple
 	}
 }
 
-/// Computes the product of the transpose of a sequence block Householder transformations given by
+/// computes the product of the transpose of a sequence block householder transformations given by
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
-/// `matrix`.
+/// `matrix`
 #[track_caller]
 pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -709,8 +709,8 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 	}
 }
 
-/// Computes the product of `matrix`, multiplied by a sequence of block Householder transformations
-/// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`.
+/// computes the product of `matrix`, multiplied by a sequence of block householder transformations
+/// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`
 #[track_caller]
 pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,
@@ -730,9 +730,9 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<T: Compl
 	)
 }
 
-/// Computes the product of `matrix`, multiplied by the transpose of a sequence of block Householder
+/// computes the product of `matrix`, multiplied by the transpose of a sequence of block householder
 /// transformations given by `householder_basis` and `householder_factor`, and stores the result in
-/// `matrix`.
+/// `matrix`
 #[track_caller]
 pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj<T: ComplexField>(
 	householder_basis: MatRef<'_, T>,

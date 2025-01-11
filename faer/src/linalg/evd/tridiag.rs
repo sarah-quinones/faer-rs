@@ -4,13 +4,12 @@ use linalg::householder;
 use linalg::matmul::triangular::BlockStructure;
 use linalg::matmul::{self, dot};
 
-/// QR factorization tuning parameters.
+/// tridiagonalization tuning parameters
 #[derive(Copy, Clone, Debug)]
 pub struct TridiagParams {
-	/// At which size the parallelism should be disabled.
+	/// threshold at which parallelism should be disabled
 	pub par_threshold: usize,
 
-	#[doc(hidden)]
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
@@ -24,6 +23,8 @@ impl<T: ComplexField> Auto<T> for TridiagParams {
 	}
 }
 
+/// computes the size and alignment of the workspace required to compute a self-adjoint matrix's
+/// tridiagonalization
 pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<TridiagParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
@@ -361,12 +362,24 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 	matmul::matmul(&mut y2, Accum::Add, (&A1).adjoint(), v21, f.clone(), par);
 }
 
+/// computes a self-adjoint matrix $A$'s tridiagonalization such that $A = Q T Q^H$
+///
+/// $T$ is a self-adjoint tridiagonal matrix stored in $A$'s diagonal and subdiagonal
+///
+/// $Q$ is a sequence of householder reflections stored in the unit lower triangular half of $A$
+/// (excluding the diagonal), with the householder coefficients being stored in `householder`
 #[azucar::reborrow]
 #[math]
-pub fn tridiag_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<TridiagParams, T>) {
+pub fn tridiag_in_place<T: ComplexField>(
+	A: MatMut<'_, T>,
+	householder: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+	params: Spec<TridiagParams, T>,
+) {
 	let params = params.config;
 	let mut A = A;
-	let mut H = H;
+	let mut H = householder;
 	let mut par = par;
 	let n = A.nrows();
 	let b = H.nrows();

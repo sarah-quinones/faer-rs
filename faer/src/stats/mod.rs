@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use crate::internal_prelude::*;
 use rand::distributions::Distribution;
 

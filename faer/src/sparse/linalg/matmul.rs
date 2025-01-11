@@ -2,15 +2,17 @@ use crate::assert;
 use crate::internal_prelude_sp::*;
 use core::cell::UnsafeCell;
 
+/// info about the matrix multiplication operation to help split the workload between multiple
+/// threads
 pub struct SparseMatMulInfo {
 	flops_prefix_sum: alloc::vec::Vec<f64>,
 }
 
-/// Performs a symbolic matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`,
+/// performs a symbolic matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`,
 /// and returns the result.
 ///
-/// # Note
-/// Allows unsorted matrices, and produces a sorted output.
+/// # note
+/// allows unsorted matrices, and produces a sorted output.
 #[track_caller]
 pub fn sparse_sparse_matmul_symbolic<I: Index>(
 	lhs: SymbolicSparseColMatRef<'_, I>,
@@ -57,16 +59,16 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 	}
 }
 
-/// Computes the size and alignment of the workspace required to perform the numeric matrix
+/// computes the size and alignment of the workspace required to perform the numeric matrix
 /// multiplication into `dst`.
 pub fn sparse_sparse_matmul_numeric_scratch<I: Index, T: ComplexField>(dst: SymbolicSparseColMatRef<'_, I>, par: Par) -> StackReq {
 	temp_mat_scratch::<T>(dst.nrows(), par.degree())
 }
 
-/// Performs a numeric matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`
+/// performs a numeric matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`
 /// multiplied by `alpha`, and stores or adds the result to `dst`.
 ///
-/// # Note
+/// # note
 /// `lhs` and `rhs` are allowed to be unsorted matrices.
 #[track_caller]
 #[math]
@@ -157,10 +159,10 @@ pub fn sparse_sparse_matmul_numeric<I: Index, T: ComplexField, LhsT: Conjugate<C
 	}
 }
 
-/// Performs a numeric matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`
+/// performs a numeric matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`
 /// multiplied by `alpha`, and returns the result.
 ///
-/// # Note
+/// # note
 /// `lhs` and `rhs` are allowed to be unsorted matrices.
 #[track_caller]
 pub fn sparse_sparse_matmul<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
@@ -190,11 +192,11 @@ pub fn sparse_sparse_matmul<I: Index, T: ComplexField, LhsT: Conjugate<Canonical
 	Ok(SparseColMat::new(symbolic, val))
 }
 
-/// Multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores or adds the result to
-/// `dst`. See [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more details.
+/// multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores or adds the result to
+/// `dst`. see [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more details.
 ///
-/// # Note
-/// Allows unsorted matrices.
+/// # note
+/// allows unsorted matrices.
 #[track_caller]
 #[math]
 pub fn sparse_dense_matmul<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
@@ -232,11 +234,11 @@ pub fn sparse_dense_matmul<I: Index, T: ComplexField, LhsT: Conjugate<Canonical 
 	}
 }
 
-/// Multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores or adds the result to
-/// `dst`. See [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more details.
+/// multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores or adds the result to
+/// `dst`. see [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more details.
 ///
-/// # Note
-/// Allows unsorted matrices.
+/// # note
+/// allows unsorted matrices.
 #[track_caller]
 #[math]
 pub fn dense_sparse_matmul<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(

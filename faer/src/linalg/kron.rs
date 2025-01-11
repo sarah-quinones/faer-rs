@@ -1,5 +1,40 @@
 use crate::internal_prelude::*;
 
+/// kronecker product of two matrices
+///
+/// the kronecker product of two matrices $A$ and $B$ is a block matrix
+/// $B$ with the following structure:
+///
+/// ```text
+/// C = [ a[(0, 0)] * B    , a[(0, 1)] * B    , ... , a[(0, n-1)] * B    ]
+///     [ a[(1, 0)] * B    , a[(1, 1)] * B    , ... , a[(1, n-1)] * B    ]
+///     [ ...              , ...              , ... , ...              ]
+///     [ a[(m-1, 0)] * B  , a[(m-1, 1)] * B  , ... , a[(m-1, n-1)] * B  ]
+/// ```
+///
+/// # panics
+///
+/// panics if `dst` does not have the correct dimensions. the dimensions
+/// of `dst` must be `A.nrows() * B.nrows()` by `A.ncols() * B.ncols()`.
+///
+/// # example
+///
+/// ```
+/// use faer::linalg::kron;
+/// use faer::{Mat, mat};
+///
+/// let a = mat![[1.0, 2.0], [3.0, 4.0]];
+/// let b = mat![[0.0, 5.0], [6.0, 7.0]];
+/// let c = mat![
+/// 	[0.0, 5.0, 0.0, 10.0],
+/// 	[6.0, 7.0, 12.0, 14.0],
+/// 	[0.0, 15.0, 0.0, 20.0],
+/// 	[18.0, 21.0, 24.0, 28.0],
+/// ];
+/// let mut dst = Mat::zeros(4, 4);
+/// kron(dst.as_mut(), a.as_ref(), b.as_ref());
+/// assert_eq!(dst, c);
+/// ```
 #[track_caller]
 #[math]
 pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef<'_, T>) {

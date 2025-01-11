@@ -3,26 +3,26 @@ use crate::internal_prelude_sp::*;
 use crate::linalg::solvers::{ShapeCore, SolveCore, SolveLstsqCore};
 use linalg_sp::{LltError, LuError};
 
-/// Reference-counted sparse symbolic LLT factorization.
+/// reference-counted sparse symbolic $LL^\top$ factorization
 #[derive(Debug, Clone)]
 pub struct SymbolicLlt<I> {
 	inner: alloc::sync::Arc<linalg_sp::cholesky::SymbolicCholesky<I>>,
 }
 
-/// Sparse LLT factorization.
+/// sparse $LL^\top$ factorization
 #[derive(Debug, Clone)]
 pub struct Llt<I, T> {
 	symbolic: SymbolicLlt<I>,
 	numeric: alloc::vec::Vec<T>,
 }
 
-/// Reference-counted sparse symbolic QR factorization.
+/// reference-counted sparse symbolic $QR$ factorization
 #[derive(Debug, Clone)]
 pub struct SymbolicQr<I> {
 	inner: alloc::sync::Arc<linalg_sp::qr::SymbolicQr<I>>,
 }
 
-/// Sparse Qr factorization.
+/// sparse $QR$ factorization
 #[derive(Debug, Clone)]
 pub struct Qr<I, T> {
 	symbolic: SymbolicQr<I>,
@@ -30,13 +30,13 @@ pub struct Qr<I, T> {
 	numeric: alloc::vec::Vec<T>,
 }
 
-/// Reference-counted sparse symbolic LU factorization.
+/// reference-counted sparse symbolic $LU$ factorization
 #[derive(Debug, Clone)]
 pub struct SymbolicLu<I> {
 	inner: alloc::sync::Arc<linalg_sp::lu::SymbolicLu<I>>,
 }
 
-/// Sparse Qr factorization.
+/// sparse $QR$ factorization
 #[derive(Debug, Clone)]
 pub struct Lu<I, T> {
 	symbolic: SymbolicLu<I>,
@@ -44,9 +44,9 @@ pub struct Lu<I, T> {
 }
 
 impl<I: Index> SymbolicLlt<I> {
-	/// Returns the symbolic LLT factorization of the input matrix.
+	/// returns the symbolic $LL^\top$ factorization of the input matrix
 	///
-	/// Only the provided side is accessed.
+	/// only the provided side is accessed
 	#[track_caller]
 	pub fn try_new(mat: SymbolicSparseColMatRef<'_, I>, side: Side) -> Result<Self, FaerError> {
 		Ok(Self {
@@ -61,7 +61,7 @@ impl<I: Index> SymbolicLlt<I> {
 }
 
 impl<I: Index> SymbolicQr<I> {
-	/// Returns the symbolic QR factorization of the input matrix.
+	/// returns the symbolic $QR$ factorization of the input matrix
 	#[track_caller]
 	pub fn try_new(mat: SymbolicSparseColMatRef<'_, I>) -> Result<Self, FaerError> {
 		Ok(Self {
@@ -71,7 +71,7 @@ impl<I: Index> SymbolicQr<I> {
 }
 
 impl<I: Index> SymbolicLu<I> {
-	/// Returns the symbolic LU factorization of the input matrix.
+	/// returns the symbolic $LU$ factorization of the input matrix
 	#[track_caller]
 	pub fn try_new(mat: SymbolicSparseColMatRef<'_, I>) -> Result<Self, FaerError> {
 		Ok(Self {
@@ -81,10 +81,10 @@ impl<I: Index> SymbolicLu<I> {
 }
 
 impl<I: Index, T: ComplexField> Llt<I, T> {
-	/// Returns the LLT factorization of the input matrix with the same sparsity pattern as the
-	/// original one used to construct the symbolic factorization.
+	/// returns the $LL^\top$ factorization of the input matrix with the same sparsity pattern as
+	/// the original one used to construct the symbolic factorization
 	///
-	/// Only the provided side is accessed.
+	/// only the provided side is accessed
 	#[track_caller]
 	pub fn try_new_with_symbolic(symbolic: SymbolicLlt<I>, mat: SparseColMatRef<'_, I, T>, side: Side) -> Result<Self, LltError> {
 		let len_val = symbolic.inner.len_val();
@@ -108,8 +108,8 @@ impl<I: Index, T: ComplexField> Llt<I, T> {
 }
 
 impl<I: Index, T: ComplexField> Lu<I, T> {
-	/// Returns the LU factorization of the input matrix with the same sparsity pattern as the
-	/// original one used to construct the symbolic factorization.
+	/// returns the $LU$ factorization of the input matrix with the same sparsity pattern as the
+	/// original one used to construct the symbolic factorization
 	#[track_caller]
 	pub fn try_new_with_symbolic(symbolic: SymbolicLu<I>, mat: SparseColMatRef<'_, I, T>) -> Result<Self, LuError> {
 		let mut numeric = linalg_sp::lu::NumericLu::new();
@@ -128,8 +128,8 @@ impl<I: Index, T: ComplexField> Lu<I, T> {
 }
 
 impl<I: Index, T: ComplexField> Qr<I, T> {
-	/// Returns the QR factorization of the input matrix with the same sparsity pattern as the
-	/// original one used to construct the symbolic factorization.
+	/// returns the $QR$ factorization of the input matrix with the same sparsity pattern as the
+	/// original one used to construct the symbolic factorization
 	#[track_caller]
 	pub fn try_new_with_symbolic(symbolic: SymbolicQr<I>, mat: SparseColMatRef<'_, I, T>) -> Result<Self, FaerError> {
 		let len_val = symbolic.inner.len_val();
@@ -284,34 +284,34 @@ impl<I: Index, T: ComplexField> SolveCore<T> for Lu<I, T> {
 }
 
 impl<I: Index, T: ComplexField> SparseColMatRef<'_, I, T> {
-	/// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is a lower triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each column
 	#[track_caller]
 	pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_lower_triangular_in_place(*self, Conj::No, rhs.as_mat_mut().as_dyn_cols_mut(), get_global_parallelism());
 	}
 
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each column
 	#[track_caller]
 	pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_upper_triangular_in_place(*self, Conj::No, rhs.as_mat_mut().as_dyn_cols_mut(), get_global_parallelism());
 	}
 
-	/// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit lower triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each column
 	#[track_caller]
 	pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_unit_lower_triangular_in_place(
@@ -322,12 +322,12 @@ impl<I: Index, T: ComplexField> SparseColMatRef<'_, I, T> {
 		);
 	}
 
-	/// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit upper triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each column
 	#[track_caller]
 	pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_unit_upper_triangular_in_place(
@@ -338,20 +338,20 @@ impl<I: Index, T: ComplexField> SparseColMatRef<'_, I, T> {
 		);
 	}
 
-	/// Returns the LLT decomposition of `self`. Only the provided side is accessed.
+	/// returns the $LL^\top$ decomposition of `self`. only the provided side is accessed
 	#[track_caller]
 	#[doc(alias = "sp_llt")]
 	pub fn sp_cholesky(&self, side: Side) -> Result<Llt<I, T>, LltError> {
 		Llt::try_new_with_symbolic(SymbolicLlt::try_new(self.symbolic(), side)?, *self, side)
 	}
 
-	/// Returns the LU decomposition of `self` with partial (row) pivoting.
+	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
 	#[track_caller]
 	pub fn sp_lu(&self) -> Result<Lu<I, T>, LuError> {
 		Lu::try_new_with_symbolic(SymbolicLu::try_new(self.symbolic())?, *self)
 	}
 
-	/// Returns the QR decomposition of `self`.
+	/// returns the $QR$ decomposition of `self`
 	#[track_caller]
 	pub fn sp_qr(&self) -> Result<Qr<I, T>, FaerError> {
 		Qr::try_new_with_symbolic(SymbolicQr::try_new(self.symbolic())?, *self)
@@ -359,12 +359,12 @@ impl<I: Index, T: ComplexField> SparseColMatRef<'_, I, T> {
 }
 
 impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each row
 	#[track_caller]
 	pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_upper_triangular_transpose_in_place(
@@ -375,12 +375,12 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 		);
 	}
 
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each row
 	#[track_caller]
 	pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_lower_triangular_transpose_in_place(
@@ -391,12 +391,12 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 		);
 	}
 
-	/// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit lower triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each row
 	#[track_caller]
 	pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_unit_upper_triangular_transpose_in_place(
@@ -407,12 +407,12 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 		);
 	}
 
-	/// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit upper triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each row
 	#[track_caller]
 	pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<T = T, Rows = usize>) {
 		linalg_sp::triangular_solve::solve_unit_lower_triangular_transpose_in_place(
@@ -423,7 +423,7 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 		);
 	}
 
-	/// Returns the LLT decomposition of `self`. Only the provided side is accessed.
+	/// returns the $LL^\top$ decomposition of `self`. only the provided side is accessed
 	#[track_caller]
 	#[doc(alias = "sp_llt")]
 	pub fn sp_cholesky(&self, side: Side) -> Result<Llt<I, T>, LltError> {
@@ -432,7 +432,7 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 		Llt::try_new_with_symbolic(SymbolicLlt::try_new(this.symbolic(), side)?, this, side)
 	}
 
-	/// Returns the LU decomposition of `self` with partial (row) pivoting.
+	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
 	#[track_caller]
 	pub fn sp_lu(&self) -> Result<Lu<I, T>, LuError> {
 		let this = self.to_col_major()?;
@@ -440,7 +440,7 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 		Lu::try_new_with_symbolic(SymbolicLu::try_new(this.symbolic())?, this)
 	}
 
-	/// Returns the QR decomposition of `self`.
+	/// returns the $QR$ decomposition of `self`
 	#[track_caller]
 	pub fn sp_qr(&self) -> Result<Qr<I, T>, FaerError> {
 		let this = self.to_col_major()?;
@@ -450,64 +450,64 @@ impl<I: Index, T: ComplexField> SparseRowMatRef<'_, I, T> {
 }
 
 impl<I: Index, T: ComplexField> SparseColMatMut<'_, I, T> {
-	/// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is a lower triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each column
 	#[track_caller]
 	pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each column
 	#[track_caller]
 	pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_upper_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit lower triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each column
 	#[track_caller]
 	pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit upper triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each column
 	#[track_caller]
 	pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_upper_triangular_in_place(rhs);
 	}
 
-	/// Returns the LLT decomposition of `self`. Only the provided side is accessed.
+	/// returns the $LL^\top$ decomposition of `self`. only the provided side is accessed
 	#[track_caller]
 	#[doc(alias = "sp_llt")]
 	pub fn sp_cholesky(&self, side: Side) -> Result<Llt<I, T>, LltError> {
 		self.rb().sp_cholesky(side)
 	}
 
-	/// Returns the LU decomposition of `self` with partial (row) pivoting.
+	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
 	#[track_caller]
 	pub fn sp_lu(&self) -> Result<Lu<I, T>, LuError> {
 		self.rb().sp_lu()
 	}
 
-	/// Returns the QR decomposition of `self`.
+	/// returns the $QR$ decomposition of `self`
 	#[track_caller]
 	pub fn sp_qr(&self) -> Result<Qr<I, T>, FaerError> {
 		self.rb().sp_qr()
@@ -515,128 +515,128 @@ impl<I: Index, T: ComplexField> SparseColMatMut<'_, I, T> {
 }
 
 impl<I: Index, T: ComplexField> SparseRowMatMut<'_, I, T> {
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each row
 	#[track_caller]
 	pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each row
 	#[track_caller]
 	pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_upper_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit lower triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each row
 	#[track_caller]
 	pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit upper triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each row
 	#[track_caller]
 	pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_upper_triangular_in_place(rhs);
 	}
 
-	/// Returns the LLT decomposition of `self`. Only the provided side is accessed.
+	/// returns the $LL^\top$ decomposition of `self`. only the provided side is accessed
 	#[track_caller]
 	#[doc(alias = "sp_llt")]
 	pub fn sp_cholesky(&self, side: Side) -> Result<Llt<I, T>, LltError> {
 		self.rb().sp_cholesky(side)
 	}
 
-	/// Returns the LU decomposition of `self` with partial (row) pivoting.
+	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
 	#[track_caller]
 	pub fn sp_lu(&self) -> Result<Lu<I, T>, LuError> {
 		self.rb().sp_lu()
 	}
 
-	/// Returns the QR decomposition of `self`.
+	/// returns the $QR$ decomposition of `self`
 	#[track_caller]
 	pub fn sp_qr(&self) -> Result<Qr<I, T>, FaerError> {
 		self.rb().sp_qr()
 	}
 }
 impl<I: Index, T: ComplexField> SparseColMat<I, T> {
-	/// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is a lower triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each column
 	#[track_caller]
 	pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each column
 	#[track_caller]
 	pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_upper_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit lower triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each column
 	#[track_caller]
 	pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit upper triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each column.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each column
 	#[track_caller]
 	pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_upper_triangular_in_place(rhs);
 	}
 
-	/// Returns the LLT decomposition of `self`. Only the provided side is accessed.
+	/// returns the $LL^\top$ decomposition of `self`. only the provided side is accessed
 	#[track_caller]
 	#[doc(alias = "sp_llt")]
 	pub fn sp_cholesky(&self, side: Side) -> Result<Llt<I, T>, LltError> {
 		self.rb().sp_cholesky(side)
 	}
 
-	/// Returns the LU decomposition of `self` with partial (row) pivoting.
+	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
 	#[track_caller]
 	pub fn sp_lu(&self) -> Result<Lu<I, T>, LuError> {
 		self.rb().sp_lu()
 	}
 
-	/// Returns the QR decomposition of `self`.
+	/// returns the $QR$ decomposition of `self`
 	#[track_caller]
 	pub fn sp_qr(&self) -> Result<Qr<I, T>, FaerError> {
 		self.rb().sp_qr()
@@ -644,64 +644,64 @@ impl<I: Index, T: ComplexField> SparseColMat<I, T> {
 }
 
 impl<I: Index, T: ComplexField> SparseRowMat<I, T> {
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each row
 	#[track_caller]
 	pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
-	/// stores the result in `rhs`.
+	/// assuming `self` is an upper triangular matrix, solves the equation `self * x = rhs`, and
+	/// stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each row
 	#[track_caller]
 	pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_upper_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit lower triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the last stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the last stored element in each row
 	#[track_caller]
 	pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_lower_triangular_in_place(rhs);
 	}
 
-	/// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
-	/// and stores the result in `rhs`.
+	/// assuming `self` is a unit upper triangular matrix, solves the equation `self * x = rhs`,
+	/// and stores the result in `rhs`
 	///
-	/// # Note
-	/// The matrix indices need not be sorted, but
-	/// the diagonal element is assumed to be the first stored element in each row.
+	/// # note
+	/// the matrix indices need not be sorted, but
+	/// the diagonal element is assumed to be the first stored element in each row
 	#[track_caller]
 	pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.rb().sp_solve_unit_upper_triangular_in_place(rhs);
 	}
 
-	/// Returns the LLT decomposition of `self`. Only the provided side is accessed.
+	/// returns the $LL^\top$ decomposition of `self`. only the provided side is accessed
 	#[track_caller]
 	#[doc(alias = "sp_llt")]
 	pub fn sp_cholesky(&self, side: Side) -> Result<Llt<I, T>, LltError> {
 		self.rb().sp_cholesky(side)
 	}
 
-	/// Returns the LU decomposition of `self` with partial (row) pivoting.
+	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
 	#[track_caller]
 	pub fn sp_lu(&self) -> Result<Lu<I, T>, LuError> {
 		self.rb().sp_lu()
 	}
 
-	/// Returns the QR decomposition of `self`.
+	/// returns the $QR$ decomposition of `self`
 	#[track_caller]
 	pub fn sp_qr(&self) -> Result<Qr<I, T>, FaerError> {
 		self.rb().sp_qr()

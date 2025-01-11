@@ -175,15 +175,20 @@ pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape +
 }
 
 pub mod matmul;
+/// triangular matrix inverse
 pub mod triangular_inverse;
+/// triangular matrix solve
 pub mod triangular_solve;
 
-pub mod reductions;
+pub(crate) mod reductions;
+/// matrix zipping implementation
 pub mod zip;
 
 pub mod householder;
+/// jacobi rotation matrix
 pub mod jacobi;
 
+/// kronecker product
 pub mod kron;
 
 pub mod cholesky;
@@ -195,4 +200,5 @@ pub mod svd;
 
 mod mat_ops;
 
+/// high level solvers
 pub mod solvers;

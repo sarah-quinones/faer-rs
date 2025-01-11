@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::marker::PhantomData;
 
 use crate::col::{Col, ColMut, ColRef};
@@ -223,68 +225,68 @@ pub enum Diag {
 	Include,
 }
 
-/// Matrix layout transformation. Used for zipping optimizations.
+/// matrix layout transformation. used for zipping optimizations
 #[derive(Copy, Clone)]
 pub enum MatLayoutTransform {
-	/// Matrix is used as-is.
+	/// matrix is used as-is
 	None,
-	/// Matrix rows are reversed.
+	/// matrix rows are reversed
 	ReverseRows,
-	/// Matrix is transposed.
+	/// matrix is transposed
 	Transpose,
-	/// Matrix is transposed, then rows are reversed.
+	/// matrix is transposed, then rows are reversed
 	TransposeReverseRows,
 }
 
-/// Vector layout transformation. Used for zipping optimizations.
+/// vector layout transformation. used for zipping optimizations
 #[derive(Copy, Clone)]
 pub enum VecLayoutTransform {
-	/// Vector is used as-is.
+	/// vector is used as-is
 	None,
-	/// Vector is reversed.
+	/// vector is reversed
 	Reverse,
 }
 
-/// Type with a given matrix shape.
+/// type with a given matrix shape
 pub trait MatIndex {
-	/// Type of rows.
+	/// type of rows
 	type Rows: Copy + Eq + core::fmt::Debug;
-	/// Type of columns.
+	/// type of columns
 	type Cols: Copy + Eq + core::fmt::Debug;
-	/// Returns the number of rows.
+	/// returns the number of rows
 	fn nrows(this: &Self) -> Self::Rows;
-	/// Returns the number of columns.
+	/// returns the number of columns
 	fn ncols(this: &Self) -> Self::Cols;
 
-	/// Indexing type.
+	/// indexing type
 	type Index: Copy;
-	/// Layout transformation type.
+	/// layout transformation type
 	type LayoutTransform: Copy;
 
-	/// Item produced by the zip views.
+	/// item produced by the zip views
 	type Item;
 
-	/// Matrix type with type erased dimensions.
+	/// matrix type with type erased dimensions
 	type Dyn: MatIndex<Dyn = Self::Dyn, LayoutTransform = Self::LayoutTransform, Item = Self::Item, Slice = Self::Slice>;
 
 	type Slice: for<'a> SliceFamily<'a, Self::Item>;
 
-	/// Returns slice at index of length `n_elems`.
+	/// returns slice at index of length `n_elems`
 	unsafe fn get_slice_unchecked<'a>(this: &'a mut Self, idx: Self::Index, n_elems: usize) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice;
 
-	/// Converts a type erased index back to its original representation.
+	/// converts a type erased index back to its original representation
 	unsafe fn from_dyn_idx(idx: <Self::Dyn as MatIndex>::Index) -> Self::Index;
 
-	/// Get the item at the given index, skipping bound checks.
+	/// get the item at the given index, skipping bound checks
 	unsafe fn get_unchecked(this: &mut Self, index: Self::Index) -> Self::Item;
-	/// Get the item at the given slice position, skipping bound checks.
+	/// get the item at the given slice position, skipping bound checks
 	unsafe fn next_unchecked<'a>(slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice) -> Self::Item;
 
-	/// Checks if the zip matrices are contiguous.
+	/// checks if the zip matrices are contiguous
 	fn is_contiguous(this: &Self) -> bool;
-	/// Computes the preferred iteration layout of the matrices.
+	/// computes the preferred iteration layout of the matrices
 	fn preferred_layout(this: &Self) -> Self::LayoutTransform;
-	/// Applies the layout transformation to the matrices.
+	/// applies the layout transformation to the matrices
 	fn with_layout(this: Self, layout: Self::LayoutTransform) -> Self::Dyn;
 }
 
@@ -311,23 +313,23 @@ impl<'a, T, U, F: SliceFamily<'a, T>, G: SliceFamily<'a, U>> SliceFamily<'a, Zip
 	type Slice = Zip<F::Slice, G::Slice>;
 }
 
-/// Single matrix.
+/// single matrix
 #[derive(Copy, Clone, Debug)]
 pub struct LastEq<Rows, Cols, Mat>(pub Mat, pub PhantomData<(Rows, Cols)>);
 
-/// Single element.
+/// single element
 #[derive(Copy, Clone, Debug)]
 pub struct Last<Mat>(pub Mat);
 
-/// Zipped matrices.
+/// zipped matrices
 #[derive(Copy, Clone, Debug)]
 pub struct ZipEq<Rows, Cols, Head, Tail>(pub Head, pub Tail, PhantomData<(Rows, Cols)>);
 
-/// Zipped elements.
+/// zipped elements
 #[derive(Copy, Clone, Debug)]
 pub struct Zip<Head, Tail>(pub Head, pub Tail);
 
-/// Single matrix view.
+/// single matrix view
 impl<
 	Rows: Copy + Eq + core::fmt::Debug,
 	Cols: Copy + Eq + core::fmt::Debug,
@@ -335,7 +337,7 @@ impl<
 	Tail: MatIndex<Rows = Rows, Cols = Cols>,
 > ZipEq<Rows, Cols, Head, Tail>
 {
-	/// Creates a zip matrix, after asserting that the dimensions match.
+	/// creates a zip matrix, after asserting that the dimensions match
 	#[inline(always)]
 	#[track_caller]
 	pub fn new(head: Head, tail: Tail) -> Self {
@@ -343,7 +345,7 @@ impl<
 		Self(head, tail, PhantomData)
 	}
 
-	/// Creates a zip matrix, assuming that the dimensions match.
+	/// creates a zip matrix, assuming that the dimensions match
 	#[inline(always)]
 	#[track_caller]
 	pub fn new_unchecked(head: Head, tail: Tail) -> Self {
@@ -1652,54 +1654,54 @@ impl<Rows: Shape, Cols: Shape, M: MatIndex<LayoutTransform = MatLayoutTransform,
 where
 	M::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 {
-	/// Applies `f` to each element of `self`.
+	/// applies `f` to each element of `self`
 	#[inline(always)]
 	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_mat(self, f);
 	}
 
-	/// Applies `f` to each element of `self`, while passing the indices of the position of the
-	/// current element.
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
 	#[inline(always)]
 	pub fn for_each_with_index(self, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_mat_with_index(self, f);
 	}
 
-	/// Applies `f` to each element of the lower triangular half of `self`, while passing the
-	/// indices of the position of the current element.
+	/// applies `f` to each element of the lower triangular half of `self`, while passing the
+	/// indices of the position of the current element
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_lower_with_index(self, diag: Diag, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_mat_triangular_lower_with_index(self, diag, f);
 	}
 
-	/// Applies `f` to each element of the upper triangular half of `self`, while passing the
-	/// indices of the position of the current element.
+	/// applies `f` to each element of the upper triangular half of `self`, while passing the
+	/// indices of the position of the current element
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_upper_with_index(self, diag: Diag, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_mat_triangular_upper_with_index(self, diag, f);
 	}
 
-	/// Applies `f` to each element of the lower triangular half of `self`.
+	/// applies `f` to each element of the lower triangular half of `self`
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_lower(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_mat_triangular_lower(self, diag, false, f);
 	}
 
-	/// Applies `f` to each element of the upper triangular half of `self`.
+	/// applies `f` to each element of the upper triangular half of `self`
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_upper(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_mat_triangular_lower(self, diag, true, f);
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Mat<T, Rows, Cols> {
 		let (m, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1713,7 +1715,7 @@ where
 		)
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> T) -> Mat<T, Rows, Cols> {
 		let (m, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1739,54 +1741,54 @@ where
 	L::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 	R::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 {
-	/// Applies `f` to each element of `self`.
+	/// applies `f` to each element of `self`
 	#[inline(always)]
 	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_mat(self, f);
 	}
 
-	/// Applies `f` to each element of `self`, while passing the indices of the position of the
-	/// current element.
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
 	#[inline(always)]
 	pub fn for_each_with_index(self, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_mat_with_index(self, f);
 	}
 
-	/// Applies `f` to each element of the lower triangular half of `self`, while passing the
-	/// indices of the position of the current element.
+	/// applies `f` to each element of the lower triangular half of `self`, while passing the
+	/// indices of the position of the current element
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_lower_with_index(self, diag: Diag, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_mat_triangular_lower_with_index(self, diag, f);
 	}
 
-	/// Applies `f` to each element of the upper triangular half of `self`, while passing the
-	/// indices of the position of the current element.
+	/// applies `f` to each element of the upper triangular half of `self`, while passing the
+	/// indices of the position of the current element
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_upper_with_index(self, diag: Diag, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_mat_triangular_upper_with_index(self, diag, f);
 	}
 
-	/// Applies `f` to each element of the lower triangular half of `self`.
+	/// applies `f` to each element of the lower triangular half of `self`
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_lower(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_mat_triangular_lower(self, diag, false, f);
 	}
 
-	/// Applies `f` to each element of the upper triangular half of `self`.
+	/// applies `f` to each element of the upper triangular half of `self`
 	///
-	/// `diag` specifies whether the diagonal should be included or excluded.
+	/// `diag` specifies whether the diagonal should be included or excluded
 	#[inline(always)]
 	pub fn for_each_triangular_upper(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_mat_triangular_lower(self, diag, true, f);
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Mat<T, Rows, Cols> {
 		let (m, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1800,7 +1802,7 @@ where
 		)
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Rows>, Idx<Cols>, <Self as MatIndex>::Item) -> T) -> Mat<T, Rows, Cols> {
 		let (m, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1820,20 +1822,20 @@ impl<Rows: Shape, M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows,
 where
 	M::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 {
-	/// Applies `f` to each element of `self`.
+	/// applies `f` to each element of `self`
 	#[inline(always)]
 	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_col(self, f);
 	}
 
-	/// Applies `f` to each element of `self`, while passing the indices of the position of the
-	/// current element.
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
 	#[inline(always)]
 	pub fn for_each_with_index(self, f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item)) {
 		for_each_col_with_index(self, f);
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Col<T, Rows> {
 		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
@@ -1846,7 +1848,7 @@ where
 		)
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> T) -> Col<T, Rows> {
 		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
@@ -1870,20 +1872,20 @@ where
 	L::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 	R::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 {
-	/// Applies `f` to each element of `self`.
+	/// applies `f` to each element of `self`
 	#[inline(always)]
 	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_col(self, f);
 	}
 
-	/// Applies `f` to each element of `self`, while passing the indices of the position of the
-	/// current element.
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
 	#[inline(always)]
 	pub fn for_each_with_index(self, f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item)) {
 		for_each_col_with_index(self, f);
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Col<T, Rows> {
 		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
@@ -1896,7 +1898,7 @@ where
 		)
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Rows>, <Self as MatIndex>::Item) -> T) -> Col<T, Rows> {
 		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
@@ -1915,20 +1917,20 @@ impl<Cols: Shape, M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), C
 where
 	M::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 {
-	/// Applies `f` to each element of `self`.
+	/// applies `f` to each element of `self`
 	#[inline(always)]
 	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_row(self, f);
 	}
 
-	/// Applies `f` to each element of `self`, while passing the indices of the position of the
-	/// current element.
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
 	#[inline(always)]
 	pub fn for_each_with_index(self, f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_row_with_index(self, f);
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Row<T, Cols> {
 		let (_, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1941,7 +1943,7 @@ where
 		)
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> T) -> Row<T, Cols> {
 		let (_, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1965,20 +1967,20 @@ where
 	L::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 	R::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 {
-	/// Applies `f` to each element of `self`.
+	/// applies `f` to each element of `self`
 	#[inline(always)]
 	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
 		for_each_row(self, f);
 	}
 
-	/// Applies `f` to each element of `self`, while passing the indices of the position of the
-	/// current element.
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
 	#[inline(always)]
 	pub fn for_each_with_index(self, f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item)) {
 		for_each_row_with_index(self, f);
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> Row<T, Cols> {
 		let (_, n) = (Self::nrows(&self), Self::ncols(&self));
@@ -1991,7 +1993,7 @@ where
 		)
 	}
 
-	/// Applies `f` to each element of `self` and collect its result into a new matrix.
+	/// applies `f` to each element of `self` and collect its result into a new matrix
 	#[inline(always)]
 	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Cols>, <Self as MatIndex>::Item) -> T) -> Row<T, Cols> {
 		let (_, n) = (Self::nrows(&self), Self::ncols(&self));

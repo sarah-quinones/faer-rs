@@ -189,7 +189,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		unsafe { ColRef::from_raw_parts(self.as_ptr() as *const T::Canonical, self.nrows(), self.row_stride()) }
 	}
 
-	/// returns a view over the conjugate transpose of `self`.
+	/// returns a view over the conjugate transpose of `self`
 	#[inline(always)]
 	pub fn adjoint(self) -> RowRef<'a, T::Conj, Rows, RStride>
 	where

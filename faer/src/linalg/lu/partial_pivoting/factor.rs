@@ -169,25 +169,27 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	n_trans
 }
 
-/// LUfactorization tuning parameters.
+/// $LU$ factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
 pub struct PartialPivLuParams {
+	/// threshold at which the implementation should stop recursing
 	pub recursion_threshold: usize,
+	/// blocking variant step size
 	pub blocksize: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
-/// Information about the resulting LU factorization.
+/// information about the resulting $LU$ factorization
 #[derive(Copy, Clone, Debug)]
 pub struct PartialPivLuInfo {
-	/// Number of transpositions that were performed, can be used to compute the determinant of
-	/// $P$.
+	/// number of transpositions that were performed, can be used to compute the determinant of
+	/// $P$
 	pub transposition_count: usize,
 }
 
-/// Error in the LDLT factorization.
+/// error in the $LU$ factorization
 #[derive(Copy, Clone, Debug)]
 pub enum LdltError {
 	ZeroPivot { index: usize },

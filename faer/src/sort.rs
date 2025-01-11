@@ -884,7 +884,7 @@ where
 	}
 }
 
-/// Sorts `v` using pattern-defeating quicksort, which is *O*(*n* \* log(*n*)) worst-case.
+/// sorts `v` using pattern-defeating quicksort, which is *O*(*n* \* log(*n*)) worst-case
 pub unsafe fn quicksort<P: Ptr, F>(v: P, v_len: usize, mut is_less: F)
 where
 	F: FnMut(P, P) -> bool,

@@ -1,24 +1,22 @@
 use crate::internal_prelude_sp::*;
 use crate::{assert, debug_assert};
 
-/// Assuming `tril` is a lower triangular matrix, solves the equation `Op(tril) * X = rhs`, and
-/// stores the result in `rhs`, where `Op` is either the conjugate or the identity depending on the
-/// value of `conj_tril`.
+/// assuming `tril` is a lower triangular matrix, solves the equation `tril * x = rhs`, and
+/// stores the result in `rhs`, implicitly conjugating `tril` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the first stored element in each column.
 #[track_caller]
 pub fn solve_lower_triangular_in_place<I: Index, T: ComplexField>(tril: SparseColMatRef<'_, I, T>, conj_tril: Conj, rhs: MatMut<'_, T>, par: Par) {
 	solve_lower_triangular_in_place_impl(tril, conj_tril, DiagStatus::Generic, rhs, par)
 }
 
-/// Assuming `tril` is a lower triangular matrix, solves the equation `Op(tril) * X = rhs`, and
-/// stores the result in `rhs`, where `Op` is either the conjugate or the identity depending on the
-/// value of `conj_tril`.
+/// assuming `tril` is a lower triangular matrix, solves the equation `tril * x = rhs`, and
+/// stores the result in `rhs`, implicitly conjugating `tril` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the first stored element in each column.
 #[track_caller]
 pub fn solve_unit_lower_triangular_in_place<I: Index, T: ComplexField>(
@@ -30,12 +28,11 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, T: ComplexField>(
 	solve_lower_triangular_in_place_impl(tril, conj_tril, DiagStatus::Unit, rhs, par)
 }
 
-/// Assuming `tril` is a lower triangular matrix, solves the equation `Op(tril).transpose() * X =
-/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
-/// depending on the value of `conj_tril`.
+/// assuming `tril` is a lower triangular matrix, solves the equation `tril.transpose() * x =
+/// rhs`, and stores the result in `rhs`, implicitly conjugating `tril` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the first stored element in each column.
 #[track_caller]
 pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
@@ -47,12 +44,11 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 	solve_lower_triangular_transpose_in_place_impl(tril, conj_tril, DiagStatus::Generic, rhs, par)
 }
 
-/// Assuming `tril` is a lower triangular matrix, solves the equation `Op(tril).transpose() * X =
-/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
-/// depending on the value of `conj_tril`.
+/// assuming `tril` is a lower triangular matrix, solves the equation `tril.transpose() * x =
+/// rhs`, and stores the result in `rhs`, implicitly conjugating `tril` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the first stored element in each column.
 #[track_caller]
 pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
@@ -64,24 +60,22 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, T: ComplexField>
 	solve_lower_triangular_transpose_in_place_impl(tril, conj_tril, DiagStatus::Unit, rhs, par)
 }
 
-/// Assuming `triu` is an upper triangular matrix, solves the equation `Op(triu) * X = rhs`, and
-/// stores the result in `rhs`, where `Op` is either the conjugate or the identity
-/// depending on the value of `conj_triu`.
+/// assuming `triu` is an upper triangular matrix, solves the equation `triu * x = rhs`, and
+/// stores the result in `rhs`, implicitly conjugating `triu` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the last stored element in each column.
 #[track_caller]
 pub fn solve_upper_triangular_in_place<I: Index, T: ComplexField>(triu: SparseColMatRef<'_, I, T>, conj_triu: Conj, rhs: MatMut<'_, T>, par: Par) {
 	solve_upper_triangular_in_place_impl(triu, conj_triu, DiagStatus::Generic, rhs, par)
 }
 
-/// Assuming `triu` is an upper triangular matrix, solves the equation `Op(triu) * X = rhs`, and
-/// stores the result in `rhs`, where `Op` is either the conjugate or the identity
-/// depending on the value of `conj_triu`.
+/// assuming `triu` is an upper triangular matrix, solves the equation `triu * x = rhs`, and
+/// stores the result in `rhs`, implicitly conjugating `triu` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the last stored element in each column.
 #[track_caller]
 pub fn solve_unit_upper_triangular_in_place<I: Index, T: ComplexField>(
@@ -93,12 +87,11 @@ pub fn solve_unit_upper_triangular_in_place<I: Index, T: ComplexField>(
 	solve_upper_triangular_in_place_impl(triu, conj_triu, DiagStatus::Unit, rhs, par)
 }
 
-/// Assuming `triu` is an upper triangular matrix, solves the equation `Op(triu).transpose() * X =
-/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
-/// depending on the value of `conj_triu`.
+/// assuming `triu` is an upper triangular matrix, solves the equation `triu.transpose() * x =
+/// rhs`, and stores the result in `rhs`, implicitly conjugating `triu` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the first stored element in each column.
 #[track_caller]
 pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
@@ -110,12 +103,11 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 	solve_upper_triangular_transpose_in_place_impl(triu, conj_triu, DiagStatus::Generic, rhs, par)
 }
 
-/// Assuming `triu` is an upper triangular matrix, solves the equation `Op(triu).transpose() * X =
-/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
-/// depending on the value of `conj_triu`.
+/// assuming `triu` is an upper triangular matrix, solves the equation `triu.transpose() * x =
+/// rhs`, and stores the result in `rhs`, implicitly conjugating `triu` if needed
 ///
-/// # Note
-/// The matrix indices need not be sorted, but
+/// # note
+/// the matrix indices need not be sorted, but
 /// the diagonal element is assumed to be the first stored element in each column.
 #[track_caller]
 pub fn solve_unit_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(

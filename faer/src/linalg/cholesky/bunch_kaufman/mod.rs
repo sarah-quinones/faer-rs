@@ -1,3 +1,9 @@
+//! the bunch kaufman decomposition of a self-adjoint matrix $a$ is such that:
+//! $$P A P^\top = LBL^H$$
+//! where $P$ is a permutation matrix, $B$ is a block diagonal matrix, with $1\times 1$ or $2 \times
+//! 2 $ diagonal blocks, and $L$ is a unit lower triangular matrix
+#![allow(missing_docs)]
+
 pub mod factor;
 pub mod solve;
 

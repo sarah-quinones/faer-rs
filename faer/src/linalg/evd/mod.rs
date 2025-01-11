@@ -1,6 +1,22 @@
+//! low level implementation of the eigenvalue decomposition of a square diagonalizable matrix.
+//!
+//! the eigenvalue decomposition of a square matrix $A$ of shape $(n, n)$ is a decomposition into
+//! two components $U$, $S$:
+//!
+//! - $U$ has shape $(n, n)$ and is invertible
+//! - $S$ has shape $(n, n)$ and is a diagonal matrix
+//! - and finally:
+//!
+//! $$A = U S U^{-1}$$
+//!
+//! if $A$ is self-adjoint, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued
+
+/// hessenberg decomposition
 pub mod hessenberg;
+#[doc(hidden)]
 pub mod schur;
 
+/// self-adjoint tridiagonalization
 pub mod tridiag;
 pub(crate) mod tridiag_evd;
 
@@ -11,31 +27,42 @@ use linalg::matmul::triangular::BlockStructure;
 use schur::SchurParams;
 use tridiag::TridiagParams;
 
+/// eigendecomposition error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvdError {
+	/// reached max iterations
 	NoConvergence,
 }
 
+/// schur to eigendecomposition conversion parameters
 #[derive(Clone, Copy, Debug)]
 pub struct EvdFromSchurParams {
+	/// threshold at which the implementation should stop recursing
 	pub recursion_threshold: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
+/// eigendecomposition tuning parameters
 #[derive(Clone, Copy, Debug)]
 pub struct EvdParams {
+	/// hessenberg parameters
 	pub hessenberg: HessenbergParams,
+	/// schur from hessenberg conversion parameters
 	pub schur: SchurParams,
+	/// eigendecomposition from schur conversion parameters
 	pub evd_from_schur: EvdFromSchurParams,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
+/// self-adjoint eigendecomposition tuning parameters
 #[derive(Clone, Copy, Debug)]
 pub struct SelfAdjointEvdParams {
+	/// tridiagonalization parameters
 	pub tridiag: TridiagParams,
+	/// threshold at which the implementation should stop recursing
 	pub recursion_threshold: usize,
 
 	#[doc(hidden)]
@@ -71,12 +98,17 @@ impl<T: ComplexField> Auto<T> for SelfAdjointEvdParams {
 	}
 }
 
+/// whether the eigenvectors should be computed
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeEigenvectors {
+	/// do not compute eigenvectors
 	No,
+	/// compute eigenvectors
 	Yes,
 }
 
+/// computes the size and alignment of the workspace required to compute a self-adjoint matrix's
+/// eigendecomposition
 #[math]
 pub fn self_adjoint_evd_scratch<T: ComplexField>(
 	dim: usize,
@@ -112,6 +144,12 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 	])
 }
 
+/// computes the matrix $A$'s eigendecomposition, assuming it is self-adjoint
+///
+/// the eigenvalues are stored in $S$, and the eigenvectors in $U$ such that the eigenvalues are
+/// sorted in nondecreasing order
+///
+/// only the lower triangular half of $A$ is accessed
 #[math]
 pub fn self_adjoint_evd<T: ComplexField>(
 	A: MatRef<'_, T>,
@@ -243,17 +281,22 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	Ok(())
 }
 
+/// computes the size and alignment of the workspace required to compute a self-adjoint matrix's
+/// pseudoinverse, given the eigendecomposition
 pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim).array(2)
 }
 
+/// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition factors $S$ and $U$
 #[math]
 #[track_caller]
 pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(pinv: MatMut<'_, T>, s: ColRef<'_, T>, u: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
 	pseudoinverse_from_self_adjoint_evd_with_tolerance(pinv, s, u, zero(), eps::<T::Real>() * from_f64::<T::Real>(u.ncols() as f64), par, stack);
 }
 
+/// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition factors $S$ and
+/// $U$, and tolerance parameters for determining zero eigenvalues
 #[math]
 #[track_caller]
 pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
@@ -763,6 +806,8 @@ fn solve_shifted_upper_triangular_system<T: ComplexField>(
 	}
 }
 
+/// computes the size and alignment of the workspace required to compute a matrix's
+/// eigendecomposition
 pub fn evd_scratch<T: ComplexField>(
 	dim: usize,
 	eigen_left: ComputeEigenvectors,
@@ -942,6 +987,10 @@ fn evd_imp<T: ComplexField>(
 	Ok(())
 }
 
+/// computes the matrix $A$'s eigendecomposition
+///
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
+/// $U_R$
 #[track_caller]
 pub fn evd_cplx<T: RealField>(
 	A: MatRef<'_, Complex<T>>,
@@ -964,6 +1013,10 @@ pub fn evd_cplx<T: RealField>(
 	evd_imp(A, s.column_vector_mut(), None, u_left, u_right, par, stack, params.config)
 }
 
+/// computes the matrix $A$'s eigendecomposition
+///
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
+/// $U_R$
 #[track_caller]
 pub fn evd_real<T: RealField>(
 	A: MatRef<'_, T>,

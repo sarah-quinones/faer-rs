@@ -1,14 +1,20 @@
 use crate::internal_prelude::*;
 
+/// jacobi rotation matrix
+///
+/// $$ \begin{bmatrix} c & -\bar s \\\\ s & c \end{bmatrix} $$
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct JacobiRotation<T> {
+	/// cosine
 	pub c: T,
+	/// sine
 	pub s: T,
 }
 
 impl<T: ComplexField> JacobiRotation<T> {
 	#[math]
+	#[doc(hidden)]
 	pub fn make_givens(p: T, q: T) -> Self
 	where
 		T: RealField,
@@ -62,6 +68,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 	}
 
 	#[math]
+	#[doc(hidden)]
 	pub fn rotg(p: T, q: T) -> (Self, T) {
 		if try_const! { T::IS_REAL } {
 			{
@@ -197,6 +204,9 @@ impl<T: ComplexField> JacobiRotation<T> {
 		}
 	}
 
+	/// apply to the given matrix from the left
+	///
+	/// $$ J \begin{bmatrix} m_{00} & m_{01} \\\\ m_{10} & m_{11} \end{bmatrix} $$
 	#[inline]
 	#[math]
 	pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
@@ -210,9 +220,12 @@ impl<T: ComplexField> JacobiRotation<T> {
 		)
 	}
 
+	/// apply to the given matrix from the right
+	///
+	/// $$ \begin{bmatrix} m_{00} & m_{01} \\\\ m_{10} & m_{11} \end{bmatrix} J $$
 	#[inline]
 	pub fn apply_on_the_right_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
-		let (r00, r01, r10, r11) = self.adjoint().apply_on_the_left_2x2(m00, m10, m01, m11);
+		let (r00, r01, r10, r11) = self.transpose().apply_on_the_left_2x2(m00, m10, m01, m11);
 		(r00, r10, r01, r11)
 	}
 
@@ -250,12 +263,14 @@ impl<T: ComplexField> JacobiRotation<T> {
 		self.apply_on_the_left_in_place_fallback(x, y);
 	}
 
+	/// apply from the left to $x$ and $y$
 	#[inline]
 	pub fn apply_on_the_left_in_place<N: Shape>(&self, (x, y): (RowMut<'_, T, N>, RowMut<'_, T, N>)) {
 		with_dim!(N, x.ncols().unbound());
 		self.apply_on_the_left_in_place_impl((x.as_col_shape_mut(N), y.as_col_shape_mut(N)));
 	}
 
+	/// apply from the right to $x$ and $y$
 	#[inline]
 	pub fn apply_on_the_right_in_place<N: Shape>(&self, (x, y): (ColMut<'_, T, N>, ColMut<'_, T, N>)) {
 		with_dim!(N, x.nrows().unbound());
@@ -279,7 +294,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 	}
 
 	#[inline(always)]
-	pub fn apply_on_the_right_in_place_with_simd<'N, S: pulp::Simd>(
+	pub(crate) fn apply_on_the_right_in_place_with_simd<'N, S: pulp::Simd>(
 		&self,
 		simd: SimdCtx<'N, T, S>,
 		x: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
@@ -291,7 +306,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	#[math]
 	#[inline(always)]
-	pub fn apply_on_the_left_in_place_with_simd<'N, S: pulp::Simd>(
+	pub(crate) fn apply_on_the_left_in_place_with_simd<'N, S: pulp::Simd>(
 		&self,
 		simd: SimdCtx<'N, T, S>,
 		x: RowMut<'_, T, Dim<'N>, ContiguousFwd>,
@@ -349,6 +364,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 		}
 	}
 
+	/// returns the adjoint of `self`
 	#[inline]
 	#[math]
 	pub fn adjoint(&self) -> Self {
@@ -358,6 +374,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 		}
 	}
 
+	/// returns the conjugate of `self`
 	#[inline]
 	#[math]
 	pub fn conjugate(&self) -> Self {
@@ -367,6 +384,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 		}
 	}
 
+	/// returns the transpose of `self`
 	#[inline]
 	#[math]
 	pub fn transpose(&self) -> Self {

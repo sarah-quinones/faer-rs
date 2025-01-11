@@ -115,12 +115,12 @@ fn invert_unit_lower_triangular_impl<'N, T: ComplexField>(dst: MatMut<'_, T, Dim
 	linalg::triangular_solve::solve_unit_lower_triangular_in_place(src_br, dst_bl, par);
 }
 
-/// Computes the inverse of the lower triangular matrix `src` (with implicit unit
+/// computes the inverse of the lower triangular matrix `src` (with implicit unit
 /// diagonal) and stores the strictly lower triangular part of the result to `dst`.
 ///
-/// # Panics
+/// # panics
 ///
-/// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
+/// panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
 pub fn invert_unit_lower_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, par: Par) {
 	Assert!(all(dst.nrows() == src.nrows(), dst.ncols() == src.ncols(), dst.nrows() == dst.ncols()));
@@ -130,12 +130,12 @@ pub fn invert_unit_lower_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: Ma
 	invert_unit_lower_triangular_impl(dst.as_shape_mut(N, N).as_dyn_stride_mut(), src.as_shape(N, N).as_dyn_stride(), par)
 }
 
-/// Computes the inverse of the lower triangular matrix `src` and stores the
+/// computes the inverse of the lower triangular matrix `src` and stores the
 /// lower triangular part of the result to `dst`.
 ///
-/// # Panics
+/// # panics
 ///
-/// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
+/// panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
 pub fn invert_lower_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, par: Par) {
 	Assert!(all(dst.nrows() == src.nrows(), dst.ncols() == src.ncols(), dst.nrows() == dst.ncols()));
@@ -145,23 +145,23 @@ pub fn invert_lower_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<
 	invert_lower_triangular_impl(dst.as_shape_mut(N, N).as_dyn_stride_mut(), src.as_shape(N, N).as_dyn_stride(), par)
 }
 
-/// Computes the inverse of the upper triangular matrix `src` (with implicit unit
+/// computes the inverse of the upper triangular matrix `src` (with implicit unit
 /// diagonal) and stores the strictly upper triangular part of the result to `dst`.
 ///
-/// # Panics
+/// # panics
 ///
-/// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
+/// panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
 pub fn invert_unit_upper_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, par: Par) {
 	invert_unit_lower_triangular(dst.reverse_rows_and_cols_mut(), src.reverse_rows_and_cols(), par)
 }
 
-/// Computes the inverse of the upper triangular matrix `src` and stores the
+/// computes the inverse of the upper triangular matrix `src` and stores the
 /// upper triangular part of the result to `dst`.
 ///
-/// # Panics
+/// # panics
 ///
-/// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
+/// panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
 pub fn invert_upper_triangular<T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'_, T>, par: Par) {
 	invert_lower_triangular(dst.reverse_rows_and_cols_mut(), src.reverse_rows_and_cols(), par)

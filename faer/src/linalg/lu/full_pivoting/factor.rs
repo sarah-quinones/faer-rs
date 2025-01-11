@@ -499,10 +499,10 @@ fn lu_in_place_unblocked<T: ComplexField>(
 	n_trans
 }
 
-/// LU factorization tuning parameters.
+/// $LU$ factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
 pub struct FullPivLuParams {
-	/// threshold at which size the parallelism should be disabled.
+	/// threshold at which size the parallelism should be disabled
 	pub par_threshold: usize,
 
 	#[doc(hidden)]

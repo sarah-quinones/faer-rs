@@ -5,13 +5,13 @@ pub(crate) mod real_schur;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SchurParams {
-	/// Function that returns the number of shifts to use for a given matrix size
+	/// function that returns the number of shifts to use for a given matrix size
 	pub recommended_shift_count: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-	/// Function that returns the deflation window to use for a given matrix size
+	/// function that returns the deflation window to use for a given matrix size
 	pub recommended_deflation_window: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-	/// Threshold to switch between blocked and unblocked code
+	/// threshold to switch between blocked and unblocked code
 	pub blocking_threshold: usize,
-	/// Threshold of percent of aggressive-early-deflation window that must converge to skip a
+	/// threshold of percent of aggressive-early-deflation window that must converge to skip a
 	/// sweep
 	pub nibble_threshold: usize,
 

@@ -2,7 +2,7 @@ use crate::Shape;
 use crate::internal_prelude::*;
 use crate::utils::bound::{One, Zero};
 
-/// represents a type that can be used to slice a row, such as an index or a range of indices.
+/// represents a type that can be used to slice a row, such as an index or a range of indices
 pub trait RowIndex<ColRange> {
 	/// sliced view type
 	type Target;
@@ -24,12 +24,12 @@ pub use rowmut::RowMut;
 pub use rowown::Row;
 pub use rowref::RowRef;
 
-/// trait for types that can be converted to a row view.
+/// trait for types that can be converted to a row view
 pub trait AsRowMut: AsRowRef {
 	/// returns a view over `self`
 	fn as_row_mut(&mut self) -> RowMut<'_, Self::T, Self::Cols>;
 }
-/// trait for types that can be converted to a row view.
+/// trait for types that can be converted to a row view
 pub trait AsRowRef: AsMatRef<Rows = One> {
 	/// returns a view over `self`
 	fn as_row_ref(&self) -> RowRef<'_, Self::T, Self::Cols>;

@@ -101,7 +101,7 @@
 //! for rank-deficient matrices
 //!
 //! ## singular value decomposition
-//! the SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
+//! the SVD of a matrix $A$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
 //! and $V$, such that:
 //!
 //! - $U$ has shape $(m, m)$ and is a unitary matrix,
@@ -110,7 +110,7 @@
 //! diagonal values in nonincreasing order,
 //! - and finally:
 //!
-//! $$M = U S V^H$$
+//! $$A = U S V^H$$
 //!
 //! the SVD is provided in two forms: either the full matrices $U$ and $V$ are computed, using
 //! [`Mat::svd`], or only their first $\min(m, n)$ columns are computed, using
@@ -123,16 +123,16 @@
 //! **note**: the order of the eigenvalues is currently unspecified and may be changed in a future
 //! release
 //!
-//! the eigenvalue decomposition of a square matrix $M$ of shape $(n, n)$ is a decomposition into
+//! the eigenvalue decomposition of a square matrix $A$ of shape $(n, n)$ is a decomposition into
 //! two components $U$, $S$:
 //!
 //! - $U$ has shape $(n, n)$ and is invertible,
 //! - $S$ has shape $(n, n)$ and is a diagonal matrix,
 //! - and finally:
 //!
-//! $$M = U S U^{-1}$$
+//! $$A = U S U^{-1}$$
 //!
-//! if $M$ is hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
+//! if $A$ is self-adjoint, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
 //! additionally, the eigenvalues are sorted in nondecreasing order
 //!
 //! Depending on the domain of the input matrix and whether it is self-adjoint, multiple methods
@@ -203,13 +203,13 @@ macro_rules! dispatch {
 }
 
 macro_rules! stack_mat {
-	($name: ident, $m: expr, $n: expr, $M: expr, $N: expr, $T: ty $(,)?) => {
+	($name: ident, $m: expr, $n: expr, $A: expr, $N: expr, $T: ty $(,)?) => {
 		let mut __tmp = {
 			#[repr(align(64))]
-			struct __Col<T, const M: usize>([T; M]);
-			struct __Mat<T, const M: usize, const N: usize>([__Col<T, M>; N]);
+			struct __Col<T, const A: usize>([T; A]);
+			struct __Mat<T, const A: usize, const N: usize>([__Col<T, A>; N]);
 
-			core::mem::MaybeUninit::<__Mat<$T, $M, $N>>::uninit()
+			core::mem::MaybeUninit::<__Mat<$T, $A, $N>>::uninit()
 		};
 		let __stack = MemStack::new_any(core::slice::from_mut(&mut __tmp));
 		let mut $name = $crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
@@ -1032,6 +1032,7 @@ pub mod prelude {
 	pub use mat::{Mat, MatMut, MatRef};
 	pub use row::{Row, RowMut, RowRef};
 
+	/// see [`Default`]
 	#[inline]
 	pub fn default<T: Default>() -> T {
 		Default::default()

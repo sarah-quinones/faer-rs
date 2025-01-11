@@ -3,16 +3,18 @@ use crate::internal_prelude::*;
 use linalg::householder;
 use linalg::matmul::{dot, matmul};
 
+/// computes the size and alignment of the workspace required to compute a matrix's
+/// bidiagonalization
 pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<BidiagParams, T>) -> StackReq {
 	_ = par;
 	_ = params;
 	StackReq::all_of(&[temp_mat_scratch::<T>(nrows, 1), temp_mat_scratch::<T>(ncols, 1)])
 }
 
-/// QR factorization tuning parameters.
+/// bidiagonalization tuning parameters.
 #[derive(Debug, Copy, Clone)]
 pub struct BidiagParams {
-	/// At which size the parallelism should be disabled.
+	/// threshold at which parallelism should be disabled
 	pub par_threshold: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -27,6 +29,15 @@ impl<T: ComplexField> Auto<T> for BidiagParams {
 	}
 }
 
+/// computes a matrix $A$'s bidiagonalization such that $A = U B V^H$
+///
+/// $B$ is a bidiagonal matrix stored in $A$'s diagonal and superdiagonal
+///
+/// $U$ is a sequence of householder reflections stored in the unit lower triangular half of $A$,
+/// with the householder coefficients being stored in `H_left`
+///
+/// $V$ is a sequence of householder reflections stored in the unit upper triangular half of $A$
+/// (excluding the diagonal), with the householder coefficients being stored in `H_right`
 #[azucar::index]
 #[azucar::reborrow]
 #[math]

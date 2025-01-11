@@ -32,7 +32,7 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>) {
 	}
 }
 
-/// The recommended block size to use for a QR decomposition of a matrix with the given shape.
+/// the recommended block size to use for a $QR$ decomposition of a matrix with the given shape.
 #[inline]
 pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
 	let prod = nrows * ncols;
@@ -59,12 +59,12 @@ pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usi
 	.max(1)
 }
 
-/// QR factorization tuning parameters.
+/// $QR$ factorization tuning parameters.
 #[derive(Debug, Copy, Clone)]
 pub struct QrParams {
-	/// At which size blocking algorithms should be disabled.
+	/// threshold at which blocking algorithms should be disabled
 	pub blocking_threshold: usize,
-	/// At which size the parallelism should be disabled.
+	/// threshold at which the parallelism should be disabled
 	pub par_threshold: usize,
 
 	#[doc(hidden)]
@@ -162,8 +162,8 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 	qr_in_place_blocked(A, Q_coeff, par, stack, params);
 }
 
-/// Computes the size and alignment of required workspace for performing a QR
-/// decomposition with no pivoting.
+/// computes the size and alignment of required workspace for performing a qr
+/// decomposition with no pivoting
 #[inline]
 pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<QrParams, T>) -> StackReq {
 	let _ = par;

@@ -169,7 +169,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		}
 	}
 
-	/// returns a view over the conjugate transpose of `self`.
+	/// returns a view over the conjugate transpose of `self`
 	#[inline(always)]
 	pub fn adjoint(self) -> ColRef<'a, T::Conj, Cols, CStride>
 	where

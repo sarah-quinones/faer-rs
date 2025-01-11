@@ -2,11 +2,11 @@ use super::*;
 use crate::assert;
 use crate::internal_prelude::*;
 
-/// Returns the resulting matrix obtained by applying `f` to the elements from `lhs` and `rhs`,
+/// returns the resulting matrix obtained by applying `f` to the elements from `lhs` and `rhs`,
 /// skipping entries that are unavailable in both of `lhs` and `rhs`.
 ///
-/// # Panics
-/// Panics if `lhs` and `rhs` don't have matching dimensions.  
+/// # panics
+/// panics if `lhs` and `rhs` don't have matching dimensions.  
 #[track_caller]
 pub fn binary_op<I: Index, T, LhsT, RhsT>(
 	lhs: SparseColMatRef<'_, I, LhsT>,
@@ -100,13 +100,13 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 	))
 }
 
-/// Returns the resulting matrix obtained by applying `f` to the elements from `dst` and `src`
+/// returns the resulting matrix obtained by applying `f` to the elements from `dst` and `src`
 /// skipping entries that are unavailable in both of them.  
-/// The sparsity patter of `dst` is unchanged.
+/// the sparsity patter of `dst` is unchanged.
 ///
-/// # Panics
-/// Panics if `src` and `dst` don't have matching dimensions.  
-/// Panics if `src` contains an index that's unavailable in `dst`.  
+/// # panics
+/// panics if `src` and `dst` don't have matching dimensions.  
+/// panics if `src` contains an index that's unavailable in `dst`.  
 #[track_caller]
 pub fn binary_op_assign_into<I: Index, T, SrcT>(
 	dst: SparseColMatMut<'_, I, T>,
@@ -157,13 +157,13 @@ pub fn binary_op_assign_into<I: Index, T, SrcT>(
 	}
 }
 
-/// Returns the resulting matrix obtained by applying `f` to the elements from `dst`, `lhs` and
+/// returns the resulting matrix obtained by applying `f` to the elements from `dst`, `lhs` and
 /// `rhs`, skipping entries that are unavailable in all of `dst`, `lhs` and `rhs`.  
-/// The sparsity patter of `dst` is unchanged.
+/// the sparsity patter of `dst` is unchanged.
 ///
-/// # Panics
-/// Panics if `lhs`, `rhs` and `dst` don't have matching dimensions.  
-/// Panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
+/// # panics
+/// panics if `lhs`, `rhs` and `dst` don't have matching dimensions.  
+/// panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
 #[track_caller]
 pub fn ternary_op_assign_into<I: Index, T, LhsT, RhsT>(
 	dst: SparseColMatMut<'_, I, T>,
@@ -256,10 +256,10 @@ pub fn ternary_op_assign_into<I: Index, T, LhsT, RhsT>(
 	}
 }
 
-/// Returns the sparsity pattern containing the union of those of `lhs` and `rhs`.
+/// returns the sparsity pattern containing the union of those of `lhs` and `rhs`.
 ///
-/// # Panics
-/// Panics if `lhs` and `rhs` don't have matching dimensions.  
+/// # panics
+/// panics if `lhs` and `rhs` don't have matching dimensions.  
 #[track_caller]
 #[inline]
 pub fn union_symbolic<I: Index>(
@@ -276,10 +276,10 @@ pub fn union_symbolic<I: Index>(
 	.0)
 }
 
-/// Returns the sum of `lhs` and `rhs`.
+/// returns the sum of `lhs` and `rhs`.
 ///
-/// # Panics
-/// Panics if `lhs` and `rhs` don't have matching dimensions.  
+/// # panics
+/// panics if `lhs` and `rhs` don't have matching dimensions.  
 #[track_caller]
 #[inline]
 pub fn add<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
@@ -294,10 +294,10 @@ pub fn add<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 	})
 }
 
-/// Returns the difference of `lhs` and `rhs`.
+/// returns the difference of `lhs` and `rhs`.
 ///
-/// # Panics
-/// Panics if `lhs` and `rhs` don't have matching dimensions.  
+/// # panics
+/// panics if `lhs` and `rhs` don't have matching dimensions.  
 #[track_caller]
 #[inline]
 pub fn sub<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
@@ -312,12 +312,12 @@ pub fn sub<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 	})
 }
 
-/// Computes the sum of `dst` and `src` and stores the result in `dst` without changing its
+/// computes the sum of `dst` and `src` and stores the result in `dst` without changing its
 /// symbolic structure.
 ///
-/// # Panics
-/// Panics if `dst` and `rhs` don't have matching dimensions.  
-/// Panics if `rhs` contains an index that's unavailable in `dst`.  
+/// # panics
+/// panics if `dst` and `rhs` don't have matching dimensions.  
+/// panics if `rhs` contains an index that's unavailable in `dst`.  
 pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
 	binary_op_assign_into(dst, rhs, |dst, rhs| {
 		*dst = faer_traits::math_utils::add(dst, &match rhs {
@@ -327,12 +327,12 @@ pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst
 	})
 }
 
-/// Computes the difference of `dst` and `src` and stores the result in `dst` without changing its
+/// computes the difference of `dst` and `src` and stores the result in `dst` without changing its
 /// symbolic structure.
 ///
-/// # Panics
-/// Panics if `dst` and `rhs` don't have matching dimensions.  
-/// Panics if `rhs` contains an index that's unavailable in `dst`.  
+/// # panics
+/// panics if `dst` and `rhs` don't have matching dimensions.  
+/// panics if `rhs` contains an index that's unavailable in `dst`.  
 pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
 	binary_op_assign_into(dst, rhs, |dst, rhs| {
 		*dst = faer_traits::math_utils::sub(dst, &match rhs {
@@ -342,12 +342,12 @@ pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst
 	})
 }
 
-/// Computes the sum of `lhs` and `rhs`, storing the result in `dst` without changing its
+/// computes the sum of `lhs` and `rhs`, storing the result in `dst` without changing its
 /// symbolic structure.
 ///
-/// # Panics
-/// Panics if `dst`, `lhs` and `rhs` don't have matching dimensions.  
-/// Panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
+/// # panics
+/// panics if `dst`, `lhs` and `rhs` don't have matching dimensions.  
+/// panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
 #[track_caller]
 #[inline]
 pub fn add_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
@@ -365,12 +365,12 @@ pub fn add_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT:
 	})
 }
 
-/// Computes the difference of `lhs` and `rhs`, storing the result in `dst` without changing its
+/// computes the difference of `lhs` and `rhs`, storing the result in `dst` without changing its
 /// symbolic structure.
 ///
-/// # Panics
-/// Panics if `dst`, `lhs` and `rhs` don't have matching dimensions.  
-/// Panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
+/// # panics
+/// panics if `dst`, `lhs` and `rhs` don't have matching dimensions.  
+/// panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
 #[track_caller]
 #[inline]
 pub fn sub_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(

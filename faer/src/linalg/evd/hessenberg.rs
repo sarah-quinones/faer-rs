@@ -4,15 +4,14 @@ use linalg::matmul::triangular::BlockStructure;
 use linalg::matmul::{self, dot, matmul};
 use linalg::{householder, triangular_solve};
 
-/// QR factorization tuning parameters.
+/// hessenberg factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
 pub struct HessenbergParams {
-	/// At which size the parallelism should be disabled.
+	/// threshold at which parallelism should be disabled
 	pub par_threshold: usize,
-	/// At which size the parallelism should be disabled.
+	/// threshold at which parallelism should be disabled
 	pub blocking_threshold: usize,
 
-	#[doc(hidden)]
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
@@ -27,6 +26,8 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 	}
 }
 
+/// computes the size and alignment of the workspace required to compute a matrix's hessenberg
+/// decomposition
 pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
 	let params = params.config;
 	let _ = par;
@@ -539,17 +540,29 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 	}
 }
 
+/// computes a matrix $A$'s hessenberg decomposition such that $A = Q H Q^H$
+///
+/// $H$ is a hessenberg matrix stored in the upper triangular half of $A$ (plus the subdiagonal)
+///
+/// $Q$ is a sequence of householder reflections stored in the unit lower triangular half of $A$
+/// (excluding the diagonal), with the householder coefficients being stored in `householder`
 #[track_caller]
-pub fn hessenberg_in_place<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<HessenbergParams, T>) {
+pub fn hessenberg_in_place<T: ComplexField>(
+	A: MatMut<'_, T>,
+	householder: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+	params: Spec<HessenbergParams, T>,
+) {
 	let params = params.config;
-	assert!(all(A.nrows() == A.ncols(), H.ncols() == A.ncols().saturating_sub(1)));
+	assert!(all(A.nrows() == A.ncols(), householder.ncols() == A.ncols().saturating_sub(1)));
 
 	let n = A.nrows().unbound();
 
 	if n * n < params.blocking_threshold {
-		hessenberg_rearranged_unblocked(A, H, par, stack, params);
+		hessenberg_rearranged_unblocked(A, householder, par, stack, params);
 	} else {
-		hessenberg_gqvdg_blocked(A, H, par, stack, params);
+		hessenberg_gqvdg_blocked(A, householder, par, stack, params);
 	}
 }
 
