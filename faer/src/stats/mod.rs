@@ -3,6 +3,9 @@
 use crate::internal_prelude::*;
 use rand::distributions::Distribution;
 
+mod meanvar;
+pub use meanvar::{NanHandling, col_mean, col_varm, row_mean, row_varm};
+
 pub mod prelude {
 	pub use num_complex::ComplexDistribution;
 	pub use rand::prelude::*;

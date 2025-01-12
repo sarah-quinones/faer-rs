@@ -577,6 +577,11 @@ pub mod linalg;
 pub mod matrix_free;
 pub mod sparse;
 
+/// de-serialization from common matrix file formats
+pub mod io;
+
+mod serde;
+
 /// native unsigned integer type
 pub trait Index: faer_traits::Index + seal::Seal {}
 impl<T: faer_traits::Index<Signed: seal::Seal> + seal::Seal> Index for T {}

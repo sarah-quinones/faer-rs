@@ -22,6 +22,7 @@ use matref::MatRef;
 /// since `MatMut` mutably borrows data, it cannot be [`Copy`]. this means that if we pass a
 /// `MatMut` to a function that takes it by value, or use a method that consumes `self` like
 /// [`MatMut::transpose_mut`], this renders the original variable unusable
+///
 /// ```compile_fail
 /// use faer::{Mat, MatMut};
 ///

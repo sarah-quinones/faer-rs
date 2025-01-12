@@ -345,6 +345,15 @@ impl<T> Mat<T> {
 			ncols: 0,
 		}
 	}
+
+	/// reserves the minimum capacity for `row_capacity` rows and `col_capacity`
+	/// columns without reallocating. does nothing if the capacity is already sufficient
+	#[track_caller]
+	pub fn with_capacity(row_capacity: usize, col_capacity: usize) -> Self {
+		let mut me = Self::new();
+		me.reserve(row_capacity, col_capacity);
+		me
+	}
 }
 
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
@@ -436,7 +445,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		Self::from_fn(nrows, ncols, |_, _| value.clone())
 	}
 
-	/// reserves the minimum capacity for `row_capacity` rows and `col_capacity`
+	/// reserves the minimum capacity for `new_row_capacity` rows and `new_col_capacity`
 	/// columns without reallocating, or returns an error in case of failure. does nothing if the
 	/// capacity is already sufficient
 	pub fn try_reserve(&mut self, new_row_capacity: usize, new_col_capacity: usize) -> Result<(), TryReserveError> {
@@ -444,7 +453,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			.try_reserve(self.nrows.unbound(), self.ncols.unbound(), new_row_capacity, new_col_capacity)
 	}
 
-	/// reserves the minimum capacity for `row_capacity` rows and `col_capacity`
+	/// reserves the minimum capacity for `new_row_capacity` rows and `new_col_capacity`
 	/// columns without reallocating. does nothing if the capacity is already sufficient
 	#[track_caller]
 	pub fn reserve(&mut self, new_row_capacity: usize, new_col_capacity: usize) {
@@ -546,6 +555,29 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			nrows,
 			ncols,
 		}
+	}
+
+	/// set the dimensions of the matrix.
+	///
+	/// # safety
+	/// the behavior is undefined if any of the following conditions are violated:
+	/// - `nrows < self.row_capacity()`
+	/// - `ncols < self.col_capacity()`
+	/// - the elements that were previously out of bounds but are now in bounds must be
+	/// initialized
+	pub unsafe fn set_dims(&mut self, nrows: Rows, ncols: Cols) {
+		self.nrows = nrows;
+		self.ncols = ncols;
+	}
+
+	/// returns a reference to a slice over the column at the given index
+	pub fn col_as_slice(&self, j: Idx<Cols>) -> &[T] {
+		self.col(j).try_as_col_major().unwrap().as_slice()
+	}
+
+	/// returns a reference to a slice over the column at the given index
+	pub fn col_as_slice_mut(&mut self, j: Idx<Cols>) -> &mut [T] {
+		self.col_mut(j).try_as_col_major_mut().unwrap().as_slice_mut()
 	}
 }
 

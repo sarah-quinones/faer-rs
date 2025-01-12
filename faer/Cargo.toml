@@ -25,6 +25,8 @@ faer-macros = { path = "../faer-macros" }
 rand_distr = "0.4.3"
 libm = "0.2.8"
 num-traits = "0.2.19"
+npyz = "0.8.3"
+serde = "1.0.217"
 
 [features]
 default = [
@@ -53,6 +55,8 @@ amd = "0.2.2"
 assert_approx_eq = "1.1.0"
 diol = { version = "0.8.3", default-features = false }
 matrix-market-rs = "0.1.3"
+serde = "1.0.217"
+serde_test = "1.0.177"
 
 [[bench]]
 name = "bench"

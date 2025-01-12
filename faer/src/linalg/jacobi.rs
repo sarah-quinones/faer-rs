@@ -12,6 +12,7 @@ pub struct JacobiRotation<T> {
 	pub s: T,
 }
 
+#[allow(dead_code)]
 impl<T: ComplexField> JacobiRotation<T> {
 	#[math]
 	#[doc(hidden)]

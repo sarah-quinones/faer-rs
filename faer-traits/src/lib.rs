@@ -555,6 +555,11 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
+	pub fn eq(&self, lhs: T::SimdVec<S>, rhs: T::SimdVec<S>) -> T::SimdMask<S> {
+		T::simd_equal(&self.0, lhs, rhs)
+	}
+
+	#[inline(always)]
 	pub fn lt(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
@@ -605,8 +610,18 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
+	pub fn or_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
+		T::simd_or_mask(&self.0, lhs, rhs)
+	}
+
+	#[inline(always)]
 	pub fn and_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
 		T::simd_and_mask(&self.0, lhs, rhs)
+	}
+
+	#[inline(always)]
+	pub fn not_mask(&self, mask: T::SimdMask<S>) -> T::SimdMask<S> {
+		T::simd_not_mask(&self.0, mask)
 	}
 
 	#[inline(always)]
@@ -988,7 +1003,8 @@ pub trait ComplexField:
 	fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S>;
 	fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S;
 
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S>;
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S>;
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S>;
 	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S>;
 	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>);
 
@@ -1015,6 +1031,7 @@ pub trait ComplexField:
 
 	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self;
 	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self;
+	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
 	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
 	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
@@ -1030,8 +1047,23 @@ pub trait ComplexField:
 
 	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S>;
 	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S>;
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S>;
+	#[inline(always)]
+	fn simd_index_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		Self::simd_index_less_than(ctx, rhs, lhs)
+	}
+	#[inline(always)]
+	fn simd_index_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		Self::simd_not_mask(ctx, Self::simd_index_less_than(ctx, rhs, lhs))
+	}
+	#[inline(always)]
+	fn simd_index_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		Self::simd_not_mask(ctx, Self::simd_index_greater_than(ctx, rhs, lhs))
+	}
 
 	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S>;
+	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S>;
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S>;
 	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize;
 
 	#[inline(always)]
@@ -1095,12 +1127,12 @@ pub trait ComplexField:
 					_,
 					Self::SimdVec<S>,
 				>(
-					&try_const! {pulp::iota_32::<Interleave<Self>>()},
+					&pulp::iota_32::<Interleave<Self>>()
 				))))
 			} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
-				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(
-					&try_const! {pulp::iota_64::<Interleave<Self>>()},
-				)))
+				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
+					&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(&pulp::iota_64::<Interleave<Self>>())),
+				)
 			} else {
 				panic!();
 			}
@@ -1321,6 +1353,11 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
+	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		ctx.equal_f32s(real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
 		ctx.less_than_f32s(real_lhs, real_rhs)
 	}
@@ -1366,6 +1403,11 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		ctx.less_than_u32s(lhs, rhs)
+	}
+
+	#[inline(always)]
 	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
 		ctx.abs_f32s(value)
 	}
@@ -1381,13 +1423,28 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
+	fn simd_or_mask<S: Simd>(simd: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		simd.or_m32s(lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		ctx.not_m32s(mask)
+	}
+
+	#[inline(always)]
 	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
 		ctx.first_true_m32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m32s(start, end)
+	}
+
+	#[inline(always)]
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMask<S> {
+		ctx.mask_between_m32s(start, end).mask()
 	}
 
 	#[inline(always)]
@@ -1629,6 +1686,11 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
+	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		ctx.equal_f64s(real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
 		ctx.less_than_f64s(real_lhs, real_rhs)
 	}
@@ -1674,6 +1736,11 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		ctx.less_than_u64s(lhs, rhs)
+	}
+
+	#[inline(always)]
 	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
 		ctx.abs_f64s(value)
 	}
@@ -1689,6 +1756,16 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
+	fn simd_or_mask<S: Simd>(simd: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		simd.or_m64s(lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		ctx.not_m64s(mask)
+	}
+
+	#[inline(always)]
 	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
 		ctx.first_true_m64s(value)
 	}
@@ -1699,8 +1776,13 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m64s(start, end)
+	}
+
+	#[inline(always)]
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMask<S> {
+		ctx.mask_between_m64s(start, end).mask()
 	}
 
 	#[inline(always)]
@@ -2036,6 +2118,15 @@ impl<T: RealField> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
+	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		T::simd_and_mask(
+			ctx,
+			T::simd_equal(ctx, real_lhs.re, real_rhs.re),
+			T::simd_equal(ctx, real_lhs.im, real_rhs.im),
+		)
+	}
+
+	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
 		T::simd_less_than(ctx, real_lhs.re, real_rhs.re)
 	}
@@ -2084,8 +2175,23 @@ impl<T: RealField> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		T::simd_index_less_than(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
 	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
 		T::simd_and_mask(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		T::simd_or_mask(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		T::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
@@ -2094,14 +2200,19 @@ impl<T: RealField> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
 		let n = core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>();
 		let start = start.zx() * 2;
 		let end = end.zx() * 2;
 
-		let re = T::simd_mask_between(ctx, Self::Index::truncate(start.min(n)), Self::Index::truncate(end.min(n)));
-		let im = T::simd_mask_between(ctx, Self::Index::truncate(start.max(n) - n), Self::Index::truncate(end.max(n) - n));
+		let re = T::simd_mem_mask_between(ctx, Self::Index::truncate(start.min(n)), Self::Index::truncate(end.min(n)));
+		let im = T::simd_mem_mask_between(ctx, Self::Index::truncate(start.max(n) - n), Self::Index::truncate(end.max(n) - n));
 		Complex { re, im }
+	}
+
+	#[inline(always)]
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+		T::simd_mask_between(ctx, start, end)
 	}
 
 	#[inline(always)]
@@ -2496,6 +2607,11 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
+	fn simd_equal<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		panic!()
+	}
+
+	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
 		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
 			ctx.less_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
@@ -2591,8 +2707,23 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		f32::simd_index_less_than(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
 	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
 		f32::simd_and_mask(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		f32::simd_or_mask(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		f32::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
@@ -2601,8 +2732,13 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m32s(2 * start, 2 * end)
+	}
+
+	#[inline(always)]
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMask<S> {
+		ctx.mask_between_m32s(2 * start, 2 * end).mask()
 	}
 
 	#[inline(always)]
@@ -2910,6 +3046,11 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
+	fn simd_equal<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		panic!()
+	}
+
+	#[inline(always)]
 	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
 		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
 			ctx.less_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
@@ -3005,8 +3146,23 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		f64::simd_index_less_than(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
 	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
 		f64::simd_and_mask(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		f64::simd_or_mask(ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		f64::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
@@ -3015,8 +3171,13 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m64s(2 * start, 2 * end)
+	}
+
+	#[inline(always)]
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMask<S> {
+		ctx.mask_between_m64s(2 * start, 2 * end).mask()
 	}
 
 	#[inline(always)]
@@ -3265,7 +3426,7 @@ impl ComplexField for Symbolic {
 		*simd
 	}
 
-	fn simd_mask_between<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::Index, _: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::Index, _: Self::Index) -> Self::SimdMemMask<S> {
 		()
 	}
 
@@ -3349,6 +3510,10 @@ impl ComplexField for Symbolic {
 		Self
 	}
 
+	fn simd_equal<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		()
+	}
+
 	fn simd_less_than<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
 		()
 	}
@@ -3390,7 +3555,23 @@ impl ComplexField for Symbolic {
 		()
 	}
 
+	fn simd_or_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_not_mask<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		()
+	}
+
 	fn simd_first_true_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>) -> usize {
 		0
+	}
+
+	fn simd_mask_between<S: Simd>(_: &Self::SimdCtx<S>, _: Self::Index, _: Self::Index) -> Self::SimdMask<S> {
+		()
+	}
+
+	fn simd_index_less_than<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		()
 	}
 }

@@ -20,7 +20,7 @@ use crate::internal_prelude::*;
 /// # example
 ///
 /// ```
-/// use faer::linalg::kron;
+/// use faer::linalg::kron::kron;
 /// use faer::{Mat, mat};
 ///
 /// let a = mat![[1.0, 2.0], [3.0, 4.0]];
