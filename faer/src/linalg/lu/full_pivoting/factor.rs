@@ -15,7 +15,7 @@ fn best_value<T: ComplexField, S: Simd>(
 	indices: T::SimdIndex<S>,
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
 	let value = simd.abs1(value);
-	let is_better = simd.gt(value, best_value);
+	let is_better = (**simd).gt(value, best_value);
 	(
 		RealReg(simd.select(is_better, value.0, best_value.0)),
 		simd.iselect(is_better, indices, best_indices),
@@ -30,7 +30,7 @@ fn best_score<T: ComplexField, S: Simd>(
 	score: RealReg<T::SimdVec<S>>,
 	indices: T::SimdIndex<S>,
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
-	let is_better = simd.gt(score, best_score);
+	let is_better = (**simd).gt(score, best_score);
 	(
 		RealReg(simd.select(is_better, score.0, best_score.0)),
 		simd.iselect(is_better, indices, best_indices),
@@ -47,7 +47,7 @@ fn best_score_2d<T: ComplexField, S: Simd>(
 	row: T::SimdIndex<S>,
 	col: T::SimdIndex<S>,
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>, T::SimdIndex<S>) {
-	let is_better = simd.gt(score, best_score);
+	let is_better = (**simd).gt(score, best_score);
 	(
 		RealReg(simd.select(is_better, score.0, best_score.0)),
 		simd.iselect(is_better, row, best_row),
@@ -66,7 +66,7 @@ fn reduce_2d<T: ComplexField, S: Simd>(
 	let best_val = simd.reduce_max_real(best_values);
 
 	let best_val_splat = simd.splat_real(&best_val);
-	let is_best = simd.ge(best_values, best_val_splat);
+	let is_best = (**simd).ge(best_values, best_val_splat);
 	let idx = simd.first_true_mask(is_best);
 
 	let best_row = bytemuck::cast_slice::<T::SimdIndex<S>, T::Index>(core::slice::from_ref(&best_row))[idx];

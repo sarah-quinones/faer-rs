@@ -30,7 +30,7 @@ fn norm_max_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd
 
 			if let Some(i0) = head {
 				let x0 = simd.abs_max(simd.read(data, i0));
-				acc0 = simd.max(acc0, x0);
+				acc0 = (*simd).max(acc0, x0);
 			}
 			for [i0, i1, i2, i3] in body4 {
 				let x0 = simd.abs_max(simd.read(data, i0));
@@ -38,22 +38,22 @@ fn norm_max_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd
 				let x2 = simd.abs_max(simd.read(data, i2));
 				let x3 = simd.abs_max(simd.read(data, i3));
 
-				acc0 = simd.max(acc0, x0);
-				acc1 = simd.max(acc1, x1);
-				acc2 = simd.max(acc2, x2);
-				acc3 = simd.max(acc3, x3);
+				acc0 = (*simd).max(acc0, x0);
+				acc1 = (*simd).max(acc1, x1);
+				acc2 = (*simd).max(acc2, x2);
+				acc3 = (*simd).max(acc3, x3);
 			}
 			for i0 in body1 {
 				let x0 = simd.abs_max(simd.read(data, i0));
-				acc0 = simd.max(acc0, x0);
+				acc0 = (*simd).max(acc0, x0);
 			}
 			if let Some(i0) = tail {
 				let x0 = simd.abs_max(simd.read(data, i0));
-				acc0 = simd.max(acc0, x0);
+				acc0 = (*simd).max(acc0, x0);
 			}
-			acc0 = simd.max(acc0, acc1);
-			acc2 = simd.max(acc2, acc3);
-			acc0 = simd.max(acc0, acc2);
+			acc0 = (*simd).max(acc0, acc1);
+			acc2 = (*simd).max(acc2, acc3);
+			acc0 = (*simd).max(acc0, acc2);
 
 			simd.reduce_max_real(acc0)
 		}
