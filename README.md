@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/bae4b2ae-292b-4894-b5b5-afaf56725056" alt="faer logo"/ width="25%">
+</p>
+
 # faer
 
 [![Documentation](https://docs.rs/faer/badge.svg)](https://docs.rs/faer)
