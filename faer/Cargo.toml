@@ -23,7 +23,6 @@ gemm = { version = "0.18.2", default-features = false }
 dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
 pulp = { version = "0.21.3", default-features = false }
 equator = { version = "0.4.2" }
-azucar = { path = "../../azucar/azucar" }
 
 faer-traits = { path = "../faer-traits" }
 faer-macros = { path = "../faer-macros" }
