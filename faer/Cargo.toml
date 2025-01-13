@@ -84,7 +84,7 @@ serde_test = "1.0.177"
 
 [package.metadata.docs.rs]
 features = ["default"]
-rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
+rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "../katex-header.html"]
 
 [[bench]]
 name = "bench"
