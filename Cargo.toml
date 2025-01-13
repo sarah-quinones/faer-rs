@@ -3,6 +3,8 @@ members = [
   "faer-traits",
   "faer",
   "faer-macros",
+]
+exclude = [
   "faer-no-std-test",
 ]
 
@@ -10,7 +12,3 @@ resolver = "2"
 
 [profile.dev]
 opt-level = 3
-
-[profile.nostd]
-inherits = "dev"
-panic = "abort"

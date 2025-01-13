@@ -8,3 +8,6 @@ faer = { path = "../faer", default-features = false }
 libc = { version = "0.2.155", default-features = false }
 libc-print = "0.1.23"
 
+[profile.nostd]
+inherits = "dev"
+panic = "abort"
