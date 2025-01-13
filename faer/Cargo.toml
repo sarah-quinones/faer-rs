@@ -8,7 +8,7 @@ readme = "../README.md"
 repository = "https://github.com/sarah-quinones/faer-rs/"
 license = "MIT"
 keywords = ["math", "linear-algebra"]
-
+rust-version = "1.84.0"
 
 [dependencies]
 bytemuck = "1.18.0"
