@@ -1,6 +1,6 @@
 [package]
 name = "faer-traits"
-version = "0.1.0"
+version = "0.21.0"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,7 @@ libm = "0.2.8"
 
 dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
 pulp = { version = "0.21.3", default-features = false }
-faer-macros = { path = "../faer-macros" }
+faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 num-complex = { version = "0.4.6", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }

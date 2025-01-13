@@ -24,8 +24,8 @@ dyn-stack = { version = "0.13.0", default-features = false, features = ["core-er
 pulp = { version = "0.21.3", default-features = false }
 equator = { version = "0.4.2" }
 
-faer-traits = { path = "../faer-traits" }
-faer-macros = { path = "../faer-macros" }
+faer-traits = { path = "../faer-traits", version = "0.21.0" }
+faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 
 [features]
