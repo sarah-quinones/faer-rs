@@ -2,6 +2,12 @@
 name = "faer-macros"
 version = "0.21.0"
 edition = "2021"
+authors = ["sarah quiñones <sarah@veganb.tw>"]
+description = "linear algebra library"
+readme = "../README.md"
+repository = "https://github.com/sarah-quinones/faer-rs/"
+license = "MIT"
+keywords = ["math", "linear-algebra"]
 
 [lib]
 proc-macro = true
