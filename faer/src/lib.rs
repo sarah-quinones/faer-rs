@@ -575,6 +575,7 @@ pub mod row;
 
 pub mod linalg;
 #[path = "./operator/mod.rs"]
+#[cfg(feature = "unstable")]
 pub mod matrix_free;
 pub mod sparse;
 

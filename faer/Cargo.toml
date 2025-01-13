@@ -51,6 +51,7 @@ sparse-linalg = [
   "sparse",
   "linalg",
 ]
+unstable = []
 
 rayon = ["dep:rayon", "gemm/rayon"]
 perf-warn = ["dep:log"]
