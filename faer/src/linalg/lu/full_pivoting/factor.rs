@@ -602,7 +602,6 @@ mod tests {
 	use dyn_stack::MemBuffer;
 
 	#[test]
-	#[azucar::infer]
 	fn test_flu() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -637,8 +636,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, _))),
-					_,
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, default()))),
+					default(),
 				);
 
 				let mut L = LU.as_ref().cloned();
@@ -691,8 +690,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, _))),
-					_,
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, default()))),
+					default(),
 				);
 
 				let mut L = LU.as_ref().cloned();

@@ -1,3 +1,5 @@
+#![no_std]
+
 use bytemuck::Pod;
 use core::fmt::Debug;
 use num_complex::Complex;
@@ -1224,7 +1226,7 @@ impl ComplexField for f32 {
 
 	#[inline(always)]
 	fn sqrt_impl(value: &Self) -> Self {
-		(*value).sqrt()
+		libm::sqrtf(*value)
 	}
 
 	#[inline(always)]
@@ -1476,12 +1478,12 @@ impl RealField for f32 {
 
 	#[inline(always)]
 	fn sqrt_min_positive_impl() -> Self {
-		Self::MIN_POSITIVE.sqrt()
+		libm::sqrtf(Self::MIN_POSITIVE)
 	}
 
 	#[inline(always)]
 	fn sqrt_max_positive_impl() -> Self {
-		Self::MIN_POSITIVE.recip().sqrt()
+		libm::sqrtf(Self::MIN_POSITIVE.recip())
 	}
 
 	#[inline(always)]
@@ -1562,7 +1564,7 @@ impl ComplexField for f64 {
 
 	#[inline(always)]
 	fn sqrt_impl(value: &Self) -> Self {
-		(*value).sqrt()
+		libm::sqrt(*value)
 	}
 
 	#[inline(always)]
@@ -1814,12 +1816,12 @@ impl RealField for f64 {
 
 	#[inline(always)]
 	fn sqrt_min_positive_impl() -> Self {
-		Self::MIN_POSITIVE.sqrt()
+		libm::sqrt(Self::MIN_POSITIVE)
 	}
 
 	#[inline(always)]
 	fn sqrt_max_positive_impl() -> Self {
-		Self::MIN_POSITIVE.recip().sqrt()
+		libm::sqrt(Self::MIN_POSITIVE.recip())
 	}
 
 	#[inline(always)]

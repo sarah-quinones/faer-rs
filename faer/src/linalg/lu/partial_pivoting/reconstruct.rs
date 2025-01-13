@@ -76,7 +76,6 @@ mod tests {
 	use dyn_stack::MemBuffer;
 	use linalg::lu::partial_pivoting::*;
 
-	#[azucar::infer]
 	#[test]
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -97,8 +96,8 @@ mod tests {
 				perm_fwd,
 				perm_bwd,
 				Par::Seq,
-				MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, _)) }),
-				_,
+				MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, default())) }),
+				default(),
 			);
 
 			let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));

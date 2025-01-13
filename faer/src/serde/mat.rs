@@ -71,11 +71,11 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 		D: serde::Deserializer<'a>,
 	{
 		#[derive(Deserialize)]
-		#[serde(field_identifier, rename_all = "lowercase")]
+		#[allow(non_camel_case_types)]
 		enum Field {
-			Nrows,
-			Ncols,
-			Data,
+			nrows,
+			ncols,
+			data,
 		}
 		const FIELDS: &'static [&'static str] = &["nrows", "ncols", "data"];
 		struct MatVisitor<T>(PhantomData<T>);
@@ -208,21 +208,21 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 				let mut data: Option<MatrixOrVec<T>> = None;
 				while let Some(key) = map.next_key()? {
 					match key {
-						Field::Nrows => {
+						Field::nrows => {
 							if nrows.is_some() {
 								return Err(serde::de::Error::duplicate_field("nrows"));
 							}
 							let value = map.next_value()?;
 							nrows = Some(value);
 						},
-						Field::Ncols => {
+						Field::ncols => {
 							if ncols.is_some() {
 								return Err(serde::de::Error::duplicate_field("ncols"));
 							}
 							let value = map.next_value()?;
 							ncols = Some(value);
 						},
-						Field::Data => {
+						Field::data => {
 							if data.is_some() {
 								return Err(serde::de::Error::duplicate_field("data"));
 							}

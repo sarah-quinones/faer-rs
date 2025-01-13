@@ -292,7 +292,6 @@ impl<C: Conjugate> MatRef<'_, C> {
 		SelfAdjointEigen::new(self.as_mat_ref(), side)
 	}
 
-	#[azucar::infer]
 	#[track_caller]
 	/// returns the eigenvalues of `self`, assuming it is self-adjoint
 	///
@@ -318,9 +317,9 @@ impl<C: Conjugate> MatRef<'_, C> {
 					n,
 					linalg::evd::ComputeEigenvectors::No,
 					par,
-					_,
+					default(),
 				))),
-				_,
+				default(),
 			)?;
 
 			Ok(s.column_vector().iter().map(|x| real(x)).collect())
@@ -329,7 +328,6 @@ impl<C: Conjugate> MatRef<'_, C> {
 		imp(self.as_mat_ref().canonical(), side)
 	}
 
-	#[azucar::infer]
 	#[track_caller]
 	/// returns the singular values of `self`
 	///
@@ -354,9 +352,9 @@ impl<C: Conjugate> MatRef<'_, C> {
 					linalg::svd::ComputeSvdVectors::No,
 					linalg::svd::ComputeSvdVectors::No,
 					par,
-					_,
+					default(),
 				))),
-				_,
+				default(),
 			)?;
 
 			Ok(s.column_vector().iter().map(|x| real(x)).collect())
@@ -374,7 +372,6 @@ impl<T: RealField> MatRef<'_, T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	/// returns the eigenvalues of `self`
 	pub fn eigenvalues_from_real(&self) -> Result<Vec<Complex<T>>, EvdError> {
 		let par = get_global_parallelism();
@@ -398,9 +395,9 @@ impl<T: RealField> MatRef<'_, T> {
 				linalg::evd::ComputeEigenvectors::No,
 				linalg::evd::ComputeEigenvectors::No,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		)?;
 
 		Ok(s_re
@@ -420,7 +417,6 @@ impl<T: RealField> MatRef<'_, Complex<T>> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	/// returns the eigenvalues of `self`
 	pub fn eigenvalues(&self) -> Result<Vec<Complex<T>>, EvdError> {
 		let par = get_global_parallelism();
@@ -442,9 +438,9 @@ impl<T: RealField> MatRef<'_, Complex<T>> {
 				linalg::evd::ComputeEigenvectors::No,
 				linalg::evd::ComputeEigenvectors::No,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		)?;
 
 		Ok(s.column_vector().iter().cloned().collect())
@@ -778,17 +774,16 @@ impl<T: ComplexField> Llt<T> {
 		Self::new_imp(L)
 	}
 
-	#[azucar::infer]
 	#[track_caller]
 	fn new_imp(mut L: Mat<T>) -> Result<Self, LltError> {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
 
-		let mut mem = MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, _));
+		let mut mem = MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, default()));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::llt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, _)?;
+		linalg::cholesky::llt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, default())?;
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 
 		Ok(Self { L })
@@ -817,17 +812,16 @@ impl<T: ComplexField> Ldlt<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(mut L: Mat<T>) -> Result<Self, LdltError> {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
 		let mut D = Diag::zeros(n);
 
-		let mut mem = MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, par, _));
+		let mut mem = MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, par, default()));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::ldlt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, _)?;
+		linalg::cholesky::ldlt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, default())?;
 
 		D.copy_from(L.diagonal());
 		L.diagonal_mut().fill(one());
@@ -863,7 +857,6 @@ impl<T: ComplexField> Lblt<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(mut L: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -874,7 +867,11 @@ impl<T: ComplexField> Lblt<T> {
 		let mut perm_fwd = vec![0usize; n];
 		let mut perm_bwd = vec![0usize; n];
 
-		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(n, par, _));
+		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
+			n,
+			par,
+			default(),
+		));
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
@@ -885,7 +882,7 @@ impl<T: ComplexField> Lblt<T> {
 			&mut perm_bwd,
 			par,
 			stack,
-			_,
+			default(),
 		);
 
 		diag.copy_from(L.diagonal());
@@ -958,7 +955,6 @@ impl<T: ComplexField> PartialPivLu<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(mut LU: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -972,9 +968,9 @@ impl<T: ComplexField> PartialPivLu<T> {
 			&mut row_perm_bwd,
 			par,
 			MemStack::new(&mut MemBuffer::new(
-				linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, _),
+				linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, default()),
 			)),
-			_,
+			default(),
 		);
 
 		let (L, U) = split_LU(LU);
@@ -1011,7 +1007,6 @@ impl<T: ComplexField> FullPivLu<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(mut LU: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -1032,9 +1027,9 @@ impl<T: ComplexField> FullPivLu<T> {
 				m,
 				n,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		);
 
 		let (L, U) = split_LU(LU);
@@ -1077,7 +1072,6 @@ impl<T: ComplexField> Qr<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(mut QR: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -1096,9 +1090,9 @@ impl<T: ComplexField> Qr<T> {
 				n,
 				blocksize,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		);
 
 		let (Q_basis, R) = split_LU(QR);
@@ -1176,7 +1170,6 @@ impl<T: ComplexField> ColPivQr<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(mut QR: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
@@ -1200,9 +1193,9 @@ impl<T: ComplexField> ColPivQr<T> {
 				n,
 				blocksize,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		);
 
 		let (Q_basis, R) = split_LU(QR);
@@ -1295,7 +1288,6 @@ impl<T: ComplexField> Svd<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(A: MatRef<'_, T>, conj: Conj, thin: bool) -> Result<Self, SvdError> {
 		let par = get_global_parallelism();
 
@@ -1314,8 +1306,8 @@ impl<T: ComplexField> Svd<T> {
 			Some(U.as_mut()),
 			Some(V.as_mut()),
 			par,
-			MemStack::new(&mut MemBuffer::new(linalg::svd::svd_scratch::<T>(m, n, compute, compute, par, _))),
-			_,
+			MemStack::new(&mut MemBuffer::new(linalg::svd::svd_scratch::<T>(m, n, compute, compute, par, default()))),
+			default(),
 		)?;
 
 		if conj == Conj::Yes {
@@ -1363,7 +1355,6 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 	}
 
 	#[track_caller]
-	#[azucar::infer]
 	fn new_imp(A: MatRef<'_, T>, conj: Conj) -> Result<Self, EvdError> {
 		let par = get_global_parallelism();
 
@@ -1381,9 +1372,9 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 				n,
 				linalg::evd::ComputeEigenvectors::Yes,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		)?;
 
 		if conj == Conj::Yes {
@@ -1418,7 +1409,6 @@ impl<T: RealField> Eigen<T> {
 
 	/// returns the eigendecomposition of $A$
 	#[track_caller]
-	#[azucar::infer]
 	pub fn new_from_real(A: MatRef<'_, T>) -> Result<Self, EvdError> {
 		assert!(A.nrows() == A.ncols());
 
@@ -1442,9 +1432,9 @@ impl<T: RealField> Eigen<T> {
 				linalg::evd::ComputeEigenvectors::No,
 				linalg::evd::ComputeEigenvectors::Yes,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		)?;
 
 		let mut U = Mat::zeros(n, n);
@@ -1476,7 +1466,6 @@ impl<T: RealField> Eigen<T> {
 		Ok(Self { U, S })
 	}
 
-	#[azucar::infer]
 	fn new_imp(A: MatRef<'_, Complex<T>>, conj: Conj) -> Result<Self, EvdError> {
 		let par = get_global_parallelism();
 
@@ -1496,9 +1485,9 @@ impl<T: RealField> Eigen<T> {
 				linalg::evd::ComputeEigenvectors::No,
 				linalg::evd::ComputeEigenvectors::Yes,
 				par,
-				_,
+				default(),
 			))),
-			_,
+			default(),
 		)?;
 
 		if conj == Conj::Yes {
@@ -2605,7 +2594,6 @@ mod tests {
 
 	#[track_caller]
 	fn test_solver(A: MatRef<'_, c64>, A_dec: impl SolveCore<c64>) {
-		#[azucar::reborrow]
 		#[track_caller]
 		fn test_solver_imp(A: MatRef<'_, c64>, A_dec: &dyn SolveCore<c64>) {
 			let rng = &mut StdRng::seed_from_u64(0xC0FFEE);
@@ -2643,7 +2631,6 @@ mod tests {
 		test_solver_imp(A, &A_dec)
 	}
 
-	#[azucar::reborrow]
 	#[test]
 	fn test_all_solvers() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -2655,6 +2642,7 @@ mod tests {
 			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 		}
 		.rand::<Mat<c64>>(rng);
+		let A = A.rb();
 
 		test_solver(A, A.partial_piv_lu());
 		test_solver(A, A.full_piv_lu());
@@ -2664,13 +2652,17 @@ mod tests {
 
 		{
 			let ref A = A * A.adjoint();
+			let A = A.rb();
 			test_solver(A, A.llt(Side::Lower).unwrap());
 			test_solver(A, A.ldlt(Side::Lower).unwrap());
 		}
 
-		let ref A = A + A.adjoint();
-		test_solver(A, A.lblt(Side::Lower));
-		test_solver(A, A.self_adjoint_eigen(Side::Lower).unwrap());
+		{
+			let ref A = A + A.adjoint();
+			let A = A.rb();
+			test_solver(A, A.lblt(Side::Lower));
+			test_solver(A, A.self_adjoint_eigen(Side::Lower).unwrap());
+		}
 	}
 
 	#[test]

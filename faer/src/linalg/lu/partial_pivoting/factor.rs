@@ -278,7 +278,6 @@ mod tests {
 	use crate::{Mat, assert};
 
 	#[test]
-	#[azucar::infer]
 	fn test_plu() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -355,8 +354,8 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, _))),
-				_,
+				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, default()))),
+				default(),
 			)
 			.1;
 

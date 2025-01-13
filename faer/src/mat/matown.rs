@@ -1372,29 +1372,6 @@ impl<T, Dim: Shape> Mat<T, Dim, Dim> {
 	}
 }
 
-impl<'a, T, Rows: Shape, Cols: Shape, RowRange, ColRange> azucar::Index<'a, (RowRange, ColRange)> for Mat<T, Rows, Cols>
-where
-	MatRef<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
-{
-	type Output = <MatRef<'a, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target;
-
-	#[inline]
-	fn index(&'a self, (row, col): (RowRange, ColRange)) -> Self::Output {
-		<MatRef<'a, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get(self.as_ref(), row, col)
-	}
-}
-impl<'a, T, Rows: Shape, Cols: Shape, RowRange, ColRange> azucar::IndexMut<'a, (RowRange, ColRange)> for Mat<T, Rows, Cols>
-where
-	MatMut<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
-{
-	type Output = <MatMut<'a, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::Target;
-
-	#[inline]
-	fn index_mut(&'a mut self, (row, col): (RowRange, ColRange)) -> Self::Output {
-		<MatMut<'a, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get(self.as_mut(), row, col)
-	}
-}
-
 impl<'short, T, Rows: Shape, Cols: Shape> Reborrow<'short> for Mat<T, Rows, Cols> {
 	type Target = MatRef<'short, T, Rows, Cols>;
 

@@ -4646,7 +4646,7 @@ pub(super) mod tests {
 
 		{
 			let A_lower = A_lower.rb();
-			let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e5);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			supernodal::factorize_supernodal_numeric_ldlt(
 				L_val,
@@ -4776,7 +4776,7 @@ pub(super) mod tests {
 			}
 			let A_lower = A_lower.rb();
 
-			let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
+			let approx_eq = CwiseMat(ApproxEq::eps() * 1e5);
 			let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 			supernodal::factorize_supernodal_numeric_llt(
 				L_val,

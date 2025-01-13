@@ -62,7 +62,6 @@ mod tests {
 	use dyn_stack::MemBuffer;
 	use linalg::cholesky::ldlt;
 
-	#[azucar::infer]
 	#[test]
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -90,8 +89,12 @@ mod tests {
 			L.as_mut(),
 			Default::default(),
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, _))),
-			_,
+			MemStack::new(&mut MemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(
+				n,
+				Par::Seq,
+				default(),
+			))),
+			default(),
 		)
 		.unwrap();
 

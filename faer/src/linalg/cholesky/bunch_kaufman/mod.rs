@@ -18,7 +18,6 @@ mod tests {
 	use crate::{assert, c64};
 	use dyn_stack::MemBuffer;
 	use factor::BunchKaufmanParams;
-	use num_complex::ComplexFloat;
 	use std::vec;
 
 	#[test]
@@ -145,7 +144,7 @@ mod tests {
 			let err = a.conjugate() * &x - &rhs;
 			let mut max = 0.0;
 			zip!(err.as_ref()).for_each(|unzip!(err)| {
-				let err = err.abs();
+				let err = abs(err);
 				if err > max {
 					max = err
 				}

@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use crate::col::{Col, ColMut, ColRef};
 use crate::mat::{Mat, MatMut, MatRef};

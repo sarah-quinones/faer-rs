@@ -181,7 +181,6 @@ mod tests {
 	use dyn_stack::MemBuffer;
 
 	#[test]
-	#[azucar::infer]
 	fn test_unblocked_qr() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -254,8 +253,8 @@ mod tests {
 					QR.as_mut(),
 					H.as_mut(),
 					par,
-					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, _))),
-					_,
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, default()))),
+					default(),
 				);
 
 				let mut Q = Mat::<c64>::zeros(n, n);
@@ -309,8 +308,8 @@ mod tests {
 					QR.as_mut(),
 					H.as_mut(),
 					par,
-					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, _))),
-					_,
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, default()))),
+					default(),
 				);
 
 				let mut Q = Mat::<c64, _, _>::zeros(m, m);

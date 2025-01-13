@@ -191,8 +191,6 @@ pub fn norm_l2<T: ComplexField>(mat: MatRef<'_, T>) -> T::Real {
 
 #[cfg(test)]
 mod tests {
-	use num_complex::ComplexFloat;
-
 	use super::*;
 	use crate::{Col, Mat, assert, c64, unzip, zip};
 
@@ -230,7 +228,7 @@ mod tests {
 				let mat = Mat::from_fn(m, n, |i, j| factor * c64::new((i + j) as f64, (i.wrapping_sub(j)) as f64));
 				let mut target = 0.0;
 				zip!(mat.as_ref()).for_each(|unzip!(x)| {
-					target = f64::hypot(x.abs(), target);
+					target = f64::hypot(abs(x), target);
 				});
 
 				if factor == 0.0 {

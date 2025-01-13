@@ -149,6 +149,7 @@ pub fn sparse_sparse_matmul_numeric<I: Index, T: ComplexField, LhsT: Conjugate<C
 		Par::Seq => {
 			job(0);
 		},
+		#[cfg(feature = "rayon")]
 		Par::Rayon(nthreads) => {
 			use rayon::prelude::*;
 

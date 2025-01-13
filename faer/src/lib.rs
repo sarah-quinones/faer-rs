@@ -165,6 +165,7 @@
 #![warn(rustdoc::broken_intra_doc_links)]
 
 extern crate alloc;
+#[cfg(feature = "std")]
 extern crate std;
 
 macro_rules! repeat_n {
@@ -578,8 +579,10 @@ pub mod matrix_free;
 pub mod sparse;
 
 /// de-serialization from common matrix file formats
+#[cfg(feature = "std")]
 pub mod io;
 
+#[cfg(feature = "serde")]
 mod serde;
 
 /// native unsigned integer type
@@ -1181,13 +1184,6 @@ impl<T, Config: Auto<T>> Default for Spec<Config, T> {
 			config: Auto::<T>::auto(),
 			__marker: core::marker::PhantomData,
 		}
-	}
-}
-
-impl<T, Config: Auto<T>> azucar::Infer for Spec<Config, T> {
-	#[inline]
-	fn infer() -> Self {
-		Self::default()
 	}
 }
 

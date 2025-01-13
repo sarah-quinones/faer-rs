@@ -396,7 +396,6 @@ mod tests {
 	use crate::{Col, Mat, assert, c64};
 
 	#[test]
-	#[azucar::infer]
 	fn test_rank_update() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -446,9 +445,9 @@ mod tests {
 					MemStack::new(&mut MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<c64>(
 						n,
 						Par::Seq,
-						_,
+						default(),
 					))),
-					_,
+					default(),
 				)
 				.unwrap();
 

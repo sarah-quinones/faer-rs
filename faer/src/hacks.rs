@@ -75,7 +75,7 @@ pub struct C64Conj {
 }
 
 impl<T: Debug> Debug for ComplexDebug<T> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		if f.alternate() {
 			// don't pretty print
 			(unsafe { &*(self as *const _ as *const Complex<T>) }).fmt(f)
@@ -92,7 +92,7 @@ impl<T: Debug> Debug for ComplexDebug<T> {
 	}
 }
 impl<T: Debug> Debug for ComplexConjDebug<T> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		if f.alternate() {
 			// don't pretty print
 			(unsafe { &*(self as *const _ as *const Complex<T>) }).fmt(f)
@@ -110,7 +110,7 @@ impl<T: Debug> Debug for ComplexConjDebug<T> {
 }
 
 impl Debug for C32 {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let im_sign = if self.im.is_sign_negative() { '-' } else { '+' };
 		let re = self.re;
 		let im = self.im.abs();
@@ -122,7 +122,7 @@ impl Debug for C32 {
 }
 
 impl Debug for C64 {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let im_sign = if self.im.is_sign_negative() { '-' } else { '+' };
 		let re = self.re;
 		let im = self.im.abs();
@@ -134,7 +134,7 @@ impl Debug for C64 {
 }
 
 impl Debug for C32Conj {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let re_sign = if self.re.is_sign_negative() { '-' } else { '+' };
 		let im_sign = if self.neg_im.is_sign_negative() { '+' } else { '-' };
 		let re = self.re.abs();
@@ -148,7 +148,7 @@ impl Debug for C32Conj {
 }
 
 impl Debug for C64Conj {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let re_sign = if self.re.is_sign_negative() { '-' } else { '+' };
 		let im_sign = if self.neg_im.is_sign_negative() { '+' } else { '-' };
 		let re = self.re.abs();

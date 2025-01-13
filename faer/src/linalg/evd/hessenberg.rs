@@ -698,7 +698,6 @@ mod tests {
 	use crate::{Mat, assert, c64};
 
 	#[test]
-	#[azucar::infer]
 	fn test_hessenberg_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -761,7 +760,6 @@ mod tests {
 	}
 
 	#[test]
-	#[azucar::infer]
 	fn test_hessenberg_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -830,7 +828,6 @@ mod tests {
 	}
 
 	#[test]
-	#[azucar::infer]
 	fn test_hessenberg_cplx_gqvdg() {
 		let rng = &mut StdRng::seed_from_u64(0);
 

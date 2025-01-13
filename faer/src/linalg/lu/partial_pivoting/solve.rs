@@ -112,7 +112,6 @@ mod tests {
 	use dyn_stack::MemBuffer;
 	use linalg::lu::partial_pivoting::*;
 
-	#[azucar::infer]
 	#[test]
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
@@ -142,8 +141,8 @@ mod tests {
 			row_perm_fwd,
 			row_perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, _)) }),
-			_,
+			MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, default())) }),
+			default(),
 		)
 		.1;
 

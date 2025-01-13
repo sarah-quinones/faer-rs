@@ -339,6 +339,7 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 			let best;
 			(best, _) = match par {
 				Par::Seq => update_mat_and_best_norm2(A11.rb_mut(), A10.rb(), A01.rb_mut(), tau_inv, simd_align(k + 1)),
+				#[cfg(feature = "rayon")]
 				Par::Rayon(nthreads) => {
 					use rayon::prelude::*;
 					let nthreads = nthreads.get();
@@ -456,7 +457,6 @@ mod tests {
 	use dyn_stack::MemBuffer;
 
 	#[test]
-	#[azucar::infer]
 	fn test_unblocked_qr() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -488,8 +488,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<usize, c64>(n, n, bs, par, _))),
-					_,
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<usize, c64>(n, n, bs, par, default()))),
+					default(),
 				)
 				.1;
 
@@ -549,8 +549,8 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<usize, c64>(m, n, bs, par, _))),
-					_,
+					MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<usize, c64>(m, n, bs, par, default()))),
+					default(),
 				)
 				.1;
 

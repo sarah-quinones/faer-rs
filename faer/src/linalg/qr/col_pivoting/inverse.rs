@@ -61,7 +61,6 @@ mod tests {
 	use linalg::qr::col_pivoting::*;
 
 	#[test]
-	#[azucar::infer]
 	fn test_inverse() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let n = 50;
@@ -83,8 +82,8 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, _)) }),
-			_,
+			MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, default())) }),
+			default(),
 		);
 
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));

@@ -1,0 +1,10 @@
+[package]
+name = "faer-no-std-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+faer = { path = "../faer", default-features = false }
+libc = { version = "0.2.155", default-features = false }
+libc-print = "0.1.23"
+

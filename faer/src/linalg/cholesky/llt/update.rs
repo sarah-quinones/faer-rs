@@ -433,7 +433,6 @@ pub fn rank_r_update_clobber<T: ComplexField>(cholesky_factors: MatMut<'_, T>, w
 #[cfg(test)]
 mod tests {
 	use dyn_stack::MemBuffer;
-	use num_complex::ComplexFloat;
 
 	use super::*;
 	use crate::stats::prelude::*;
@@ -441,7 +440,6 @@ mod tests {
 	use crate::{Col, Mat, assert, c64};
 
 	#[test]
-	#[azucar::infer]
 	fn test_rank_update() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -472,7 +470,7 @@ mod tests {
 				.into_diagonal();
 
 				for j in 0..r {
-					alpha.column_vector_mut()[j].re = alpha.column_vector_mut()[j].abs();
+					alpha.column_vector_mut()[j].re = abs(&alpha.column_vector_mut()[j]);
 					alpha.column_vector_mut()[j].im = 0.0;
 				}
 
@@ -492,9 +490,9 @@ mod tests {
 					MemStack::new(&mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<c64>(
 						n,
 						Par::Seq,
-						_,
+						default(),
 					))),
-					_,
+					default(),
 				)
 				.unwrap();
 

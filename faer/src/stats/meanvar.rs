@@ -113,8 +113,8 @@ fn col_mean_row_major_ignore_nan<T: ComplexField>(out: ColMut<'_, T>, mat: MatRe
 
 				if let Some(i) = tail {
 					(sum0, non_nan_count0) = process(simd, sum0, non_nan_count0, simd.select(simd.tail_mask(), simd.read(row, i), nan));
-					non_nan_count_total += reduce::<T, S>(non_nan_count0);
 				}
+				non_nan_count_total += reduce::<T, S>(non_nan_count0);
 
 				sum0 = simd.add(sum0, sum1);
 				sum2 = simd.add(sum2, sum3);
@@ -224,8 +224,8 @@ fn col_varm_row_major_ignore_nan<T: ComplexField>(
 
 				if let Some(i) = tail {
 					(sum0, non_nan_count0) = process(simd, mean, sum0, non_nan_count0, simd.select(simd.tail_mask(), simd.read(row, i), nan_v));
-					non_nan_count += reduce::<T, S>(non_nan_count0);
 				}
+				non_nan_count += reduce::<T, S>(non_nan_count0);
 
 				sum0 = RealReg(simd.add(sum0.0, sum1.0));
 				sum2 = RealReg(simd.add(sum2.0, sum3.0));
@@ -345,7 +345,6 @@ fn col_varm_row_major_propagate_nan<T: ComplexField>(
 				out.fill(zero());
 			} else {
 				let n = recip(&from_usize::<T::Real>(n - 1));
-				std::dbg!(&n);
 				for i in M.indices() {
 					let row = mat.row(i).transpose();
 					let mean = simd.splat(&col_mean[i]);
@@ -372,7 +371,6 @@ fn col_varm_row_major_propagate_nan<T: ComplexField>(
 					}
 
 					if let Some(i0) = tail {
-						std::dbg!(simd.read(row, i0));
 						sum0 = simd.select(simd.tail_mask(), simd.abs2_add(simd.sub(simd.read(row, i0), mean), RealReg(sum0)).0, sum0);
 					}
 
@@ -380,7 +378,6 @@ fn col_varm_row_major_propagate_nan<T: ComplexField>(
 					sum2 = simd.add(sum2, sum3);
 					sum0 = simd.add(sum0, sum2);
 
-					std::dbg!(sum0);
 					let sum = real(&simd.reduce_sum(sum0));
 
 					out[i] = mul_real(&sum, &n);

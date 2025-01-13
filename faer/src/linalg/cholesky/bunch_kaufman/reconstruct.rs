@@ -102,7 +102,6 @@ mod tests {
 	use linalg::cholesky::bunch_kaufman::*;
 
 	#[test]
-	#[azucar::infer]
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let n = 50;
@@ -127,8 +126,8 @@ mod tests {
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, _)) }),
-			_,
+			MemStack::new(&mut { MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, default())) }),
+			default(),
 		);
 
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));

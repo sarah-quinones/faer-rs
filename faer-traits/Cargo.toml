@@ -5,11 +5,13 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.18.0"
-dyn-stack = { path = "../../dynstack" }
-num-complex = "0.4.6"
-pulp = { path = "../../pulp/pulp" }
 reborrow = "0.5.5"
-
-faer-macros = { path = "../faer-macros" }
 generativity = "1.1.0"
-num-traits = "0.2.19"
+libm = "0.2.8"
+
+dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
+pulp = { version = "0.21.3", default-features = false }
+faer-macros = { path = "../faer-macros" }
+
+num-complex = { version = "0.4.6", default-features = false }
+num-traits = { version = "0.2.19", default-features = false }

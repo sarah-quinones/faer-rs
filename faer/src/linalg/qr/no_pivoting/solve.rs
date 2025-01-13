@@ -161,7 +161,6 @@ mod tests {
 	use linalg::qr::no_pivoting::*;
 
 	#[test]
-	#[azucar::infer]
 	fn test_lstsq() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let m = 100;
@@ -189,8 +188,8 @@ mod tests {
 			QR.as_mut(),
 			H.as_mut(),
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, _))),
-			_,
+			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, default()))),
+			default(),
 		);
 
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
@@ -228,7 +227,6 @@ mod tests {
 	}
 
 	#[test]
-	#[azucar::infer]
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let n = 50;
@@ -255,8 +253,8 @@ mod tests {
 			QR.as_mut(),
 			H.as_mut(),
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<c64>(n, n, 4, Par::Seq, _))),
-			_,
+			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<c64>(n, n, 4, Par::Seq, default()))),
+			default(),
 		);
 
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
