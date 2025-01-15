@@ -261,6 +261,8 @@ mod matvec_rowmajor {
 		par: Par,
 	) {
 		core::assert!(try_const! { T::SIMD_CAPABILITIES.is_simd() });
+		let size = *lhs.nrows() * *lhs.ncols();
+		let par = if size < 256 * 256usize { Par::Seq } else { par };
 
 		match par {
 			Par::Seq => {
@@ -370,6 +372,8 @@ mod matvec_colmajor {
 		par: Par,
 	) {
 		core::assert!(try_const! { T::SIMD_CAPABILITIES.is_simd() });
+		let size = *lhs.nrows() * *lhs.ncols();
+		let par = if size < 256 * 256usize { Par::Seq } else { par };
 
 		match par {
 			Par::Seq => {

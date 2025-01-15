@@ -905,7 +905,7 @@ impl Conj {
 }
 
 /// determines the parallelization configuration
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Par {
 	/// sequential, non portable across different platforms
 	Seq,

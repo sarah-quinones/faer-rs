@@ -3192,7 +3192,7 @@ pub mod supernodal {
 
 						debug_assert!(i_s >= j_s);
 
-						Ls.write(i_s, j_s, Ls.read(i_s, j_s) - tmp_top.read(i_idx, j_idx));
+						Ls[(i_s, j_s)] = Ls[(i_s, j_s)] - tmp_top[(i_idx, j_idx)];
 					}
 				}
 
@@ -3202,7 +3202,7 @@ pub mod supernodal {
 					for (i_idx, i) in d_pattern[d_pattern_mid..].iter().enumerate() {
 						let i = i.zx();
 						let i_s = global_to_local[i].zx();
-						Ls.write(i_s, j_s, Ls.read(i_s, j_s) - tmp_bot.read(i_idx, j_idx));
+						Ls[(i_s, j_s)] = Ls[(i_s, j_s)] - tmp_bot[(i_idx, j_idx)];
 					}
 				}
 			}
