@@ -544,7 +544,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 
         #[inline]
         /// Returns a view over the symbolic structure of `self`.
-        pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
+        pub fn as_ref(self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
             SymbolicSparseColMatRef {
                 nrows: self.nrows,
                 ncols: self.ncols,
@@ -1490,8 +1490,8 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 		}
 	}
 
-	/// returns the input matrix with dynamic shape
 	#[inline]
+	/// see [`SparseColMatRef::as_ref`]
 	pub fn as_ref(&self) -> SparseColMatRef<'_, I, T, Rows, Cols> {
 		SparseColMatRef {
 			symbolic: self.symbolic.as_ref(),
