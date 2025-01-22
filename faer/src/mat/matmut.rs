@@ -626,6 +626,15 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 		self.rb().sum()
 	}
 
+	#[inline]
+	/// see [`MatRef::determinant`]
+	pub fn determinant(&self) -> T::Canonical
+	where
+		T: Conjugate,
+	{
+		self.rb().determinant()
+	}
+
 	#[track_caller]
 	#[inline]
 	/// see [`MatRef::get`]
