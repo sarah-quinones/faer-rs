@@ -542,16 +542,16 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		}
 	}
 
-        #[inline]
         /// Returns a view over the symbolic structure of `self`.
+        #[inline]
         pub fn as_ref(self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-            SymbolicSparseColMatRef {
-                nrows: self.nrows,
-                ncols: self.ncols,
-                col_ptr: self.col_ptr,
-                col_nnz: self.col_nnz,
-                row_idx: self.row_idx,
-            }
+                SymbolicSparseColMatRef {
+                        nrows: self.nrows,
+                        ncols: self.ncols,
+                        col_ptr: self.col_ptr,
+                        col_nnz: self.col_nnz,
+                        row_idx: self.row_idx,
+                }
         }
 }
 
@@ -781,16 +781,16 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 		}
 	}
 
-        #[inline]
         /// Returns a view over the symbolic structure of `self`.
+        #[inline]
         pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
-            SymbolicSparseColMatRef {
-                nrows: self.nrows,
-                ncols: self.ncols,
-                col_ptr: &self.col_ptr,
-                col_nnz: self.col_nnz.as_deref(),
-                row_idx: &self.row_idx,
-            }
+                SymbolicSparseColMatRef {
+                        nrows: self.nrows,
+                        ncols: self.ncols,
+                        col_ptr: &self.col_ptr,
+                        col_nnz: self.col_nnz.as_deref(),
+                        row_idx: &self.row_idx,
+                }
         }
 
 	#[inline]
