@@ -541,6 +541,18 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 			row_idx: self.row_idx,
 		}
 	}
+
+        #[inline]
+        /// Returns a view over the symbolic structure of `self`.
+        pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
+            SymbolicSparseColMatRef {
+                nrows: self.nrows,
+                ncols: self.ncols,
+                col_ptr: self.col_ptr,
+                col_nnz: self.col_nnz,
+                row_idx: self.row_idx,
+            }
+        }
 }
 
 impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
@@ -768,6 +780,18 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 			row_idx: self.row_idx,
 		}
 	}
+
+        #[inline]
+        /// Returns a view over the symbolic structure of `self`.
+        pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
+            SymbolicSparseColMatRef {
+                nrows: self.nrows,
+                ncols: self.ncols,
+                col_ptr: &self.col_ptr,
+                col_nnz: self.col_nnz.as_deref(),
+                row_idx: &self.row_idx,
+            }
+        }
 
 	#[inline]
 	pub(crate) fn try_new_from_indices_impl(
@@ -1000,6 +1024,15 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	pub fn as_dyn(self) -> SparseColMatRef<'a, I, T> {
 		SparseColMatRef {
 			symbolic: self.symbolic.as_dyn(),
+			val: self.val,
+		}
+	}
+
+	/// returns a view over `self`
+	#[inline]
+	pub fn as_ref(self) -> SparseColMatRef<'a, I, T, Rows, Cols> {
+		SparseColMatRef {
+			symbolic: self.symbolic,
 			val: self.val,
 		}
 	}
@@ -1454,6 +1487,15 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 		SparseColMat {
 			symbolic: self.symbolic.into_dyn(),
 			val: self.val,
+		}
+	}
+
+	/// returns the input matrix with dynamic shape
+	#[inline]
+	pub fn as_ref(&self) -> SparseColMatRef<'_, I, T, Rows, Cols> {
+		SparseColMatRef {
+			symbolic: self.symbolic.as_ref(),
+			val: &self.val,
 		}
 	}
 
