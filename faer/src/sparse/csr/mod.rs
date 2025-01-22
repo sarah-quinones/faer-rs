@@ -507,6 +507,18 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMatRef<'a, I, Rows
 			col_idx: self.col_idx,
 		}
 	}
+
+        #[inline]
+        /// Returns a view over the symbolic structure of `self`.
+        pub fn as_ref(self) -> SymbolicSparseRowMatRef<'a, I, Rows, Cols> {
+            SymbolicSparseRowMatRef {
+                nrows: self.nrows,
+                ncols: self.ncols,
+                row_ptr: self.row_ptr,
+                row_nnz: self.row_nnz,
+                col_idx: self.col_idx,
+            }
+        }
 }
 
 impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
@@ -726,6 +738,18 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
 		}
 	}
 
+        #[inline]
+        /// Returns a view over the symbolic structure of `self`.
+        pub fn as_ref(&self) -> SymbolicSparseRowMatRef<'_, I, Rows, Cols> {
+            SymbolicSparseRowMatRef {
+                nrows: self.nrows,
+                ncols: self.ncols,
+                row_ptr: &self.row_ptr,
+                row_nnz: self.row_nnz.as_deref(),
+                col_idx: &self.col_idx,
+            }
+        }
+
 	#[inline]
 	/// create a new symbolic structure, and the corresponding order for the numerical values
 	/// from pairs of indices
@@ -846,6 +870,15 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatRef<'a, I, T, Rows, 
 	pub fn as_dyn(self) -> SparseRowMatRef<'a, I, T> {
 		SparseRowMatRef {
 			symbolic: self.symbolic.as_dyn(),
+			val: self.val,
+		}
+	}
+
+	/// returns a view over `self`
+	#[inline]
+	pub fn as_ref(self) -> SparseRowMatRef<'a, I, T, Rows, Cols> {
+		SparseRowMatRef {
+			symbolic: self.symbolic,
 			val: self.val,
 		}
 	}
@@ -1264,6 +1297,15 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseRowMat<I, T, Rows, Cols> {
 		SparseRowMat {
 			symbolic: self.symbolic.into_dyn(),
 			val: self.val,
+		}
+	}
+
+	#[inline]
+	/// see [`SparseRowMatRef::as_ref`]
+	pub fn as_ref(&self) -> SparseRowMatRef<'_, I, T, Rows, Cols> {
+		SparseRowMatRef {
+			symbolic: self.symbolic.as_ref(),
+			val: &self.val,
 		}
 	}
 
