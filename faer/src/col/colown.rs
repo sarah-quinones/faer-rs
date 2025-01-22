@@ -182,6 +182,15 @@ impl<T, Rows: Shape> Col<T, Rows> {
 		self.rb().as_mat().sum()
 	}
 
+	#[inline]
+	/// see [`ColRef::determinant`]
+	pub fn determinant(&self) -> Real<T>
+	where
+		T: Conjugate,
+	{
+		self.rb().as_mat().determinant()
+	}
+
 	/// see [`ColRef::cloned`]
 	#[inline]
 	pub fn cloned(&self) -> Col<T, Rows>

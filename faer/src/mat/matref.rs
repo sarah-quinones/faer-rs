@@ -1146,6 +1146,16 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 		if try_const! { Conj::get::<T>().is_conj() } { conj(val) } else { val }
 	}
 
+	/// Returns the determinant of `self`
+	#[inline]
+	#[math]
+	pub fn determinant(&self) -> Real<T>
+	where
+		T: Conjugate,
+	{
+		linalg::reductions::determinant::determinant(self.canonical().as_dyn_stride().as_dyn())
+	}
+
 	/// returns references to the element at the given index, or submatrices if either `row`
 	/// or `col` is a range, with bound checks
 	///

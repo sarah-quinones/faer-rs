@@ -955,6 +955,15 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		self.as_ref().norm_l2()
 	}
 
+	#[inline]
+	/// see [`MatRef::determinant`]
+	pub fn determinant(&self) -> Real<T>
+	where
+		T: Conjugate,
+	{
+		self.as_ref().determinant()
+	}
+
 	#[track_caller]
 	#[inline]
 	/// see [`MatRef::get`]

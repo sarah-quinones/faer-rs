@@ -390,6 +390,15 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		self.rb().as_mat().sum()
 	}
 
+	/// Returns the determinant of `self`
+	#[inline]
+	pub fn determinant(&self) -> Real<T>
+	where
+		T: Conjugate,
+	{
+		self.rb().as_mat().determinant()
+	}
+
 	/// returns a newly allocated row holding the cloned values of `self`
 	#[inline]
 	pub fn cloned(&self) -> Row<T, Cols>

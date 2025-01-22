@@ -467,6 +467,15 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	{
 		self.rb().as_mat().sum()
 	}
+
+	/// Returns the determinant of `self`
+	#[inline]
+	pub fn determinant(&self) -> Real<T>
+	where
+		T: Conjugate,
+	{
+		self.rb().as_mat().determinant()
+	}
 }
 
 impl<'a, T, Rows: Shape> ColRef<'a, T, Rows, ContiguousFwd> {
