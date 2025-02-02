@@ -508,17 +508,17 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMatRef<'a, I, Rows
 		}
 	}
 
-        /// Returns a view over the symbolic structure of `self`.
-        #[inline]
-        pub fn as_ref(self) -> SymbolicSparseRowMatRef<'a, I, Rows, Cols> {
-                SymbolicSparseRowMatRef {
-                        nrows: self.nrows,
-                        ncols: self.ncols,
-                        row_ptr: self.row_ptr,
-                        row_nnz: self.row_nnz,
-                        col_idx: self.col_idx,
-                }
-        }
+	/// Returns a view over the symbolic structure of `self`.
+	#[inline]
+	pub fn as_ref(self) -> SymbolicSparseRowMatRef<'a, I, Rows, Cols> {
+		SymbolicSparseRowMatRef {
+			nrows: self.nrows,
+			ncols: self.ncols,
+			row_ptr: self.row_ptr,
+			row_nnz: self.row_nnz,
+			col_idx: self.col_idx,
+		}
+	}
 }
 
 impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
@@ -738,17 +738,17 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseRowMat<I, Rows, Cols> {
 		}
 	}
 
-        #[inline]
-        /// Returns a view over the symbolic structure of `self`.
-        pub fn as_ref(&self) -> SymbolicSparseRowMatRef<'_, I, Rows, Cols> {
-                SymbolicSparseRowMatRef {
-                        nrows: self.nrows,
-                        ncols: self.ncols,
-                        row_ptr: &self.row_ptr,
-                        row_nnz: self.row_nnz.as_deref(),
-                        col_idx: &self.col_idx,
-                }
-        }
+	#[inline]
+	/// Returns a view over the symbolic structure of `self`.
+	pub fn as_ref(&self) -> SymbolicSparseRowMatRef<'_, I, Rows, Cols> {
+		SymbolicSparseRowMatRef {
+			nrows: self.nrows,
+			ncols: self.ncols,
+			row_ptr: &self.row_ptr,
+			row_nnz: self.row_nnz.as_deref(),
+			col_idx: &self.col_idx,
+		}
+	}
 
 	#[inline]
 	/// create a new symbolic structure, and the corresponding order for the numerical values

@@ -542,17 +542,17 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		}
 	}
 
-        /// Returns a view over the symbolic structure of `self`.
-        #[inline]
-        pub fn as_ref(self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-                SymbolicSparseColMatRef {
-                        nrows: self.nrows,
-                        ncols: self.ncols,
-                        col_ptr: self.col_ptr,
-                        col_nnz: self.col_nnz,
-                        row_idx: self.row_idx,
-                }
-        }
+	/// Returns a view over the symbolic structure of `self`.
+	#[inline]
+	pub fn as_ref(self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
+		SymbolicSparseColMatRef {
+			nrows: self.nrows,
+			ncols: self.ncols,
+			col_ptr: self.col_ptr,
+			col_nnz: self.col_nnz,
+			row_idx: self.row_idx,
+		}
+	}
 }
 
 impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
@@ -781,17 +781,17 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 		}
 	}
 
-        /// Returns a view over the symbolic structure of `self`.
-        #[inline]
-        pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
-                SymbolicSparseColMatRef {
-                        nrows: self.nrows,
-                        ncols: self.ncols,
-                        col_ptr: &self.col_ptr,
-                        col_nnz: self.col_nnz.as_deref(),
-                        row_idx: &self.row_idx,
-                }
-        }
+	/// Returns a view over the symbolic structure of `self`.
+	#[inline]
+	pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
+		SymbolicSparseColMatRef {
+			nrows: self.nrows,
+			ncols: self.ncols,
+			col_ptr: &self.col_ptr,
+			col_nnz: self.col_nnz.as_deref(),
+			row_idx: &self.row_idx,
+		}
+	}
 
 	#[inline]
 	pub(crate) fn try_new_from_indices_impl(
@@ -909,11 +909,10 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 			col_ptr[j.unbound() + 1] = col_ptr[j.unbound()] + I::truncate(n_unique);
 		}
 
-		Ok((unsafe { Self::new_unchecked(nrows, ncols, col_ptr, None, row_idx) }, Argsort {
-			idx: argsort,
-			all_nnz,
-			nnz,
-		}))
+		Ok((
+			unsafe { Self::new_unchecked(nrows, ncols, col_ptr, None, row_idx) },
+			Argsort { idx: argsort, all_nnz, nnz },
+		))
 	}
 
 	/// create a new symbolic structure, and the corresponding order for the numerical values

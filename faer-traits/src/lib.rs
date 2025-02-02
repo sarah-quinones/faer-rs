@@ -885,6 +885,7 @@ impl Index for u32 {
 	type FixedWidth = u32;
 	type Signed = i32;
 }
+#[cfg(any(target_pointer_width = "64"))]
 impl Index for u64 {
 	type FixedWidth = u64;
 	type Signed = i64;
