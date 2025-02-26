@@ -19,6 +19,7 @@ pub mod schur;
 /// self-adjoint tridiagonalization
 pub mod tridiag;
 pub(crate) mod tridiag_evd;
+pub use tridiag_evd::qr_algorithm;
 
 use crate::assert;
 use crate::internal_prelude::*;

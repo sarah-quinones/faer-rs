@@ -37,7 +37,8 @@ fn tridiag_to_mat<T: RealField>(diag: ColRef<'_, T, usize, ContiguousFwd>, offdi
 }
 
 #[math]
-pub(crate) fn qr_algorithm<T: RealField>(
+/// QR algorithm. Inplace.
+pub fn qr_algorithm<T: RealField>(
 	diag: ColMut<'_, T, usize, ContiguousFwd>,
 	offdiag: ColMut<'_, T, usize, ContiguousFwd>,
 	u: Option<MatMut<'_, T, usize, usize>>,
