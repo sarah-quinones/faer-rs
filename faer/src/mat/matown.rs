@@ -482,10 +482,10 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			if new_nrows > this.nrows {
 				Self::init_with(
 					this.raw.ptr.as_ptr(),
-					this.nrows.end(),
+					Rows::start(),
 					Cols::start(),
 					new_nrows.end(),
-					this.ncols.end(),
+					new_ncols.end(),
 					this.raw.row_capacity,
 					&mut f,
 				);
@@ -496,7 +496,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 				Self::init_with(
 					this.raw.ptr.as_ptr(),
 					Rows::start(),
-					this.ncols.end(),
+					Cols::start(),
 					new_nrows.end(),
 					new_ncols.end(),
 					this.raw.row_capacity,
