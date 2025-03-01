@@ -212,11 +212,13 @@ mod tests {
                 // extend by one row and fill
                 mat.resize_with(mat.nrows()+1, mat.ncols(), |_, _| fill);
                 assert_eq!(mat.get(.., ..).sum(), fill*nc as f64);
+                assert_eq!(mat.get(nr, ..).sum(), fill*nc as f64);
 
                 let mut mat: Mat<f64> = Mat::zeros(nr, nc);
                 // extend by one column and fill
                 mat.resize_with(mat.nrows(), mat.ncols()+1, |_, _| fill);
                 assert_eq!(mat.get(.., ..).sum(), fill*nr as f64);
+                assert_eq!(mat.get(.., nc).sum(), fill*nr as f64);
             };
             f_test_case(4, 3, 1.0);
             f_test_case(3, 4, 2.0);
