@@ -368,7 +368,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	) {
 		let stride = row_capacity;
 
-		let mut ptr = ptr.wrapping_add(stride * old_ncols.unbound()).wrapping_add(old_nrows.unbound());
+		let mut ptr = ptr.wrapping_add(stride * old_ncols.unbound());
 		let mut col_guard = DropMat {
 			ptr,
 			nrows: new_nrows.unbound() - old_nrows.unbound(),
@@ -1395,5 +1395,33 @@ impl<'short, T, Rows: Shape, Cols: Shape> ReborrowMut<'short> for Mat<T, Rows, C
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
 		self.as_mut()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::{assert, mat};
+
+	#[test]
+	fn test_resize() {
+		// Create a matrix
+		let mut m = mat![
+			[1.0, 2.0, 3.0],
+			[4.0, 5.0, 6.0],
+			[7.0, 8.0, 9.0],
+			[10.0, 11.0, 12.0], //
+		];
+
+		m.resize_with(m.nrows() + 1, m.ncols(), |_, _| 99.9);
+
+		let target = mat![
+			[1.0, 2.0, 3.0],
+			[4.0, 5.0, 6.0],
+			[7.0, 8.0, 9.0],
+			[10.0, 11.0, 12.0],
+			[99.9, 99.9, 99.9], //
+		];
+
+		assert!(m == target);
 	}
 }

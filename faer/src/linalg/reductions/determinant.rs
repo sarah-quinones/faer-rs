@@ -1,5 +1,5 @@
-use crate::{assert, get_global_parallelism};
 use crate::internal_prelude::*;
+use crate::{assert, get_global_parallelism};
 use alloc::vec;
 use dyn_stack::MemBuffer;
 
@@ -22,15 +22,13 @@ pub fn determinant<T: ComplexField>(mat: MatRef<'_, T>) -> T::Canonical {
 			linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, default()),
 		)),
 		default(),
-	).0.transposition_count;
+	)
+	.0
+	.transposition_count;
 
 	let mut det = one();
 	for i in 0..factors.nrows() {
 		det = mul(det, factors.as_mat_ref().read(i, i));
 	}
-	if count % 2 == 0 {
-		det
-	} else {
-		neg(det)
-	}
+	if count % 2 == 0 { det } else { neg(det) }
 }

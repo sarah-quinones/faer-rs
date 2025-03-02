@@ -2127,10 +2127,13 @@ mod tests {
 			SupernodalThreshold::FORCE_SUPERNODAL,
 			SupernodalThreshold::FORCE_SIMPLICIAL,
 		] {
-			let symbolic = factorize_symbolic_lu(A.symbolic(), LuSymbolicParams {
-				supernodal_flop_ratio_threshold,
-				..Default::default()
-			})
+			let symbolic = factorize_symbolic_lu(
+				A.symbolic(),
+				LuSymbolicParams {
+					supernodal_flop_ratio_threshold,
+					..Default::default()
+				},
+			)
 			.unwrap();
 			let mut numeric = NumericLu::<usize, T>::new();
 			let lu = symbolic

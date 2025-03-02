@@ -53,9 +53,10 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 	}
 
 	unsafe {
-		Ok((SymbolicSparseColMat::new_unchecked(m, n, col_ptr, None, row_idx), SparseMatMulInfo {
-			flops_prefix_sum: info,
-		}))
+		Ok((
+			SymbolicSparseColMat::new_unchecked(m, n, col_ptr, None, row_idx),
+			SparseMatMulInfo { flops_prefix_sum: info },
+		))
 	}
 }
 
@@ -286,44 +287,52 @@ mod tests {
 
 	#[test]
 	fn test_sp_matmul() {
-		let a = SparseColMat::<usize, f64>::try_new_from_triplets(5, 4, &[
-			Triplet::new(0, 0, 1.0),
-			Triplet::new(1, 0, 2.0),
-			Triplet::new(3, 0, 3.0),
-			//
-			Triplet::new(1, 1, 5.0),
-			Triplet::new(4, 1, 6.0),
-			//
-			Triplet::new(0, 2, 7.0),
-			Triplet::new(2, 2, 8.0),
-			//
-			Triplet::new(0, 3, 9.0),
-			Triplet::new(2, 3, 10.0),
-			Triplet::new(3, 3, 11.0),
-			Triplet::new(4, 3, 12.0),
-		])
+		let a = SparseColMat::<usize, f64>::try_new_from_triplets(
+			5,
+			4,
+			&[
+				Triplet::new(0, 0, 1.0),
+				Triplet::new(1, 0, 2.0),
+				Triplet::new(3, 0, 3.0),
+				//
+				Triplet::new(1, 1, 5.0),
+				Triplet::new(4, 1, 6.0),
+				//
+				Triplet::new(0, 2, 7.0),
+				Triplet::new(2, 2, 8.0),
+				//
+				Triplet::new(0, 3, 9.0),
+				Triplet::new(2, 3, 10.0),
+				Triplet::new(3, 3, 11.0),
+				Triplet::new(4, 3, 12.0),
+			],
+		)
 		.unwrap();
 
-		let b = SparseColMat::<usize, f64>::try_new_from_triplets(4, 6, &[
-			Triplet::new(0, 0, 1.0),
-			Triplet::new(1, 0, 2.0),
-			Triplet::new(3, 0, 3.0),
-			//
-			Triplet::new(1, 1, 5.0),
-			Triplet::new(3, 1, 6.0),
-			//
-			Triplet::new(1, 2, 7.0),
-			Triplet::new(3, 2, 8.0),
-			//
-			Triplet::new(1, 3, 9.0),
-			Triplet::new(3, 3, 10.0),
-			//
-			Triplet::new(1, 4, 11.0),
-			Triplet::new(3, 4, 12.0),
-			//
-			Triplet::new(1, 5, 13.0),
-			Triplet::new(3, 5, 14.0),
-		])
+		let b = SparseColMat::<usize, f64>::try_new_from_triplets(
+			4,
+			6,
+			&[
+				Triplet::new(0, 0, 1.0),
+				Triplet::new(1, 0, 2.0),
+				Triplet::new(3, 0, 3.0),
+				//
+				Triplet::new(1, 1, 5.0),
+				Triplet::new(3, 1, 6.0),
+				//
+				Triplet::new(1, 2, 7.0),
+				Triplet::new(3, 2, 8.0),
+				//
+				Triplet::new(1, 3, 9.0),
+				Triplet::new(3, 3, 10.0),
+				//
+				Triplet::new(1, 4, 11.0),
+				Triplet::new(3, 4, 12.0),
+				//
+				Triplet::new(1, 5, 13.0),
+				Triplet::new(3, 5, 14.0),
+			],
+		)
 		.unwrap();
 
 		let c = sparse_sparse_matmul(a.rb(), b.rb(), 2.0, Par::rayon(12)).unwrap();

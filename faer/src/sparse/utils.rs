@@ -589,11 +589,17 @@ mod tests {
 		let nrows = 5;
 		let ncols = 3;
 		let A = SparseColMatRef::new(
-			SymbolicSparseColMatRef::new_unsorted_checked(nrows, ncols, &[0usize, 4, 8, 11], None, &[
-				0, 0, 2, 4, //
-				2, 1, 1, 0, //
-				0, 1, 3,
-			]),
+			SymbolicSparseColMatRef::new_unsorted_checked(
+				nrows,
+				ncols,
+				&[0usize, 4, 8, 11],
+				None,
+				&[
+					0, 0, 2, 4, //
+					2, 1, 1, 0, //
+					0, 1, 3,
+				],
+			),
 			&[
 				1.0, 2.0, 3.0, 4.0, //
 				11.0, 12.0, 13.0, 14.0, //
@@ -616,13 +622,19 @@ mod tests {
 			.into_const();
 
 			let target = SparseColMatRef::new(
-				SymbolicSparseColMatRef::new_unsorted_checked(ncols, nrows, &[0usize, 4, 7, 9, 10, 11], None, &[
-					0, 0, 1, 2, //
-					1, 1, 2, //
-					0, 1, //
-					2, //
-					0,
-				]),
+				SymbolicSparseColMatRef::new_unsorted_checked(
+					ncols,
+					nrows,
+					&[0usize, 4, 7, 9, 10, 11],
+					None,
+					&[
+						0, 0, 1, 2, //
+						1, 1, 2, //
+						0, 1, //
+						2, //
+						0,
+					],
+				),
 				&[
 					1.0, 2.0, 14.0, 21.0, //
 					12.0, 13.0, 22.0, //
@@ -650,13 +662,19 @@ mod tests {
 			.into_const();
 
 			let target = SparseColMatRef::new(
-				SymbolicSparseColMatRef::new_unsorted_checked(ncols, nrows, &[0usize, 3, 5, 7, 8, 9], None, &[
-					0, 1, 2, //
-					1, 2, //
-					0, 1, //
-					2, //
-					0,
-				]),
+				SymbolicSparseColMatRef::new_unsorted_checked(
+					ncols,
+					nrows,
+					&[0usize, 3, 5, 7, 8, 9],
+					None,
+					&[
+						0, 1, 2, //
+						1, 2, //
+						0, 1, //
+						2, //
+						0,
+					],
+				),
 				&[
 					3.0, 14.0, 21.0, //
 					25.0, 22.0, //
@@ -708,13 +726,19 @@ mod tests {
 		];
 
 		let A = SparseColMatRef::new(
-			SymbolicSparseColMatRef::new_unsorted_checked(n, n, &[0usize, 4, 8, 11, 14, 17], None, &[
-				0, 0, 2, 4, //
-				2, 1, 1, 0, //
-				0, 1, 3, //
-				2, 3, 4, //
-				4, 3, 2, //
-			]),
+			SymbolicSparseColMatRef::new_unsorted_checked(
+				n,
+				n,
+				&[0usize, 4, 8, 11, 14, 17],
+				None,
+				&[
+					0, 0, 2, 4, //
+					2, 1, 1, 0, //
+					0, 1, 3, //
+					2, 3, 4, //
+					4, 3, 2, //
+				],
+			),
 			val,
 		);
 		let nnz = A.compute_nnz();

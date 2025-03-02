@@ -2675,10 +2675,13 @@ mod tests {
 			SupernodalThreshold::FORCE_SIMPLICIAL,
 			SupernodalThreshold::AUTO,
 		] {
-			let symbolic = factorize_symbolic_qr(A.symbolic(), QrSymbolicParams {
-				supernodal_flop_ratio_threshold,
-				..Default::default()
-			})
+			let symbolic = factorize_symbolic_qr(
+				A.symbolic(),
+				QrSymbolicParams {
+					supernodal_flop_ratio_threshold,
+					..Default::default()
+				},
+			)
 			.unwrap();
 			let mut indices = vec![0usize; symbolic.len_idx()];
 			let mut val = vec![T::ZERO; symbolic.len_val()];
@@ -2743,10 +2746,13 @@ mod tests {
 				SupernodalThreshold::FORCE_SUPERNODAL,
 				SupernodalThreshold::FORCE_SIMPLICIAL,
 			] {
-				let symbolic = factorize_symbolic_qr(A.symbolic(), QrSymbolicParams {
-					supernodal_flop_ratio_threshold,
-					..Default::default()
-				})
+				let symbolic = factorize_symbolic_qr(
+					A.symbolic(),
+					QrSymbolicParams {
+						supernodal_flop_ratio_threshold,
+						..Default::default()
+					},
+				)
 				.unwrap();
 				let mut indices = vec![0usize; symbolic.len_idx()];
 				let mut val = vec![T::ZERO; symbolic.len_val()];

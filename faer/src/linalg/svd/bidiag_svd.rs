@@ -77,12 +77,15 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 	let epsilon = eps::<T>();
 
 	let mid = left + mul_pow2(right - left, one_half);
-	let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = batch_secular_eq(&[zero(), copy(left), copy(left), copy(right)], &[
-		mid,
-		if last { right - left } else { mul_pow2(right - left, one_half) },
-		mul_pow2(right - left, one_half),
-		mul_pow2(left - right, one_half),
-	]);
+	let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = batch_secular_eq(
+		&[zero(), copy(left), copy(left), copy(right)],
+		&[
+			mid,
+			if last { right - left } else { mul_pow2(right - left, one_half) },
+			mul_pow2(right - left, one_half),
+			mul_pow2(left - right, one_half),
+		],
+	);
 
 	let (mut shift, mu) = if last || (f_mid > zero()) {
 		(copy(left), mul_pow2(right - left, one_half))

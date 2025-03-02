@@ -96,17 +96,23 @@ fn svd_imp_scratch<T: ComplexField>(
 
 	let compute_bidiag_svd = bidiag_svd_scratch(n, compute_ub, compute_vb, par, params);
 
-	let apply_householder_u =
-		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, householder_blocksize, match compute_u {
+	let apply_householder_u = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
+		m,
+		householder_blocksize,
+		match compute_u {
 			ComputeSvdVectors::No => 0,
 			ComputeSvdVectors::Thin => n,
 			ComputeSvdVectors::Full => m,
-		});
-	let apply_householder_v =
-		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, householder_blocksize, match compute_v {
+		},
+	);
+	let apply_householder_v = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
+		n - 1,
+		householder_blocksize,
+		match compute_v {
 			ComputeSvdVectors::No => 0,
 			_ => n,
-		});
+		},
+	);
 
 	StackReq::all_of(&[
 		bid,
@@ -457,11 +463,15 @@ pub fn svd_scratch<T: ComplexField>(
 					temp_mat_scratch::<T>(n, n),
 					svd_imp_scratch::<T>(n, n, compute_u, compute_v, bidiag_svd_scratch, params, par),
 				]),
-				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(m, bs, match compute_u {
-					ComputeSvdVectors::No => 0,
-					ComputeSvdVectors::Thin => n,
-					ComputeSvdVectors::Full => m,
-				}),
+				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
+					m,
+					bs,
+					match compute_u {
+						ComputeSvdVectors::No => 0,
+						ComputeSvdVectors::Thin => n,
+						ComputeSvdVectors::Full => m,
+					},
+				),
 			]),
 		])
 	}

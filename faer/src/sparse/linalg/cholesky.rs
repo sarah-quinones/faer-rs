@@ -27,17 +27,21 @@
 //! 	// the simplicial cholesky api takes an upper triangular matrix as input, to be
 //! 	// interpreted as self-adjoint.
 //! 	let dim = 4;
-//! 	let A_upper = match SparseColMat::<usize, f64>::try_new_from_triplets(dim, dim, &[
-//! 		// diagonal entries
-//! 		Triplet::new(0, 0, 10.0),
-//! 		Triplet::new(1, 1, 11.0),
-//! 		Triplet::new(2, 2, 12.0),
-//! 		Triplet::new(3, 3, 13.0),
-//! 		// non diagonal entries
-//! 		Triplet::new(0, 1, 1.0),
-//! 		Triplet::new(0, 3, 1.5),
-//! 		Triplet::new(1, 3, -3.2),
-//! 	]) {
+//! 	let A_upper = match SparseColMat::<usize, f64>::try_new_from_triplets(
+//! 		dim,
+//! 		dim,
+//! 		&[
+//! 			// diagonal entries
+//! 			Triplet::new(0, 0, 10.0),
+//! 			Triplet::new(1, 1, 11.0),
+//! 			Triplet::new(2, 2, 12.0),
+//! 			Triplet::new(3, 3, 13.0),
+//! 			// non diagonal entries
+//! 			Triplet::new(0, 1, 1.0),
+//! 			Triplet::new(0, 3, 1.5),
+//! 			Triplet::new(1, 3, -3.2),
+//! 		],
+//! 	) {
 //! 		Ok(A) => Ok(A),
 //! 		Err(CreationError::Generic(err)) => Err(err),
 //! 		Err(CreationError::OutOfBounds { .. }) => panic!(),
@@ -236,28 +240,32 @@
 //! 	// the supernodal cholesky api takes a lower triangular matrix as input, to be
 //! 	// interpreted as self-adjoint.
 //! 	let dim = 8;
-//! 	let A_lower = match SparseColMat::<usize, f64>::try_new_from_triplets(dim, dim, &[
-//! 		// diagonal entries
-//! 		Triplet::new(0, 0, 11.0),
-//! 		Triplet::new(1, 1, 11.0),
-//! 		Triplet::new(2, 2, 12.0),
-//! 		Triplet::new(3, 3, 13.0),
-//! 		Triplet::new(4, 4, 14.0),
-//! 		Triplet::new(5, 5, 16.0),
-//! 		Triplet::new(6, 6, 16.0),
-//! 		Triplet::new(7, 7, 16.0),
-//! 		// non diagonal entries
-//! 		Triplet::new(1, 0, 10.0),
-//! 		Triplet::new(3, 0, 10.5),
-//! 		Triplet::new(4, 0, 10.0),
-//! 		Triplet::new(7, 0, 10.5),
-//! 		Triplet::new(3, 1, 10.5),
-//! 		Triplet::new(4, 1, 10.0),
-//! 		Triplet::new(7, 1, 10.5),
-//! 		Triplet::new(3, 2, 10.5),
-//! 		Triplet::new(4, 2, 10.0),
-//! 		Triplet::new(7, 2, 10.0),
-//! 	]) {
+//! 	let A_lower = match SparseColMat::<usize, f64>::try_new_from_triplets(
+//! 		dim,
+//! 		dim,
+//! 		&[
+//! 			// diagonal entries
+//! 			Triplet::new(0, 0, 11.0),
+//! 			Triplet::new(1, 1, 11.0),
+//! 			Triplet::new(2, 2, 12.0),
+//! 			Triplet::new(3, 3, 13.0),
+//! 			Triplet::new(4, 4, 14.0),
+//! 			Triplet::new(5, 5, 16.0),
+//! 			Triplet::new(6, 6, 16.0),
+//! 			Triplet::new(7, 7, 16.0),
+//! 			// non diagonal entries
+//! 			Triplet::new(1, 0, 10.0),
+//! 			Triplet::new(3, 0, 10.5),
+//! 			Triplet::new(4, 0, 10.0),
+//! 			Triplet::new(7, 0, 10.5),
+//! 			Triplet::new(3, 1, 10.5),
+//! 			Triplet::new(4, 1, 10.0),
+//! 			Triplet::new(7, 1, 10.5),
+//! 			Triplet::new(3, 2, 10.5),
+//! 			Triplet::new(4, 2, 10.0),
+//! 			Triplet::new(7, 2, 10.0),
+//! 		],
+//! 	) {
 //! 		Ok(A) => Ok(A),
 //! 		Err(CreationError::Generic(err)) => Err(err),
 //! 		Err(CreationError::OutOfBounds { .. }) => panic!(),
@@ -4997,10 +5005,15 @@ pub(super) mod tests {
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
 				for par in [Par::Seq, Par::rayon(4)] {
-					let symbolic = &factorize_symbolic_cholesky(A.symbolic(), side, SymmetricOrdering::Amd, CholeskySymbolicParams {
-						supernodal_flop_ratio_threshold,
-						..Default::default()
-					})?;
+					let symbolic = &factorize_symbolic_cholesky(
+						A.symbolic(),
+						side,
+						SymmetricOrdering::Amd,
+						CholeskySymbolicParams {
+							supernodal_flop_ratio_threshold,
+							..Default::default()
+						},
+					)?;
 
 					let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 					let llt = symbolic.factorize_numeric_llt(
@@ -5068,10 +5081,15 @@ pub(super) mod tests {
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
 				for par in [Par::Seq, Par::rayon(4)] {
-					let symbolic = &factorize_symbolic_cholesky(A.symbolic(), side, SymmetricOrdering::Amd, CholeskySymbolicParams {
-						supernodal_flop_ratio_threshold,
-						..Default::default()
-					})?;
+					let symbolic = &factorize_symbolic_cholesky(
+						A.symbolic(),
+						side,
+						SymmetricOrdering::Amd,
+						CholeskySymbolicParams {
+							supernodal_flop_ratio_threshold,
+							..Default::default()
+						},
+					)?;
 
 					let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
 					let ldlt = symbolic.factorize_numeric_ldlt(
@@ -5139,10 +5157,15 @@ pub(super) mod tests {
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {
 				for par in [Par::Seq, Par::rayon(4)] {
-					let symbolic = &factorize_symbolic_cholesky(A.symbolic(), side, SymmetricOrdering::Amd, CholeskySymbolicParams {
-						supernodal_flop_ratio_threshold,
-						..Default::default()
-					})?;
+					let symbolic = &factorize_symbolic_cholesky(
+						A.symbolic(),
+						side,
+						SymmetricOrdering::Amd,
+						CholeskySymbolicParams {
+							supernodal_flop_ratio_threshold,
+							..Default::default()
+						},
+					)?;
 					let fwd = &mut *vec![0usize; n];
 					let bwd = &mut *vec![0usize; n];
 					let subdiag = &mut *vec![zero::<c64>(); n];

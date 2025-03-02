@@ -247,101 +247,113 @@ mod tests {
 	#[test]
 	fn matrix_serialization_normal() {
 		let value = Mat::from_fn(3, 4, |i, j| (i + (j * 10)) as f64);
-		assert_tokens(&value, &[
-			Token::Struct { name: "Mat", len: 3 },
-			Token::Str("nrows"),
-			Token::U64(3),
-			Token::Str("ncols"),
-			Token::U64(4),
-			Token::Str("data"),
-			Token::Seq { len: Some(12) },
-			Token::F64(0.0),
-			Token::F64(10.0),
-			Token::F64(20.0),
-			Token::F64(30.0),
-			Token::F64(1.0),
-			Token::F64(11.0),
-			Token::F64(21.0),
-			Token::F64(31.0),
-			Token::F64(2.0),
-			Token::F64(12.0),
-			Token::F64(22.0),
-			Token::F64(32.0),
-			Token::SeqEnd,
-			Token::StructEnd,
-		])
+		assert_tokens(
+			&value,
+			&[
+				Token::Struct { name: "Mat", len: 3 },
+				Token::Str("nrows"),
+				Token::U64(3),
+				Token::Str("ncols"),
+				Token::U64(4),
+				Token::Str("data"),
+				Token::Seq { len: Some(12) },
+				Token::F64(0.0),
+				Token::F64(10.0),
+				Token::F64(20.0),
+				Token::F64(30.0),
+				Token::F64(1.0),
+				Token::F64(11.0),
+				Token::F64(21.0),
+				Token::F64(31.0),
+				Token::F64(2.0),
+				Token::F64(12.0),
+				Token::F64(22.0),
+				Token::F64(32.0),
+				Token::SeqEnd,
+				Token::StructEnd,
+			],
+		)
 	}
 
 	#[test]
 	fn matrix_serialization_wide() {
 		let value = Mat::from_fn(12, 1, |i, j| (i + (j * 10)) as f64);
-		assert_tokens(&value, &[
-			Token::Struct { name: "Mat", len: 3 },
-			Token::Str("nrows"),
-			Token::U64(12),
-			Token::Str("ncols"),
-			Token::U64(1),
-			Token::Str("data"),
-			Token::Seq { len: Some(12) },
-			Token::F64(0.0),
-			Token::F64(1.0),
-			Token::F64(2.0),
-			Token::F64(3.0),
-			Token::F64(4.0),
-			Token::F64(5.0),
-			Token::F64(6.0),
-			Token::F64(7.0),
-			Token::F64(8.0),
-			Token::F64(9.0),
-			Token::F64(10.0),
-			Token::F64(11.0),
-			Token::SeqEnd,
-			Token::StructEnd,
-		])
+		assert_tokens(
+			&value,
+			&[
+				Token::Struct { name: "Mat", len: 3 },
+				Token::Str("nrows"),
+				Token::U64(12),
+				Token::Str("ncols"),
+				Token::U64(1),
+				Token::Str("data"),
+				Token::Seq { len: Some(12) },
+				Token::F64(0.0),
+				Token::F64(1.0),
+				Token::F64(2.0),
+				Token::F64(3.0),
+				Token::F64(4.0),
+				Token::F64(5.0),
+				Token::F64(6.0),
+				Token::F64(7.0),
+				Token::F64(8.0),
+				Token::F64(9.0),
+				Token::F64(10.0),
+				Token::F64(11.0),
+				Token::SeqEnd,
+				Token::StructEnd,
+			],
+		)
 	}
 
 	#[test]
 	fn matrix_serialization_tall() {
 		let value = Mat::from_fn(1, 12, |i, j| (i + (j * 10)) as f64);
-		assert_tokens(&value, &[
-			Token::Struct { name: "Mat", len: 3 },
-			Token::Str("nrows"),
-			Token::U64(1),
-			Token::Str("ncols"),
-			Token::U64(12),
-			Token::Str("data"),
-			Token::Seq { len: Some(12) },
-			Token::F64(0.0),
-			Token::F64(10.0),
-			Token::F64(20.0),
-			Token::F64(30.0),
-			Token::F64(40.0),
-			Token::F64(50.0),
-			Token::F64(60.0),
-			Token::F64(70.0),
-			Token::F64(80.0),
-			Token::F64(90.0),
-			Token::F64(100.0),
-			Token::F64(110.0),
-			Token::SeqEnd,
-			Token::StructEnd,
-		])
+		assert_tokens(
+			&value,
+			&[
+				Token::Struct { name: "Mat", len: 3 },
+				Token::Str("nrows"),
+				Token::U64(1),
+				Token::Str("ncols"),
+				Token::U64(12),
+				Token::Str("data"),
+				Token::Seq { len: Some(12) },
+				Token::F64(0.0),
+				Token::F64(10.0),
+				Token::F64(20.0),
+				Token::F64(30.0),
+				Token::F64(40.0),
+				Token::F64(50.0),
+				Token::F64(60.0),
+				Token::F64(70.0),
+				Token::F64(80.0),
+				Token::F64(90.0),
+				Token::F64(100.0),
+				Token::F64(110.0),
+				Token::SeqEnd,
+				Token::StructEnd,
+			],
+		)
 	}
 
 	#[test]
 	fn matrix_serialization_zero() {
 		let value = Mat::from_fn(0, 0, |i, j| (i + (j * 10)) as f64);
-		assert_tokens(&value, &[
-			Token::Struct { name: "Mat", len: 3 },
-			Token::Str("nrows"),
-			Token::U64(0),
-			Token::Str("ncols"),
-			Token::U64(0),
-			Token::Str("data"),
-			Token::Seq { len: Some(0) },
-			Token::SeqEnd,
-			Token::StructEnd,
-		])
+		assert_tokens(
+			&value,
+			&[
+				Token::Struct { name: "Mat", len: 3 },
+				Token::Str("nrows"),
+				Token::U64(0),
+				Token::Str("ncols"),
+				Token::U64(0),
+				Token::Str("data"),
+				Token::Seq { len: Some(0) },
+				Token::SeqEnd,
+				Token::StructEnd,
+			],
+		)
 	}
 
 	#[test]

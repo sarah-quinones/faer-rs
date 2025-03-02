@@ -320,10 +320,13 @@ pub fn sub<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 /// panics if `rhs` contains an index that's unavailable in `dst`.  
 pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
 	binary_op_assign_into(dst, rhs, |dst, rhs| {
-		*dst = faer_traits::math_utils::add(dst, &match rhs {
-			Some(rhs) => Conj::apply(rhs),
-			None => zero(),
-		})
+		*dst = faer_traits::math_utils::add(
+			dst,
+			&match rhs {
+				Some(rhs) => Conj::apply(rhs),
+				None => zero(),
+			},
+		)
 	})
 }
 
@@ -335,10 +338,13 @@ pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst
 /// panics if `rhs` contains an index that's unavailable in `dst`.  
 pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
 	binary_op_assign_into(dst, rhs, |dst, rhs| {
-		*dst = faer_traits::math_utils::sub(dst, &match rhs {
-			Some(rhs) => Conj::apply(rhs),
-			None => zero(),
-		})
+		*dst = faer_traits::math_utils::sub(
+			dst,
+			&match rhs {
+				Some(rhs) => Conj::apply(rhs),
+				None => zero(),
+			},
+		)
 	})
 }
 
