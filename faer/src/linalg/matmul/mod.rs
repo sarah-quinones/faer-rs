@@ -16,6 +16,8 @@ use generativity::make_guard;
 use pulp::Simd;
 use reborrow::*;
 
+const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
+
 /// triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices
 pub mod triangular;
@@ -546,6 +548,15 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	let M = dst.nrows();
 	let N = dst.ncols();
 	let K = lhs.ncols();
+	if *M == 0 || *N == 0 {
+		return;
+	}
+	if *K == 0 {
+		if beta == Accum::Replace {
+			dst.fill(zero());
+		}
+		return;
+	}
 
 	let mut lhs = lhs;
 	let mut rhs = rhs;
@@ -589,57 +600,81 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			}
 		}
 		macro_rules! gemm_call {
-			($ty: ty) => {
+			($ty: ty, $nanogemm: ident) => {
 				unsafe {
 					let dst = core::mem::transmute_copy::<MatMut<'_, T, Dim<'M>, Dim<'N>>, MatMut<'_, $ty, Dim<'M>, Dim<'N>>>(&dst);
 					let lhs = core::mem::transmute_copy::<MatRef<'_, T, Dim<'M>, Dim<'K>>, MatRef<'_, $ty, Dim<'M>, Dim<'K>>>(&lhs);
 					let rhs = core::mem::transmute_copy::<MatRef<'_, T, Dim<'K>, Dim<'N>>, MatRef<'_, $ty, Dim<'K>, Dim<'N>>>(&rhs);
-					let alpha = core::mem::transmute_copy::<&T, &$ty>(&alpha);
+					let alpha = *core::mem::transmute_copy::<&T, &$ty>(&alpha);
 
-					gemm::gemm(
-						M.unbound(),
-						N.unbound(),
-						K.unbound(),
-						dst.as_ptr_mut(),
-						dst.col_stride(),
-						dst.row_stride(),
-						beta != Accum::Replace,
-						lhs.as_ptr(),
-						lhs.col_stride(),
-						lhs.row_stride(),
-						rhs.as_ptr(),
-						rhs.col_stride(),
-						rhs.row_stride(),
-						match beta {
-							Accum::Replace => core::mem::zeroed(),
-							Accum::Add => 1.0.into(),
-						},
-						*alpha,
-						false,
-						conj_lhs == Conj::Yes,
-						conj_rhs == Conj::Yes,
-						match par {
-							Par::Seq => gemm::Parallelism::None,
-							#[cfg(feature = "rayon")]
-							Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
-						},
-					)
+					if (*M).saturating_mul(*N).saturating_mul(*K) <= NANO_GEMM_THRESHOLD {
+						nano_gemm::planless::$nanogemm(
+							*M,
+							*N,
+							*K,
+							dst.as_ptr_mut(),
+							dst.row_stride(),
+							dst.col_stride(),
+							lhs.as_ptr(),
+							lhs.row_stride(),
+							lhs.col_stride(),
+							rhs.as_ptr(),
+							rhs.row_stride(),
+							rhs.col_stride(),
+							match beta {
+								Accum::Replace => core::mem::zeroed(),
+								Accum::Add => 1.0.into(),
+							},
+							alpha,
+							conj_lhs == Conj::Yes,
+							conj_rhs == Conj::Yes,
+						);
+					} else {
+						gemm::gemm(
+							M.unbound(),
+							N.unbound(),
+							K.unbound(),
+							dst.as_ptr_mut(),
+							dst.col_stride(),
+							dst.row_stride(),
+							beta != Accum::Replace,
+							lhs.as_ptr(),
+							lhs.col_stride(),
+							lhs.row_stride(),
+							rhs.as_ptr(),
+							rhs.col_stride(),
+							rhs.row_stride(),
+							match beta {
+								Accum::Replace => core::mem::zeroed(),
+								Accum::Add => 1.0.into(),
+							},
+							alpha,
+							false,
+							conj_lhs == Conj::Yes,
+							conj_rhs == Conj::Yes,
+							match par {
+								Par::Seq => gemm::Parallelism::None,
+								#[cfg(feature = "rayon")]
+								Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
+							},
+						)
+					}
 				};
 				return;
 			};
 		}
 
 		if try_const! { T::IS_NATIVE_F64 } {
-			gemm_call!(f64);
+			gemm_call!(f64, execute_f64);
 		}
 		if try_const! { T::IS_NATIVE_C64 } {
-			gemm_call!(num_complex::Complex<f64>);
+			gemm_call!(num_complex::Complex<f64>, execute_c64);
 		}
 		if try_const! { T::IS_NATIVE_F32 } {
-			gemm_call!(f32);
+			gemm_call!(f32, execute_f32);
 		}
 		if try_const! { T::IS_NATIVE_C32 } {
-			gemm_call!(num_complex::Complex<f32>);
+			gemm_call!(num_complex::Complex<f32>, execute_c32);
 		}
 	}
 

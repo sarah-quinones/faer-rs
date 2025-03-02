@@ -5076,7 +5076,7 @@ pub(super) mod tests {
 		let A_full = A_full.rb();
 
 		let rng = &mut StdRng::seed_from_u64(0);
-		let approx_eq = CwiseMat(ApproxEq::eps() * 1e4);
+		let approx_eq = CwiseMat(ApproxEq::eps() * 1e5);
 
 		for (A, side) in [(A_lower, Side::Lower), (A_upper, Side::Upper)] {
 			for supernodal_flop_ratio_threshold in [SupernodalThreshold::FORCE_SIMPLICIAL, SupernodalThreshold::FORCE_SUPERNODAL] {

@@ -177,6 +177,7 @@ impl<T> RawMat<T> {
 		let size = core::mem::size_of::<T>();
 
 		let new = Self::try_with_capacity(new_row_capacity, new_col_capacity)?;
+		let new_row_capacity = new.row_capacity;
 
 		unsafe fn move_mat(mut new: *mut u8, mut old: *const u8, col_bytes: usize, ncols: usize, new_byte_stride: isize, old_byte_stride: isize) {
 			for _ in 0..ncols {
@@ -1419,6 +1420,33 @@ mod tests {
 			[4.0, 5.0, 6.0],
 			[7.0, 8.0, 9.0],
 			[10.0, 11.0, 12.0],
+			[99.9, 99.9, 99.9], //
+		];
+
+		assert!(m == target);
+	}
+
+	#[test]
+	fn test_resize_5() {
+		// Create a matrix
+		let mut m = mat![
+			[1.0, 2.0, 3.0],
+			[4.0, 5.0, 6.0],
+			[7.0, 8.0, 9.0],
+			[10.0, 11.0, 12.0], //
+		];
+
+		m.resize_with(m.nrows() + 5, m.ncols(), |_, _| 99.9);
+
+		let target = mat![
+			[1.0, 2.0, 3.0],
+			[4.0, 5.0, 6.0],
+			[7.0, 8.0, 9.0],
+			[10.0, 11.0, 12.0],
+			[99.9, 99.9, 99.9], //
+			[99.9, 99.9, 99.9], //
+			[99.9, 99.9, 99.9], //
+			[99.9, 99.9, 99.9], //
 			[99.9, 99.9, 99.9], //
 		];
 

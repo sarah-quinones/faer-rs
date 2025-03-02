@@ -27,6 +27,7 @@ num-complex = { version = "0.4.6", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }
 
 gemm = { version = "0.18.2", default-features = false }
+nano-gemm = { version = "0.1.2", default-features = false }
 dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
 pulp = { version = "0.21.3", default-features = false, features = ["x86-v3"] }
 equator = { version = "0.4.2" }
@@ -44,13 +45,15 @@ default = [
   "npy",
 ]
 std = [
-  "gemm/std",
   "pulp/std",
+  "gemm/std",
+  "nano-gemm/std",
 ]
 nightly = [
   "pulp/nightly",
   "pulp/nightly-x86-v4",
   "gemm/nightly",
+  "nano-gemm/nightly",
 ]
 linalg = []
 sparse = []
