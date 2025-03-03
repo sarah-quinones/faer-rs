@@ -80,7 +80,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 		return lu_in_place_unblocked(A, start, end, trans);
 	}
 
-	let blocksize = Ord::min(params.recursion_threshold, Ord::max(params.blocksize, n.next_power_of_two() / 2));
+	let blocksize = Ord::max(params.recursion_threshold, n.next_power_of_two() / 2);
 	let blocksize = Ord::min(blocksize, n);
 
 	let mut n_trans = 0;
@@ -138,6 +138,8 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	let (A_left, A_right) = A.rb_mut().split_at_col_mut(start);
 	let A_right = A_right.get_mut(.., end - start..ncols - start);
 
+	let par = if m * (ncols - n) > params.par_threshold { par } else { Par::Seq };
+
 	match par {
 		Par::Seq => {
 			swap(A_left);
@@ -176,6 +178,8 @@ pub struct PartialPivLuParams {
 	pub recursion_threshold: usize,
 	/// blocking variant step size
 	pub blocksize: usize,
+	/// threshold at which size parallelism should be disabled
+	pub par_threshold: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -201,6 +205,7 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 		Self {
 			recursion_threshold: 16,
 			blocksize: 64,
+			par_threshold: 128 * 128,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
