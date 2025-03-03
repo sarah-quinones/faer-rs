@@ -1,14 +1,18 @@
-use crate::assert;
 use crate::internal_prelude::*;
 use crate::perm::swap_rows_idx;
+use crate::{assert, debug_assert};
 
 #[math]
-fn swap_elems<T: ComplexField>(mut col: ColMut<'_, T>, i: usize, j: usize) {
-	let a = copy(col[i]);
-	let b = copy(col[j]);
-
-	col[i] = b;
-	col[j] = a;
+#[inline]
+fn swap_elems<T: ComplexField>(col: ColMut<'_, T>, i: usize, j: usize) {
+	debug_assert!(all(i < col.nrows(), j < col.nrows()));
+	let rs = col.row_stride();
+	let col = col.as_ptr_mut();
+	unsafe {
+		let a = col.offset(i as isize * rs);
+		let b = col.offset(j as isize * rs);
+		core::ptr::swap(a, b);
+	}
 }
 
 #[math]
@@ -80,8 +84,10 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 		return lu_in_place_unblocked(A, start, end, trans);
 	}
 
-	let blocksize = Ord::max(params.recursion_threshold, n.next_power_of_two() / 2);
-	let blocksize = Ord::min(blocksize, n);
+	let half = n / 2;
+	let pow = Ord::min(16, half.next_power_of_two());
+
+	let blocksize = half.next_multiple_of(pow);
 
 	let mut n_trans = 0;
 
@@ -123,14 +129,14 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 		for j in 0..mat.ncols() {
 			let mut col = mat.rb_mut().col_mut(j);
 
-			for j in 0..blocksize {
-				let t = trans[j];
-				swap_elems(col.rb_mut(), j, t.zx() + j);
-			}
-
-			for j in blocksize..n {
-				let t = trans[j];
-				swap_elems(col.rb_mut(), j, t.zx() + j);
+			if col.row_stride() == 1 {
+				for (j, &t) in trans[..n].iter().enumerate() {
+					swap_elems(col.rb_mut(), j, t.zx() + j);
+				}
+			} else {
+				for (j, &t) in trans[..n].iter().enumerate() {
+					swap_elems(col.rb_mut(), j, t.zx() + j);
+				}
 			}
 		}
 	};
