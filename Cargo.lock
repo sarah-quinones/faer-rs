@@ -392,7 +392,7 @@ dependencies = [
 
 [[package]]
 name = "faer-traits"
-version = "0.21.3"
+version = "0.21.4"
 dependencies = [
  "bytemuck",
  "dyn-stack",
