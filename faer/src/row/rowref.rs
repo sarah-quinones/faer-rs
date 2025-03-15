@@ -179,12 +179,14 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	}
 
 	#[inline(always)]
+	#[track_caller]
 	pub(crate) fn at(self, col: Idx<Cols>) -> &'a T {
 		assert!(all(col < self.ncols()));
 		unsafe { self.at_unchecked(col) }
 	}
 
 	#[inline(always)]
+	#[track_caller]
 	pub(crate) unsafe fn at_unchecked(self, col: Idx<Cols>) -> &'a T {
 		&*self.ptr_inbounds_at(col)
 	}
