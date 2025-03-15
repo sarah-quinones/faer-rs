@@ -1074,8 +1074,8 @@ pub fn disable_global_parallelism() {
 }
 
 /// sets the global parallelism settings.
-pub fn set_global_parallelism(parallelism: Par) {
-	let value = match parallelism {
+pub fn set_global_parallelism(par: Par) {
+	let value = match par {
 		Par::Seq => 1,
 		#[cfg(feature = "rayon")]
 		Par::Rayon(n) => n.get().saturating_add(2),

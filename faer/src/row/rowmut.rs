@@ -394,12 +394,14 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	}
 
 	#[inline(always)]
+	#[track_caller]
 	pub(crate) fn at_mut(self, col: Idx<Cols>) -> &'a mut T {
 		assert!(all(col < self.ncols()));
 		unsafe { self.at_mut_unchecked(col) }
 	}
 
 	#[inline(always)]
+	#[track_caller]
 	pub(crate) unsafe fn at_mut_unchecked(self, col: Idx<Cols>) -> &'a mut T {
 		&mut *self.ptr_inbounds_at_mut(col)
 	}

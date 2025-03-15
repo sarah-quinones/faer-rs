@@ -377,6 +377,13 @@ pub struct SimdBody<'N, T: ComplexField, S: Simd> {
 	start: isize,
 	mask: PhantomData<(Idx<'N>, T::SimdMask<S>)>,
 }
+
+impl<T: ComplexField, S: Simd> SimdBody<'_, T, S> {
+	pub fn offset(&self) -> isize {
+		self.start
+	}
+}
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SimdHead<'N, T: ComplexField, S: Simd> {
