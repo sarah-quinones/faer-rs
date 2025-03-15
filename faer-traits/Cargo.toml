@@ -1,6 +1,6 @@
 [package]
 name = "faer-traits"
-version = "0.21.1"
+version = "0.21.2"
 edition = "2021"
 authors = ["sarah quiñones <sarah@veganb.tw>"]
 description = "linear algebra library"
