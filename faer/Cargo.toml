@@ -32,7 +32,7 @@ dyn-stack = { version = "0.13.0", default-features = false, features = ["core-er
 pulp = { version = "0.21.3", default-features = false, features = ["x86-v3"] }
 equator = { version = "0.4.2" }
 
-faer-traits = { path = "../faer-traits", version = "0.21.4" }
+faer-traits = { path = "../faer-traits", version = "0.21.5" }
 faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 
