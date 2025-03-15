@@ -1,5 +1,4 @@
 target
-Cargo.lock
 *.out
 f32.txt
 f64.txt
