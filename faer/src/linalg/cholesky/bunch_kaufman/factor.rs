@@ -1,14 +1,25 @@
-use crate::assert;
 use crate::internal_prelude::*;
-use crate::perm::{swap_cols_idx, swap_rows_idx};
-use linalg::matmul::triangular::{self, BlockStructure};
+use crate::{assert, perm};
+use linalg::matmul::triangular::BlockStructure;
 
 /// pivoting strategy for choosing the pivots
 #[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub enum PivotingStrategy {
 	/// diagonal pivoting
+	#[deprecated]
 	Diagonal,
+
+	/// searches for the k-th pivot in the k-th column
+	Partial,
+	/// searches for the k-th pivot in the k-th column, as well as the tail of the diagonal of the
+	/// matrix
+	PartialDiag,
+	/// searches for pivots that are locally optimal
+	Rook,
+	/// searches for pivots that are locally optimal, as well as the tail of the diagonal of the
+	/// matrix
+	RookDiag,
 }
 
 /// tuning parameters for the decomposition
@@ -37,11 +48,543 @@ pub struct BunchKaufmanRegularization<'a, T> {
 	pub dynamic_regularization_epsilon: T,
 }
 
-#[derive(Debug)]
-struct BunchKaufmanRegularizationInner<'a, T> {
-	dynamic_regularization_signs: Option<&'a mut [i8]>,
-	dynamic_regularization_delta: T,
-	dynamic_regularization_epsilon: T,
+#[math]
+fn swap_self_adjoint<T: ComplexField>(A: MatMut<'_, T>, i: usize, j: usize) {
+	assert_ne!(i, j);
+
+	let mut A = A;
+	let (i, j) = (Ord::min(i, j), Ord::max(i, j));
+
+	perm::swap_cols_idx(A.rb_mut().get_mut(j + 1.., ..), i, j);
+	perm::swap_rows_idx(A.rb_mut().get_mut(.., ..i), i, j);
+
+	let tmp = real(A[(i, i)]);
+	A[(i, i)] = from_real(real(A[(j, j)]));
+	A[(j, j)] = from_real(tmp);
+
+	A[(j, i)] = conj(A[(j, i)]);
+
+	let (Ai, Aj) = A.split_at_row_mut(j);
+	let Ai = Ai.get_mut(i + 1..j, i);
+	let Aj = Aj.get_mut(0, i + 1..j).transpose_mut();
+	zip!(Ai, Aj).for_each(|unzip!(x, y)| {
+		let tmp = conj(*x);
+		*x = conj(*y);
+		*y = tmp;
+	});
+}
+
+#[math]
+#[track_caller]
+fn l1_argmax<T: ComplexField>(col: ColRef<'_, T>) -> (Option<usize>, T::Real) {
+	let n = col.nrows();
+	if n == 0 {
+		return (None, zero());
+	}
+
+	let mut i = 0;
+	let mut best = zero();
+
+	for j in 0..n {
+		let val = abs1(col[j]);
+		if val > best {
+			best = val;
+			i = j;
+		}
+	}
+
+	(Some(i), best)
+}
+
+#[math]
+#[track_caller]
+fn offdiag_argmax<T: ComplexField>(A: MatRef<'_, T>, idx: usize) -> (Option<usize>, T::Real) {
+	let (mut col_argmax, col_max) = l1_argmax(A.rb().get(idx + 1.., idx));
+	col_argmax.as_mut().map(|col_argmax| *col_argmax += idx + 1);
+	let (row_argmax, row_max) = l1_argmax(A.rb().get(idx, ..idx).transpose());
+
+	if col_max > row_max {
+		(col_argmax, col_max)
+	} else {
+		(row_argmax, row_max)
+	}
+}
+
+#[math]
+fn update_and_offdiag_argmax<T: ComplexField>(
+	mut dst: ColMut<'_, T>,
+	Wl: MatRef<'_, T>,
+	Al: MatRef<'_, T>,
+	Ar: MatRef<'_, T>,
+	i0: usize,
+	par: Par,
+) -> (Option<usize>, T::Real) {
+	let n = Al.nrows();
+	for j in 0..i0 {
+		dst[j] = conj(Ar[(i0, j)]);
+	}
+	dst[i0] = zero();
+	for j in i0 + 1..n {
+		dst[j] = copy(Ar[(j, i0)]);
+	}
+
+	linalg::matmul::matmul(dst.rb_mut(), Accum::Add, Al.rb(), Wl.row(i0).adjoint(), -one::<T>(), par);
+	dst[i0] = zero();
+
+	let ret = l1_argmax(dst.rb());
+	dst[i0] = from_real(real(Ar[(i0, i0)]));
+	if n == 1 { (None, zero()) } else { ret }
+}
+
+#[math]
+fn lblt_blocked_step<T: ComplexField>(
+	alpha: T::Real,
+	W: MatMut<'_, T>,
+	A_left: MatMut<'_, T>,
+	A: MatMut<'_, T>,
+	subdiag: DiagMut<'_, T>,
+	pivots: &mut [usize],
+	rook: bool,
+	diagonal: bool,
+	par: Par,
+) -> usize {
+	let mut A = A;
+	let mut A_left = A_left;
+	let mut subdiag = subdiag;
+	let mut W = W;
+
+	let n = A.nrows();
+	let blocksize = W.ncols();
+
+	assert!(all(A.nrows() == n, A.ncols() == n, W.nrows() == n, subdiag.dim() == n, blocksize >= 2,));
+
+	let kmax = Ord::min(blocksize - 1, n);
+	let mut k = 0usize;
+	while k < kmax {
+		let mut A = A.rb_mut();
+		let mut W = W.rb_mut();
+		let mut subdiag = subdiag.rb_mut().column_vector_mut().get_mut(k..);
+		let mut A_left = A_left.rb_mut().get_mut(k.., ..);
+
+		let (mut Wl, mut Wr) = W.rb_mut().get_mut(k.., ..).split_at_col_mut(k);
+		let (mut Al, mut Ar) = A.rb_mut().get_mut(k.., ..).split_at_col_mut(k);
+		let mut Al = Al.rb_mut();
+		let mut Wr = Wr.rb_mut().get_mut(.., ..2);
+
+		let npiv;
+		let mut i0 = if diagonal {
+			l1_argmax(Ar.rb().diagonal().column_vector()).0.unwrap()
+		} else {
+			0
+		};
+		let mut i1 = usize::MAX;
+
+		let mut nothing_to_do = false;
+
+		let (mut Wr0, mut Wr1) = Wr.rb_mut().two_cols_mut(0, 1);
+
+		let (r, mut gamma_i) = update_and_offdiag_argmax(Wr0.rb_mut(), Wl.rb(), Al.rb(), Ar.rb(), i0, par);
+
+		if k + 1 == n || gamma_i == zero() {
+			nothing_to_do = true;
+			npiv = 1;
+		} else if abs(real(Ar[(i0, i0)])) >= alpha * gamma_i {
+			npiv = 1;
+		} else {
+			i1 = r.unwrap();
+			if rook {
+				loop {
+					let (s, gamma_r) = update_and_offdiag_argmax(Wr1.rb_mut(), Wl.rb(), Al.rb(), Ar.rb(), i1, par);
+
+					if abs1(Ar[(i1, i1)]) >= alpha * gamma_r {
+						npiv = 1;
+						i0 = i1;
+						i1 = usize::MAX;
+						Wr0.copy_from(&Wr1);
+						break;
+					} else if s == Some(i0) || gamma_i == gamma_r {
+						npiv = 2;
+						break;
+					} else {
+						i0 = i1;
+						i1 = s.unwrap();
+						gamma_i = gamma_r;
+						Wr0.copy_from(&Wr1);
+					}
+				}
+			} else {
+				let (_, gamma_r) = update_and_offdiag_argmax(Wr1.rb_mut(), Wl.rb(), Al.rb(), Ar.rb(), i1, par);
+
+				if abs(real(Ar[(i0, i0)])) >= (alpha * gamma_r) * (gamma_r / gamma_i) {
+					npiv = 1;
+				} else if abs(real(Ar[(i1, i1)])) >= alpha * gamma_r {
+					npiv = 1;
+					i0 = i1;
+					i1 = usize::MAX;
+					Wr0.copy_from(&Wr1);
+				} else {
+					npiv = 2;
+				}
+			}
+		}
+
+		if npiv == 2 && i0 > i1 {
+			perm::swap_cols_idx(Wr.rb_mut(), 0, 1);
+			(i0, i1) = (i1, i0);
+		}
+
+		let mut Wr = Wr.rb_mut().get_mut(.., ..npiv);
+
+		'next_iter: {
+			// swap pivots to first (and second) column
+			if i0 != 0 {
+				swap_self_adjoint(Ar.rb_mut(), 0, i0);
+				perm::swap_rows_idx(Al.rb_mut(), 0, i0);
+				perm::swap_rows_idx(A_left.rb_mut(), 0, i0);
+				perm::swap_rows_idx(Wl.rb_mut(), 0, i0);
+				perm::swap_rows_idx(Wr.rb_mut(), 0, i0);
+			}
+			if npiv == 2 && i1 != 1 {
+				swap_self_adjoint(Ar.rb_mut(), 1, i1);
+				perm::swap_rows_idx(Al.rb_mut(), 1, i1);
+				perm::swap_rows_idx(A_left.rb_mut(), 1, i1);
+				perm::swap_rows_idx(Wl.rb_mut(), 1, i1);
+				perm::swap_rows_idx(Wr.rb_mut(), 1, i1);
+			}
+
+			if nothing_to_do {
+				break 'next_iter;
+			}
+
+			if npiv == 1 {
+				let W0 = Wr.rb_mut().col_mut(0);
+
+				let diag = real(W0[0]);
+				let diag_inv = recip(diag);
+				subdiag[0] = zero();
+
+				let (_, _, L, mut A) = Ar.rb_mut().split_at_mut(1, 1);
+				let W0 = W0.rb().get(1..);
+				let n = A.nrows();
+
+				let mut L = L.col_mut(0);
+				zip!(W0, L.rb_mut()).for_each(|unzip!(w, a)| *a = mul_real(*w, diag_inv));
+
+				for j in 0..n {
+					A[(j, j)] = from_real(real(A[(j, j)]) - diag * abs2(L[j]));
+				}
+			} else {
+				let a00 = real(Wr[(0, 0)]);
+				let a11 = real(Wr[(1, 1)]);
+				let a10 = copy(Wr[(1, 0)]);
+
+				subdiag[0] = copy(a10);
+				subdiag[1] = zero();
+				Wr[(1, 0)] = zero();
+				Ar[(1, 0)] = zero();
+
+				let d10 = abs(a10);
+				let d10_inv = recip(d10);
+				let d00 = a00 * d10_inv;
+				let d11 = a11 * d10_inv;
+
+				// t = (d00/|d10| * d11/|d10| - 1.0)
+				let t = recip(d00 * d11 - one());
+				let d10 = mul_real(a10, d10_inv);
+				let d = t * d10_inv;
+
+				//         [ a00  a01 ]
+				// L_new * [ a10  a11 ] = L
+				let (_, _, L, mut A) = Ar.rb_mut().split_at_mut(2, 2);
+				let (mut L0, mut L1) = L.two_cols_mut(0, 1);
+				let Wr = Wr.rb().get(2.., ..);
+				let W0 = Wr.col(0);
+				let W1 = Wr.col(1);
+
+				let n = A.nrows();
+				for j in 0..n {
+					let x0 = copy(W0[j]);
+					let x1 = copy(W1[j]);
+
+					let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+					let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+
+					A[(j, j)] = from_real(real(A[(j, j)] - W0[j] * conj(w0) - W1[j] * conj(w1)));
+
+					L0[j] = w0;
+					L1[j] = w1;
+				}
+			}
+		}
+
+		let offset = A_left.ncols();
+
+		if npiv == 2 {
+			pivots[k] = !(offset + i0 + k);
+			pivots[k + 1] = !(offset + i1 + k);
+		} else {
+			pivots[k] = offset + i0 + k;
+		}
+		k += npiv;
+	}
+
+	let W = W.rb().get(k.., ..k);
+	let (_, _, Al, mut Ar) = A.rb_mut().split_at_mut(k, k);
+	let Al = Al.rb();
+
+	linalg::matmul::triangular::matmul(
+		Ar.rb_mut(),
+		BlockStructure::StrictTriangularLower,
+		Accum::Add,
+		W,
+		BlockStructure::Rectangular,
+		Al.adjoint(),
+		BlockStructure::Rectangular,
+		-one::<T>(),
+		par,
+	);
+
+	for j in 0..n - k {
+		Ar[(j, j)] = from_real(real(Ar[(j, j)]));
+	}
+
+	k
+}
+
+#[math]
+fn lblt_blocked<T: ComplexField>(
+	A: MatMut<'_, T>,
+	subdiag: DiagMut<'_, T>,
+	pivots: &mut [usize],
+	blocksize: usize,
+	rook: bool,
+	diagonal: bool,
+	par: Par,
+	stack: &mut MemStack,
+) {
+	let alpha = (one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0))) * from_f64::<T::Real>(0.125);
+
+	let mut A = A;
+	let mut subdiag = subdiag.column_vector_mut();
+	let n = A.nrows();
+
+	let mut k = 0;
+	while k < n {
+		let (_, _, A_left, A) = A.rb_mut().split_at_mut(k, k);
+		let (mut W, _) = unsafe { temp_mat_uninit::<T, _, _>(n - k, blocksize, stack) };
+		let W = W.as_mat_mut();
+
+		if blocksize < 2 || n - k <= blocksize {
+			lblt_unblocked(
+				copy(alpha),
+				A_left,
+				A,
+				subdiag.rb_mut().get_mut(k..).as_diagonal_mut(),
+				&mut pivots[k..],
+				rook,
+				diagonal,
+				par,
+			);
+
+			k = n;
+		} else {
+			let blocksize = lblt_blocked_step(
+				copy(alpha),
+				W,
+				A_left,
+				A,
+				subdiag.rb_mut().get_mut(k..).as_diagonal_mut(),
+				&mut pivots[k..],
+				rook,
+				diagonal,
+				par,
+			);
+
+			k += blocksize;
+		}
+	}
+}
+
+#[math]
+fn lblt_unblocked<T: ComplexField>(
+	alpha: T::Real,
+	A_left: MatMut<'_, T>,
+	A: MatMut<'_, T>,
+	subdiag: DiagMut<'_, T>,
+	pivots: &mut [usize],
+	rook: bool,
+	diagonal: bool,
+	par: Par,
+) {
+	let mut A = A;
+	let mut A_left = A_left;
+	let mut subdiag = subdiag;
+
+	let n = A.nrows();
+	assert!(all(A.nrows() == n, A.ncols() == n, subdiag.dim() == n));
+
+	let mut k = 0usize;
+	while k < n {
+		let (_, _, mut L_prev, mut A) = A.rb_mut().split_at_mut(k, k);
+		let mut subdiag = subdiag.rb_mut().column_vector_mut().get_mut(k..);
+		let mut A_left = A_left.rb_mut().get_mut(k.., ..);
+
+		let npiv;
+
+		// find the diagonal pivot candidate, if requested
+		let mut i0 = if diagonal {
+			l1_argmax(A.rb().diagonal().column_vector()).0.unwrap()
+		} else {
+			0
+		};
+		let mut i1 = usize::MAX;
+
+		// find the largest off-diagonal in the pivot's column
+		let (r, mut gamma_i) = offdiag_argmax(A.rb(), i0);
+
+		let mut nothing_to_do = false;
+
+		if k + 1 == n || gamma_i == zero() {
+			nothing_to_do = true;
+			npiv = 1;
+		} else if abs(real(A[(i0, i0)])) >= alpha * gamma_i {
+			npiv = 1;
+		} else {
+			i1 = r.unwrap();
+
+			// pivot search
+			if rook {
+				loop {
+					let (s, gamma_r) = offdiag_argmax(A.rb(), i1);
+
+					if abs1(A[(i1, i1)]) >= alpha * gamma_r {
+						npiv = 1;
+						i0 = i1;
+						i1 = usize::MAX;
+						break;
+					} else if gamma_i == gamma_r {
+						npiv = 2;
+						break;
+					} else {
+						i0 = i1;
+						i1 = s.unwrap();
+						gamma_i = gamma_r;
+					}
+				}
+			} else {
+				let (_, gamma_r) = offdiag_argmax(A.rb(), i1);
+				if abs(real(A[(i0, i0)])) >= (alpha * gamma_r) * (gamma_r / gamma_i) {
+					npiv = 1;
+				} else if abs(real(A[(i1, i1)])) >= alpha * gamma_r {
+					npiv = 1;
+					i0 = i1;
+				} else {
+					npiv = 2;
+				}
+			}
+		}
+
+		if npiv == 2 && i0 > i1 {
+			(i0, i1) = (i1, i0);
+		}
+
+		'next_iter: {
+			// swap pivots to first (and second) column
+			if i0 != 0 {
+				swap_self_adjoint(A.rb_mut(), 0, i0);
+				perm::swap_rows_idx(A_left.rb_mut(), 0, i0);
+				perm::swap_rows_idx(L_prev.rb_mut(), 0, i0);
+			}
+			if npiv == 2 && i1 != 1 {
+				swap_self_adjoint(A.rb_mut(), 1, i1);
+				perm::swap_rows_idx(A_left.rb_mut(), 1, i1);
+				perm::swap_rows_idx(L_prev.rb_mut(), 1, i1);
+			}
+
+			if nothing_to_do {
+				break 'next_iter;
+			}
+
+			// rank downdate
+			if npiv == 1 {
+				let diag = real(A[(0, 0)]);
+				let diag_inv = recip(diag);
+				subdiag[0] = zero();
+
+				let (_, _, L, mut A) = A.rb_mut().split_at_mut(1, 1);
+				let n = A.nrows();
+
+				let mut L = L.col_mut(0);
+				zip!(L.rb_mut()).for_each(|unzip!(x)| *x = mul_real(*x, diag_inv));
+				let L = L.rb();
+
+				linalg::matmul::triangular::matmul(
+					A.rb_mut(),
+					BlockStructure::TriangularLower,
+					Accum::Add,
+					L,
+					BlockStructure::Rectangular,
+					L.adjoint(),
+					BlockStructure::Rectangular,
+					from_real(-diag),
+					par,
+				);
+
+				for j in 0..n {
+					A[(j, j)] = from_real(real(A[(j, j)]));
+				}
+			} else {
+				let a00 = real(A[(0, 0)]);
+				let a11 = real(A[(1, 1)]);
+				let a10 = copy(A[(1, 0)]);
+
+				subdiag[0] = copy(a10);
+				subdiag[1] = zero();
+				A[(1, 0)] = zero();
+
+				let d10 = abs(a10);
+				let d10_inv = recip(d10);
+				let d00 = a00 * d10_inv;
+				let d11 = a11 * d10_inv;
+
+				// t = (d00/|d10| * d11/|d10| - 1.0)
+				let t = recip(d00 * d11 - one());
+				let d10 = mul_real(a10, d10_inv);
+				let d = t * d10_inv;
+
+				//         [ a00  a01 ]
+				// L_new * [ a10  a11 ] = L
+				let (_, _, L, mut A) = A.rb_mut().split_at_mut(2, 2);
+				let (mut L0, mut L1) = L.two_cols_mut(0, 1);
+
+				let n = A.nrows();
+				for j in 0..n {
+					let x0 = copy(L0[j]);
+					let x1 = copy(L1[j]);
+
+					let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+					let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+
+					for i in j..n {
+						A[(i, j)] = A[(i, j)] - L0[i] * conj(w0) - L1[i] * conj(w1);
+					}
+					A[(j, j)] = from_real(real(A[(j, j)]));
+
+					L0[j] = w0;
+					L1[j] = w1;
+				}
+			}
+		}
+
+		let offset = A_left.ncols();
+		if npiv == 2 {
+			pivots[k] = !(offset + i0 + k);
+			pivots[k + 1] = !(offset + i1 + k);
+		} else {
+			pivots[k] = offset + i0 + k;
+		}
+		k += npiv;
+	}
 }
 
 impl<T: RealField> Default for BunchKaufmanRegularization<'_, T> {
@@ -57,621 +600,9 @@ impl<T: RealField> Default for BunchKaufmanRegularization<'_, T> {
 impl<T: ComplexField> Auto<T> for BunchKaufmanParams {
 	fn auto() -> Self {
 		Self {
-			pivoting: PivotingStrategy::Diagonal,
+			pivoting: PivotingStrategy::PartialDiag,
 			blocksize: 64,
 			non_exhaustive: NonExhaustive(()),
-		}
-	}
-}
-
-#[math]
-fn best_score_idx_skip<T: ComplexField>(a: ColRef<'_, T>, skip: usize) -> (Option<usize>, T::Real) {
-	let m = a.nrows();
-
-	if m <= skip {
-		return (None, zero());
-	}
-
-	let mut best_row = skip;
-	let mut best_score = zero();
-
-	for i in best_row..m {
-		let score = abs(a[i]);
-		if score > best_score {
-			best_row = i;
-			best_score = score;
-		}
-	}
-
-	(Some(best_row), best_score)
-}
-
-fn assign_col<T: ComplexField>(a: MatMut<'_, T>, i: usize, j: usize) {
-	if i != j {
-		let (ai, aj) = a.two_cols_mut(i, j);
-		{ ai }.copy_from(aj);
-	}
-}
-
-#[math]
-fn best_score<T: ComplexField>(a: ColRef<'_, T>) -> T::Real {
-	let M = a.nrows();
-
-	let mut best_score = zero();
-
-	for i in 0..M {
-		let score = abs(a[i]);
-		if score > best_score {
-			best_score = score;
-		}
-	}
-
-	best_score
-}
-
-#[math]
-fn swap_elems_conj<T: ComplexField>(a: MatMut<'_, T>, (i0, j0): (usize, usize), (i1, j1): (usize, usize)) {
-	let mut a = a;
-	let (x, y) = (conj(a[(i0, j0)]), conj(a[(i1, j1)]));
-
-	a[(i0, j0)] = y;
-	a[(i1, j1)] = x;
-}
-#[math]
-fn swap_elems<T: ComplexField>(a: MatMut<'_, T>, (i0, j0): (usize, usize), (i1, j1): (usize, usize)) {
-	let mut a = a;
-	let (x, y) = (copy(a[(i0, j0)]), copy(a[(i1, j1)]));
-
-	a[(i0, j0)] = y;
-	a[(i1, j1)] = x;
-}
-
-#[math]
-fn make_real<T: ComplexField>(mut a: MatMut<'_, T>, (i0, j0): (usize, usize)) {
-	a[(i0, j0)] = from_real(real(a[(i0, j0)]));
-}
-
-#[math]
-fn cholesky_diagonal_pivoting_blocked_step<I: Index, T: ComplexField>(
-	mut a: MatMut<'_, T>,
-	regularization: BunchKaufmanRegularizationInner<'_, T::Real>,
-	mut w: MatMut<'_, T>,
-	pivots: &mut [I],
-	alpha: T::Real,
-	par: Par,
-) -> (usize, usize, usize) {
-	let n = a.nrows();
-	let nb = w.ncols();
-
-	assert!(nb < n);
-	if n == 0 {
-		return (0, 0, 0);
-	}
-
-	let eps = abs(regularization.dynamic_regularization_epsilon);
-	let delta = abs(regularization.dynamic_regularization_delta);
-	let mut signs = regularization.dynamic_regularization_signs;
-	let has_eps = delta > zero();
-	let mut dynamic_regularization_count = 0usize;
-	let mut pivot_count = 0usize;
-
-	let truncate = <I::Signed as SignedIndex>::truncate;
-
-	let mut k = 0;
-	while k < n && k + 1 < nb {
-		let k0 = k;
-		let j0 = k;
-		let j1 = k + 1;
-
-		w.rb_mut().get_mut(k0.., j0).copy_from(a.rb().get(k0.., k0));
-		let (w_left, w_right) = w.rb_mut().get_mut(k0.., ..).split_at_col_mut(j0);
-
-		let w_row = w_left.rb().row(0);
-		let w_col = w_right.col_mut(0);
-		crate::linalg::matmul::matmul(
-			w_col.as_mat_mut(),
-			Accum::Add,
-			a.rb().get(k0..n, ..k0),
-			w_row.rb().transpose().as_mat(),
-			-one::<T>(),
-			par,
-		);
-		make_real(w.rb_mut(), (k0, j0));
-
-		let mut k_step = 1;
-
-		let abs_akk = abs(real(w[(k0, j0)]));
-
-		let (imax, colmax) = best_score_idx_skip(w.rb().col(j0), k0 + 1);
-
-		let kp;
-		if max(abs_akk, colmax) == zero() {
-			kp = k0;
-
-			let mut d11 = real(w[(k0, j0)]);
-			if has_eps {
-				if let Some(signs) = signs.rb_mut() {
-					if signs[k0] > 0 && d11 <= eps {
-						d11 = copy(delta);
-						dynamic_regularization_count += 1;
-					} else if signs[k0] < 0 && d11 >= -eps {
-						d11 = neg(delta);
-						dynamic_regularization_count += 1;
-					}
-				}
-			}
-			a[(k0, k0)] = from_real(d11);
-		} else {
-			if abs_akk >= colmax * alpha {
-				kp = k0;
-			} else {
-				let imax = imax.unwrap();
-				z!(w.rb_mut().get_mut(k0..imax, j1), a.rb().get(imax, k0..imax).transpose(),).for_each(|uz!(dst, src)| *dst = conj(src));
-
-				w.rb_mut().get_mut(imax.., j1).copy_from(a.rb().get(imax.., imax));
-
-				let (w_left, w_right) = w.rb_mut().get_mut(k0.., ..).split_at_col_mut(j1);
-
-				let w_row = w_left.rb().row(imax - k).subcols(0, k);
-				let w_col = w_right.col_mut(0);
-
-				crate::linalg::matmul::matmul(
-					w_col.as_mat_mut(),
-					Accum::Add,
-					a.rb().get(k0.., ..k0),
-					w_row.rb().transpose().as_mat(),
-					-one::<T>(),
-					par,
-				);
-				make_real(w.rb_mut(), (imax, j1));
-
-				let rowmax = max(best_score(w.rb().get(k0..imax, j1)), best_score(w.rb().get(imax + 1.., j1)));
-
-				if abs_akk >= (alpha * colmax) * (colmax / rowmax) {
-					kp = k0;
-				} else if abs(real(w[(imax, j1)])) >= alpha * rowmax {
-					kp = imax;
-					assign_col(w.rb_mut().get_mut(k0.., ..), j0, j1);
-				} else {
-					kp = imax;
-					k_step = 2;
-				}
-			}
-
-			let kk = k + k_step - 1;
-			let jk = kk;
-
-			if kp != kk {
-				pivot_count += 1;
-				if let Some(signs) = signs.rb_mut() {
-					signs.swap(kp, kk);
-				}
-				a[(kp, kp)] = copy(a[(kk, kk)]);
-				for j in kk + 1..kp {
-					a[(kp, j)] = conj(a[(j, kk)]);
-				}
-				assign_col(a.rb_mut().get_mut(kp + 1.., ..), kp, kk);
-
-				swap_rows_idx(a.rb_mut().split_at_col_mut(k0).0, kk, kp);
-				swap_rows_idx(w.rb_mut().split_at_col_mut(jk + 1).0, kk, kp);
-			}
-
-			if k_step == 1 {
-				a.rb_mut().get_mut(k0.., k0).copy_from(w.rb().get(k0.., j0));
-
-				let mut d11 = real(w[(k0, j0)]);
-				if has_eps {
-					if let Some(signs) = signs.rb_mut() {
-						if signs[k0] > 0 && d11 <= eps {
-							d11 = copy(delta);
-							dynamic_regularization_count += 1;
-						} else if signs[k0] < 0 && d11 >= -eps {
-							d11 = neg(delta);
-							dynamic_regularization_count += 1;
-						}
-					} else if abs(d11) <= eps {
-						if d11 < zero() {
-							d11 = neg(delta);
-						} else {
-							d11 = copy(delta);
-						}
-						dynamic_regularization_count += 1;
-					}
-				}
-				a[(k0, k0)] = from_real(d11);
-				let d11 = recip(d11);
-
-				let x = a.rb_mut().get_mut(k0 + 1.., k0);
-				z!(x).for_each(|uz!(x)| *x = mul_real(x, d11));
-				z!(w.rb_mut().get_mut(k0 + 1.., j0)).for_each(|uz!(x)| *x = conj(x));
-			} else {
-				let k1 = k + 1;
-
-				let dd = abs(w[(k1, j0)]);
-				let dd_inv = recip(dd);
-				let mut d11 = dd_inv * real(w[(k1, j1)]);
-				let mut d22 = dd_inv * real(w[(k0, j0)]);
-
-				let eps = eps * dd_inv;
-				let delta = delta * dd_inv;
-				if has_eps {
-					if let Some(signs) = signs.rb_mut() {
-						if signs[k0] > 0 && signs[k1] > 0 {
-							{
-								if d11 <= eps {
-									d11 = copy(delta);
-									dynamic_regularization_count += 1;
-								}
-								if d22 <= eps {
-									d22 = copy(delta);
-									dynamic_regularization_count += 1;
-								}
-							}
-						} else if signs[k0] < 0 && signs[k1] < 0 {
-							{
-								if d11 >= -eps {
-									d11 = -delta;
-									dynamic_regularization_count += 1;
-								}
-								if d22 >= -eps {
-									d22 = -delta;
-									dynamic_regularization_count += 1;
-								}
-							}
-						}
-					}
-				}
-
-				// t = (d11/|d21| * d22/|d21| - 1.0)
-				let mut t = d11 * d22 - one();
-				if has_eps {
-					if let Some(signs) = signs.rb_mut() {
-						if ((signs[k0] > 0 && signs[k1] > 0) || (signs[k0] < 0 && signs[k1] < 0)) && t <= eps {
-							t = copy(delta);
-						} else if ((signs[k0] > 0 && signs[k1] < 0) || (signs[k0] < 0 && signs[k1] > 0)) && t >= -eps {
-							t = -delta;
-						}
-					}
-				}
-
-				let t = recip(t);
-				let d21 = mul_real(w[(k1, j0)], dd_inv);
-				let d = t * dd_inv;
-
-				a[(k0, k0)] = copy(w[(k0, j0)]);
-				a[(k1, k0)] = copy(w[(k1, j0)]);
-				a[(k1, k1)] = copy(w[(k1, j1)]);
-				make_real(a.rb_mut(), (k0, k0));
-				make_real(a.rb_mut(), (k1, k1));
-
-				for j in k1 + 1..n {
-					let wk = mul_real(
-						//
-						mul_real(w[(j, j0)], d11) - (w[(j, j1)] * d21),
-						d,
-					);
-					let wkp1 = mul_real(
-						//
-						mul_real(w[(j, j1)], d22) - (w[(j, j0)] * conj(d21)),
-						d,
-					);
-
-					a[(j, k0)] = wk;
-					a[(j, k1)] = wkp1;
-				}
-
-				z!(w.rb_mut().get_mut(k1.., j0)).for_each(|uz!(x)| *x = conj(x));
-				z!(w.rb_mut().get_mut(k1 + 1.., j1)).for_each(|uz!(x)| *x = conj(x));
-			}
-		}
-
-		if k_step == 1 {
-			pivots[k0] = I::from_signed(truncate(kp));
-		} else {
-			let k1 = k + 1;
-			pivots[k0] = I::from_signed(truncate(!kp));
-			pivots[k1] = I::from_signed(truncate(!kp));
-		}
-
-		k += k_step;
-	}
-
-	let k0 = n.checked_idx_inc(k);
-	let j0 = nb.checked_idx_inc(k);
-
-	let (a_left, mut a_right) = a.rb_mut().get_mut(k0.., ..).split_at_col_mut(k0);
-	triangular::matmul(
-		a_right.rb_mut(),
-		BlockStructure::TriangularLower,
-		Accum::Add,
-		a_left.rb(),
-		BlockStructure::Rectangular,
-		w.rb().get(k0.., ..j0).transpose(),
-		BlockStructure::Rectangular,
-		-one::<T>(),
-		par,
-	);
-
-	z!(a_right.diagonal_mut().column_vector_mut()).for_each(|uz!(x)| *x = from_real(real(*x)));
-
-	let mut j = k - 1;
-	loop {
-		let jj = j;
-		let mut jp = pivots[j].to_signed().sx();
-		if (jp as isize) < 0 {
-			jp = !jp;
-			j -= 1;
-		}
-
-		if j == 0 {
-			return (k, pivot_count, dynamic_regularization_count);
-		}
-		j -= 1;
-
-		if jp != jj {
-			swap_rows_idx(a.rb_mut().get_mut(.., ..j + 1), jp, jj);
-		}
-		if j == 0 {
-			return (k, pivot_count, dynamic_regularization_count);
-		}
-	}
-}
-
-#[math]
-fn cholesky_diagonal_pivoting_unblocked<I: Index, T: ComplexField>(
-	mut a: MatMut<'_, T>,
-	regularization: BunchKaufmanRegularizationInner<'_, T::Real>,
-	pivots: &mut [I],
-	alpha: T::Real,
-) -> (usize, usize) {
-	let truncate = <I::Signed as SignedIndex>::truncate;
-
-	assert!(a.nrows() == a.ncols());
-	let n = a.nrows();
-
-	if n == 0 {
-		return (0, 0);
-	}
-
-	let eps = abs(regularization.dynamic_regularization_epsilon);
-	let delta = abs(regularization.dynamic_regularization_delta);
-	let mut signs = regularization.dynamic_regularization_signs;
-
-	let has_eps = delta > zero();
-	let mut dynamic_regularization_count = 0usize;
-	let mut pivot_count = 0usize;
-
-	let mut k = 0;
-	while k < n {
-		let k0 = k;
-
-		// let (l![after_k], _) = N.split(l![k0.to_incl()..], FULL);
-		// let k0_ = after_k.idx(*k0);
-
-		let mut k_step = 1;
-		let abs_akk = abs(a[(k0, k0)]);
-		let (imax, colmax) = best_score_idx_skip(a.rb().col(k0).split_at_row(k0).1, 0);
-
-		let imax = imax.map(|imax| imax + k0);
-
-		let kp;
-		if max(abs_akk, colmax) == zero() {
-			kp = k0;
-
-			let mut d11 = real(a[(k0, k0)]);
-			if has_eps {
-				if let Some(signs) = signs.rb_mut() {
-					if signs[k0] > 0 && d11 <= eps {
-						d11 = copy(delta);
-						dynamic_regularization_count += 1;
-					} else if signs[k0] < 0 && d11 >= -eps {
-						d11 = neg(delta);
-						dynamic_regularization_count += 1;
-					}
-				}
-			}
-			a[(k0, k0)] = from_real(d11);
-		} else {
-			{
-				if abs_akk >= colmax * alpha {
-					kp = k0;
-				} else {
-					let imax_global = imax.unwrap();
-					let imax = imax_global;
-
-					// let (l![k_imax], _) = N.split(l![k0.to_incl()..imax.to_incl()], AFTER_K0);
-					// let (l![imax_end], _) = N.split(l![imax.next()..], AFTER_K1);
-
-					let rowmax = max(best_score(a.rb().get(imax, k0..imax).transpose()), best_score(a.rb().get(imax.., imax)));
-
-					if abs_akk >= (alpha * colmax) * (colmax / rowmax) {
-						kp = k0;
-					} else if abs(real(a[(imax, imax)])) >= alpha * rowmax {
-						kp = imax_global;
-					} else {
-						kp = imax_global;
-						k_step = 2;
-					}
-				}
-			}
-
-			let kp = kp;
-			let kk = k + k_step - 1;
-
-			if kp != kk {
-				let k1 = k + 1;
-
-				pivot_count += 1;
-				swap_cols_idx(a.rb_mut().get_mut(kp + 1.., ..), kk, kp);
-				for j in kk + 1..kp {
-					swap_elems_conj(a.rb_mut(), (j, kk), (kp, j));
-				}
-
-				a[(kp, kk)] = conj(a[(kp, kk)]);
-				swap_elems(a.rb_mut(), (kk, kk), (kp, kp));
-
-				if k_step == 2 {
-					swap_elems(a.rb_mut(), (k1, k0), (kp, k0));
-				}
-			}
-
-			if k_step == 1 {
-				let mut d11 = real(a[(k0, k0)]);
-				if has_eps {
-					if let Some(signs) = signs.rb_mut() {
-						if signs[k0] > 0 && d11 <= eps {
-							d11 = copy(delta);
-							dynamic_regularization_count += 1;
-						} else if signs[k0] < 0 && d11 >= -eps {
-							d11 = neg(delta);
-							dynamic_regularization_count += 1;
-						}
-					} else if abs(d11) <= eps {
-						if d11 < zero() {
-							d11 = neg(delta);
-						} else {
-							d11 = copy(delta);
-						}
-						dynamic_regularization_count += 1;
-					}
-				}
-				a[(k0, k0)] = from_real(d11);
-				let d11 = recip(d11);
-
-				for j in k0 + 1..n {
-					let d11xj = mul_real(conj(a[(j, k0)]), d11);
-					for i in j..n {
-						let xi = copy(a[(i, k0)]);
-						a[(i, j)] = a[(i, j)] - d11xj * xi;
-					}
-					make_real(a.rb_mut(), (j, j));
-				}
-				z!(a.rb_mut().get_mut(k0 + 1.., k0)).for_each(|uz!(x)| *x = mul_real(x, d11));
-			} else {
-				let k1 = k + 1;
-				let d21 = abs(a[(k1, k0)]);
-				let d21_inv = recip(d21);
-				let mut d11 = d21_inv * real(a[(k1, k1)]);
-				let mut d22 = d21_inv * real(a[(k0, k0)]);
-
-				let eps = eps * d21_inv;
-				let delta = delta * d21_inv;
-				if has_eps {
-					if let Some(signs) = signs.rb_mut() {
-						if signs[k0] > 0 && signs[k1] > 0 {
-							{
-								if d11 <= eps {
-									d11 = copy(delta);
-									dynamic_regularization_count += 1;
-								}
-								if d22 <= eps {
-									d22 = copy(delta);
-									dynamic_regularization_count += 1;
-								}
-							}
-						} else if signs[k0] < 0 && signs[k1] < 0 {
-							{
-								if d11 >= -eps {
-									d11 = -delta;
-									dynamic_regularization_count += 1;
-								}
-								if d22 >= -eps {
-									d22 = -delta;
-									dynamic_regularization_count += 1;
-								}
-							}
-						}
-					}
-				}
-
-				// t = (d11/|d21| * d22/|d21| - 1.0)
-				let mut t = d11 * d22 - one();
-				if has_eps {
-					if let Some(signs) = signs.rb_mut() {
-						if ((signs[k0] > 0 && signs[k1] > 0) || (signs[k0] < 0 && signs[k1] < 0)) && t <= eps {
-							t = copy(delta);
-						} else if ((signs[k0] > 0 && signs[k1] < 0) || (signs[k0] < 0 && signs[k1] > 0)) && t >= -eps {
-							t = neg(delta);
-						}
-					}
-				}
-
-				let t = recip(t);
-				let d21 = mul_real(a[(k1, k0)], d21_inv);
-				let d = t * d21_inv;
-
-				for j in k1 + 1..n {
-					let wk = mul_real(
-						//
-						mul_real(a[(j, k0)], d11) - (a[(j, k1)] * d21),
-						d,
-					);
-					let wkp1 = mul_real(
-						//
-						mul_real(a[(j, k1)], d22) - (a[(j, k0)] * conj(d21)),
-						d,
-					);
-
-					for i in j..n {
-						a[(i, j)] = a[(i, j)] - a[(i, k0)] * conj(wk) - a[(i, k1)] * conj(wkp1);
-					}
-					make_real(a.rb_mut(), (j, j));
-
-					a[(j, k0)] = wk;
-					a[(j, k1)] = wkp1;
-				}
-			}
-		}
-
-		if k_step == 1 {
-			pivots[k0] = I::from_signed(truncate(kp));
-		} else {
-			let k1 = k + 1;
-			pivots[k0] = I::from_signed(truncate(!kp));
-			pivots[k1] = I::from_signed(truncate(!kp));
-		}
-		k += k_step;
-	}
-
-	(pivot_count, dynamic_regularization_count)
-}
-
-#[math]
-fn convert<'N, I: Index, T: ComplexField>(mut a: MatMut<'_, T, Dim<'N>, Dim<'N>>, pivots: &Array<'N, I>, mut subdiag: ColMut<'_, T, Dim<'N>>) {
-	assert!(a.nrows() == a.ncols());
-	let N = a.nrows();
-
-	let mut i = 0;
-	while let Some(i0) = N.try_check(i) {
-		if (pivots[i0].to_signed().sx() as isize) < 0 {
-			let i1 = N.check(i + 1);
-
-			subdiag[i0] = copy(a[(i1, i0)]);
-			subdiag[i1] = zero();
-			a[(i1, i0)] = zero();
-			i += 2;
-		} else {
-			subdiag[i0] = zero();
-			i += 1;
-		}
-	}
-
-	let mut i = 0;
-	while let Some(i0) = N.try_check(i) {
-		let a = a.rb_mut().get_mut(.., IdxInc::ZERO..i0.into());
-
-		let p = pivots[i0].to_signed().sx();
-		if (p as isize) < 0 {
-			let p = !p;
-			let i1 = N.check(i + 1);
-			let p = N.check(p);
-
-			swap_rows_idx(a, i1, p);
-			i += 2;
-		} else {
-			let p = N.check(p);
-			swap_rows_idx(a, i0, p);
-			i += 1;
 		}
 	}
 }
@@ -685,7 +616,7 @@ pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par
 	if bs < 2 || dim <= bs {
 		bs = 0;
 	}
-	StackReq::new::<I>(dim).and(temp_mat_scratch::<T>(dim, bs)).and(StackReq::new::<i8>(dim))
+	StackReq::new::<usize>(dim).and(temp_mat_scratch::<T>(dim, bs))
 }
 
 /// info about the result of the bunch-kaufman factorization
@@ -723,6 +654,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	params: Spec<BunchKaufmanParams, T>,
 ) -> (BunchKaufmanInfo, PermRef<'out, I>) {
 	let params = params.config;
+	let _ = regularization;
 
 	let truncate = <I::Signed as SignedIndex>::truncate;
 
@@ -740,100 +672,38 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 		}
 	}
 
-	let _ = par;
-	let mut matrix = A;
-
-	let alpha = mul_pow2(one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0)), from_f64::<T::Real>(0.125));
-
-	let (mut pivots, stack) = stack.make_with::<I>(n, |_| I::truncate(0));
+	let (mut pivots, stack) = stack.make_with::<usize>(n, |_| 0);
 	let pivots = &mut *pivots;
 
 	let mut bs = params.blocksize;
 	if bs < 2 || n <= bs {
 		bs = 0;
 	}
-	let (mut work, stack) = unsafe { temp_mat_uninit(n, bs, stack) };
-	let mut work = work.as_mat_mut();
 
-	let mut k = 0;
-	let mut dynamic_regularization_count = 0;
-	let mut transposition_count = 0;
-
-	let (signs, _) = unsafe { stack.make_raw::<i8>(n) };
-	if let Some(src) = regularization.dynamic_regularization_signs {
-		signs.copy_from_slice(src);
+	let (rook, diagonal) = match params.pivoting {
+		PivotingStrategy::Partial => (false, false),
+		PivotingStrategy::PartialDiag => (false, true),
+		PivotingStrategy::Rook => (true, false),
+		PivotingStrategy::RookDiag => (true, true),
+		_ => (false, false),
 	};
 
-	let mut regularization = BunchKaufmanRegularizationInner {
-		dynamic_regularization_signs: regularization.dynamic_regularization_signs.map(|_| signs),
-		dynamic_regularization_delta: regularization.dynamic_regularization_delta,
-		dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
-	};
-
-	while k < n {
-		let regularization = BunchKaufmanRegularizationInner {
-			dynamic_regularization_signs: regularization.dynamic_regularization_signs.rb_mut().map(|signs| &mut signs[k..]),
-			dynamic_regularization_delta: copy(regularization.dynamic_regularization_delta),
-			dynamic_regularization_epsilon: copy(regularization.dynamic_regularization_epsilon),
-		};
-
-		let kb;
-		let reg_count;
-		let piv_count;
-
-		let rem = n - k;
-
-		let alpha = copy(alpha);
-		if bs >= 2 && bs < n - k {
-			(kb, piv_count, reg_count) = cholesky_diagonal_pivoting_blocked_step(
-				matrix.rb_mut().submatrix_mut(k, k, rem, rem),
-				regularization,
-				work.rb_mut().subrows_mut(k, rem),
-				&mut pivots[k..],
-				alpha,
-				par,
-			);
-		} else {
-			(piv_count, reg_count) =
-				cholesky_diagonal_pivoting_unblocked(matrix.rb_mut().submatrix_mut(k, k, rem, rem), regularization, &mut pivots[k..], alpha);
-			kb = n - k;
-		}
-		dynamic_regularization_count += reg_count;
-		transposition_count += piv_count;
-
-		for pivot in &mut pivots[k..k + kb] {
-			let pv = (*pivot).to_signed().sx();
-			if pv as isize >= 0 {
-				*pivot = I::from_signed(truncate(pv + k));
-			} else {
-				*pivot = I::from_signed(truncate(pv - k));
-			}
-		}
-
-		k += kb;
-	}
-
-	with_dim!(N, n);
-	convert(
-		matrix.rb_mut().as_shape_mut(N, N),
-		Array::from_mut(pivots, N),
-		subdiag.column_vector_mut().as_row_shape_mut(N),
-	);
+	lblt_blocked(A, subdiag, pivots, bs, rook, diagonal, par, stack);
 
 	for (i, p) in perm.iter_mut().enumerate() {
 		*p = I::from_signed(truncate(i));
 	}
-	let mut i = 0;
-	while i < n {
-		let p = pivots[i].to_signed().sx();
+
+	let mut transposition_count = 0usize;
+	for i in 0..n {
+		let mut p = pivots[i];
 		if (p as isize) < 0 {
-			let p = !p;
-			perm.swap(i + 1, p);
-			i += 2;
-		} else {
-			perm.swap(i, p);
-			i += 1;
+			p = !p;
 		}
+		if i != p {
+			transposition_count += 1;
+		}
+		perm.swap(i, p);
 	}
 	for (i, &p) in perm.iter().enumerate() {
 		perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
@@ -841,7 +711,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 
 	(
 		BunchKaufmanInfo {
-			dynamic_regularization_count,
+			dynamic_regularization_count: 0,
 			transposition_count,
 		},
 		unsafe { PermRef::new_unchecked(perm, perm_inv, n) },
