@@ -532,6 +532,176 @@ mod matvec_colmajor {
 	}
 }
 
+mod rank_update {
+	use super::*;
+	use crate::assert;
+
+	#[math]
+	fn rank_update_imp<'M, 'N, T: ComplexField>(
+		dst: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+		beta: Accum,
+		lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+		conj_lhs: Conj,
+		rhs: RowRef<'_, T, Dim<'N>>,
+		conj_rhs: Conj,
+		alpha: &T,
+	) {
+		assert!(T::SIMD_CAPABILITIES.is_simd());
+
+		struct Impl<'a, 'M, 'N, T: ComplexField> {
+			dst: MatMut<'a, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+			beta: Accum,
+			lhs: ColRef<'a, T, Dim<'M>, ContiguousFwd>,
+			conj_lhs: Conj,
+			rhs: RowRef<'a, T, Dim<'N>>,
+			conj_rhs: Conj,
+			alpha: &'a T,
+		}
+
+		impl<T: ComplexField> pulp::WithSimd for Impl<'_, '_, '_, T> {
+			type Output = ();
+
+			#[inline(always)]
+			fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+				let Self {
+					mut dst,
+					beta,
+					lhs,
+					conj_lhs,
+					rhs,
+					conj_rhs,
+					alpha,
+				} = self;
+
+				let (m, n) = dst.shape();
+				let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), m);
+
+				let (head, body, tail) = simd.indices();
+
+				for j in n.indices() {
+					let mut dst = dst.rb_mut().col_mut(j);
+
+					let rhs = *alpha * conj_rhs.apply_rt(&rhs[j]);
+					let rhs = simd.splat(&rhs);
+
+					if conj_lhs.is_conj() {
+						match beta {
+							Accum::Add => {
+								if let Some(i) = head {
+									let mut acc = simd.read(dst.rb(), i);
+									acc = simd.conj_mul_add(simd.read(lhs, i), rhs, acc);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								for i in body.clone() {
+									let mut acc = simd.read(dst.rb(), i);
+									acc = simd.conj_mul_add(simd.read(lhs, i), rhs, acc);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								if let Some(i) = tail {
+									let mut acc = simd.read(dst.rb(), i);
+									acc = simd.conj_mul_add(simd.read(lhs, i), rhs, acc);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+							},
+							Accum::Replace => {
+								if let Some(i) = head {
+									let acc = simd.conj_mul(simd.read(lhs, i), rhs);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								for i in body.clone() {
+									let acc = simd.conj_mul(simd.read(lhs, i), rhs);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								if let Some(i) = tail {
+									let acc = simd.conj_mul(simd.read(lhs, i), rhs);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+							},
+						}
+					} else {
+						match beta {
+							Accum::Add => {
+								if let Some(i) = head {
+									let mut acc = simd.read(dst.rb(), i);
+									acc = simd.mul_add(simd.read(lhs, i), rhs, acc);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								for i in body.clone() {
+									let mut acc = simd.read(dst.rb(), i);
+									acc = simd.mul_add(simd.read(lhs, i), rhs, acc);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								if let Some(i) = tail {
+									let mut acc = simd.read(dst.rb(), i);
+									acc = simd.mul_add(simd.read(lhs, i), rhs, acc);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+							},
+							Accum::Replace => {
+								if let Some(i) = head {
+									let acc = simd.mul(simd.read(lhs, i), rhs);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								for i in body.clone() {
+									let acc = simd.mul(simd.read(lhs, i), rhs);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+								if let Some(i) = tail {
+									let acc = simd.mul(simd.read(lhs, i), rhs);
+									simd.write(dst.rb_mut(), i, acc);
+								}
+							},
+						}
+					}
+				}
+			}
+		}
+
+		dispatch!(
+			Impl {
+				dst,
+				lhs,
+				conj_lhs,
+				rhs,
+				conj_rhs,
+				beta,
+				alpha,
+			},
+			Impl,
+			T
+		)
+	}
+
+	#[math]
+	pub fn rank_update<'M, 'N, T: ComplexField>(
+		dst: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+		beta: Accum,
+		lhs: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
+		conj_lhs: Conj,
+		rhs: RowRef<'_, T, Dim<'N>>,
+		conj_rhs: Conj,
+		alpha: &T,
+		par: Par,
+	) {
+		match par {
+			Par::Seq => {
+				rank_update_imp(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha);
+			},
+			#[cfg(feature = "rayon")]
+			Par::Rayon(nthreads) => {
+				let nthreads = nthreads.get();
+				use rayon::prelude::*;
+				dst.par_col_partition_mut(nthreads)
+					.zip(rhs.par_partition(nthreads))
+					.for_each(|(dst, rhs)| {
+						with_dim!(N, dst.ncols());
+						rank_update_imp(dst.as_col_shape_mut(N), beta, lhs, conj_lhs, rhs.as_col_shape(N), conj_rhs, alpha);
+					});
+			},
+		}
+	}
+}
+
 #[math]
 fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	dst: MatMut<'_, T, Dim<'M>, Dim<'N>>,
@@ -596,6 +766,22 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 
 			if let (Some(rhs), Some(lhs)) = (rhs.try_as_col_major(), lhs.try_as_row_major()) {
 				matvec_rowmajor::matvec(dst.col_mut(first), beta, lhs, conj_lhs, rhs.col(first), conj_rhs, alpha, par);
+				return;
+			}
+		}
+		if *K == 1 {
+			let z = K.idx(0);
+
+			if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
+				rank_update::rank_update(dst, beta, lhs.col(z), conj_lhs, rhs.row(z), conj_rhs, alpha, par);
+				return;
+			}
+
+			if let (Some(dst), Some(rhs)) = (dst.rb_mut().try_as_row_major_mut(), rhs.try_as_row_major()) {
+				let dst = dst.transpose_mut();
+				let rhs = rhs.row(z).transpose();
+				let lhs = lhs.col(z).transpose();
+				rank_update::rank_update(dst, beta, rhs, conj_rhs, lhs, conj_lhs, alpha, par);
 				return;
 			}
 		}
