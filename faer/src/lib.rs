@@ -1109,6 +1109,7 @@ pub mod stats;
 mod non_exhaustive {
 	#[doc(hidden)]
 	#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+	#[repr(transparent)]
 	pub struct NonExhaustive(pub(crate) ());
 }
 pub(crate) use non_exhaustive::NonExhaustive;

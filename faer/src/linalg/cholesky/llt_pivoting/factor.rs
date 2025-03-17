@@ -5,27 +5,35 @@ pub use linalg::cholesky::llt::factor::LltError;
 use linalg::matmul::triangular::BlockStructure;
 
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct PivLltParams {
 	pub blocksize: usize,
+
+	#[doc(hidden)]
+	pub non_exhaustive: NonExhaustive,
 }
 
 impl Default for PivLltParams {
 	#[inline]
 	fn default() -> Self {
-		Self { blocksize: 128 }
+		Self {
+			blocksize: 128,
+			non_exhaustive: NonExhaustive(()),
+		}
 	}
 }
 
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct PivLltInfo {
+	/// numerical rank of the matrix
 	pub rank: usize,
+	/// number of transpositions that make up the permutation
+	pub transposition_count: usize,
 }
 
 #[inline]
-pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
+pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: PivLltParams) -> StackReq {
 	_ = par;
+	_ = params;
 	temp_mat_scratch::<T::Real>(dim, 2)
 }
 
@@ -43,6 +51,8 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	let n = a.nrows();
 	assert!(n <= I::Signed::MAX.zx());
 	let mut rank = n;
+	let mut transposition_count = 0;
+
 	'exit: {
 		if n > 0 {
 			let mut a = a;
@@ -115,6 +125,8 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 					}
 
 					if pvt != j {
+						transposition_count += 1;
+
 						a[(pvt, pvt)] = copy(a[(j, j)]);
 						crate::perm::swap_rows_idx(a.rb_mut().get_mut(.., ..j), j, pvt);
 						crate::perm::swap_cols_idx(a.rb_mut().get_mut(pvt + 1.., ..), j, pvt);
@@ -171,5 +183,5 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 		perm_inv[p.zx()] = I::truncate(i);
 	}
 
-	unsafe { Ok((PivLltInfo { rank }, PermRef::new_unchecked(perm, perm_inv, n))) }
+	unsafe { Ok((PivLltInfo { rank, transposition_count }, PermRef::new_unchecked(perm, perm_inv, n))) }
 }
