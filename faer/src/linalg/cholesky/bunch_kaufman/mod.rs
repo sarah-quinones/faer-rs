@@ -12,6 +12,7 @@ pub mod reconstruct;
 
 #[cfg(test)]
 mod tests {
+	use super::factor::PivotingStrategy;
 	use super::*;
 	use crate::internal_prelude::*;
 	use crate::stats::prelude::*;
@@ -97,7 +98,7 @@ mod tests {
 			}
 			.rand::<Mat<c64>>(rng);
 
-			let a = &a + a.adjoint();
+			let A = &a + a.adjoint();
 			let rhs = CwiseMatDistribution {
 				nrows: n,
 				ncols: 2,
@@ -105,54 +106,61 @@ mod tests {
 			}
 			.rand::<Mat<c64>>(rng);
 
-			let mut ldl = a.clone();
-			let mut subdiag = Diag::<c64>::zeros(n);
+			for pivoting in [
+				PivotingStrategy::Partial,
+				PivotingStrategy::PartialDiag,
+				PivotingStrategy::Rook,
+				PivotingStrategy::RookDiag,
+			] {
+				let mut ldl = A.clone();
+				let mut subdiag = Diag::<c64>::zeros(n);
 
-			let mut perm = vec![0usize; n];
-			let mut perm_inv = vec![0; n];
+				let mut perm = vec![0usize; n];
+				let mut perm_inv = vec![0; n];
 
-			let params = BunchKaufmanParams {
-				pivoting: factor::PivotingStrategy::Diagonal,
-				blocksize: 4,
-				..auto!(c64)
-			};
-			let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()));
-			let (_, perm) = factor::cholesky_in_place(
-				ldl.as_mut(),
-				subdiag.as_mut(),
-				Default::default(),
-				&mut perm,
-				&mut perm_inv,
-				Par::Seq,
-				MemStack::new(&mut mem),
-				params.into(),
-			);
+				let params = BunchKaufmanParams {
+					pivoting,
+					blocksize: 4,
+					..auto!(c64)
+				};
+				let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()));
+				let (_, perm) = factor::cholesky_in_place(
+					ldl.as_mut(),
+					subdiag.as_mut(),
+					Default::default(),
+					&mut perm,
+					&mut perm_inv,
+					Par::Seq,
+					MemStack::new(&mut mem),
+					params.into(),
+				);
 
-			let mut x = rhs.clone();
-			let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq));
-			solve::solve_in_place_with_conj(
-				ldl.as_ref(),
-				ldl.diagonal(),
-				subdiag.as_ref(),
-				Conj::Yes,
-				perm.rb(),
-				x.as_mut(),
-				Par::Seq,
-				MemStack::new(&mut mem),
-			);
+				let mut x = rhs.clone();
+				let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq));
+				solve::solve_in_place_with_conj(
+					ldl.as_ref(),
+					ldl.diagonal(),
+					subdiag.as_ref(),
+					Conj::Yes,
+					perm.rb(),
+					x.as_mut(),
+					Par::Seq,
+					MemStack::new(&mut mem),
+				);
 
-			let err = a.conjugate() * &x - &rhs;
-			let mut max = 0.0;
-			zip!(err.as_ref()).for_each(|unzip!(err)| {
-				let err = abs(err);
-				if err > max {
-					max = err
+				let err = A.conjugate() * &x - &rhs;
+				let mut max = 0.0;
+				zip!(err.as_ref()).for_each(|unzip!(err)| {
+					let err = abs(err);
+					if err > max {
+						max = err
+					}
+				});
+				for i in 0..n {
+					assert!(ldl[(i, i)].im == 0.0);
 				}
-			});
-			for i in 0..n {
-				assert!(ldl[(i, i)].im == 0.0);
+				assert!(max < 1e-9);
 			}
-			assert!(max < 1e-9);
 		}
 	}
 }
