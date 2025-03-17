@@ -1403,7 +1403,7 @@ impl<T, Cols: Shape> Mat<T, usize, Cols> {
 	/// inserts a row at the end of the matrix
 	/// # panics
 	/// The function panics if the number of columns in the row does not match the number of columns in the matrix
-	pub fn insert_row(&mut self, row: RowRef<'_, T, Cols>)
+	pub fn push_row(&mut self, row: RowRef<'_, T, Cols>)
 	where
 		T: Clone,
 	{
@@ -1422,7 +1422,7 @@ impl<T, Rows: Shape> Mat<T, Rows, usize> {
 	/// inserts a col at the end of the matrix
 	/// # panics
 	/// The function panics if the number of rows in the col does not match the number of rows in the matrix
-	pub fn insert_col(&mut self, col: ColRef<'_, T, Rows>)
+	pub fn push_col(&mut self, col: ColRef<'_, T, Rows>)
 	where
 		T: Clone,
 	{
@@ -1519,12 +1519,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_insert_row() {
+	fn test_push_row() {
 		let mut m = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0],];
 
 		let row = row![10.0, 11.0, 12.0];
 
-		m.insert_row(row.as_ref());
+		m.push_row(row.as_ref());
 
 		let target = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [10.0, 11.0, 12.0],];
 
@@ -1533,22 +1533,22 @@ mod tests {
 
 	#[test]
 	#[should_panic]
-	fn test_insert_row_panic() {
+	fn test_push_row_panic() {
 		let mut m = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0],];
 
 		// row has one too many columns
 		let row = row![10.0, 11.0, 12.0, 13.0];
 
-		m.insert_row(row.as_ref());
+		m.push_row(row.as_ref());
 	}
 
 	#[test]
-	fn test_insert_col() {
+	fn test_push_col() {
 		let mut m = mat![[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0],];
 
 		let col = col![4.0, 4.0, 4.0];
 
-		m.insert_col(col.as_ref());
+		m.push_col(col.as_ref());
 
 		let target = mat![[1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0],];
 
@@ -1557,11 +1557,11 @@ mod tests {
 
 	#[test]
 	#[should_panic]
-	fn test_insert_col_panic() {
+	fn test_push_col_panic() {
 		let mut m = mat![[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0],];
 
 		let col = col![4.0, 4.0, 4.0, 4.0];
 
-		m.insert_col(col.as_ref());
+		m.push_col(col.as_ref());
 	}
 }
