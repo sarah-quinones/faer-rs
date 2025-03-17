@@ -111,6 +111,7 @@ mod tests {
 				PivotingStrategy::PartialDiag,
 				PivotingStrategy::Rook,
 				PivotingStrategy::RookDiag,
+				PivotingStrategy::Full,
 			] {
 				let mut ldl = A.clone();
 				let mut subdiag = Diag::<c64>::zeros(n);

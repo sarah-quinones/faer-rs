@@ -3,10 +3,10 @@ use crate::{assert, perm};
 use linalg::matmul::triangular::BlockStructure;
 
 /// pivoting strategy for choosing the pivots
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PivotingStrategy {
-	/// diagonal pivoting
+	/// deprecated, corresponds to partial pivoting
 	#[deprecated]
 	Diagonal,
 
@@ -20,6 +20,9 @@ pub enum PivotingStrategy {
 	/// searches for pivots that are locally optimal, as well as the tail of the diagonal of the
 	/// matrix
 	RookDiag,
+
+	/// searches for pivots that are globally optimal
+	Full,
 }
 
 /// tuning parameters for the decomposition
@@ -29,6 +32,9 @@ pub struct BunchKaufmanParams {
 	pub pivoting: PivotingStrategy,
 	/// block size of the algorithm
 	pub blocksize: usize,
+
+	/// threshold at which size parallelism should be disabled
+	pub par_threshold: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -72,6 +78,408 @@ fn swap_self_adjoint<T: ComplexField>(A: MatMut<'_, T>, i: usize, j: usize) {
 		*x = conj(*y);
 		*y = tmp;
 	});
+}
+
+#[math]
+fn rank_1_update_and_argmax_fallback<'M, 'N, T: ComplexField>(
+	A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	L: ColRef<'_, T, Dim<'N>>,
+	d: T::Real,
+	start: IdxInc<'N>,
+	end: IdxInc<'N>,
+) -> (usize, usize, T::Real) {
+	let mut A = A;
+	let n = A.nrows();
+
+	let mut max_j = n.idx(0);
+	let mut max_i = n.idx(0);
+	let mut max_offdiag = zero();
+
+	for j in start.to(end) {
+		for i in j.next().to(n.end()) {
+			A[(i, j)] = A[(i, j)] - mul_real(L[i] * conj(L[j]), d);
+			let val = abs2(A[(i, j)]);
+			if val > max_offdiag {
+				max_offdiag = val;
+				max_i = i;
+				max_j = j;
+			}
+		}
+	}
+
+	(*max_i, *max_j, max_offdiag)
+}
+
+#[math]
+fn rank_2_update_and_argmax_fallback<'N, T: ComplexField>(
+	A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	L0: ColRef<'_, T, Dim<'N>>,
+	L1: ColRef<'_, T, Dim<'N>>,
+	d: T::Real,
+	d00: T::Real,
+	d11: T::Real,
+	d10: T,
+	start: IdxInc<'N>,
+	end: IdxInc<'N>,
+) -> (usize, usize, T::Real) {
+	let mut A = A;
+	let n = A.nrows();
+
+	let mut max_j = n.idx(0);
+	let mut max_i = n.idx(0);
+	let mut max_offdiag = zero();
+
+	for j in start.to(end) {
+		let x0 = copy(L0[j]);
+		let x1 = copy(L1[j]);
+
+		let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+		let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+
+		for i in j.next().to(n.end()) {
+			A[(i, j)] = A[(i, j)] - L0[i] * conj(w0) - L1[i] * conj(w1);
+
+			let val = abs2(A[(i, j)]);
+			if val > max_offdiag {
+				max_offdiag = val;
+				max_i = i;
+				max_j = j;
+			}
+		}
+	}
+	(*max_i, *max_j, max_offdiag)
+}
+
+#[math]
+fn rank_1_update_and_argmax_seq<'M, 'N, T: ComplexField>(
+	A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	L: ColRef<'_, T, Dim<'N>>,
+	d: T::Real,
+	start: IdxInc<'N>,
+	end: IdxInc<'N>,
+) -> (usize, usize, T::Real) {
+	rank_1_update_and_argmax_fallback(A, L, d, start, end)
+}
+
+#[math]
+fn rank_2_update_and_argmax_seq<'N, T: ComplexField>(
+	A: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	L0: ColRef<'_, T, Dim<'N>>,
+	L1: ColRef<'_, T, Dim<'N>>,
+	d: T::Real,
+	d00: T::Real,
+	d11: T::Real,
+	d10: T,
+	start: IdxInc<'N>,
+	end: IdxInc<'N>,
+) -> (usize, usize, T::Real) {
+	rank_2_update_and_argmax_fallback(A, L0, L1, d, d00, d11, d10, start, end)
+}
+
+#[math]
+fn rank_1_update_and_argmax<T: ComplexField>(A: MatMut<'_, T>, L: ColRef<'_, T>, d: T::Real, par: Par) -> (usize, usize, T::Real) {
+	with_dim!(N, A.nrows());
+
+	match par {
+		Par::Seq => rank_1_update_and_argmax_seq(A.as_shape_mut(N, N), L.as_row_shape(N), d, IdxInc::ZERO, N.end()),
+		#[cfg(feature = "rayon")]
+		Par::Rayon(nthreads) => {
+			use rayon::prelude::*;
+			let nthreads = nthreads.get();
+			let n = *N;
+
+			// to check that integers can be represented exactly as floats
+			assert!((n as u64) < (1u64 << 50));
+
+			let idx_to_col_start = |idx: usize| {
+				let idx_as_percent = idx as f64 / nthreads as f64;
+				let col_start_percent = 1.0f64 - libm::sqrt(1.0f64 - idx_as_percent);
+				(col_start_percent * n as f64) as usize
+			};
+
+			let mut r = alloc::vec![(0usize, 0usize, zero::<T::Real>()); nthreads];
+
+			r.par_iter_mut().enumerate().for_each(|(idx, out)| {
+				let A = unsafe { A.rb().const_cast() };
+				let start = N.idx_inc(idx_to_col_start(idx));
+				let end = N.idx_inc(idx_to_col_start(idx + 1));
+
+				*out = rank_1_update_and_argmax_seq(A.as_shape_mut(N, N), L.as_row_shape(N), copy(d), start, end);
+			});
+
+			r.into_iter()
+				.max_by(|(_, _, a), (_, _, b)| {
+					if a == b {
+						core::cmp::Ordering::Equal
+					} else if a > b {
+						core::cmp::Ordering::Greater
+					} else {
+						core::cmp::Ordering::Less
+					}
+				})
+				.unwrap()
+		},
+	}
+}
+
+#[math]
+fn rank_2_update_and_argmax<'N, T: ComplexField>(
+	A: MatMut<'_, T>,
+	L0: ColRef<'_, T>,
+	L1: ColRef<'_, T>,
+	d: T::Real,
+	d00: T::Real,
+	d11: T::Real,
+	d10: T,
+	par: Par,
+) -> (usize, usize, T::Real) {
+	with_dim!(N, A.nrows());
+
+	match par {
+		Par::Seq => rank_2_update_and_argmax_seq(
+			A.as_shape_mut(N, N),
+			L0.as_row_shape(N),
+			L1.as_row_shape(N),
+			d,
+			d00,
+			d11,
+			d10,
+			IdxInc::ZERO,
+			N.end(),
+		),
+		#[cfg(feature = "rayon")]
+		Par::Rayon(nthreads) => {
+			use rayon::prelude::*;
+			let nthreads = nthreads.get();
+			let n = *N;
+
+			// to check that integers can be represented exactly as floats
+			assert!((n as u64) < (1u64 << 50));
+
+			let idx_to_col_start = |idx: usize| {
+				let idx_as_percent = idx as f64 / nthreads as f64;
+				let col_start_percent = 1.0f64 - libm::sqrt(1.0f64 - idx_as_percent);
+				(col_start_percent * n as f64) as usize
+			};
+
+			let mut r = alloc::vec![(0usize, 0usize, zero::<T::Real>()); nthreads];
+
+			r.par_iter_mut().enumerate().for_each(|(idx, out)| {
+				let A = unsafe { A.rb().const_cast() };
+				let start = N.idx_inc(idx_to_col_start(idx));
+				let end = N.idx_inc(idx_to_col_start(idx + 1));
+
+				*out = rank_2_update_and_argmax_seq(
+					A.as_shape_mut(N, N),
+					L0.as_row_shape(N),
+					L1.as_row_shape(N),
+					copy(d),
+					copy(d00),
+					copy(d11),
+					copy(d10),
+					start,
+					end,
+				);
+			});
+
+			r.into_iter()
+				.max_by(|(_, _, a), (_, _, b)| {
+					if a == b {
+						core::cmp::Ordering::Equal
+					} else if a < b {
+						core::cmp::Ordering::Less
+					} else {
+						core::cmp::Ordering::Greater
+					}
+				})
+				.unwrap()
+		},
+	}
+}
+
+#[math]
+fn lblt_full_piv<T: ComplexField>(A: MatMut<'_, T>, subdiag: DiagMut<'_, T>, pivots: &mut [usize], par: Par, params: BunchKaufmanParams) {
+	let alpha = (one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0))) * from_f64::<T::Real>(0.125);
+	let alpha = alpha * alpha;
+
+	let mut A = A;
+	let mut subdiag = subdiag.column_vector_mut();
+	let mut par = par;
+	let n = A.nrows();
+
+	let scale_fwd = A.norm_max();
+	let scale_bwd = recip(scale_fwd);
+	zip!(A.rb_mut()).for_each(|unzip!(x)| *x = mul_real(*x, scale_bwd));
+
+	let mut max_i = 0;
+	let mut max_j = 0;
+	let mut max_offdiag = zero();
+
+	for j in 0..n {
+		for i in j + 1..n {
+			let val = abs2(A[(i, j)]);
+			if val > max_offdiag {
+				max_offdiag = val;
+				max_i = i;
+				max_j = j;
+			}
+		}
+	}
+
+	let mut k = 0;
+	while k < n {
+		if max_offdiag == zero() {
+			break;
+		}
+
+		let (mut Aprev, mut A) = A.rb_mut().get_mut(k.., ..).split_at_col_mut(k);
+		let mut subdiag = subdiag.rb_mut().get_mut(k..);
+		let pivots = &mut pivots[k..];
+
+		let n = A.nrows();
+		let mut max_s = 0;
+		let mut max_diag = zero();
+
+		for s in 0..n {
+			let val = abs2(A[(s, s)]);
+			if val > max_diag {
+				max_diag = val;
+				max_s = s;
+			}
+		}
+
+		let npiv;
+		let i0;
+		let i1;
+
+		if max_diag >= alpha * max_offdiag {
+			npiv = 1;
+			i0 = max_s;
+			i1 = usize::MAX;
+		} else {
+			npiv = 2;
+			i0 = max_j;
+			i1 = max_i;
+		}
+
+		let rem = n - npiv;
+		if rem * rem < params.par_threshold {
+			par = Par::Seq;
+		}
+
+		// swap pivots to first (and second) column
+		if i0 != 0 {
+			swap_self_adjoint(A.rb_mut(), 0, i0);
+			perm::swap_rows_idx(Aprev.rb_mut(), 0, i0);
+		}
+		if npiv == 2 && i1 != 1 {
+			swap_self_adjoint(A.rb_mut(), 1, i1);
+			perm::swap_rows_idx(Aprev.rb_mut(), 1, i1);
+		}
+
+		if npiv == 1 {
+			let diag = real(A[(0, 0)]);
+			let diag_inv = recip(diag);
+			subdiag[0] = zero();
+
+			let (_, _, L, mut A) = A.rb_mut().split_at_mut(1, 1);
+			let n = A.nrows();
+			let mut L = L.col_mut(0);
+
+			zip!(L.rb_mut()).for_each(|unzip!(x)| *x = mul_real(*x, diag_inv));
+
+			for i in 0..n {
+				A[(i, i)] = from_real(real(A[(i, i)]) - diag * abs2(L[i]));
+			}
+
+			if n < params.par_threshold {}
+			if n != 0 {
+				(max_i, max_j, max_offdiag) = rank_1_update_and_argmax(A.rb_mut(), L.rb(), diag, par);
+			}
+		} else {
+			let a00 = real(A[(0, 0)]);
+			let a11 = real(A[(1, 1)]);
+			let a10 = copy(A[(1, 0)]);
+
+			subdiag[0] = copy(a10);
+			subdiag[1] = zero();
+			A[(1, 0)] = zero();
+
+			let d10 = abs(a10);
+			let d10_inv = recip(d10);
+			let d00 = a00 * d10_inv;
+			let d11 = a11 * d10_inv;
+
+			// t = (d00/|d10| * d11/|d10| - 1.0)
+			let t = recip(d00 * d11 - one());
+			let d10 = mul_real(a10, d10_inv);
+			let d = t * d10_inv;
+
+			//         [ a00  a01 ]
+			// L_new * [ a10  a11 ] = L
+			let (_, _, L, mut A) = A.rb_mut().split_at_mut(2, 2);
+			let (mut L0, mut L1) = L.two_cols_mut(0, 1);
+			let n = A.nrows();
+
+			if n != 0 {
+				(max_i, max_j, max_offdiag) = rank_2_update_and_argmax(A.rb_mut(), L0.rb(), L1.rb(), copy(d), copy(d00), copy(d11), copy(d10), par);
+			}
+
+			for j in 0..n {
+				let x0 = copy(L0[j]);
+				let x1 = copy(L1[j]);
+
+				let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+				let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+
+				A[(j, j)] = from_real(real(A[(j, j)] - L0[j] * conj(w0) - L1[j] * conj(w1)));
+
+				L0[j] = w0;
+				L1[j] = w1;
+			}
+		}
+
+		if npiv == 2 {
+			pivots[0] = !(i0 + k);
+			pivots[1] = !(i1 + k);
+		} else {
+			pivots[0] = i0 + k;
+		}
+		k += npiv;
+	}
+
+	while k < n {
+		let (mut Aprev, mut A) = A.rb_mut().get_mut(k.., ..).split_at_col_mut(k);
+		let mut subdiag = subdiag.rb_mut().get_mut(k..);
+		let pivots = &mut pivots[k..];
+
+		let n = A.nrows();
+		let mut max_s = 0;
+		let mut max_diag = zero();
+
+		for s in 0..n {
+			let val = abs2(A[(s, s)]);
+			if val > max_diag {
+				max_diag = val;
+				max_s = s;
+			}
+		}
+
+		if max_s != 0 {
+			let (mut A0, mut As) = A.rb_mut().two_cols_mut(0, max_s);
+			core::mem::swap(&mut A0[0], &mut As[max_s]);
+
+			perm::swap_rows_idx(Aprev.rb_mut(), 0, max_s);
+		}
+
+		subdiag[0] = zero();
+		pivots[0] = max_s + k;
+
+		k += 1;
+	}
+
+	zip!(A.rb_mut().diagonal_mut().column_vector_mut()).for_each(|unzip!(x)| *x = mul_real(*x, scale_fwd));
+	zip!(subdiag.rb_mut()).for_each(|unzip!(x)| *x = mul_real(*x, scale_fwd));
 }
 
 #[math]
@@ -602,6 +1010,7 @@ impl<T: ComplexField> Auto<T> for BunchKaufmanParams {
 		Self {
 			pivoting: PivotingStrategy::PartialDiag,
 			blocksize: 64,
+			par_threshold: 256 * 512,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
@@ -688,7 +1097,11 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 		_ => (false, false),
 	};
 
-	lblt_blocked(A, subdiag, pivots, bs, rook, diagonal, par, stack);
+	if params.pivoting == PivotingStrategy::Full {
+		lblt_full_piv(A, subdiag, pivots, par, params);
+	} else {
+		lblt_blocked(A, subdiag, pivots, bs, rook, diagonal, par, stack);
+	}
 
 	for (i, p) in perm.iter_mut().enumerate() {
 		*p = I::from_signed(truncate(i));
