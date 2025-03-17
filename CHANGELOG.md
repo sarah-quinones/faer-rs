@@ -1,3 +1,11 @@
+# 0.22
+- sped up column pivoted qr factorization
+- implemented pivoting strategies for the LBLT factorization
+- implemented pivoted LLT/LDLT
+
+# 0.20 - 0.21
+- Project refactor
+
 # 0.19
 - Support matrix-scalar multiplication/division without the `Scale` wrapper for `f32`/`f64`.
 - Implemented conjugate gradient, BiCGSTAB, and LSMR iterative solvers (currently gated by the `unstable` feature).

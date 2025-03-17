@@ -73,7 +73,7 @@ pub fn conjugate_gradient_scratch<T: ComplexField>(precond: impl Precond<T>, mat
 		let nk = temp_mat_scratch::<T>(n, k);
 		let kk = temp_mat_scratch::<T>(k, k);
 		let k_usize = StackReq::new::<usize>(k);
-		let chol = piv_llt::cholesky_in_place_scratch::<usize, T>(k, par);
+		let chol = piv_llt::cholesky_in_place_scratch::<usize, T>(k, par, default());
 		StackReq::all_of(&[
 			nk,      // residual
 			nk,      // p
