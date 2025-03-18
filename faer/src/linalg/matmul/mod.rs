@@ -8,6 +8,7 @@ use crate::row::RowRef;
 use crate::utils::bound::Dim;
 use crate::utils::simd::SimdCtx;
 use crate::{Conj, ContiguousFwd, Par, Shape};
+use core::mem::MaybeUninit;
 use dyn_stack::{MemBuffer, MemStack};
 use equator::assert;
 use faer_macros::math;
@@ -21,6 +22,561 @@ const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
 /// triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices
 pub mod triangular;
+
+mod matmul_shared {
+	use super::*;
+
+	pub const NC: usize = 2048;
+	pub const KC: usize = 128;
+
+	pub struct SimdLaneCount<T: ComplexField> {
+		pub __marker: core::marker::PhantomData<fn() -> T>,
+	}
+	impl<T: ComplexField> pulp::WithSimd for SimdLaneCount<T> {
+		type Output = usize;
+
+		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+			let _ = simd;
+			core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>()
+		}
+	}
+
+	pub struct MicroKernelShape<T: ComplexField> {
+		pub __marker: core::marker::PhantomData<fn() -> T>,
+	}
+
+	impl<T: ComplexField> MicroKernelShape<T> {
+		pub const IS_1X1: bool = Self::MAX_MR_DIV_N == 2 && Self::MAX_NR == 1;
+		pub const IS_2X1: bool = Self::MAX_MR_DIV_N == 2 && Self::MAX_NR == 1;
+		pub const IS_2X2: bool = Self::MAX_MR_DIV_N == 2 && Self::MAX_NR == 2;
+		pub const MAX_MR_DIV_N: usize = Self::SHAPE.0;
+		pub const MAX_NR: usize = Self::SHAPE.1;
+		pub const SHAPE: (usize, usize) = {
+			if const { size_of::<T>() / size_of::<T::Unit>() <= 2 } {
+				(2, 2)
+			} else if const { size_of::<T>() / size_of::<T::Unit>() == 4 } {
+				(2, 1)
+			} else {
+				(1, 1)
+			}
+		};
+	}
+}
+
+mod matmul_vertical {
+	use super::*;
+	use matmul_shared::*;
+
+	struct Ukr<'a, const MR_DIV_N: usize, const NR: usize, T: ComplexField> {
+		dst: MatMut<'a, T, usize, usize, ContiguousFwd>,
+		a: MatRef<'a, T, usize, usize, ContiguousFwd>,
+		b: MatRef<'a, T, usize, usize>,
+		conj_lhs: Conj,
+		conj_rhs: Conj,
+		alpha: &'a T,
+		beta: Accum,
+	}
+
+	impl<const MR_DIV_N: usize, const NR: usize, T: ComplexField> pulp::WithSimd for Ukr<'_, MR_DIV_N, NR, T> {
+		type Output = ();
+
+		#[inline(always)]
+		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+			let Self {
+				dst,
+				a,
+				b,
+				conj_lhs,
+				conj_rhs,
+				alpha,
+				beta,
+			} = self;
+
+			with_dim!(M, a.nrows());
+			with_dim!(N, b.ncols());
+			with_dim!(K, a.ncols());
+			let a = a.as_shape(M, K);
+			let b = b.as_shape(K, N);
+			let mut dst = dst.as_shape_mut(M, N);
+
+			let simd = SimdCtx::<T, S>::new_force_mask(T::simd_ctx(simd), M);
+			let (_, body, tail) = simd.indices();
+			let tail = tail.unwrap();
+
+			let mut local_acc = [[simd.zero(); MR_DIV_N]; NR];
+
+			if conj_lhs == conj_rhs {
+				for depth in K.indices() {
+					let mut a_uninit = [MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
+
+					for (dst, src) in core::iter::zip(&mut a_uninit, body.clone()) {
+						*dst = MaybeUninit::new(simd.read(a.col(depth), src));
+					}
+					a_uninit[MR_DIV_N - 1] = MaybeUninit::new(simd.read(a.col(depth), tail));
+
+					let a: [T::SimdVec<S>; MR_DIV_N] =
+						unsafe { crate::hacks::transmute::<[MaybeUninit<T::SimdVec<S>>; MR_DIV_N], [T::SimdVec<S>; MR_DIV_N]>(a_uninit) };
+
+					for j in N.indices() {
+						let b = simd.splat(&b[(depth, j)]);
+
+						for i in 0..MR_DIV_N {
+							let local_acc = &mut local_acc[*j][i];
+							*local_acc = simd.mul_add(b, a[i], *local_acc);
+						}
+					}
+				}
+			} else {
+				for depth in K.indices() {
+					let mut a_uninit = [MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
+
+					for (dst, src) in core::iter::zip(&mut a_uninit, body.clone()) {
+						*dst = MaybeUninit::new(simd.read(a.col(depth), src));
+					}
+					a_uninit[MR_DIV_N - 1] = MaybeUninit::new(simd.read(a.col(depth), tail));
+
+					let a: [T::SimdVec<S>; MR_DIV_N] =
+						unsafe { crate::hacks::transmute::<[MaybeUninit<T::SimdVec<S>>; MR_DIV_N], [T::SimdVec<S>; MR_DIV_N]>(a_uninit) };
+
+					for j in N.indices() {
+						let b = simd.splat(&b[(depth, j)]);
+
+						for i in 0..MR_DIV_N {
+							let local_acc = &mut local_acc[*j][i];
+							*local_acc = simd.conj_mul_add(b, a[i], *local_acc);
+						}
+					}
+				}
+			}
+
+			if conj_lhs.is_conj() {
+				for x in &mut local_acc {
+					for x in x {
+						*x = simd.conj(*x);
+					}
+				}
+			}
+
+			let alpha = simd.splat(alpha);
+
+			match beta {
+				Accum::Add => {
+					for (result, j) in core::iter::zip(&local_acc, N.indices()) {
+						for (result, i) in core::iter::zip(result, body.clone()) {
+							let mut val = simd.read(dst.rb().col(j), i);
+							val = simd.mul_add(alpha, *result, val);
+							simd.write(dst.rb_mut().col_mut(j), i, val);
+						}
+						let i = tail;
+						let result = &result[MR_DIV_N - 1];
+
+						let mut val = simd.read(dst.rb().col(j), i);
+						val = simd.mul_add(alpha, *result, val);
+						simd.write(dst.rb_mut().col_mut(j), i, val);
+					}
+				},
+				Accum::Replace => {
+					for (result, j) in core::iter::zip(&local_acc, N.indices()) {
+						for (result, i) in core::iter::zip(result, body.clone()) {
+							let val = simd.mul(alpha, *result);
+							simd.write(dst.rb_mut().col_mut(j), i, val);
+						}
+
+						let i = tail;
+						let result = &result[MR_DIV_N - 1];
+
+						let val = simd.mul(alpha, *result);
+						simd.write(dst.rb_mut().col_mut(j), i, val);
+					}
+				},
+			}
+		}
+	}
+
+	#[math]
+	pub fn matmul_simd<'M, 'N, 'K, T: ComplexField>(
+		dst: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+		beta: Accum,
+		lhs: MatRef<'_, T, Dim<'M>, Dim<'K>, ContiguousFwd>,
+		conj_lhs: Conj,
+		rhs: MatRef<'_, T, Dim<'K>, Dim<'N>>,
+		conj_rhs: Conj,
+		alpha: &T,
+		par: Par,
+	) {
+		let dst = dst.as_dyn_mut();
+		let lhs = lhs.as_dyn();
+		let rhs = rhs.as_dyn();
+
+		let (m, n) = dst.shape();
+		let k = lhs.ncols();
+
+		let arch = T::Arch::default();
+
+		let lane_count = arch.dispatch(SimdLaneCount::<T> {
+			__marker: core::marker::PhantomData,
+		});
+
+		let nr = MicroKernelShape::<T>::MAX_NR;
+		let mr_div_n = MicroKernelShape::<T>::MAX_MR_DIV_N;
+		let mr = mr_div_n * lane_count;
+
+		let mut col_outer = 0;
+		while col_outer < n {
+			let n_chunk = Ord::min(n - col_outer, NC);
+			let mut beta = beta;
+
+			let mut depth = 0;
+			while depth < k {
+				let k_chunk = Ord::min(k - depth, KC);
+
+				let job = |row: usize, col_inner: usize| {
+					let nrows = Ord::min(m - row, mr);
+					let ukr_i = nrows.div_ceil(lane_count);
+					let ncols = Ord::min(n_chunk - col_inner, nr);
+					let ukr_j = ncols;
+
+					let dst = unsafe { dst.rb().const_cast() }.submatrix_mut(row, col_outer + col_inner, nrows, ncols);
+					let a = lhs.submatrix(row, depth, nrows, k_chunk);
+					let b = rhs.submatrix(depth, col_outer + col_inner, k_chunk, ncols);
+
+					macro_rules! call {
+						($M: expr, $N: expr) => {
+							arch.dispatch(Ukr::<'_, $M, $N, T> {
+								dst,
+								a,
+								b,
+								conj_lhs,
+								conj_rhs,
+								alpha,
+								beta,
+							})
+						};
+					}
+					if const { MicroKernelShape::<T>::IS_2X2 } {
+						match (ukr_i, ukr_j) {
+							(2, 2) => call!(2, 2),
+							(1, 2) => call!(1, 2),
+							(2, 1) => call!(2, 1),
+							(1, 1) => call!(1, 1),
+							_ => unreachable!(),
+						}
+					} else if const { MicroKernelShape::<T>::IS_2X1 } {
+						match (ukr_i, ukr_j) {
+							(2, 1) => call!(2, 1),
+							(1, 1) => call!(1, 1),
+							_ => unreachable!(),
+						}
+					} else if const { MicroKernelShape::<T>::IS_1X1 } {
+						call!(1, 1)
+					} else {
+						unreachable!()
+					}
+				};
+
+				let job_count = m.div_ceil(mr) * n.div_ceil(nr);
+				let d = n.div_ceil(nr);
+				match par {
+					Par::Seq => {
+						for job_idx in 0..job_count {
+							let col_inner = nr * (job_idx % d);
+							let row = mr * (job_idx / d);
+							job(row, col_inner);
+						}
+					},
+					#[cfg(feature = "rayon")]
+					Par::Rayon(nthreads) => {
+						let nthreads = nthreads.get();
+						use rayon::prelude::*;
+
+						let job_idx = core::sync::atomic::AtomicUsize::new(0);
+
+						(0..nthreads).into_par_iter().for_each(|_| {
+							loop {
+								let job_idx = job_idx.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+								if job_idx < job_count {
+									let col_inner = nr * (job_idx % d);
+									let row = mr * (job_idx / d);
+									job(row, col_inner);
+								} else {
+									return;
+								}
+							}
+						});
+					},
+				}
+
+				beta = Accum::Add;
+				depth += k_chunk;
+			}
+			col_outer += n_chunk;
+		}
+	}
+}
+
+mod matmul_horizontal {
+	use super::*;
+	use matmul_shared::*;
+
+	struct Ukr<'a, const MR: usize, const NR: usize, T: ComplexField> {
+		dst: MatMut<'a, T, usize, usize>,
+		a: MatRef<'a, T, usize, usize, isize, ContiguousFwd>,
+		b: MatRef<'a, T, usize, usize, ContiguousFwd, isize>,
+		conj_lhs: Conj,
+		conj_rhs: Conj,
+		alpha: &'a T,
+		beta: Accum,
+	}
+
+	impl<const MR: usize, const NR: usize, T: ComplexField> pulp::WithSimd for Ukr<'_, MR, NR, T> {
+		type Output = ();
+
+		#[inline(always)]
+		#[math]
+		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+			let Self {
+				dst,
+				a,
+				b,
+				conj_lhs,
+				conj_rhs,
+				alpha,
+				beta,
+			} = self;
+
+			with_dim!(M, a.nrows());
+			with_dim!(N, b.ncols());
+			with_dim!(K, a.ncols());
+			let a = a.as_shape(M, K);
+			let b = b.as_shape(K, N);
+			let mut dst = dst.as_shape_mut(M, N);
+
+			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), K);
+			let (_, body, tail) = simd.indices();
+
+			let mut local_acc = [[simd.zero(); MR]; NR];
+			let mut is = [M.idx(0usize); MR];
+			let mut js = [N.idx(0usize); NR];
+
+			for (idx, i) in is.iter_mut().enumerate() {
+				*i = M.idx(idx);
+			}
+			for (idx, j) in js.iter_mut().enumerate() {
+				*j = N.idx(idx);
+			}
+
+			if conj_lhs == conj_rhs {
+				macro_rules! do_it {
+					($depth: expr) => {{
+						let depth = $depth;
+						let a = is.map(
+							#[inline(always)]
+							|i| simd.read(a.row(i).transpose(), depth),
+						);
+						let b = js.map(
+							#[inline(always)]
+							|j| simd.read(b.col(j), depth),
+						);
+
+						for i in 0..MR {
+							for j in 0..NR {
+								local_acc[j][i] = simd.mul_add(b[j], a[i], local_acc[j][i]);
+							}
+						}
+					}};
+				}
+				for depth in body {
+					do_it!(depth);
+				}
+				if let Some(depth) = tail {
+					do_it!(depth);
+				}
+			} else {
+				macro_rules! do_it {
+					($depth: expr) => {{
+						let depth = $depth;
+						let a = is.map(
+							#[inline(always)]
+							|i| simd.read(a.row(i).transpose(), depth),
+						);
+						let b = js.map(
+							#[inline(always)]
+							|j| simd.read(b.col(j), depth),
+						);
+
+						for i in 0..MR {
+							for j in 0..NR {
+								local_acc[j][i] = simd.conj_mul_add(b[j], a[i], local_acc[j][i]);
+							}
+						}
+					}};
+				}
+				for depth in body {
+					do_it!(depth);
+				}
+				if let Some(depth) = tail {
+					do_it!(depth);
+				}
+			}
+
+			if conj_lhs.is_conj() {
+				for x in &mut local_acc {
+					for x in x {
+						*x = simd.conj(*x);
+					}
+				}
+			}
+			let result = local_acc;
+			let result = result.map(
+				#[inline(always)]
+				|result| {
+					result.map(
+						#[inline(always)]
+						|result| simd.reduce_sum(result),
+					)
+				},
+			);
+
+			let alpha = copy(*alpha);
+			match beta {
+				Accum::Add => {
+					for (result, j) in core::iter::zip(&result, js) {
+						for (result, i) in core::iter::zip(result, is) {
+							dst[(i, j)] = alpha * *result + dst[(i, j)];
+						}
+					}
+				},
+				Accum::Replace => {
+					for (result, j) in core::iter::zip(&result, js) {
+						for (result, i) in core::iter::zip(result, is) {
+							dst[(i, j)] = alpha * *result;
+						}
+					}
+				},
+			}
+		}
+	}
+
+	#[math]
+	pub fn matmul_simd<'M, 'N, 'K, T: ComplexField>(
+		dst: MatMut<'_, T, Dim<'M>, Dim<'N>>,
+		beta: Accum,
+		lhs: MatRef<'_, T, Dim<'M>, Dim<'K>, isize, ContiguousFwd>,
+		conj_lhs: Conj,
+		rhs: MatRef<'_, T, Dim<'K>, Dim<'N>, ContiguousFwd, isize>,
+		conj_rhs: Conj,
+		alpha: &T,
+		par: Par,
+	) {
+		let dst = dst.as_dyn_mut();
+		let lhs = lhs.as_dyn();
+		let rhs = rhs.as_dyn();
+
+		let (m, n) = dst.shape();
+		let k = lhs.ncols();
+
+		let nr = MicroKernelShape::<T>::MAX_NR;
+		let mr = MicroKernelShape::<T>::MAX_MR_DIV_N;
+
+		let arch = T::Arch::default();
+
+		let lane_count = arch.dispatch(SimdLaneCount::<T> {
+			__marker: core::marker::PhantomData,
+		});
+		let kc = KC * lane_count;
+
+		let mut col_outer = 0;
+		while col_outer < n {
+			let n_chunk = Ord::min(n - col_outer, NC);
+
+			let mut beta = beta;
+			let mut depth = 0;
+			while depth < k {
+				let k_chunk = Ord::min(k - depth, kc);
+
+				let job = |row: usize, col_inner: usize| {
+					let nrows = Ord::min(m - row, mr);
+					let ukr_i = nrows;
+					let ncols = Ord::min(n_chunk - col_inner, nr);
+					let ukr_j = ncols;
+
+					let dst = unsafe { dst.rb().const_cast() }.submatrix_mut(row, col_outer + col_inner, nrows, ncols);
+					let a = lhs.submatrix(row, depth, nrows, k_chunk);
+					let b = rhs.submatrix(depth, col_outer + col_inner, k_chunk, ncols);
+
+					macro_rules! call {
+						($M: expr, $N: expr) => {
+							arch.dispatch(Ukr::<'_, $M, $N, T> {
+								dst,
+								a,
+								b,
+								conj_lhs,
+								conj_rhs,
+								alpha,
+								beta,
+							})
+						};
+					}
+					if const { MicroKernelShape::<T>::IS_2X2 } {
+						match (ukr_i, ukr_j) {
+							(2, 2) => call!(2, 2),
+							(1, 2) => call!(1, 2),
+							(2, 1) => call!(2, 1),
+							(1, 1) => call!(1, 1),
+							_ => unreachable!(),
+						}
+					} else if const { MicroKernelShape::<T>::IS_2X1 } {
+						match (ukr_i, ukr_j) {
+							(2, 1) => call!(2, 1),
+							(1, 1) => call!(1, 1),
+							_ => unreachable!(),
+						}
+					} else if const { MicroKernelShape::<T>::IS_1X1 } {
+						call!(1, 1)
+					} else {
+						unreachable!()
+					}
+				};
+
+				let job_count = m.div_ceil(mr) * n.div_ceil(nr);
+				let d = n.div_ceil(nr);
+				match par {
+					Par::Seq => {
+						for job_idx in 0..job_count {
+							let col_inner = nr * (job_idx % d);
+							let row = mr * (job_idx / d);
+							job(row, col_inner);
+						}
+					},
+					#[cfg(feature = "rayon")]
+					Par::Rayon(nthreads) => {
+						let nthreads = nthreads.get();
+						use rayon::prelude::*;
+
+						let job_idx = core::sync::atomic::AtomicUsize::new(0);
+
+						(0..nthreads).into_par_iter().for_each(|_| {
+							loop {
+								let job_idx = job_idx.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+								if job_idx < job_count {
+									let col_inner = nr * (job_idx % d);
+									let row = mr * (job_idx / d);
+									job(row, col_inner);
+								} else {
+									return;
+								}
+							}
+						});
+					},
+				}
+
+				beta = Accum::Add;
+				depth += k_chunk;
+			}
+			col_outer += n_chunk;
+		}
+	}
+}
 
 /// dot product
 pub mod dot {
@@ -298,7 +854,7 @@ mod matvec_rowmajor {
 						let K = lhs.ncols();
 						let simd = SimdCtx::new(simd, K);
 						for i in lhs.nrows().indices() {
-							let dst = dst.rb_mut().at_mut(i);
+							let dst = &mut dst[i];
 							let lhs = lhs.row(i);
 							let rhs = rhs;
 							let mut tmp = if conj_lhs == conj_rhs {
@@ -430,7 +986,7 @@ mod matvec_colmajor {
 						for j in lhs.ncols().indices() {
 							let mut dst = dst.rb_mut();
 							let lhs = lhs.col(j);
-							let rhs = rhs.at(j);
+							let rhs = &rhs[j];
 							let rhs = if conj_rhs == Conj::Yes { conj(*rhs) } else { copy(*rhs) };
 							let rhs = rhs * *alpha;
 
@@ -740,6 +1296,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			dst = dst.reverse_cols_mut();
 			rhs = rhs.reverse_cols();
 		}
+		if lhs.col_stride() < 0 {
+			lhs = lhs.reverse_cols();
+			rhs = rhs.reverse_rows();
+		}
 
 		if dst.ncols().unbound() == 1 {
 			let first = dst.ncols().check(0);
@@ -862,13 +1422,37 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 		if try_const! { T::IS_NATIVE_C32 } {
 			gemm_call!(num_complex::Complex<f32>, execute_c32);
 		}
+
+		if const { !(T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32) } {
+			if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
+				matmul_vertical::matmul_simd(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, par);
+				return;
+			}
+			if let (Some(dst), Some(rhs)) = (dst.rb_mut().try_as_row_major_mut(), rhs.try_as_row_major()) {
+				matmul_vertical::matmul_simd(
+					dst.transpose_mut(),
+					beta,
+					rhs.transpose(),
+					conj_rhs,
+					lhs.transpose(),
+					conj_lhs,
+					alpha,
+					par,
+				);
+				return;
+			}
+			if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
+				matmul_horizontal::matmul_simd(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, par);
+				return;
+			}
+		}
 	}
 
 	match par {
 		Par::Seq => {
 			for j in dst.ncols().indices() {
 				for i in dst.nrows().indices() {
-					let dst = dst.rb_mut().at_mut(i, j);
+					let dst = &mut dst[(i, j)];
 
 					let mut acc = dot::inner_prod_schoolbook(lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
 					acc = *alpha * acc;
@@ -902,7 +1486,8 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 					let i = dst.nrows().check(ij % m);
 					let j = dst.ncols().check(ij / m);
 
-					let dst = unsafe { dst.const_cast().at_mut(i, j) };
+					let mut dst = unsafe { dst.const_cast() };
+					let dst = &mut dst[(i, j)];
 
 					let mut acc = dot::inner_prod_schoolbook(lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
 					acc = *alpha * acc;
@@ -1206,7 +1791,7 @@ mod tests {
 												}
 												for conj_a in conjs {
 													for conj_b in conjs {
-														for parallelism in par {
+														for par in par {
 															for beta in betas {
 																for alpha in alphas {
 																	test_matmul_impl(
@@ -1217,7 +1802,7 @@ mod tests {
 																		n,
 																		conj_a,
 																		conj_b,
-																		parallelism,
+																		par,
 																		beta,
 																		alpha,
 																		acc_init.as_mut(),
@@ -1263,8 +1848,8 @@ mod tests {
 
 			let mut local_acc = zero::<T>();
 			for depth in 0..k {
-				let a = a.at(i, depth);
-				let b = b.at(depth, j);
+				let a = &a[(i, depth)];
+				let b = &b[(depth, j)];
 				local_acc = local_acc
 					+ match conj_a {
 						Conj::Yes => conj(*a),
@@ -1275,8 +1860,8 @@ mod tests {
 					}
 			}
 			match beta {
-				Accum::Add => *acc.rb_mut().at_mut(0, 0) = acc[(0, 0)] + local_acc * alpha,
-				Accum::Replace => *acc.rb_mut().at_mut(0, 0) = local_acc * alpha,
+				Accum::Add => acc[(0, 0)] = acc[(0, 0)] + local_acc * alpha,
+				Accum::Replace => acc[(0, 0)] = local_acc * alpha,
 			}
 		};
 
@@ -1294,7 +1879,7 @@ mod tests {
 		n: usize,
 		conj_a: Conj,
 		conj_b: Conj,
-		parallelism: Par,
+		par: Par,
 		beta: Accum,
 		alpha: c32,
 		acc_init: MatMut<c32>,
@@ -1310,15 +1895,84 @@ mod tests {
 		if reverse_acc_cols {
 			acc = acc.reverse_cols_mut();
 		}
+
 		let mut target = acc.rb().to_owned();
-
-		matmul_with_conj(acc.rb_mut(), beta, a, conj_a, b, conj_b, alpha, parallelism);
 		matmul_with_conj_fallback(target.as_mut(), a, conj_a, b, conj_b, beta, alpha);
+		let target = target.rb();
 
+		{
+			let mut acc = acc.cloned();
+			let a = a.cloned();
+
+			{
+				with_dim!(M, a.nrows());
+				with_dim!(N, b.ncols());
+				with_dim!(K, a.ncols());
+				let mut acc = acc.rb_mut().as_shape_mut(M, N);
+				let a = a.as_shape(M, K);
+				let b = b.as_shape(K, N);
+
+				matmul_vertical::matmul_simd(
+					acc.rb_mut().try_as_col_major_mut().unwrap(),
+					beta,
+					a.try_as_col_major().unwrap(),
+					conj_a,
+					b,
+					conj_b,
+					&alpha,
+					par,
+				);
+			}
+			for j in 0..n {
+				for i in 0..m {
+					let acc = acc[(i, j)];
+					let target = target[(i, j)];
+					assert!(abs(acc.re - target.re) < 1e-3);
+					assert!(abs(acc.im - target.im) < 1e-3);
+				}
+			}
+		}
+		{
+			let mut acc = acc.cloned();
+			let a = a.transpose().cloned();
+			let a = a.transpose();
+
+			let b = b.cloned();
+
+			{
+				with_dim!(M, a.nrows());
+				with_dim!(N, b.ncols());
+				with_dim!(K, a.ncols());
+				let mut acc = acc.rb_mut().as_shape_mut(M, N);
+				let a = a.as_shape(M, K);
+				let b = b.as_shape(K, N);
+
+				matmul_horizontal::matmul_simd(
+					acc.rb_mut(),
+					beta,
+					a.try_as_row_major().unwrap(),
+					conj_a,
+					b.try_as_col_major().unwrap(),
+					conj_b,
+					&alpha,
+					par,
+				);
+			}
+			for j in 0..n {
+				for i in 0..m {
+					let acc = acc[(i, j)];
+					let target = target[(i, j)];
+					assert!(abs(acc.re - target.re) < 1e-3);
+					assert!(abs(acc.im - target.im) < 1e-3);
+				}
+			}
+		}
+
+		matmul_with_conj(acc.rb_mut(), beta, a, conj_a, b, conj_b, alpha, par);
 		for j in 0..n {
 			for i in 0..m {
-				let acc = *acc.rb().at(i, j);
-				let target = *target.as_ref().at(i, j);
+				let acc = acc[(i, j)];
+				let target = target[(i, j)];
 				assert!(abs(acc.re - target.re) < 1e-3);
 				assert!(abs(acc.im - target.im) < 1e-3);
 			}
@@ -1339,13 +1993,13 @@ mod tests {
 			if structure.is_lower() {
 				for j in 0..ncols {
 					for i in 0..j {
-						*mat.as_mut().at_mut(i, j) = 0.0;
+						mat[(i, j)] = 0.0;
 					}
 				}
 			} else if structure.is_upper() {
 				for j in 0..ncols {
 					for i in j + 1..nrows {
-						*mat.as_mut().at_mut(i, j) = 0.0;
+						mat[(i, j)] = 0.0;
 					}
 				}
 			}
@@ -1353,12 +2007,12 @@ mod tests {
 			match kind {
 				triangular::DiagonalKind::Zero => {
 					for i in 0..nrows {
-						*mat.as_mut().at_mut(i, i) = 0.0;
+						mat[(i, i)] = 0.0;
 					}
 				},
 				triangular::DiagonalKind::Unit => {
 					for i in 0..nrows {
-						*mat.as_mut().at_mut(i, i) = 1.0;
+						mat[(i, i)] = 1.0;
 					}
 				},
 				triangular::DiagonalKind::Generic => (),
@@ -1374,7 +2028,7 @@ mod tests {
 		let lhs = generate_structured_matrix(false, m, k, lhs_structure);
 		let rhs = generate_structured_matrix(false, k, n, rhs_structure);
 
-		for parallelism in [Par::Seq, Par::rayon(8)] {
+		for par in [Par::Seq, Par::rayon(8)] {
 			triangular::matmul_with_conj(
 				dst.as_mut(),
 				dst_structure,
@@ -1386,7 +2040,7 @@ mod tests {
 				rhs_structure,
 				Conj::No,
 				2.5,
-				parallelism,
+				par,
 			);
 
 			matmul_with_conj(
@@ -1397,30 +2051,30 @@ mod tests {
 				rhs.as_ref(),
 				Conj::No,
 				2.5,
-				parallelism,
+				par,
 			);
 
 			if dst_structure.is_dense() {
 				for j in 0..n {
 					for i in 0..m {
-						assert!((dst.as_ref().at(i, j) - dst_target.as_ref().at(i, j)).abs() < 1e-10);
+						assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
 					}
 				}
 			} else if dst_structure.is_lower() {
 				for j in 0..n {
 					if matches!(dst_structure.diag_kind(), DiagonalKind::Generic) {
 						for i in 0..j {
-							assert!((dst.as_ref().at(i, j) - dst_orig.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
 						}
 						for i in j..n {
-							assert!((dst.as_ref().at(i, j) - dst_target.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
 						}
 					} else {
 						for i in 0..=j {
-							assert!((dst.as_ref().at(i, j) - dst_orig.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
 						}
 						for i in j + 1..n {
-							assert!((dst.as_ref().at(i, j) - dst_target.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
 						}
 					}
 				}
@@ -1428,17 +2082,17 @@ mod tests {
 				for j in 0..n {
 					if matches!(dst_structure.diag_kind(), DiagonalKind::Generic) {
 						for i in 0..=j {
-							assert!((dst.as_ref().at(i, j) - dst_target.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
 						}
 						for i in j + 1..n {
-							assert!((dst.as_ref().at(i, j) - dst_orig.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
 						}
 					} else {
 						for i in 0..j {
-							assert!((dst.as_ref().at(i, j) - dst_target.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
 						}
 						for i in j..n {
-							assert!((dst.as_ref().at(i, j) - dst_orig.as_ref().at(i, j)).abs() < 1e-10);
+							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
 						}
 					}
 				}

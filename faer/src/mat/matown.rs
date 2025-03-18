@@ -1402,7 +1402,8 @@ impl<'short, T, Rows: Shape, Cols: Shape> ReborrowMut<'short> for Mat<T, Rows, C
 impl<T, Cols: Shape> Mat<T, usize, Cols> {
 	/// inserts a row at the end of the matrix
 	/// # panics
-	/// The function panics if the number of columns in the row does not match the number of columns in the matrix
+	/// The function panics if the number of columns in the row does not match the number of columns
+	/// in the matrix
 	pub fn push_row(&mut self, row: RowRef<'_, T, Cols>)
 	where
 		T: Clone,
@@ -1421,7 +1422,8 @@ impl<T, Cols: Shape> Mat<T, usize, Cols> {
 impl<T, Rows: Shape> Mat<T, Rows, usize> {
 	/// inserts a col at the end of the matrix
 	/// # panics
-	/// The function panics if the number of rows in the col does not match the number of rows in the matrix
+	/// The function panics if the number of rows in the col does not match the number of rows in
+	/// the matrix
 	pub fn push_col(&mut self, col: ColRef<'_, T, Rows>)
 	where
 		T: Clone,
