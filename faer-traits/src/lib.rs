@@ -919,7 +919,7 @@ unsafe impl<T: RealField> Conjugate for ComplexConj<T> {
 	const IS_CANONICAL: bool = false;
 }
 
-pub trait SimdArch: Default {
+pub trait SimdArch: Copy + Default + Send + Sync {
 	fn dispatch<R>(self, f: impl pulp::WithSimd<Output = R>) -> R;
 }
 
