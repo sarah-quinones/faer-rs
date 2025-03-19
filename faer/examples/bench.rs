@@ -1071,7 +1071,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			let mut work = core::mem::zeroed();
 			la::sgesdd_(
 				&(b'A' as _),
-				&(b'N' as _),
+				&(m as _),
 				&(n as _),
 				clone.as_ptr_mut() as _,
 				&(clone.col_stride() as _),
@@ -1090,7 +1090,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			let mut work = core::mem::zeroed();
 			la::dgesdd_(
 				&(b'A' as _),
-				&(b'N' as _),
+				&(m as _),
 				&(n as _),
 				clone.as_ptr_mut() as _,
 				&(clone.col_stride() as _),
@@ -1109,7 +1109,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			let mut work = core::mem::zeroed();
 			la::cgesdd_(
 				&(b'A' as _),
-				&(b'N' as _),
+				&(m as _),
 				&(n as _),
 				clone.as_ptr_mut() as _,
 				&(clone.col_stride() as _),
@@ -1129,7 +1129,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			let mut work = core::mem::zeroed();
 			la::zgesdd_(
 				&(b'A' as _),
-				&(b'N' as _),
+				&(m as _),
 				&(n as _),
 				clone.as_ptr_mut() as _,
 				&(clone.col_stride() as _),
@@ -1171,7 +1171,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 					if T::IS_NATIVE_F32 {
 						la::sgesdd_(
 							&(b'A' as _),
-							&(b'N' as _),
+							&(m as _),
 							&(n as _),
 							clone.as_ptr_mut() as _,
 							&(clone.col_stride() as _),
@@ -1188,7 +1188,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 					} else if T::IS_NATIVE_F64 {
 						la::dgesdd_(
 							&(b'A' as _),
-							&(b'N' as _),
+							&(m as _),
 							&(n as _),
 							clone.as_ptr_mut() as _,
 							&(clone.col_stride() as _),
@@ -1205,7 +1205,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 					} else if T::IS_NATIVE_C32 {
 						la::cgesdd_(
 							&(b'A' as _),
-							&(b'N' as _),
+							&(m as _),
 							&(n as _),
 							clone.as_ptr_mut() as _,
 							&(clone.col_stride() as _),
@@ -1223,7 +1223,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 					} else if T::IS_NATIVE_C64 {
 						la::zgesdd_(
 							&(b'A' as _),
-							&(b'N' as _),
+							&(m as _),
 							&(n as _),
 							clone.as_ptr_mut() as _,
 							&(clone.col_stride() as _),
