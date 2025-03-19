@@ -1,31 +1,96 @@
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types, unused_imports, dead_code)]
 
-use std::ffi::c_void;
-use std::ptr::null_mut;
+use std::ffi::*;
+use std::ptr::*;
+
+use aligned_vec::avec;
+use diol::prelude::*;
+use dyn_stack::{MemBuffer, MemStack};
+use equator::assert;
+use reborrow::*;
+use toml::{Table, Value};
 
 use ::faer::diag::Diag;
 use ::faer::linalg::cholesky::bunch_kaufman::factor::BunchKaufmanParams;
 use ::faer::prelude::*;
 use ::faer::stats::prelude::*;
 use ::faer::{Auto, linalg};
-use faer_traits::math_utils::*;
+use ::faer_traits::math_utils::*;
 
-use {::lapack_sys as la, ::nalgebra as na};
+use ::nalgebra as na;
 
-use diol::prelude::*;
-use dyn_stack::{MemBuffer, MemStack};
-use equator::assert;
-use reborrow::*;
-use toml::Table;
-
-extern crate openblas_src;
+#[cfg(any(openblas, mkl, blis))]
+use lapack_sys as la;
+#[cfg(any(openblas, mkl, blis))]
+extern crate lapack_src;
+#[cfg(any(openblas, mkl, blis))]
 extern crate openmp_sys;
 
+#[cfg(openblas)]
+extern crate openblas_src;
+
+#[cfg(mkl)]
+extern crate intel_mkl_src;
+
+#[cfg(blis)]
+extern crate blis_src;
+
+#[cfg(any(openblas, mkl, blis))]
 unsafe extern "C" {
+	#[cfg(openblas)]
 	fn openblas_set_num_threads(num: i32) -> c_void;
+	#[cfg(openblas)]
 	fn goto_set_num_threads(num: i32) -> c_void;
+
+	#[cfg(mkl)]
+	fn MKL_Set_Num_Threads(num: i32) -> c_void;
+
+	#[cfg(blis)]
+	fn bli_thread_set_num_threads(num: i64) -> c_void;
+
 	fn omp_set_num_threads(num: i32) -> c_void;
+
+	fn sgetc2_(n: *const c_int, A: *mut f32, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
+	fn dgetc2_(n: *const c_int, A: *mut f64, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
+	fn cgetc2_(n: *const c_int, A: *mut c32, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
+	fn zgetc2_(n: *const c_int, A: *mut c64, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
+}
+
+fn lapack_set_num_threads(parallel: Par) {
+	let _ = parallel;
+	#[cfg(any(openblas, mkl, blis))]
+	match parallel {
+		Par::Seq => unsafe {
+			#[cfg(openblas)]
+			openblas_set_num_threads(1);
+			#[cfg(openblas)]
+			goto_set_num_threads(1);
+
+			#[cfg(mkl)]
+			MKL_Set_Num_Threads(1);
+
+			#[cfg(blis)]
+			bli_thread_set_num_threads(1);
+
+			omp_set_num_threads(1);
+		},
+		Par::Rayon(nthreads) => unsafe {
+			let nthreads = nthreads.get();
+
+			#[cfg(openblas)]
+			openblas_set_num_threads(nthreads as _);
+			#[cfg(openblas)]
+			goto_set_num_threads(nthreads as _);
+
+			#[cfg(mkl)]
+			MKL_Set_Num_Threads(nthreads as _);
+
+			#[cfg(blis)]
+			bli_thread_set_num_threads(nthreads as _);
+
+			omp_set_num_threads(nthreads as _);
+		},
+	};
 }
 
 trait Scalar: faer_traits::ComplexField + na::ComplexField {
@@ -40,9 +105,41 @@ trait Lib {
 	const NALGEBRA: bool = false;
 }
 
-struct faer;
+trait Thread {
+	const SEQ: bool = false;
+	const PAR: bool = false;
+}
+
+#[cfg(openblas)]
+struct openblas;
+#[cfg(openblas)]
+type lapack = openblas;
+
+#[cfg(mkl)]
+struct mkl;
+#[cfg(mkl)]
+type lapack = mkl;
+
+#[cfg(blis)]
+struct blis;
+#[cfg(blis)]
+type lapack = blis;
+
+#[cfg(not(any(openblas, mkl, blis)))]
 struct lapack;
+
+struct faer;
 struct nalgebra;
+
+struct seq;
+struct par;
+
+impl Thread for seq {
+	const SEQ: bool = true;
+}
+impl Thread for par {
+	const PAR: bool = true;
+}
 
 impl Lib for faer {
 	const FAER: bool = true;
@@ -95,44 +192,65 @@ impl Scalar for c64 {
 	}
 }
 
-fn llt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, params));
+	let stack = &mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				L.copy_from_triangular_lower(&A);
-				linalg::cholesky::llt::factor::cholesky_in_place(L.rb_mut(), Default::default(), par, stack, params).unwrap();
+				linalg::cholesky::llt::factor::cholesky_in_place(L.rb_mut(), Default::default(), parallel, stack, params).unwrap();
 			} else if Lib::LAPACK {
 				L.copy_from_triangular_lower(&A);
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
 					if T::IS_NATIVE_F32 {
-						la::spotrf_(&(b'L' as i8), &(n as _), L.as_ptr_mut() as _, &(L.col_stride() as _), &mut 0);
+						la::spotrf_(
+							&(b'L' as i8),
+							(&n) as *const _ as *const _,
+							L.as_ptr_mut() as _,
+							(&L.col_stride()) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
 					} else if T::IS_NATIVE_F64 {
-						la::dpotrf_(&(b'L' as i8), &(n as _), L.as_ptr_mut() as _, &(L.col_stride() as _), &mut 0);
+						la::dpotrf_(
+							&(b'L' as i8),
+							(&n) as *const _ as *const _,
+							L.as_ptr_mut() as _,
+							(&L.col_stride()) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
 					} else if T::IS_NATIVE_C32 {
-						la::cpotrf_(&(b'L' as i8), &(n as _), L.as_ptr_mut() as _, &(L.col_stride() as _), &mut 0);
+						la::cpotrf_(
+							&(b'L' as i8),
+							(&n) as *const _ as *const _,
+							L.as_ptr_mut() as _,
+							(&L.col_stride()) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
 					} else if T::IS_NATIVE_C64 {
-						la::zpotrf_(&(b'L' as _), &(n as _), L.as_ptr_mut() as _, &(L.col_stride() as _), &mut 0);
+						la::zpotrf_(
+							&(b'L' as _),
+							(&n) as *const _ as *const _,
+							L.as_ptr_mut() as _,
+							(&L.col_stride()) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
 					}
 				}
 			} else if Lib::NALGEBRA {
@@ -151,57 +269,49 @@ fn llt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 	}
 }
 
-fn ldlt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn ldlt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, par, params));
+	let stack = &mut MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::ldlt::factor::cholesky_in_place(L.rb_mut(), Default::default(), par, stack, params).unwrap();
+			linalg::cholesky::ldlt::factor::cholesky_in_place(L.rb_mut(), Default::default(), parallel, stack, params).unwrap();
 		})
 	}
 }
 
-fn lblt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A + A.adjoint();
 	let mut L = Mat::zeros(n, n);
 	let mut subdiag = Diag::zeros(n);
-	let fwd = &mut *vec![0usize; n];
-	let bwd = &mut *vec![0usize; n];
+	let fwd = &mut *avec![0usize; n];
+	let bwd = &mut *avec![0usize; n];
 
 	let params = BunchKaufmanParams {
 		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Partial,
@@ -209,57 +319,58 @@ fn lblt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize,
 	}
 	.into();
 
+	#[cfg(any(openblas, mkl, blis))]
 	let lwork = unsafe {
 		if T::IS_NATIVE_F32 {
-			let mut lwork = 0.0;
+			let mut lwork = core::mem::zeroed();
 			la::ssytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork as usize
 		} else if T::IS_NATIVE_F64 {
-			let mut lwork = 0.0;
+			let mut lwork = core::mem::zeroed();
 			la::dsytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork as usize
 		} else if T::IS_NATIVE_C32 {
 			let mut lwork = core::mem::zeroed();
 			la::csytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork.re as usize
 		} else if T::IS_NATIVE_C64 {
 			let mut lwork = core::mem::zeroed();
 			la::zsytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork.re as usize
 		} else {
@@ -267,10 +378,11 @@ fn lblt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize,
 		}
 	};
 
-	let work = &mut *vec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
 
 	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, par, params,
+		n, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 
@@ -284,57 +396,58 @@ fn lblt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize,
 					Default::default(),
 					fwd,
 					bwd,
-					par,
+					parallel,
 					stack,
 					params,
 				);
 			} else if Lib::LAPACK {
-				unsafe {
-					fwd.fill(0);
+				fwd.fill(0);
 
+				#[cfg(any(openblas, mkl, blis))]
+				unsafe {
 					if T::IS_NATIVE_F32 {
 						la::ssytrf_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
 						la::dsytrf_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
 						la::csytrf_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
 						la::zsytrf_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				}
@@ -343,27 +456,23 @@ fn lblt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize,
 	}
 }
 
-fn lblt_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn lblt_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A + A.adjoint();
 	let mut L = Mat::zeros(n, n);
 	let mut subdiag = Diag::zeros(n);
-	let fwd = &mut *vec![0usize; n];
-	let bwd = &mut *vec![0usize; n];
+	let fwd = &mut *avec![0usize; n];
+	let bwd = &mut *avec![0usize; n];
 
 	let params = BunchKaufmanParams {
 		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::PartialDiag,
@@ -372,7 +481,7 @@ fn lblt_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 	.into();
 
 	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, par, params,
+		n, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 	if Lib::FAER {
@@ -384,7 +493,7 @@ fn lblt_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 				Default::default(),
 				fwd,
 				bwd,
-				par,
+				parallel,
 				stack,
 				params,
 			);
@@ -392,27 +501,23 @@ fn lblt_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 	}
 }
 
-fn lblt_rook<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A + A.adjoint();
 	let mut L = Mat::zeros(n, n);
 	let mut subdiag = Diag::zeros(n);
-	let fwd = &mut *vec![0usize; n];
-	let bwd = &mut *vec![0usize; n];
+	let fwd = &mut *avec![0usize; n];
+	let bwd = &mut *avec![0usize; n];
 
 	let params = BunchKaufmanParams {
 		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Rook,
@@ -420,57 +525,58 @@ fn lblt_rook<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 	}
 	.into();
 
+	#[cfg(any(openblas, mkl, blis))]
 	let lwork = unsafe {
 		if T::IS_NATIVE_F32 {
-			let mut lwork = 0.0;
+			let mut lwork = core::mem::zeroed();
 			la::ssytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork as usize
 		} else if T::IS_NATIVE_F64 {
-			let mut lwork = 0.0;
+			let mut lwork = core::mem::zeroed();
 			la::dsytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork as usize
 		} else if T::IS_NATIVE_C32 {
 			let mut lwork = core::mem::zeroed();
 			la::csytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork.re as usize
 		} else if T::IS_NATIVE_C64 {
 			let mut lwork = core::mem::zeroed();
 			la::zsytrf_(
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				L.as_ptr_mut() as _,
-				&(L.col_stride() as _),
+				(&L.col_stride()) as *const _ as *const _,
 				fwd.as_mut_ptr() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork.re as usize
 		} else {
@@ -478,10 +584,11 @@ fn lblt_rook<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 		}
 	};
 
-	let work = &mut *vec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
 
 	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, par, params,
+		n, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 	if Lib::FAER || (Lib::LAPACK && T::IS_NATIVE) {
@@ -494,57 +601,58 @@ fn lblt_rook<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 					Default::default(),
 					fwd,
 					bwd,
-					par,
+					parallel,
 					stack,
 					params,
 				);
 			} else if Lib::LAPACK {
-				unsafe {
-					fwd.fill(0);
+				fwd.fill(0);
 
+				#[cfg(any(openblas, mkl, blis))]
+				unsafe {
 					if T::IS_NATIVE_F32 {
 						la::ssytrf_rook_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
 						la::dsytrf_rook_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
 						la::csytrf_rook_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
 						la::zsytrf_rook_(
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							L.as_ptr_mut() as _,
-							&(L.col_stride() as _),
+							(&L.col_stride()) as *const _ as *const _,
 							fwd.as_mut_ptr() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				}
@@ -553,27 +661,23 @@ fn lblt_rook<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 	}
 }
 
-fn lblt_rook_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn lblt_rook_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A + A.adjoint();
 	let mut L = Mat::zeros(n, n);
 	let mut subdiag = Diag::zeros(n);
-	let fwd = &mut *vec![0usize; n];
-	let bwd = &mut *vec![0usize; n];
+	let fwd = &mut *avec![0usize; n];
+	let bwd = &mut *avec![0usize; n];
 
 	let params = BunchKaufmanParams {
 		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Rook,
@@ -582,7 +686,7 @@ fn lblt_rook_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usi
 	.into();
 
 	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, par, params,
+		n, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 
@@ -595,34 +699,30 @@ fn lblt_rook_diag<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usi
 				Default::default(),
 				fwd,
 				bwd,
-				par,
+				parallel,
 				stack,
 				params,
 			);
 		})
 	}
 }
-fn lblt_full<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A + A.adjoint();
 	let mut L = Mat::zeros(n, n);
 	let mut subdiag = Diag::zeros(n);
-	let fwd = &mut *vec![0usize; n];
-	let bwd = &mut *vec![0usize; n];
+	let fwd = &mut *avec![0usize; n];
+	let bwd = &mut *avec![0usize; n];
 
 	let params = BunchKaufmanParams {
 		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Full,
@@ -631,7 +731,7 @@ fn lblt_full<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 	.into();
 
 	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, par, params,
+		n, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 
@@ -644,7 +744,7 @@ fn lblt_full<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 				Default::default(),
 				fwd,
 				bwd,
-				par,
+				parallel,
 				stack,
 				params,
 			);
@@ -652,19 +752,18 @@ fn lblt_full<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, u
 	}
 }
 
-fn qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		// parallel mkl sometimes segfaults here ¯\_(ツ)_/¯
+		|| (Lib::LAPACK && Thd::PAR && cfg!(mkl))
+	{
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
 
 	let rng = &mut StdRng::seed_from_u64(0);
@@ -673,57 +772,58 @@ fn qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, P
 	let mut Q = Mat::zeros(blocksize, Ord::min(m, n));
 	let mut QR = Mat::zeros(m, n);
 
+	#[cfg(any(openblas, mkl, blis))]
 	let lwork = unsafe {
 		if T::IS_NATIVE_F32 {
-			let mut lwork = 0.0;
+			let mut lwork = core::mem::zeroed();
 			la::sgeqrf_(
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				QR.as_ptr_mut() as _,
-				&(QR.col_stride() as _),
+				(&QR.col_stride()) as *const _ as *const _,
 				Q.as_ptr_mut() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork as usize
 		} else if T::IS_NATIVE_F64 {
-			let mut lwork = 0.0;
+			let mut lwork = core::mem::zeroed();
 			la::dgeqrf_(
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				QR.as_ptr_mut() as _,
-				&(QR.col_stride() as _),
+				(&QR.col_stride()) as *const _ as *const _,
 				Q.as_ptr_mut() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork as usize
 		} else if T::IS_NATIVE_C32 {
 			let mut lwork = core::mem::zeroed();
 			la::cgeqrf_(
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				QR.as_ptr_mut() as _,
-				&(QR.col_stride() as _),
+				(&QR.col_stride()) as *const _ as *const _,
 				Q.as_ptr_mut() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork.re as usize
 		} else if T::IS_NATIVE_C64 {
 			let mut lwork = core::mem::zeroed();
 			la::zgeqrf_(
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				QR.as_ptr_mut() as _,
-				&(QR.col_stride() as _),
+				(&QR.col_stride()) as *const _ as *const _,
 				Q.as_ptr_mut() as _,
 				&mut lwork,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			lwork.re as usize
 		} else {
@@ -731,63 +831,67 @@ fn qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, P
 		}
 	};
 
-	let work = &mut *vec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
 
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(m, n, blocksize, par, params));
+	let stack = &mut MemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
+		m, n, blocksize, parallel, params,
+	));
 	let stack = MemStack::new(stack);
 
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				QR.copy_from(&A);
-				linalg::qr::no_pivoting::factor::qr_in_place(QR.rb_mut(), Q.rb_mut(), par, stack, params);
+				linalg::qr::no_pivoting::factor::qr_in_place(QR.rb_mut(), Q.rb_mut(), parallel, stack, params);
 			} else if Lib::LAPACK {
 				QR.copy_from(&A);
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
 					if T::IS_NATIVE_F32 {
 						la::sgeqrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							QR.as_ptr_mut() as _,
-							&(QR.col_stride() as _),
+							(&QR.col_stride()) as *const _ as *const _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
 						la::dgeqrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							QR.as_ptr_mut() as _,
-							&(QR.col_stride() as _),
+							(&QR.col_stride()) as *const _ as *const _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
 						la::cgeqrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							QR.as_ptr_mut() as _,
-							&(QR.col_stride() as _),
+							(&QR.col_stride()) as *const _ as *const _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
 						la::zgeqrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							QR.as_ptr_mut() as _,
-							&(QR.col_stride() as _),
+							(&QR.col_stride()) as *const _ as *const _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				}
@@ -806,19 +910,15 @@ fn qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, P
 	}
 }
 
-fn col_piv_qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	let blocksize = linalg::qr::col_pivoting::factor::recommended_blocksize::<T>(m, n);
 
 	let rng = &mut StdRng::seed_from_u64(0);
@@ -827,15 +927,83 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, 
 	let mut Q = Mat::zeros(blocksize, Ord::min(m, n));
 	let mut QR = Mat::zeros(m, n);
 
-	let col_fwd = &mut *vec![0usize; n];
-	let col_bwd = &mut *vec![0usize; n];
+	let col_fwd = &mut *avec![0usize; n];
+	let col_bwd = &mut *avec![0usize; n];
 
-	let work = &mut *vec![zero::<T>(); 3 * n];
-	let rwork = &mut *vec![zero::<T>(); 2 * n];
+	#[cfg(any(openblas, mkl, blis))]
+	let rwork = &mut *avec![zero::<T>(); 2 * n];
+
+	#[cfg(any(openblas, mkl, blis))]
+	let lwork = unsafe {
+		if T::IS_NATIVE_F32 {
+			let mut lwork = core::mem::zeroed();
+			la::sgeqp3_(
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
+				QR.as_ptr_mut() as _,
+				(&QR.col_stride()) as *const _ as *const _,
+				col_fwd.as_mut_ptr() as _,
+				Q.as_ptr_mut() as _,
+				&mut lwork,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
+			);
+			lwork as usize
+		} else if T::IS_NATIVE_F64 {
+			let mut lwork = core::mem::zeroed();
+			la::dgeqp3_(
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
+				QR.as_ptr_mut() as _,
+				(&QR.col_stride()) as *const _ as *const _,
+				col_fwd.as_mut_ptr() as _,
+				Q.as_ptr_mut() as _,
+				&mut lwork,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
+			);
+			lwork as usize
+		} else if T::IS_NATIVE_C32 {
+			let mut lwork = core::mem::zeroed();
+			la::cgeqp3_(
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
+				QR.as_ptr_mut() as _,
+				(&QR.col_stride()) as *const _ as *const _,
+				col_fwd.as_mut_ptr() as _,
+				Q.as_ptr_mut() as _,
+				&mut lwork,
+				(&-1isize) as *const _ as *const _,
+				rwork.as_mut_ptr() as _,
+				(&mut 0usize) as *mut _ as *mut _,
+			);
+			lwork.re as usize
+		} else if T::IS_NATIVE_C64 {
+			let mut lwork = core::mem::zeroed();
+			la::zgeqp3_(
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
+				QR.as_ptr_mut() as _,
+				(&QR.col_stride()) as *const _ as *const _,
+				col_fwd.as_mut_ptr() as _,
+				Q.as_ptr_mut() as _,
+				&mut lwork,
+				(&-1isize) as *const _ as *const _,
+				rwork.as_mut_ptr() as _,
+				(&mut 0usize) as *mut _ as *mut _,
+			);
+			lwork.re as usize
+		} else {
+			0
+		}
+	};
+
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
 
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(
-		m, n, blocksize, par, params,
+		m, n, blocksize, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 
@@ -843,56 +1011,61 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, 
 		bencher.bench(|| {
 			if Lib::FAER {
 				QR.copy_from(&A);
-				linalg::qr::col_pivoting::factor::qr_in_place(QR.rb_mut(), Q.rb_mut(), col_fwd, col_bwd, par, stack, params);
+				linalg::qr::col_pivoting::factor::qr_in_place(QR.rb_mut(), Q.rb_mut(), col_fwd, col_bwd, parallel, stack, params);
 			} else if Lib::LAPACK {
 				QR.copy_from(&A);
 				col_fwd.fill(0);
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
 					if T::IS_NATIVE_F32 {
-						la::sgeqpf_(
-							&mut (m as _),
-							&mut (n as _),
+						la::sgeqp3_(
+							(&mut { m } as *mut _) as *mut _,
+							(&mut { n } as *mut _) as *mut _,
 							QR.as_ptr_mut() as _,
-							&mut (QR.col_stride() as _),
+							(&mut { QR.col_stride() } as *mut _) as *mut _,
 							col_fwd.as_mut_ptr() as _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
-						la::dgeqpf_(
-							&mut (m as _),
-							&mut (n as _),
+						la::dgeqp3_(
+							(&mut { m } as *mut _) as *mut _,
+							(&mut { n } as *mut _) as *mut _,
 							QR.as_ptr_mut() as _,
-							&mut (QR.col_stride() as _),
+							(&mut { QR.col_stride() } as *mut _) as *mut _,
 							col_fwd.as_mut_ptr() as _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
-						la::cgeqpf_(
-							&mut (m as _),
-							&mut (n as _),
+						la::cgeqp3_(
+							(&mut { m } as *mut _) as *mut _,
+							(&mut { n } as *mut _) as *mut _,
 							QR.as_ptr_mut() as _,
-							&mut (QR.col_stride() as _),
+							(&mut { QR.col_stride() } as *mut _) as *mut _,
 							col_fwd.as_mut_ptr() as _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
-						la::zgeqpf_(
-							&mut (m as _),
-							&mut (n as _),
+						la::zgeqp3_(
+							(&mut { m } as *mut _) as *mut _,
+							(&mut { n } as *mut _) as *mut _,
 							QR.as_ptr_mut() as _,
-							&mut (QR.col_stride() as _),
+							(&mut { QR.col_stride() } as *mut _) as *mut _,
 							col_fwd.as_mut_ptr() as _,
 							Q.as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				}
@@ -911,75 +1084,74 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, 
 	}
 }
 
-fn partial_piv_lu<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let mut LU = Mat::zeros(n, n);
-	let row_fwd = &mut *vec![0usize; n];
-	let row_bwd = &mut *vec![0usize; n];
+	let row_fwd = &mut *avec![0usize; n];
+	let row_bwd = &mut *avec![0usize; n];
 
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(n, n, par, params));
+	let stack = &mut MemBuffer::new(linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(
+		n, n, parallel, params,
+	));
 	let stack = MemStack::new(stack);
 
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				LU.copy_from(&A);
-				linalg::lu::partial_pivoting::factor::lu_in_place(LU.rb_mut(), row_fwd, row_bwd, par, stack, params);
+				linalg::lu::partial_pivoting::factor::lu_in_place(LU.rb_mut(), row_fwd, row_bwd, parallel, stack, params);
 			} else if Lib::LAPACK {
 				LU.copy_from(&A);
 				row_fwd.fill(0);
 
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
 					if T::IS_NATIVE_F32 {
 						la::sgetrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							LU.as_ptr_mut() as _,
-							&(LU.col_stride() as _),
+							(&LU.col_stride()) as *const _ as *const _,
 							row_fwd.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
 						la::dgetrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							LU.as_ptr_mut() as _,
-							&(LU.col_stride() as _),
+							(&LU.col_stride()) as *const _ as *const _,
 							row_fwd.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
 						la::cgetrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							LU.as_ptr_mut() as _,
-							&(LU.col_stride() as _),
+							(&LU.col_stride()) as *const _ as *const _,
 							row_fwd.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
 						la::zgetrf_(
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							LU.as_ptr_mut() as _,
-							&(LU.col_stride() as _),
+							(&LU.col_stride()) as *const _ as *const _,
 							row_fwd.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				}
@@ -998,36 +1170,77 @@ fn partial_piv_lu<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usi
 	}
 }
 
-fn full_piv_lu<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let mut LU = Mat::zeros(m, n);
-	let row_fwd = &mut *vec![0usize; m];
-	let row_bwd = &mut *vec![0usize; m];
-	let col_fwd = &mut *vec![0usize; n];
-	let col_bwd = &mut *vec![0usize; n];
+	let row_fwd = &mut *avec![0usize; m];
+	let row_bwd = &mut *avec![0usize; m];
+	let col_fwd = &mut *avec![0usize; n];
+	let col_bwd = &mut *avec![0usize; n];
 
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, par, params));
+	let stack = &mut MemBuffer::new(linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, parallel, params));
 	let stack = MemStack::new(stack);
 
-	if !Lib::LAPACK {
+	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				LU.copy_from(&A);
-				linalg::lu::full_pivoting::factor::lu_in_place(LU.rb_mut(), row_fwd, row_bwd, col_fwd, col_bwd, par, stack, params);
+				linalg::lu::full_pivoting::factor::lu_in_place(LU.rb_mut(), row_fwd, row_bwd, col_fwd, col_bwd, parallel, stack, params);
+			} else if Lib::LAPACK {
+				LU.copy_from(&A);
+				row_fwd.fill(0);
+				col_fwd.fill(0);
+
+				#[cfg(any(openblas, mkl, blis))]
+				unsafe {
+					if T::IS_NATIVE_F32 {
+						sgetc2_(
+							(&n) as *const _ as *const _,
+							LU.as_ptr_mut() as _,
+							(&LU.col_stride()) as *const _ as *const _,
+							row_fwd.as_mut_ptr() as _,
+							col_fwd.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
+					} else if T::IS_NATIVE_F64 {
+						dgetc2_(
+							(&n) as *const _ as *const _,
+							LU.as_ptr_mut() as _,
+							(&LU.col_stride()) as *const _ as *const _,
+							row_fwd.as_mut_ptr() as _,
+							col_fwd.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
+					} else if T::IS_NATIVE_C32 {
+						cgetc2_(
+							(&n) as *const _ as *const _,
+							LU.as_ptr_mut() as _,
+							(&LU.col_stride()) as *const _ as *const _,
+							row_fwd.as_mut_ptr() as _,
+							col_fwd.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
+					} else if T::IS_NATIVE_C64 {
+						zgetc2_(
+							(&n) as *const _ as *const _,
+							LU.as_ptr_mut() as _,
+							(&LU.col_stride()) as *const _ as *const _,
+							row_fwd.as_mut_ptr() as _,
+							col_fwd.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
+						);
+					}
+				}
 			} else if Lib::NALGEBRA {
 				unsafe {
 					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
@@ -1043,113 +1256,114 @@ fn full_piv_lu<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize,
 	}
 }
 
-fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let mut U = Mat::zeros(m, m);
 	let mut V = Mat::zeros(n, n);
 	let mut S = Diag::zeros(Ord::min(m, n));
+	#[cfg(any(openblas, mkl, blis))]
 	let mut clone = A.cloned();
 
-	let rwork = &mut *vec![zero::<T>(); m * n * 10];
-	let iwork = &mut *vec![0; Ord::min(m, n) * 8];
+	#[cfg(any(openblas, mkl, blis))]
+	let rwork = &mut *avec![zero::<T>(); m * n * 10];
+	#[cfg(any(openblas, mkl, blis))]
+	let iwork = &mut *avec![0usize; Ord::min(m, n) * 8];
 
+	#[cfg(any(openblas, mkl, blis))]
 	let lwork = unsafe {
 		if T::IS_NATIVE_F32 {
 			let mut work = core::mem::zeroed();
 			la::sgesdd_(
 				&(b'A' as _),
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				V.as_ptr_mut() as _,
-				&(V.col_stride() as _),
+				(&V.col_stride()) as *const _ as *const _,
 				&mut work,
-				&-1,
-				iwork.as_mut_ptr(),
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				iwork.as_mut_ptr() as _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work as usize
 		} else if T::IS_NATIVE_F64 {
 			let mut work = core::mem::zeroed();
 			la::dgesdd_(
 				&(b'A' as _),
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				V.as_ptr_mut() as _,
-				&(V.col_stride() as _),
+				(&V.col_stride()) as *const _ as *const _,
 				&mut work,
-				&-1,
-				iwork.as_mut_ptr(),
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				iwork.as_mut_ptr() as _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work as usize
 		} else if T::IS_NATIVE_C32 {
 			let mut work = core::mem::zeroed();
 			la::cgesdd_(
 				&(b'A' as _),
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				V.as_ptr_mut() as _,
-				&(V.col_stride() as _),
+				(&V.col_stride()) as *const _ as *const _,
 				&mut work,
-				&-1,
+				(&-1isize) as *const _ as *const _,
 				rwork.as_mut_ptr() as _,
-				iwork.as_mut_ptr(),
-				&mut 0,
+				iwork.as_mut_ptr() as _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work.re as usize
 		} else if T::IS_NATIVE_C64 {
 			let mut work = core::mem::zeroed();
 			la::zgesdd_(
 				&(b'A' as _),
-				&(m as _),
-				&(n as _),
+				(&m) as *const _ as *const _,
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				V.as_ptr_mut() as _,
-				&(V.col_stride() as _),
+				(&V.col_stride()) as *const _ as *const _,
 				&mut work,
-				&-1,
+				(&-1isize) as *const _ as *const _,
 				rwork.as_mut_ptr() as _,
-				iwork.as_mut_ptr(),
-				&mut 0,
+				iwork.as_mut_ptr() as _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work.re as usize
 		} else {
 			0
 		}
 	};
-	let work = &mut *vec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
 
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::svd::svd_scratch::<T>(
@@ -1157,7 +1371,7 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 		n,
 		linalg::svd::ComputeSvdVectors::Full,
 		linalg::svd::ComputeSvdVectors::Full,
-		par,
+		parallel,
 		params,
 	));
 	let stack = MemStack::new(stack);
@@ -1165,78 +1379,80 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
-				linalg::svd::svd(A.rb(), S.rb_mut(), Some(U.rb_mut()), Some(V.rb_mut()), par, stack, params).unwrap();
+				linalg::svd::svd(A.rb(), S.rb_mut(), Some(U.rb_mut()), Some(V.rb_mut()), parallel, stack, params).unwrap();
 			} else if Lib::LAPACK {
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
+					clone.copy_from(&A);
 					if T::IS_NATIVE_F32 {
 						la::sgesdd_(
 							&(b'A' as _),
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							V.as_ptr_mut() as _,
-							&(V.col_stride() as _),
+							(&V.col_stride()) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							iwork.as_mut_ptr(),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							iwork.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
 						la::dgesdd_(
 							&(b'A' as _),
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							V.as_ptr_mut() as _,
-							&(V.col_stride() as _),
+							(&V.col_stride()) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							iwork.as_mut_ptr(),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							iwork.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
 						la::cgesdd_(
 							&(b'A' as _),
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							V.as_ptr_mut() as _,
-							&(V.col_stride() as _),
+							(&V.col_stride()) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							iwork.as_mut_ptr(),
-							&mut 0,
+							iwork.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
 						la::zgesdd_(
 							&(b'A' as _),
-							&(m as _),
-							&(n as _),
+							(&m) as *const _ as *const _,
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							V.as_ptr_mut() as _,
-							&(V.col_stride() as _),
+							(&V.col_stride()) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							iwork.as_mut_ptr(),
-							&mut 0,
+							iwork.as_mut_ptr() as _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				};
@@ -1255,19 +1471,18 @@ fn svd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 	}
 }
 
-fn self_adjoint_evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		// parallel mkl sometimes segfaults here ¯\_(ツ)_/¯
+		|| (Lib::LAPACK && Thd::PAR && cfg!(mkl))
+	{
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 
 	let rng = &mut StdRng::seed_from_u64(0);
@@ -1276,81 +1491,102 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (u
 
 	let mut U = Mat::zeros(m, m);
 	let mut S = Diag::zeros(Ord::min(m, n));
+	#[cfg(any(openblas, mkl, blis))]
 	let mut clone = A.cloned();
 
-	let rwork = &mut *vec![zero::<T>(); 3 * n];
-
-	let lwork = unsafe {
+	#[cfg(any(openblas, mkl, blis))]
+	let (lwork, lrwork, liwork) = unsafe {
+		clone.copy_from(&A);
 		if T::IS_NATIVE_F32 {
 			let mut work = core::mem::zeroed();
-			la::ssyev_(
+			let mut iwork = 0usize;
+			la::ssyevd_(
 				&(b'V' as _),
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				&mut work,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut iwork) as *mut _ as *mut _,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
-			work as usize
+			(work as usize, 0, iwork as usize)
 		} else if T::IS_NATIVE_F64 {
 			let mut work = core::mem::zeroed();
-			la::dsyev_(
+			let mut iwork = 0usize;
+			la::dsyevd_(
 				&(b'V' as _),
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				&mut work,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut iwork) as *mut _ as *mut _,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
-			work as usize
+			(work as usize, 0, iwork as usize)
 		} else if T::IS_NATIVE_C32 {
 			let mut work = core::mem::zeroed();
-			la::cheev_(
+			let mut rwork = core::mem::zeroed();
+			let mut iwork = 0usize;
+			la::cheevd_(
 				&(b'V' as _),
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				&mut work,
-				&-1,
-				rwork.as_mut_ptr() as _,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				&mut rwork,
+				(&-1isize) as *const _ as *const _,
+				(&mut iwork) as *mut _ as *mut _,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
-			work.re as usize
+			(work.re as usize, rwork as usize, iwork as usize)
 		} else if T::IS_NATIVE_C64 {
 			let mut work = core::mem::zeroed();
-			la::zheev_(
+			let mut rwork = core::mem::zeroed();
+			let mut iwork = 0usize;
+			la::zheevd_(
 				&(b'V' as _),
 				&(b'L' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				&mut work,
-				&-1,
-				rwork.as_mut_ptr() as _,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				&mut rwork,
+				(&-1isize) as *const _ as *const _,
+				(&mut iwork) as *mut _ as *mut _,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
-			work.re as usize
+			(work.re as usize, rwork as usize, iwork as usize)
 		} else {
-			0
+			(0, 0, 0)
 		}
 	};
-
-	let work = &mut *vec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let rwork = &mut *avec![zero::<T>(); lrwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let iwork = &mut *avec![0usize; liwork];
 
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::evd::self_adjoint_evd_scratch::<T>(
 		m,
 		linalg::evd::ComputeEigenvectors::Yes,
-		par,
+		parallel,
 		params,
 	));
 	let stack = MemStack::new(stack);
@@ -1358,58 +1594,70 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (u
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
-				linalg::evd::self_adjoint_evd(A.rb(), S.rb_mut(), Some(U.rb_mut()), par, stack, params).unwrap();
+				linalg::evd::self_adjoint_evd(A.rb(), S.rb_mut(), Some(U.rb_mut()), parallel, stack, params).unwrap();
 			} else if Lib::LAPACK {
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
+					clone.copy_from(&A);
 					if T::IS_NATIVE_F32 {
-						la::ssyev_(
+						la::ssyevd_(
 							&(b'V' as _),
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							iwork.as_mut_ptr() as _,
+							(&liwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
-						la::dsyev_(
+						la::dsyevd_(
 							&(b'V' as _),
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							iwork.as_mut_ptr() as _,
+							(&liwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
-						la::cheev_(
+						la::cheevd_(
 							&(b'V' as _),
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							&mut 0,
+							(&lrwork) as *const _ as *const _,
+							iwork.as_mut_ptr() as _,
+							(&liwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
-						la::zheev_(
+						la::zheevd_(
 							&(b'V' as _),
 							&(b'L' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							&mut 0,
+							(&lrwork) as *const _ as *const _,
+							iwork.as_mut_ptr() as _,
+							(&liwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					}
 				}
@@ -1428,47 +1676,46 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (u
 	}
 }
 
-fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, Par)) {
-	match par {
-		Par::Seq => unsafe {
-			openblas_set_num_threads(1);
-			goto_set_num_threads(1);
-			omp_set_num_threads(1);
-		},
-		Par::Rayon(nthreads) => unsafe {
-			openblas_set_num_threads(nthreads.get() as _);
-			goto_set_num_threads(nthreads.get() as _);
-			omp_set_num_threads(nthreads.get() as _);
-		},
-	};
+fn evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+	let m = n;
+	if (Ord::max(m, n) > 2048 && Lib::NALGEBRA) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+		bencher.skip();
+		return;
+	}
+
+	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
+	lapack_set_num_threads(parallel);
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let mut U = Mat::<T>::zeros(m, m);
 	let mut S = Diag::<T>::zeros(Ord::min(m, n));
 	let mut S_im = Diag::<T>::zeros(Ord::min(m, n));
+	#[cfg(any(openblas, mkl, blis))]
 	let mut clone = A.cloned();
 
-	let rwork = &mut *vec![zero::<T>(); 2 * n];
+	#[cfg(any(openblas, mkl, blis))]
+	let rwork = &mut *avec![zero::<T>(); 2 * n];
 
+	#[cfg(any(openblas, mkl, blis))]
 	let lwork = unsafe {
 		if T::IS_NATIVE_F32 {
 			let mut work = core::mem::zeroed();
 			la::sgeev_(
 				&(b'V' as _),
 				&(b'N' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				S_im.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				null_mut(),
-				&1,
+				(&1usize) as *const _ as *const _,
 				&mut work,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work as usize
 		} else if T::IS_NATIVE_F64 {
@@ -1476,18 +1723,18 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			la::dgeev_(
 				&(b'V' as _),
 				&(b'N' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				S_im.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				null_mut(),
-				&1,
+				(&1usize) as *const _ as *const _,
 				&mut work,
-				&-1,
-				&mut 0,
+				(&-1isize) as *const _ as *const _,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work as usize
 		} else if T::IS_NATIVE_C32 {
@@ -1495,18 +1742,18 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			la::cgeev_(
 				&(b'V' as _),
 				&(b'N' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				null_mut(),
-				&1,
+				(&1usize) as *const _ as *const _,
 				&mut work,
-				&-1,
+				(&-1isize) as *const _ as *const _,
 				rwork.as_mut_ptr() as _,
-				&mut 0,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work.re as usize
 		} else if T::IS_NATIVE_C64 {
@@ -1514,18 +1761,18 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 			la::zgeev_(
 				&(b'V' as _),
 				&(b'N' as _),
-				&(n as _),
+				(&n) as *const _ as *const _,
 				clone.as_ptr_mut() as _,
-				&(clone.col_stride() as _),
+				(&clone.col_stride()) as *const _ as *const _,
 				S.column_vector_mut().as_ptr_mut() as _,
 				U.as_ptr_mut() as _,
-				&(U.col_stride() as _),
+				(&U.col_stride()) as *const _ as *const _,
 				null_mut(),
-				&1,
+				(&1usize) as *const _ as *const _,
 				&mut work,
-				&-1,
+				(&-1isize) as *const _ as *const _,
 				rwork.as_mut_ptr() as _,
-				&mut 0,
+				(&mut 0usize) as *mut _ as *mut _,
 			);
 			work.re as usize
 		} else {
@@ -1533,14 +1780,15 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 		}
 	};
 
-	let work = &mut *vec![zero::<T>(); lwork];
+	#[cfg(any(openblas, mkl, blis))]
+	let work = &mut *avec![zero::<T>(); lwork];
 
 	let params = <linalg::evd::EvdParams as Auto<T>>::auto();
 	let stack = &mut MemBuffer::new(linalg::evd::evd_scratch::<T>(
 		n,
 		linalg::evd::ComputeEigenvectors::Yes,
 		linalg::evd::ComputeEigenvectors::Yes,
-		par,
+		parallel,
 		params.into(),
 	));
 	let stack = MemStack::new(stack);
@@ -1558,7 +1806,7 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 							transmute(S_im.rb_mut()),
 							Some(transmute(U.rb_mut())),
 							None,
-							par,
+							parallel,
 							stack,
 							params.into(),
 						)
@@ -1569,7 +1817,7 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 							transmute(S.rb_mut()),
 							Some(transmute(U.rb_mut())),
 							None,
-							par,
+							parallel,
 							stack,
 							params.into(),
 						)
@@ -1577,75 +1825,76 @@ fn evd<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 					}
 				}
 			} else if Lib::LAPACK {
-				clone.copy_from(&A);
+				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
+					clone.copy_from(&A);
 					if T::IS_NATIVE_F32 {
 						la::sgeev_(
 							&(b'V' as _),
 							&(b'N' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							S_im.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							null_mut(),
-							&1,
+							(&1usize) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_F64 {
 						la::dgeev_(
 							&(b'V' as _),
 							&(b'N' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							S_im.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							null_mut(),
-							&1,
+							(&1usize) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
-							&mut 0,
+							(&lwork) as *const _ as *const _,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C32 {
 						la::cgeev_(
 							&(b'V' as _),
 							&(b'N' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							null_mut(),
-							&1,
+							(&1usize) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					} else if T::IS_NATIVE_C64 {
 						la::zgeev_(
 							&(b'V' as _),
 							&(b'N' as _),
-							&(n as _),
+							(&n) as *const _ as *const _,
 							clone.as_ptr_mut() as _,
-							&(clone.col_stride() as _),
+							(&clone.col_stride()) as *const _ as *const _,
 							S.column_vector_mut().as_ptr_mut() as _,
 							U.as_ptr_mut() as _,
-							&(U.col_stride() as _),
+							(&U.col_stride()) as *const _ as *const _,
 							null_mut(),
-							&1,
+							(&1usize) as *const _ as *const _,
 							work.as_mut_ptr() as _,
-							&(lwork as _),
+							(&lwork) as *const _ as *const _,
 							rwork.as_mut_ptr() as _,
-							&mut 0,
+							(&mut 0usize) as *mut _ as *mut _,
 						);
 					};
 				}
@@ -1659,42 +1908,86 @@ fn main() -> std::io::Result<()> {
 		.parse::<Table>()
 		.unwrap();
 
-	let mut par = vec![];
+	let timings_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/timings.toml");
+	let mut timings = std::fs::read_to_string(timings_path).unwrap_or(String::new()).parse::<Table>().unwrap();
+
+	let mut parallel = vec![];
 
 	if config["par"]["seq"].as_bool().unwrap() {
-		par.push(Par::Seq);
+		parallel.push(Par::Seq);
 	}
 	if config["par"]["rayon"].as_bool().unwrap() {
-		par.push(Par::rayon(0));
+		parallel.push(Par::rayon(0));
 	}
 
-	let mut bench = Bench::new(BenchConfig::from_args()?);
-
-	let shapes = |name: &str, par: Par| {
+	let shapes = |name: &str| {
 		config[name]["shapes"]
 			.as_array()
 			.unwrap()
 			.iter()
-			.map(|i| i.as_array().unwrap())
-			.map(|v| (v[0].as_integer().unwrap() as usize, v[1].as_integer().unwrap() as usize, par))
+			.map(|i| PlotArg(i.as_integer().unwrap() as usize))
 			.collect::<Vec<_>>()
 	};
+	let bench_config = BenchConfig::from_args()?;
 
 	macro_rules! register {
 		($T: ty) => {{
 			type T = $T;
 
-			for &par in &par {
+			for &parallel in &parallel {
+				let mut bench = Bench::new(&bench_config);
+
 				macro_rules! register_one {
 					($name: ident, $config: expr) => {
-						bench.register_many(
-							list![
-								($name::<T, self::faer>),
-								($name::<T, self::lapack>),
-								($name::<T, self::nalgebra>)
-							],
-							shapes($config, par),
-						);
+						match parallel {
+							Par::Seq => bench.register_many(
+								{
+									let list = diol::variadics::Nil;
+									#[cfg(any(openblas, mkl, blis))]
+									let list = diol::variadics::Cons {
+										head: $name::<T, self::lapack, self::seq>,
+										tail: list,
+									};
+									#[cfg(nalgebra)]
+									let list = diol::variadics::Cons {
+										head: $name::<T, self::nalgebra, self::seq>,
+										tail: list,
+									};
+									#[cfg(faer)]
+									let list = diol::variadics::Cons {
+										head: $name::<T, self::faer, self::seq>,
+										tail: list,
+									};
+
+									list
+								},
+								shapes($config),
+							),
+
+							Par::Rayon(_) => bench.register_many(
+								{
+									let list = diol::variadics::Nil;
+									#[cfg(any(openblas, mkl, blis))]
+									let list = diol::variadics::Cons {
+										head: $name::<T, self::lapack, self::par>,
+										tail: list,
+									};
+									#[cfg(nalgebra)]
+									let list = diol::variadics::Cons {
+										head: $name::<T, self::nalgebra, self::par>,
+										tail: list,
+									};
+									#[cfg(faer)]
+									let list = diol::variadics::Cons {
+										head: $name::<T, self::faer, self::par>,
+										tail: list,
+									};
+
+									list
+								},
+								shapes($config),
+							),
+						}
 					};
 				}
 
@@ -1707,14 +2000,77 @@ fn main() -> std::io::Result<()> {
 				register_one!(lblt_full, "decomp");
 
 				register_one!(partial_piv_lu, "block_decomp");
-				register_one!(full_piv_lu, "block_decomp");
+				register_one!(full_piv_lu, "decomp");
 
 				register_one!(qr, "block_decomp");
 				register_one!(col_piv_qr, "decomp");
 
 				register_one!(svd, "svd");
-				register_one!(self_adjoint_evd, "evd");
+				register_one!(self_adjoint_evd, "svd");
 				register_one!(evd, "evd");
+
+				let result = bench.run()?;
+
+				fn get_data(f: &str) -> (&str, &str, &str, &str) {
+					let open = f.find('<').unwrap();
+					let close = f.rfind('>').unwrap();
+					let name = &f[..open];
+					let args = &f[open + 1..close];
+					let mut args = args.split(',');
+					let ty = args.next().unwrap().trim();
+					let backend = args.next().unwrap().trim();
+					let thd = args.next().unwrap().trim();
+					(name, ty, backend, thd)
+				}
+
+				for result in &result.groups {
+					let args = &result.args.unwrap_as_plot_arg();
+
+					for f in &result.function {
+						let (name, ty, backend, thd) = get_data(&f.name);
+
+						if !timings.contains_key(ty) {
+							timings.insert(ty.to_string(), Value::Table(Table::new()));
+						}
+						let timings = timings[ty].as_table_mut().unwrap();
+
+						if !timings.contains_key(thd) {
+							timings.insert(thd.to_string(), Value::Table(Table::new()));
+						}
+						let timings = timings[thd].as_table_mut().unwrap();
+
+						if !timings.contains_key(name) {
+							timings.insert(name.to_string(), Value::Table(Table::new()));
+						}
+						let timings = timings[name].as_table_mut().unwrap();
+
+						if !timings.contains_key(backend) {
+							timings.insert(backend.to_string(), Value::Table(Table::new()));
+						}
+						let timings = timings[backend].as_table_mut().unwrap();
+
+						if !timings.contains_key("timings") {
+							timings.insert("timings".to_string(), Value::Array(vec![]));
+						}
+						let timings = timings["timings"].as_array_mut().unwrap();
+
+						for (n, (mean, _)) in core::iter::zip(
+							args.iter().map(|&PlotArg(t)| Value::Integer(t as i64)),
+							f.timings.iter().map(|timings| diol::result::Stats::from_slice(timings).mean_stddev()),
+						) {
+							if mean == diol::Picoseconds(0) {
+								continue;
+							}
+
+							if let Some(old) = timings.iter().position(|p| p.as_array().unwrap()[0] == n) {
+								timings.remove(old);
+							}
+							timings.push(Value::Array(vec![n, Value::Float(mean.to_secs())]));
+						}
+
+						timings.sort_by_key(|e| e.as_array().unwrap()[0].as_integer().unwrap());
+					}
+				}
 			}
 		}};
 	}
@@ -1724,7 +2080,7 @@ fn main() -> std::io::Result<()> {
 	register!(f64);
 	register!(c64);
 
-	bench.run()?;
+	std::fs::write(timings_path, toml::to_string(&timings).unwrap())?;
 
 	Ok(())
 }
