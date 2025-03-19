@@ -1495,6 +1495,9 @@ impl RealField for f32 {
 
 impl ComplexField for f64 {
 	type Arch = pulp::Arch;
+	#[cfg(target_pointer_width = "32")]
+	type Index = u32;
+	#[cfg(target_pointer_width = "64")]
 	type Index = u64;
 	type Real = Self;
 	type SimdCtx<S: Simd> = S;
@@ -1730,7 +1733,7 @@ impl ComplexField for f64 {
 
 	#[inline(always)]
 	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
-		ctx.splat_u64s(value)
+		ctx.splat_u64s(value.into())
 	}
 
 	#[inline(always)]
@@ -1779,13 +1782,13 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMemMask<S> {
-		ctx.mask_between_m64s(start, end)
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+		ctx.mask_between_m64s(start.into(), end.into())
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMask<S> {
-		ctx.mask_between_m64s(start, end).mask()
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+		ctx.mask_between_m64s(start.into(), end.into()).mask()
 	}
 
 	#[inline(always)]
@@ -2757,6 +2760,9 @@ impl ComplexField for ComplexImpl<f32> {
 
 impl ComplexField for ComplexImpl<f64> {
 	type Arch = pulp::Arch;
+	#[cfg(target_pointer_width = "32")]
+	type Index = u32;
+	#[cfg(target_pointer_width = "64")]
 	type Index = u64;
 	type Real = f64;
 	type SimdCtx<S: Simd> = S;
@@ -3174,13 +3180,13 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMemMask<S> {
-		ctx.mask_between_m64s(2 * start, 2 * end)
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+		ctx.mask_between_m64s((2 * start).into(), (2 * end).into())
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u64, end: u64) -> Self::SimdMask<S> {
-		ctx.mask_between_m64s(2 * start, 2 * end).mask()
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+		ctx.mask_between_m64s((2 * start).into(), (2 * end).into()).mask()
 	}
 
 	#[inline(always)]
