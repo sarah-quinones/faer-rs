@@ -98,7 +98,22 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install OpenBLAS by apt
+        run: |
+          sudo apt update
+          sudo apt install -y libopenblas-dev
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+
+      - name: Install OpenBLAS by vcpkg
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git --depth 1
+          ./vcpkg/bootstrap-vcpkg.bat
+          ./vcpkg/vcpkg.exe install openblas:x64-windows
+        if: ${{ matrix.os == 'windows-latest' }}
+
       - name: Collect coverage data
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
         run: cd faer && cargo llvm-cov nextest --features=unstable --lcov --output-path ../lcov.info
 
       - name: Upload coverage data to codecov
