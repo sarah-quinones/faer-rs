@@ -9,7 +9,7 @@ use ::faer::linalg::cholesky::bunch_kaufman::factor::BunchKaufmanParams;
 use ::faer::prelude::*;
 use ::faer::stats::prelude::*;
 use ::faer::{Auto, linalg};
-use faer_traits::math_utils::zero;
+use faer_traits::math_utils::*;
 
 use {::lapack_sys as la, ::nalgebra as na};
 
@@ -111,7 +111,7 @@ fn llt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize, 
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
-	let A = &A * A.adjoint();
+	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, params));
@@ -167,7 +167,7 @@ fn ldlt<T: Scalar, Lib: self::Lib>(bencher: Bencher, (m, n, par): (usize, usize,
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
-	let A = &A * A.adjoint();
+	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, par, params));
