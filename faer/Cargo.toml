@@ -95,7 +95,3 @@ toml = "0.8.20"
 features = ["default"]
 rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 
-[[bench]]
-name = "bench"
-harness = false
-
