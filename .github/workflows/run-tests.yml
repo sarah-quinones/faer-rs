@@ -78,7 +78,6 @@ jobs:
           - stable
         os:
           - ubuntu-latest
-          - windows-latest
 
     steps:
       - name: Checkout source
@@ -97,6 +96,12 @@ jobs:
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install OpenBLAS by apt
+        run: |
+          sudo apt update
+          sudo apt install -y libopenblas-dev liblapack-dev
+        if: ${{ matrix.os == 'ubuntu-latest' }}
 
       - name: Collect coverage data
         run: cd faer && cargo llvm-cov nextest --features=unstable --lcov --output-path ../lcov.info

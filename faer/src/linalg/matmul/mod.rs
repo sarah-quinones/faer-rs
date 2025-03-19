@@ -35,6 +35,7 @@ mod matmul_shared {
 	impl<T: ComplexField> pulp::WithSimd for SimdLaneCount<T> {
 		type Output = usize;
 
+		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
 			let _ = simd;
 			core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>()
@@ -331,8 +332,8 @@ mod matmul_horizontal {
 	impl<const MR: usize, const NR: usize, T: ComplexField> pulp::WithSimd for Ukr<'_, MR, NR, T> {
 		type Output = ();
 
-		#[inline(always)]
 		#[math]
+		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
 			let Self {
 				dst,
