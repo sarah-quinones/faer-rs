@@ -237,6 +237,7 @@ fn best_in_mat_simd<T: ComplexField>(data: MatRef<'_, T, usize, usize, Contiguou
 		type Output = (usize, usize, Real<T>);
 
 		#[math]
+		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
 			let Self { data } = self;
 
@@ -289,6 +290,7 @@ fn update_and_best_in_mat_simd<T: ComplexField>(
 		type Output = (usize, usize, Real<T>);
 
 		#[math]
+		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
 			let Self { data, lhs, rhs, align } = self;
 

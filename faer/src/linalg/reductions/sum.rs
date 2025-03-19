@@ -11,8 +11,8 @@ fn sum_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) ->
 	impl<'N, T: ComplexField> pulp::WithSimd for Impl<'_, 'N, T> {
 		type Output = T;
 
-		#[inline(always)]
 		#[math]
+		#[inline(always)]
 		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
 			let Self { data } = self;
 			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), data.nrows());
