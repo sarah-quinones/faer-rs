@@ -104,6 +104,7 @@ lapack-src = { version = "0.11", features = ["intel-mkl"] }
 [target.'cfg(blis)'.dev-dependencies]
 blis-src = { version = "0.2.2", features = ["system"] }
 lapack-src = { version = "0.11", features = ["netlib"] }
+netlib-src = { version = "0.8.0", features = ["system"] }
 
 [package.metadata.docs.rs]
 features = ["default"]

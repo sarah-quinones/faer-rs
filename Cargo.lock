@@ -618,6 +618,7 @@ dependencies = [
  "matrix-market-rs",
  "nalgebra",
  "nano-gemm",
+ "netlib-src",
  "npyz",
  "num-complex",
  "num-traits",
