@@ -554,3 +554,88 @@ impl<'short, T, Cols: Shape> ReborrowMut<'short> for Row<T, Cols> {
 		self.as_mut()
 	}
 }
+
+#[cfg(feature = "std")]
+impl<T> From<std::vec::Vec<T>> for Row<T> {
+	#[inline]
+	fn from(vec: std::vec::Vec<T>) -> Self {
+		let n = vec.len();
+		let row = Row::from_fn(n, |i| unsafe { std::ptr::read(&vec[i as usize]) });
+		std::mem::forget(vec);
+		row
+	}
+}
+
+#[cfg(feature = "std")]
+impl<T> From<Row<T>> for std::vec::Vec<T> {
+	#[inline]
+	fn from(mut row: Row<T>) -> Self {
+		let n = row.ncols();
+		let mut vec = std::vec::Vec::with_capacity(n);
+		for i in 0..n {
+			unsafe {
+				let ptr = row.ptr_inbounds_at_mut(i);
+				vec.push(std::ptr::read(ptr));
+			}
+		}
+		std::mem::forget(row);
+		vec
+	}
+}
+
+#[cfg(test)]
+#[cfg(feature = "std")]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_from_vec() {
+		// Test with integers
+		let vec = vec![1, 2, 3, 4, 5];
+		let row = Row::from(vec);
+
+		// Check dimensions
+		assert_eq!(row.ncols(), 5);
+		assert_eq!(row.nrows(), 1);
+
+		// Check elements
+		for i in 0..5 {
+			assert_eq!(row[i], i + 1);
+		}
+
+		// Test with floating point
+		let vec = vec![1.0, 2.5, 3.7, 4.2, 5.9];
+		let row = Row::from(vec);
+
+		// Check dimensions
+		assert_eq!(row.ncols(), 5);
+		assert_eq!(row.nrows(), 1);
+
+		// Check elements
+		assert_eq!(row[0], 1.0);
+		assert_eq!(row[1], 2.5);
+		assert_eq!(row[2], 3.7);
+		assert_eq!(row[3], 4.2);
+		assert_eq!(row[4], 5.9);
+	}
+
+	#[test]
+	fn test_empty_vec() {
+		let vec: Vec<f64> = vec![];
+		let row = Row::from(vec);
+
+		assert_eq!(row.ncols(), 0);
+		assert_eq!(row.nrows(), 1);
+	}
+
+	#[test]
+	fn test_into_vec() {
+		let row = Row::from_fn(5, |i| i as f64);
+		let vec: Vec<f64> = row.into();
+
+		assert_eq!(vec.len(), 5);
+		for i in 0..5 {
+			assert_eq!(vec[i], i as f64);
+		}
+	}
+}
