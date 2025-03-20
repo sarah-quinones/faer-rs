@@ -1550,7 +1550,7 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bench
 				(&-1isize) as *const _ as *const _,
 				(&mut 0usize) as *mut _ as *mut _,
 			);
-			(work.re as usize, rwork as usize, iwork as usize)
+			(work.re as usize, 2 * rwork as usize, iwork as usize)
 		} else if T::IS_NATIVE_C64 {
 			let mut work = core::mem::zeroed();
 			let mut rwork = core::mem::zeroed();
