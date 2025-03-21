@@ -1319,7 +1319,7 @@ impl<'a, T> MatRef<'a, T, usize, usize>
 where
 	T: RealField + Clone,
 {
-	fn internal_max(&self) -> Option<T> {
+	pub(crate) fn internal_max(&self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
 			return None;
 		}
@@ -1337,7 +1337,7 @@ where
 		Some((*max_val).clone())
 	}
 
-	fn internal_min(&self) -> Option<T> {
+	pub(crate) fn internal_min(&self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
 			return None;
 		}
