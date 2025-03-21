@@ -1314,3 +1314,178 @@ impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride
 		imp(self.as_shape(M, N).as_dyn_stride(), f)
 	}
 }
+
+impl<'a, T> MatRef<'a, T, usize, usize>
+where
+	T: RealField + Clone,
+{
+	/// Returns the maximum element in the matrix
+	///
+	/// # Returns
+	///
+	/// * `Option<T>` - The maximum element in the matrix, or `None` if the matrix is empty
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use faer::{mat, Mat};
+	///
+	/// let m = mat![
+	///     [1.0, 5.0, 3.0],
+	///     [4.0, 2.0, 9.0],
+	///     [7.0, 8.0, 6.0],
+	/// ];
+	///
+	/// assert_eq!(m.as_ref().max(), Some(9.0));
+	///
+	/// let empty: Mat<f64> = Mat::new();
+	/// assert_eq!(empty.as_ref().max(), None);
+	/// ```
+	pub fn max(&self) -> Option<T> {
+		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
+			return None;
+		}
+
+		let mut max_val = self.get(0, 0);
+
+		self.row_iter().for_each(|row| {
+			row.iter().for_each(|val| {
+				if val > max_val {
+					max_val = &val;
+				}
+			});
+		});
+
+		Some((*max_val).clone())
+	}
+
+	/// Returns the minimum element in the matrix
+	///
+	/// # Returns
+	///
+	/// * `Option<T>` - The minimum element in the matrix, or `None` if the matrix is empty
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use faer::{mat, Mat};
+	///
+	/// let m = mat![
+	///     [1.0, 5.0, 3.0],
+	///     [4.0, 2.0, 9.0],
+	///     [7.0, 8.0, 6.0],
+	/// ];
+	///
+	/// assert_eq!(m.as_ref().min(), Some(1.0));
+	///
+	/// let empty: Mat<f64> = Mat::new();
+	/// assert_eq!(empty.as_ref().min(), None);
+	/// ```
+	pub fn min(&self) -> Option<T> {
+		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
+			return None;
+		}
+
+		let mut min_val = self.get(0, 0);
+
+		self.row_iter().for_each(|row| {
+			row.iter().for_each(|val| {
+				if val < min_val {
+					min_val = &val;
+				}
+			});
+		});
+
+		Some((*min_val).clone())
+	}
+}
+
+impl<'a, T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols>
+where
+	T: RealField + Clone,
+{
+	/// Returns the maximum element in the matrix
+	///
+	/// # Returns
+	///
+	/// * `Option<T>` - The maximum element in the matrix, or `None` if the matrix is empty
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use faer::{mat, Mat};
+	///
+	/// let m = mat![
+	///     [1.0, 5.0, 3.0],
+	///     [4.0, 2.0, 9.0],
+	///     [7.0, 8.0, 6.0],
+	/// ];
+	///
+	/// assert_eq!(m.as_ref().max(), Some(9.0));
+	///
+	/// let empty: Mat<f64> = Mat::new();
+	/// assert_eq!(empty.as_ref().max(), None);
+	/// ```
+	pub fn max(&self) -> Option<T> {
+		MatRef::max(&self.as_dyn().as_ref())
+	}
+
+	/// Returns the minimum element in the matrix
+	///
+	/// # Returns
+	///
+	/// * `Option<T>` - The minimum element in the matrix, or `None` if the matrix is empty
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use faer::{mat, Mat};
+	///
+	/// let m = mat![
+	///     [1.0, 5.0, 3.0],
+	///     [4.0, 2.0, 9.0],
+	///     [7.0, 8.0, 6.0],
+	/// ];
+	///
+	/// assert_eq!(m.as_ref().min(), Some(1.0));
+	///
+	/// let empty: Mat<f64> = Mat::new();
+	/// assert_eq!(empty.as_ref().min(), None);
+	/// ```
+	pub fn min(&self) -> Option<T> {
+		MatRef::min(&self.as_dyn().as_ref())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_min() {
+		let m = mat![
+			[1.0, 5.0, 3.0],
+			[4.0, 2.0, 9.0],
+			[7.0, 8.0, 6.0], //
+		];
+
+		assert_eq!(m.as_ref().min(), Some(1.0));
+
+		let empty: Mat<f64> = Mat::new();
+		assert_eq!(empty.as_ref().min(), None);
+	}
+
+	#[test]
+	fn test_max() {
+		let m = mat![
+			[1.0, 5.0, 3.0],
+			[4.0, 2.0, 9.0],
+			[7.0, 8.0, 6.0], //
+		];
+
+		assert_eq!(m.as_ref().max(), Some(9.0));
+
+		let empty: Mat<f64> = Mat::new();
+		assert_eq!(empty.as_ref().max(), None);
+	}
+}
