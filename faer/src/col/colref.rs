@@ -502,3 +502,56 @@ impl<T: core::fmt::Debug, Rows: Shape, RStride: Stride> core::fmt::Debug for Col
 		self.transpose().fmt(f)
 	}
 }
+
+impl<'a, T> ColRef<'a, T, usize, isize>
+where
+	T: RealField,
+{
+	pub(crate) fn internal_max(self) -> Option<T> {
+		if self.nrows().unbound() == 0 || self.ncols() == 0 {
+			return None;
+		}
+
+		let mut max_val = self.get(0);
+
+		self.iter().for_each(|val| {
+			if val > max_val {
+				max_val = val;
+			}
+		});
+
+		Some((*max_val).clone())
+	}
+
+	/// Returns the minimum element in the column, or `None` if the column is empty
+	pub(crate) fn internal_min(self) -> Option<T> {
+		if self.nrows().unbound() == 0 || self.ncols() == 0 {
+			return None;
+		}
+
+		let mut min_val = self.get(0);
+
+		self.iter().for_each(|val| {
+			if val < min_val {
+				min_val = val;
+			}
+		});
+
+		Some((*min_val).clone())
+	}
+}
+
+impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride>
+where
+	T: RealField,
+{
+	/// Returns the maximum element in the column, or `None` if the column is empty
+	pub fn max(&self) -> Option<T> {
+		self.as_dyn_rows().as_dyn_stride().internal_max()
+	}
+
+	/// Returns the minimum element in the column, or `None` if the column is empty
+	pub fn min(&self) -> Option<T> {
+		self.as_dyn_rows().as_dyn_stride().internal_min()
+	}
+}

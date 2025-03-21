@@ -1444,13 +1444,13 @@ where
 	T: RealField,
 {
 	/// see [MatRef::min]
-	pub fn min(&self) -> Option<T> {
-		MatRef::internal_min(&self.as_dyn().as_ref())
+	pub fn min(self) -> Option<T> {
+		MatRef::internal_min(self.as_dyn())
 	}
 
 	/// see [MatRef::min]
-	pub fn max(&self) -> Option<T> {
-		MatRef::internal_max(&self.as_dyn().as_ref())
+	pub fn max(self) -> Option<T> {
+		MatRef::internal_max(self.as_dyn())
 	}
 }
 

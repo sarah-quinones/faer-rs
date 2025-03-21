@@ -1319,14 +1319,18 @@ impl<'a, T> MatRef<'a, T, usize, usize>
 where
 	T: RealField,
 {
-	pub(crate) fn internal_max(&self) -> Option<T> {
+	pub(crate) fn internal_max(self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
 			return None;
 		}
 
 		let mut max_val = self.get(0, 0);
 
-		self.row_iter().for_each(|row| {
+		let this = if self.row_stride().unsigned_abs() == 1 { self.transpose() } else { self };
+
+		let this = if this.col_stride() > 0 { this } else { this.reverse_cols() };
+
+		this.row_iter().for_each(|row| {
 			row.iter().for_each(|val| {
 				if val > max_val {
 					max_val = &val;
@@ -1337,14 +1341,18 @@ where
 		Some((*max_val).clone())
 	}
 
-	pub(crate) fn internal_min(&self) -> Option<T> {
+	pub(crate) fn internal_min(self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
 			return None;
 		}
 
 		let mut min_val = self.get(0, 0);
 
-		self.row_iter().for_each(|row| {
+		let this = if self.row_stride().unsigned_abs() == 1 { self.transpose() } else { self };
+
+		let this = if this.col_stride() > 0 { this } else { this.reverse_cols() };
+
+		this.row_iter().for_each(|row| {
 			row.iter().for_each(|val| {
 				if val < min_val {
 					min_val = &val;
@@ -1377,13 +1385,13 @@ where
 	///     [7.0, 8.0, 6.0],
 	/// ];
 	///
-	/// assert_eq!(m.as_ref().max(), Some(9.0));
+	/// assert_eq!(m.max(), Some(9.0));
 	///
 	/// let empty: Mat<f64> = Mat::new();
-	/// assert_eq!(empty.as_ref().max(), None);
+	/// assert_eq!(empty.max(), None);
 	/// ```
-	pub fn max(&self) -> Option<T> {
-		MatRef::internal_max(&self.as_dyn().as_ref())
+	pub fn max(self) -> Option<T> {
+		MatRef::internal_max(self.as_dyn())
 	}
 
 	/// Returns the minimum element in the matrix
@@ -1403,13 +1411,13 @@ where
 	///     [7.0, 8.0, 6.0],
 	/// ];
 	///
-	/// assert_eq!(m.as_ref().min(), Some(1.0));
+	/// assert_eq!(m.min(), Some(1.0));
 	///
 	/// let empty: Mat<f64> = Mat::new();
-	/// assert_eq!(empty.as_ref().min(), None);
+	/// assert_eq!(empty.min(), None);
 	/// ```
-	pub fn min(&self) -> Option<T> {
-		MatRef::internal_min(&self.as_dyn().as_ref())
+	pub fn min(self) -> Option<T> {
+		MatRef::internal_min(self.as_dyn())
 	}
 }
 
