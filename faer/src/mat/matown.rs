@@ -1441,7 +1441,7 @@ impl<T, Rows: Shape> Mat<T, Rows, usize> {
 
 impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols>
 where
-	T: RealField + Clone,
+	T: RealField,
 {
 	/// see [MatRef::min]
 	pub fn min(&self) -> Option<T> {

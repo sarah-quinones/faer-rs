@@ -1317,7 +1317,7 @@ impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride
 
 impl<'a, T> MatRef<'a, T, usize, usize>
 where
-	T: RealField + Clone,
+	T: RealField,
 {
 	pub(crate) fn internal_max(&self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
@@ -1358,7 +1358,7 @@ where
 
 impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols>
 where
-	T: RealField + Clone,
+	T: RealField,
 {
 	/// Returns the maximum element in the matrix
 	///
