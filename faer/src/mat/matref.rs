@@ -1319,29 +1319,7 @@ impl<'a, T> MatRef<'a, T, usize, usize>
 where
 	T: RealField + Clone,
 {
-	/// Returns the maximum element in the matrix
-	///
-	/// # Returns
-	///
-	/// * `Option<T>` - The maximum element in the matrix, or `None` if the matrix is empty
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use faer::{mat, Mat};
-	///
-	/// let m = mat![
-	///     [1.0, 5.0, 3.0],
-	///     [4.0, 2.0, 9.0],
-	///     [7.0, 8.0, 6.0],
-	/// ];
-	///
-	/// assert_eq!(m.as_ref().max(), Some(9.0));
-	///
-	/// let empty: Mat<f64> = Mat::new();
-	/// assert_eq!(empty.as_ref().max(), None);
-	/// ```
-	pub fn max(&self) -> Option<T> {
+	fn internal_max(&self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
 			return None;
 		}
@@ -1359,29 +1337,7 @@ where
 		Some((*max_val).clone())
 	}
 
-	/// Returns the minimum element in the matrix
-	///
-	/// # Returns
-	///
-	/// * `Option<T>` - The minimum element in the matrix, or `None` if the matrix is empty
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use faer::{mat, Mat};
-	///
-	/// let m = mat![
-	///     [1.0, 5.0, 3.0],
-	///     [4.0, 2.0, 9.0],
-	///     [7.0, 8.0, 6.0],
-	/// ];
-	///
-	/// assert_eq!(m.as_ref().min(), Some(1.0));
-	///
-	/// let empty: Mat<f64> = Mat::new();
-	/// assert_eq!(empty.as_ref().min(), None);
-	/// ```
-	pub fn min(&self) -> Option<T> {
+	fn internal_min(&self) -> Option<T> {
 		if self.nrows().unbound() == 0 || self.ncols().unbound() == 0 {
 			return None;
 		}
@@ -1400,7 +1356,7 @@ where
 	}
 }
 
-impl<'a, T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols>
+impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols>
 where
 	T: RealField + Clone,
 {
@@ -1427,7 +1383,7 @@ where
 	/// assert_eq!(empty.as_ref().max(), None);
 	/// ```
 	pub fn max(&self) -> Option<T> {
-		MatRef::max(&self.as_dyn().as_ref())
+		MatRef::internal_max(&self.as_dyn().as_ref())
 	}
 
 	/// Returns the minimum element in the matrix
@@ -1453,7 +1409,7 @@ where
 	/// assert_eq!(empty.as_ref().min(), None);
 	/// ```
 	pub fn min(&self) -> Option<T> {
-		MatRef::min(&self.as_dyn().as_ref())
+		MatRef::internal_min(&self.as_dyn().as_ref())
 	}
 }
 
