@@ -1592,7 +1592,7 @@ impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride
 
 impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols>
 where
-	T: RealField + Clone,
+	T: RealField,
 {
 	/// see [MatRef::min]
 	pub fn min(&self) -> Option<T> {
