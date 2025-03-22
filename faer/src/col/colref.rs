@@ -555,3 +555,30 @@ where
 		self.as_dyn_rows().as_dyn_stride().internal_min()
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use crate::Col;
+
+	#[test]
+	fn test_col_min() {
+		let col: Col<f64> = Col::from_fn(5, |x| (x + 1) as f64);
+		let colref = col.as_ref();
+		assert_eq!(colref.min(), Some(1.0));
+
+		let empty: Col<f64> = Col::from_fn(0, |_| 0.0);
+		let emptyref = empty.as_ref();
+		assert_eq!(emptyref.min(), None);
+	}
+
+	#[test]
+	fn test_col_max() {
+		let col: Col<f64> = Col::from_fn(5, |x| (x + 1) as f64);
+		let colref = col.as_ref();
+		assert_eq!(colref.max(), Some(5.0));
+
+		let empty: Col<f64> = Col::from_fn(0, |_| 0.0);
+		let emptyref = empty.as_ref();
+		assert_eq!(emptyref.max(), None);
+	}
+}
