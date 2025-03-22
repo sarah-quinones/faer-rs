@@ -1590,6 +1590,21 @@ impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride
 	}
 }
 
+impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols>
+where
+	T: RealField,
+{
+	/// see [MatRef::min]
+	pub fn min(self) -> Option<T> {
+		MatRef::internal_min(self.rb().as_dyn())
+	}
+
+	/// see [MatRef::min]
+	pub fn max(self) -> Option<T> {
+		MatRef::internal_max(self.rb().as_dyn())
+	}
+}
+
 #[track_caller]
 #[inline]
 fn from_strided_column_major_slice_mut_assert(nrows: usize, ncols: usize, col_stride: usize, len: usize) {
@@ -1617,5 +1632,38 @@ fn from_strided_row_major_slice_mut_assert(nrows: usize, ncols: usize, row_strid
 			panic!("address computation of the last matrix element overflowed");
 		};
 		assert!(all(row_stride >= ncols, last < len));
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_min() {
+		let mut m = mat![
+			[1.0, 5.0, 3.0],
+			[4.0, 2.0, 9.0],
+			[7.0, 8.0, 6.0], //
+		];
+
+		assert_eq!(m.as_mut().min(), Some(1.0));
+
+		let mut empty: Mat<f64> = Mat::new();
+		assert_eq!(empty.as_mut().min(), None);
+	}
+
+	#[test]
+	fn test_max() {
+		let mut m = mat![
+			[1.0, 5.0, 3.0],
+			[4.0, 2.0, 9.0],
+			[7.0, 8.0, 6.0], //
+		];
+
+		assert_eq!(m.as_mut().max(), Some(9.0));
+
+		let mut empty: Mat<f64> = Mat::new();
+		assert_eq!(empty.as_mut().max(), None);
 	}
 }

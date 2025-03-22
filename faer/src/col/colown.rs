@@ -575,3 +575,41 @@ impl<'short, T, Rows: Shape> ReborrowMut<'short> for Col<T, Rows> {
 		self.as_mut()
 	}
 }
+
+impl<T, Rows: Shape> Col<T, Rows>
+where
+	T: RealField,
+{
+	/// Returns the maximum element in the column, or `None` if the column is empty
+	pub fn max(&self) -> Option<T> {
+		self.as_dyn_rows().as_dyn_stride().internal_max()
+	}
+
+	/// Returns the minimum element in the column, or `None` if the column is empty
+	pub fn min(&self) -> Option<T> {
+		self.as_dyn_rows().as_dyn_stride().internal_min()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::Col;
+
+	#[test]
+	fn test_col_min() {
+		let col: Col<f64> = Col::from_fn(5, |x| (x + 1) as f64);
+		assert_eq!(col.min(), Some(1.0));
+
+		let empty: Col<f64> = Col::from_fn(0, |_| 0.0);
+		assert_eq!(empty.min(), None);
+	}
+
+	#[test]
+	fn test_col_max() {
+		let col: Col<f64> = Col::from_fn(5, |x| (x + 1) as f64);
+		assert_eq!(col.max(), Some(5.0));
+
+		let empty: Col<f64> = Col::from_fn(0, |_| 0.0);
+		assert_eq!(empty.max(), None);
+	}
+}

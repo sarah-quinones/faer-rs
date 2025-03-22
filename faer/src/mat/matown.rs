@@ -1439,6 +1439,21 @@ impl<T, Rows: Shape> Mat<T, Rows, usize> {
 	}
 }
 
+impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols>
+where
+	T: RealField,
+{
+	/// see [MatRef::min]
+	pub fn min(self) -> Option<T> {
+		MatRef::internal_min(self.as_dyn())
+	}
+
+	/// see [MatRef::min]
+	pub fn max(self) -> Option<T> {
+		MatRef::internal_max(self.as_dyn())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::{assert, mat};
@@ -1565,5 +1580,35 @@ mod tests {
 		let col = col![4.0, 4.0, 4.0, 4.0];
 
 		m.push_col(col.as_ref());
+	}
+
+	#[test]
+	fn test_min() {
+		use crate::Mat;
+		let m = mat![
+			[1.0, 5.0, 3.0],
+			[4.0, 2.0, 9.0],
+			[7.0, 8.0, 6.0], //
+		];
+
+		assert_eq!(m.min(), Some(1.0));
+
+		let empty: Mat<f64> = Mat::new();
+		assert_eq!(empty.min(), None);
+	}
+
+	#[test]
+	fn test_max() {
+		use crate::Mat;
+		let m = mat![
+			[1.0, 5.0, 3.0],
+			[4.0, 2.0, 9.0],
+			[7.0, 8.0, 6.0], //
+		];
+
+		assert_eq!(m.max(), Some(9.0));
+
+		let empty: Mat<f64> = Mat::new();
+		assert_eq!(empty.max(), None);
 	}
 }

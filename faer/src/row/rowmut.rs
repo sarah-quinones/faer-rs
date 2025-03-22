@@ -636,3 +636,45 @@ impl<T, Cols: Shape, RStride: Stride> IndexMut<Idx<Cols>> for RowMut<'_, T, Cols
 		self.rb_mut().at_mut(col)
 	}
 }
+
+impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride>
+where
+	T: RealField,
+{
+	/// Returns the maximum element in the row, or `None` if the row is empty
+	pub fn max(&self) -> Option<T> {
+		self.rb().as_dyn_cols().as_dyn_stride().internal_max()
+	}
+
+	/// Returns the minimum element in the row, or `None` if the row is empty
+	pub fn min(&self) -> Option<T> {
+		self.rb().as_dyn_cols().as_dyn_stride().internal_min()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::Row;
+
+	#[test]
+	fn test_row_min() {
+		let row: Row<f64> = Row::from_fn(5, |x| (x + 1) as f64);
+		let rowmut = row.as_ref();
+		assert_eq!(rowmut.min(), Some(1.0));
+
+		let empty: Row<f64> = Row::from_fn(0, |_| 0.0);
+		let emptymut = empty.as_ref();
+		assert_eq!(emptymut.min(), None);
+	}
+
+	#[test]
+	fn test_row_max() {
+		let row: Row<f64> = Row::from_fn(5, |x| (x + 1) as f64);
+		let rowmut = row.as_ref();
+		assert_eq!(rowmut.max(), Some(5.0));
+
+		let empty: Row<f64> = Row::from_fn(0, |_| 0.0);
+		let emptymut = empty.as_ref();
+		assert_eq!(emptymut.max(), None);
+	}
+}

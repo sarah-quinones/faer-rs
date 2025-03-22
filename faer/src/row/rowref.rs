@@ -451,3 +451,84 @@ impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug for Row
 		imp(f, self.as_col_shape(N).as_dyn_stride())
 	}
 }
+
+impl<'a, T> RowRef<'a, T, usize, isize>
+where
+	T: RealField,
+{
+	/// Returns the maximum element in the row, or `None` if the row is empty
+	pub(crate) fn internal_max(self) -> Option<T> {
+		if self.nrows().unbound() == 0 || self.ncols() == 0 {
+			return None;
+		}
+
+		let mut max_val = self.get(0);
+
+		self.iter().for_each(|val| {
+			if val > max_val {
+				max_val = val;
+			}
+		});
+
+		Some((*max_val).clone())
+	}
+
+	/// Returns the minimum element in the row, or `None` if the row is empty
+	pub(crate) fn internal_min(self) -> Option<T> {
+		if self.nrows().unbound() == 0 || self.ncols() == 0 {
+			return None;
+		}
+
+		let mut min_val = self.get(0);
+
+		self.iter().for_each(|val| {
+			if val < min_val {
+				min_val = val;
+			}
+		});
+
+		Some((*min_val).clone())
+	}
+}
+
+impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride>
+where
+	T: RealField,
+{
+	/// Returns the maximum element in the row, or `None` if the row is empty
+	pub fn max(&self) -> Option<T> {
+		self.as_dyn_cols().as_dyn_stride().internal_max()
+	}
+
+	/// Returns the minimum element in the row, or `None` if the row is empty
+	pub fn min(&self) -> Option<T> {
+		self.as_dyn_cols().as_dyn_stride().internal_min()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::Row;
+
+	#[test]
+	fn test_row_min() {
+		let row: Row<f64> = Row::from_fn(5, |x| (x + 1) as f64);
+		let rowref = row.as_ref();
+		assert_eq!(rowref.min(), Some(1.0));
+
+		let empty: Row<f64> = Row::from_fn(0, |_| 0.0);
+		let emptyref = empty.as_ref();
+		assert_eq!(emptyref.min(), None);
+	}
+
+	#[test]
+	fn test_row_max() {
+		let row: Row<f64> = Row::from_fn(5, |x| (x + 1) as f64);
+		let rowref = row.as_ref();
+		assert_eq!(rowref.max(), Some(5.0));
+
+		let empty: Row<f64> = Row::from_fn(0, |_| 0.0);
+		let emptyref = empty.as_ref();
+		assert_eq!(emptyref.max(), None);
+	}
+}
