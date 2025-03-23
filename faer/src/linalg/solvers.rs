@@ -2708,4 +2708,37 @@ mod tests {
 		assert!(&A * evd.U() ~ evd.U() * evd.S());
 		assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
 	}
+
+	#[test]
+	fn test_svd_solver_for_rectangular_matrix() {
+		#[rustfmt::skip]
+    	let A = crate::mat![
+    	    [4.,   5.,   7.],
+    	    [8.,   8.,   2.],
+    	    [4.,   0.,   9.],
+    	    [2.,   6.,   2.],
+    	    [0.,   6.,   0.],
+    	];
+		#[rustfmt::skip]
+    	let B = crate::mat![
+        	[105.,    49.],
+        	[ 98.,    54.],
+        	[113.,    35.],
+        	[ 46.,    34.],
+        	[ 12.,    24.],
+     	];
+
+		#[rustfmt::skip]
+	    let X_true= crate::mat![
+	      [8.,   2.],
+	      [2.,   4.],
+	      [9.,   3.],
+	    ];
+
+		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (A.nrows() as f64));
+		let svd = A.svd().unwrap();
+		let mut X = B.cloned();
+		svd.solve_lstsq_in_place_with_conj(crate::Conj::No, X.as_mat_mut());
+		assert!(X.get(..X_true.nrows(),..) ~ X_true);
+	}
 }
