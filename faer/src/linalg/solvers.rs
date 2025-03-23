@@ -2376,7 +2376,6 @@ impl<T: ComplexField> SolveLstsqCore<T> for Svd<T> {
 
 		let k = rhs.ncols();
 
-		let mut rhs = rhs;
 		let mut tmp = Mat::zeros(size, k);
 
 		linalg::matmul::matmul_with_conj(
@@ -2397,7 +2396,7 @@ impl<T: ComplexField> SolveLstsqCore<T> for Svd<T> {
 			}
 		}
 
-		linalg::matmul::matmul_with_conj(rhs.as_mut(), Accum::Replace, V, conj, tmp.as_ref(), Conj::No, one(), par);
+		linalg::matmul::matmul_with_conj(rhs.get_mut(..size, ..), Accum::Replace, V, conj, tmp.as_ref(), Conj::No, one(), par);
 	}
 }
 
