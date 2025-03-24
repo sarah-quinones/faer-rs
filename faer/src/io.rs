@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
 /// npy format conversions
+#[cfg(feature = "npy")]
 pub mod npy {
 	use super::*;
 
