@@ -64,9 +64,37 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: nostd
-        run:
-          cd ./faer-no-std-test &&
+        run: |
+          cd ./faer-no-std-test
           cargo run --profile nostd
+
+  wasm:
+    name: wasm-${{ matrix.toolchain }}-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          - stable
+        os:
+          - ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@master
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: wasm
+        run: |
+          cd ./faer-wasm-test
+          cargo test
 
   testing:
     name: testing-${{ matrix.toolchain }}-${{ matrix.os }}
