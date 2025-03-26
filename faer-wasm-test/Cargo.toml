@@ -1,0 +1,26 @@
+[package]
+name = "faer-wasm-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+# Ignore the parent workspace.
+[workspace]
+
+[dependencies]
+faer = { path = "../faer", default-features = false }
+libc = { version = "0.2.155", default-features = false }
+dlmalloc = { version = "0.2.8", features = ["global"] }
+
+[dev-dependencies]
+wasmtime = { version = "31.0.0", default-features = false, features = ["std", "cranelift", "runtime"] }
+
+[profile.dev]
+lto = true
+strip = true
+opt-level = 'z'
+codegen-units = 1
+panic = "abort"
