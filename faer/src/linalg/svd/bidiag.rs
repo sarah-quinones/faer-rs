@@ -455,14 +455,14 @@ mod tests {
             let mut A = A.clone();
             let mut A = A.as_mut();
 
-            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                 UV.rb().get(.., ..size),
                 Hl.rb(),
                 Conj::Yes,
                 A.rb_mut(),
                 Par::Seq,
                 MemStack::new(&mut MemBuffer::new(
-                    householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, 1, m),
+                    apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, 1, m),
                 )),
             );
 
@@ -470,14 +470,14 @@ mod tests {
             let A1 = A.rb_mut().get_mut(.., 1..size);
             let Hr = Hr.as_ref();
 
-            householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+            apply_block_householder_sequence_on_the_right_in_place_with_conj(
                 V.transpose(),
                 Hr.as_ref(),
                 Conj::Yes,
                 A1,
                 Par::Seq,
                 MemStack::new(&mut MemBuffer::new(
-                    householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<f64>(n - 1, 1, m),
+                    apply_block_householder_sequence_on_the_right_in_place_scratch::<f64>(n - 1, 1, m),
                 )),
             );
 
@@ -526,14 +526,14 @@ mod tests {
             let mut A = A.clone();
             let mut A = A.as_mut();
 
-            householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                 UV.rb().subcols(0, size),
                 Hl.rb(),
                 Conj::Yes,
                 A.rb_mut(),
                 Par::Seq,
                 MemStack::new(&mut MemBuffer::new(
-                    householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n - 1, 1, m),
+                    apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n - 1, 1, m),
                 )),
             );
 
@@ -541,14 +541,14 @@ mod tests {
             let A1 = A.rb_mut().get_mut(.., 1..size);
             let Hr = Hr.rb();
 
-            householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+            apply_block_householder_sequence_on_the_right_in_place_with_conj(
                 V.transpose(),
                 Hr,
                 Conj::Yes,
                 A1,
                 Par::Seq,
                 MemStack::new(&mut MemBuffer::new(
-                    householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<c64>(n - 1, 1, m),
+                    apply_block_householder_sequence_on_the_right_in_place_scratch::<c64>(n - 1, 1, m),
                 )),
             );
 
