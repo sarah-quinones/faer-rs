@@ -36,6 +36,19 @@ use crate::linalg::triangular_solve;
 use crate::utils::simd::SimdCtx;
 use crate::utils::thread::join_raw;
 
+/// Householder information
+#[derive(Clone, Debug)]
+pub struct HouseholderInfo<T: ComplexField> {
+	/// The tau value of the householder transformation
+	pub tau: T::Real,
+
+	/// The reciprocal of head with beta added
+	pub head_with_beta_inv: T,
+
+	/// The norm
+	pub norm: T::Real,
+}
+
 /// computes the householder reflection $I - \frac{v v^H}{\tau}$ such that when multiplied by $x$
 /// from the left, the result is $\beta e_0$. $\tau$ and $(\text{head} - \beta)^{-1}$ are returned
 /// and $\tau$ is real-valued. $\beta$ is stored in `head`
@@ -44,7 +57,7 @@ use crate::utils::thread::join_raw;
 /// the vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided)
 #[math]
 #[inline]
-pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_, T>) -> (T, Option<T>) {
+pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_, T>) -> HouseholderInfo<T> {
 	let tail_norm = tail.norm_l2();
 
 	let mut head_norm = abs(*head);
@@ -54,7 +67,11 @@ pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_,
 	}
 
 	if tail_norm < min_positive() {
-		return (infinity(), None);
+		return HouseholderInfo {
+			tau: infinity::<T::Real>(),
+			head_with_beta_inv: infinity(),
+			norm: head_norm,
+		};
 	}
 
 	let one_half = from_f64::<T::Real>(0.5);
@@ -74,7 +91,11 @@ pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_,
 	*head = -signed_norm;
 
 	let tau = one_half * (one::<T::Real>() + abs2(tail_norm * abs(head_with_beta_inv)));
-	(from_real(tau), head_with_beta_inv.into())
+	HouseholderInfo {
+		tau,
+		head_with_beta_inv,
+		norm,
+	}
 }
 
 #[doc(hidden)]

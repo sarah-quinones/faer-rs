@@ -384,9 +384,9 @@ fn aggressive_early_deflation<T: ComplexField>(
 			}
 			let mut head = vv.read(0);
 			let tail = vv.rb_mut().subrows_mut(1, ns - 1);
-			let (tau, _) = make_householder_in_place(&mut head, tail);
+			let HouseholderInfo { tau, .. } = make_householder_in_place(&mut head, tail);
 			vv.write(0, one());
-			let tau = recip(tau);
+			let tau: T = recip(from_real(tau));
 			{
 				let mut tw_slice = tw.rb_mut().submatrix_mut(0, 0, ns, jw);
 				let (mut tmp, _) = unsafe { temp_mat_uninit(jw, 1, stack) };
@@ -736,8 +736,8 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
 	v.write(2, h.read(3, 0));
 	let mut beta = v.read(0);
 	let tail = v.rb_mut().subrows_mut(1, 2);
-	let (tau, _) = make_householder_in_place(&mut beta, tail);
-	v.write(0, recip(tau));
+	let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta, tail);
+	v.write(0, from_real(recip(tau)));
 	if h[(3, 0)] != zero() || h[(3, 1)] != zero() || h[(3, 2)] != zero() {
 		h.write(1, 0, beta);
 		h.write(2, 0, zero());
@@ -749,8 +749,8 @@ fn move_bulge<T: ComplexField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: T
 		lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
 		let mut beta_unused = vt.read(0);
 		let tail = vt.rb_mut().subrows_mut(1, 2);
-		let (tau, _) = make_householder_in_place(&mut beta_unused, tail);
-		vt.write(0, recip(tau));
+		let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta_unused, tail);
+		vt.write(0, from_real(recip(tau)));
 		let vt0 = vt.read(0);
 		let vt1 = vt.read(1);
 		let vt2 = vt.read(2);
@@ -898,8 +898,8 @@ fn introduce_bulges<T: ComplexField>(
 				debug_assert!(v.nrows() == 3);
 				let mut beta = v.read(0);
 				let tail = v.rb_mut().subrows_mut(1, 2);
-				let (tau, _) = make_householder_in_place(&mut beta, tail);
-				v.write(0, recip(tau));
+				let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta, tail);
+				v.write(0, from_real(recip(tau)));
 			} else {
 				let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
 				let s1 = s.read(s.nrows() - 1 - 2 * i_bulge);
@@ -1227,8 +1227,8 @@ fn remove_bulges<T: ComplexField>(
 				let mut h = a.rb_mut().subrows_mut(i_pos, 2).col_mut(i_pos - 1);
 				let mut beta = h.read(0);
 				let tail = h.rb_mut().subrows_mut(1, 1);
-				let (tau, _) = make_householder_in_place(&mut beta, tail);
-				v.write(0, recip(tau));
+				let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta, tail);
+				v.write(0, from_real(recip(tau)));
 				v.write(1, h.read(1));
 				h.write(0, beta);
 				h.write(1, zero());

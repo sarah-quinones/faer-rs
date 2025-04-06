@@ -437,10 +437,10 @@ pub fn tridiag_in_place<T: ComplexField>(
 				let (mut a11, mut x2) = A21.rb_mut().split_at_row_mut(1);
 				let a11 = &mut a11[0];
 
-				let (tau, _) = householder::make_householder_in_place(a11, x2.rb_mut());
+				let householder::HouseholderInfo { tau, .. } = householder::make_householder_in_place(a11, x2.rb_mut());
 
 				tau_inv = recip(real(tau));
-				H[k] = tau;
+				H[k] = from_real(tau);
 
 				let mut z2 = z.rb_mut().split_at_row_mut(k + 2).1;
 				let mut w2 = w.rb_mut().split_at_row_mut(k + 2).1;

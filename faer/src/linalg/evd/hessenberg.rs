@@ -1,8 +1,9 @@
 use crate::assert;
 use crate::internal_prelude::*;
+use linalg::householder::{self, HouseholderInfo};
 use linalg::matmul::triangular::BlockStructure;
 use linalg::matmul::{self, dot, matmul};
-use linalg::{householder, triangular_solve};
+use linalg::triangular_solve;
 
 /// hessenberg factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
@@ -358,12 +359,12 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 				let (mut A11, mut A21) = A21.rb_mut().split_at_row_mut(1);
 				let A11 = &mut A11[0];
 
-				let (tau, _) = householder::make_householder_in_place(A11, A21.rb_mut());
-				tau_inv = recip(real(tau));
+				let HouseholderInfo { tau, .. } = householder::make_householder_in_place(A11, A21.rb_mut());
+				tau_inv = recip(tau);
 				beta = copy(*A11);
 				*A11 = one();
 
-				H[k] = tau;
+				H[k] = from_real(tau);
 			}
 
 			let x2 = A21.rb();
@@ -525,11 +526,11 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 			let (mut A11, mut A21) = A21.rb_mut().split_at_row_mut(1);
 			let A11 = &mut A11[0];
 
-			let (tau, _) = householder::make_householder_in_place(A11, A21.rb_mut());
+			let HouseholderInfo { tau, .. } = householder::make_householder_in_place(A11, A21.rb_mut());
 
 			beta[k] = copy(A11);
 			*A11 = one();
-			*T11 = tau;
+			*T11 = from_real(tau);
 		} else {
 			*T11 = infinity();
 		}

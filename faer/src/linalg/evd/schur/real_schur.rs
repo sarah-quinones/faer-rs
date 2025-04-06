@@ -404,7 +404,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		b.write(2, 1, a[(j2, j2)] - a[(j0, j0)]);
 		let mut v1 = b.rb_mut().col_mut(0);
 		let (head, tail) = v1.rb_mut().split_at_row_mut(1);
-		let (tau1, _) = make_householder_in_place(head.at_mut(0), tail);
+		let HouseholderInfo { tau: tau1, .. } = make_householder_in_place(head.at_mut(0), tail);
 		let tau1 = recip(tau1);
 		let v11 = copy(b[(1, 0)]);
 		let v12 = copy(b[(2, 0)]);
@@ -414,7 +414,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		b.write(2, 1, b[(2, 1)] - ((sum * tau1) * v12));
 		let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2);
 		let (head, tail) = v2.rb_mut().split_at_row_mut(1);
-		let (tau2, _) = make_householder_in_place(head.at_mut(0), tail);
+		let HouseholderInfo { tau: tau2, .. } = make_householder_in_place(head.at_mut(0), tail);
 		let tau2 = recip(tau2);
 		let v21 = copy(v2[1]);
 		for j in j0..n {
@@ -459,7 +459,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		b.write(2, 1, a[(j0, j0)] - a[(j2, j2)]);
 		let mut v1 = b.rb_mut().col_mut(0);
 		let (head, tail) = v1.rb_mut().split_at_row_mut(1);
-		let (tau1, _) = make_householder_in_place(head.at_mut(0), tail);
+		let HouseholderInfo { tau: tau1, .. } = make_householder_in_place(head.at_mut(0), tail);
 		let tau1 = recip(tau1);
 		let v11 = copy(v1[1]);
 		let v12 = copy(v1[2]);
@@ -469,7 +469,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		b.write(2, 1, b[(2, 1)] - sum * tau1 * v12);
 		let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2);
 		let (head, tail) = v2.rb_mut().split_at_row_mut(1);
-		let (tau2, _) = make_householder_in_place(head.at_mut(0), tail);
+		let HouseholderInfo { tau: tau2, .. } = make_householder_in_place(head.at_mut(0), tail);
 		let tau2 = recip(tau2);
 		let v21 = copy(v2[1]);
 		for j in j0..n {
@@ -523,7 +523,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		v.write(3, 1, -scale);
 		let mut v1 = v.rb_mut().col_mut(0);
 		let (head, tail) = v1.rb_mut().split_at_row_mut(1);
-		let (tau1, _) = make_householder_in_place(head.at_mut(0), tail);
+		let HouseholderInfo { tau: tau1, .. } = make_householder_in_place(head.at_mut(0), tail);
 		let tau1 = recip(tau1);
 		let v11 = copy(v1[1]);
 		let v12 = copy(v1[2]);
@@ -535,7 +535,7 @@ pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: 
 		v.write(3, 1, v[(3, 1)] - sum * tau1 * v13);
 		let mut v2 = v.rb_mut().col_mut(1).subrows_mut(1, 3);
 		let (head, tail) = v2.rb_mut().split_at_row_mut(1);
-		let (tau2, _) = make_householder_in_place(head.at_mut(0), tail);
+		let HouseholderInfo { tau: tau2, .. } = make_householder_in_place(head.at_mut(0), tail);
 		let tau2 = recip(tau2);
 		let v21 = copy(v2[1]);
 		let v22 = copy(v2[2]);
@@ -838,7 +838,7 @@ fn aggressive_early_deflation<T: RealField>(
 			}
 			let mut head = copy(vv[0]);
 			let tail = vv.rb_mut().subrows_mut(1, ns - 1);
-			let (tau, _) = make_householder_in_place(&mut head, tail);
+			let HouseholderInfo { tau, .. } = make_householder_in_place(&mut head, tail);
 			let beta = copy(head);
 			vv.write(0, one::<T>());
 			let tau = recip(tau);
@@ -960,7 +960,7 @@ fn move_bulge<T: RealField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: (T, 
 	v.write(2, copy(h[(3, 0)]));
 	let mut beta = copy(v[0]);
 	let tail = v.rb_mut().subrows_mut(1, 2);
-	let (tau, _) = make_householder_in_place(&mut beta, tail);
+	let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta, tail);
 	v.write(0, recip(tau));
 	if h[(3, 0)] != zero() || h[(3, 1)] != zero() || h[(3, 2)] != zero() {
 		h.write(1, 0, beta);
@@ -973,7 +973,7 @@ fn move_bulge<T: RealField>(mut h: MatMut<'_, T>, mut v: ColMut<'_, T>, s1: (T, 
 		lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
 		let mut beta_unused = copy(vt[0]);
 		let tail = vt.rb_mut().subrows_mut(1, 2);
-		let (tau, _) = make_householder_in_place(&mut beta_unused, tail);
+		let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta_unused, tail);
 		vt.write(0, recip(tau));
 		let vt0 = copy(vt[0]);
 		let vt1 = copy(vt[1]);
@@ -1128,7 +1128,7 @@ fn introduce_bulges<T: RealField>(
 				debug_assert!(v.nrows() == 3);
 				let mut head = copy(v[0]);
 				let tail = v.rb_mut().subrows_mut(1, 2);
-				let (tau, _) = make_householder_in_place(&mut head, tail);
+				let HouseholderInfo { tau, .. } = make_householder_in_place(&mut head, tail);
 				v.write(0, recip(tau));
 			} else {
 				let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
@@ -1476,7 +1476,7 @@ fn remove_bulges<T: RealField>(
 					let mut h = a.rb_mut().subrows_mut(i_pos, 2).col_mut(i_pos - 1);
 					let mut beta = copy(h[0]);
 					let tail = h.rb_mut().subrows_mut(1, 1);
-					let (tau, _) = make_householder_in_place(&mut beta, tail);
+					let HouseholderInfo { tau, .. } = make_householder_in_place(&mut beta, tail);
 					v.write(0, recip(tau));
 					v.write(1, copy(h[1]));
 					h.write(0, beta);
@@ -2039,7 +2039,7 @@ pub fn lahqr<T: RealField>(
 				let h = a.rb().submatrix(i, i, 3, 3);
 				lahqr_shiftcolumn(h, v.rb_mut(), (copy(s1.0), copy(s1.1)), (copy(s2.0), copy(s2.1)));
 				let mut head = copy(v[0]);
-				let (tau, _) = make_householder_in_place(&mut head, v.rb_mut().subrows_mut(1, 2));
+				let HouseholderInfo { tau, .. } = make_householder_in_place(&mut head, v.rb_mut().subrows_mut(1, 2));
 				let tau = recip(tau);
 				let v0 = tau;
 				let v1 = copy(v[1]);
@@ -2062,7 +2062,7 @@ pub fn lahqr<T: RealField>(
 				lahqr_shiftcolumn(h, x.rb_mut(), (copy(s1.0), copy(s1.1)), (copy(s2.0), copy(s2.1)));
 				let mut beta = copy(x[0]);
 				let tail = x.rb_mut().subrows_mut(1, nr - 1);
-				(t1, _) = make_householder_in_place(&mut beta, tail);
+				HouseholderInfo { tau: t1, .. } = make_householder_in_place(&mut beta, tail);
 				v.write(0, beta);
 				t1 = recip(t1);
 				if i > istart {
@@ -2076,7 +2076,7 @@ pub fn lahqr<T: RealField>(
 				}
 				let mut beta = copy(v[0]);
 				let tail = v.rb_mut().subrows_mut(1, nr - 1);
-				(t1, _) = make_householder_in_place(&mut beta, tail);
+				HouseholderInfo { tau: t1, .. } = make_householder_in_place(&mut beta, tail);
 				t1 = recip(t1);
 				v.write(0, copy(beta));
 				a.write(i, i - 1, copy(beta));

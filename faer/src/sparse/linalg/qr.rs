@@ -1719,8 +1719,8 @@ pub mod simplicial {
 
 			let (mut head, tail) = h_col.rb_mut().split_at_row_mut(1);
 			let head = &mut head[0];
-			let (tau, _) = crate::linalg::householder::make_householder_in_place(head, tail);
-			tau_val[j] = tau;
+			let crate::linalg::householder::HouseholderInfo { tau, .. } = crate::linalg::householder::make_householder_in_place(head, tail);
+			tau_val[j] = from_real(tau);
 			r_val[r_pos] = copy(*head);
 			*head = one();
 

@@ -1,6 +1,6 @@
 use crate::assert;
 use crate::internal_prelude::*;
-use linalg::householder;
+use linalg::householder::*;
 use linalg::matmul::{dot, matmul};
 
 /// computes the size and alignment of the workspace required to compute a matrix's
@@ -104,9 +104,9 @@ pub fn bidiag_in_place<T: ComplexField>(
 				z!(A12.rb_mut(), y2.rb(), vp.rb()).for_each(|uz!(a, y, v)| *a = *a - up0 * *y - z1 * *v);
 			}
 
-			let (tl, _) = householder::make_householder_in_place(a11, A21.rb_mut());
-			let tl_inv = recip(real(tl));
-			Hl[k] = tl;
+			let HouseholderInfo { tau: tl, .. } = make_householder_in_place(a11, A21.rb_mut());
+			let tl_inv = recip(tl);
+			Hl[k] = from_real(tl);
 
 			if (m - k - 1) * (n - k - 1) < params.par_threshold {
 				par = Par::Seq;
@@ -160,15 +160,19 @@ pub fn bidiag_in_place<T: ComplexField>(
 
 			let a12_a = &mut A12_a[0];
 
-			let (tr, m) = householder::make_householder_in_place(a12_a, A12_b.rb_mut().transpose_mut());
-			let tr_inv = recip(real(tr));
-			Hr[k] = tr;
+			let HouseholderInfo {
+				tau: tr,
+				head_with_beta_inv: m,
+				..
+			} = make_householder_in_place(a12_a, A12_b.rb_mut().transpose_mut());
+			let tr_inv = recip(tr);
+			Hr[k] = from_real(tr);
 			let beta = copy(*a12_a);
 			*a12_a = mul_real(*a12_a, norm);
 
 			let b = *y2_a + dot::inner_prod(y2_b, Conj::No, A12_b.rb().transpose(), Conj::Yes);
 
-			if let Some(m) = m {
+			if m != infinity() {
 				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a)| {
 					let w = *z - *a * conj(beta);
 					let w = w * conj(m);
@@ -193,7 +197,7 @@ pub fn bidiag_in_place<T: ComplexField>(
 			Hl[(k, k)] = copy(Hl[(0, k)]);
 		}
 
-		householder::upgrade_householder_factor(Hl.rb_mut(), A.rb().get(j.., j..j + bl), bl, 1, par);
+		upgrade_householder_factor(Hl.rb_mut(), A.rb().get(j.., j..j + bl), bl, 1, par);
 
 		j += bl;
 	}
@@ -214,7 +218,7 @@ pub fn bidiag_in_place<T: ComplexField>(
 				Hr[(k, k)] = copy(Hr[(0, k)]);
 			}
 
-			householder::upgrade_householder_factor(Hr.rb_mut(), A.transpose().get(j.., j..j + br), br, 1, par);
+			upgrade_householder_factor(Hr.rb_mut(), A.transpose().get(j.., j..j + br), br, 1, par);
 			j += br;
 		}
 	}
@@ -451,14 +455,14 @@ mod tests {
 			let mut A = A.clone();
 			let mut A = A.as_mut();
 
-			householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+			apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 				UV.rb().get(.., ..size),
 				Hl.rb(),
 				Conj::Yes,
 				A.rb_mut(),
 				Par::Seq,
 				MemStack::new(&mut MemBuffer::new(
-					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, 1, m),
+					apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(n - 1, 1, m),
 				)),
 			);
 
@@ -466,14 +470,14 @@ mod tests {
 			let A1 = A.rb_mut().get_mut(.., 1..size);
 			let Hr = Hr.as_ref();
 
-			householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+			apply_block_householder_sequence_on_the_right_in_place_with_conj(
 				V.transpose(),
 				Hr.as_ref(),
 				Conj::Yes,
 				A1,
 				Par::Seq,
 				MemStack::new(&mut MemBuffer::new(
-					householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<f64>(n - 1, 1, m),
+					apply_block_householder_sequence_on_the_right_in_place_scratch::<f64>(n - 1, 1, m),
 				)),
 			);
 
@@ -522,14 +526,14 @@ mod tests {
 			let mut A = A.clone();
 			let mut A = A.as_mut();
 
-			householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+			apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 				UV.rb().subcols(0, size),
 				Hl.rb(),
 				Conj::Yes,
 				A.rb_mut(),
 				Par::Seq,
 				MemStack::new(&mut MemBuffer::new(
-					householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n - 1, 1, m),
+					apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<c64>(n - 1, 1, m),
 				)),
 			);
 
@@ -537,14 +541,14 @@ mod tests {
 			let A1 = A.rb_mut().get_mut(.., 1..size);
 			let Hr = Hr.rb();
 
-			householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
+			apply_block_householder_sequence_on_the_right_in_place_with_conj(
 				V.transpose(),
 				Hr,
 				Conj::Yes,
 				A1,
 				Par::Seq,
 				MemStack::new(&mut MemBuffer::new(
-					householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<c64>(n - 1, 1, m),
+					apply_block_householder_sequence_on_the_right_in_place_scratch::<c64>(n - 1, 1, m),
 				)),
 			);
 

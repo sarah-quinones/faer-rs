@@ -12,7 +12,7 @@ use super::EvdError;
 use crate::internal_prelude::*;
 use crate::perm::swap_cols_idx;
 use crate::utils::thread::join_raw;
-use linalg::householder;
+use linalg::householder::*;
 use linalg::jacobi::JacobiRotation;
 use linalg::matmul::{dot, matmul};
 use linalg::svd::bidiag_svd::secular_eq_root_finder;
@@ -568,7 +568,7 @@ fn divide_and_conquer_recurse<T: RealField>(
 
 			let (tail, head) = householder.rb_mut().split_at_row_mut(run_len - 1);
 			let head = head.at_mut(0);
-			let (tau, _) = householder::make_householder_in_place(head, tail.as_dyn_stride_mut().reverse_rows_mut());
+			let HouseholderInfo { tau, .. } = make_householder_in_place(head, tail.as_dyn_stride_mut().reverse_rows_mut());
 			permuted_z.fill(zero());
 			(permuted_z[run_len - 1] = copy(head));
 			*head = tau;

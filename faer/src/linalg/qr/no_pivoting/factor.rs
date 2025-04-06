@@ -1,6 +1,6 @@
 use crate::assert;
 use crate::internal_prelude::*;
-use linalg::householder;
+use linalg::householder::{self, HouseholderInfo};
 
 #[math]
 fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>) {
@@ -16,10 +16,10 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>) {
 		let mut A01 = A01.rb_mut().row_mut(k);
 		let mut A10 = A10.rb_mut().col_mut(k);
 
-		let (tau, _) = householder::make_householder_in_place(A00, A10.rb_mut());
+		let HouseholderInfo { tau, .. } = householder::make_householder_in_place(A00, A10.rb_mut());
 
-		let tau_inv = recip(real(tau));
-		H[k] = tau;
+		let tau_inv = recip(tau);
+		H[k] = from_real(tau);
 
 		for (head, mut tail) in core::iter::zip(A01.rb_mut().iter_mut(), A11.rb_mut().col_iter_mut()) {
 			let dot = *head + linalg::matmul::dot::inner_prod(A10.rb().transpose(), Conj::Yes, tail.rb(), Conj::No);
