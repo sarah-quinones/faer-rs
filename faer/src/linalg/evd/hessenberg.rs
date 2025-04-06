@@ -1,11 +1,9 @@
 use crate::assert;
 use crate::internal_prelude::*;
+use linalg::householder::{self, HouseholderInfo};
 use linalg::matmul::triangular::BlockStructure;
 use linalg::matmul::{self, dot, matmul};
-use linalg::{
-	householder::{self, HouseholderInfo},
-	triangular_solve,
-};
+use linalg::triangular_solve;
 
 /// hessenberg factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
