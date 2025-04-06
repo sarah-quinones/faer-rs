@@ -1,7 +1,7 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use crate::perm::swap_cols_idx;
-use linalg::householder;
+use linalg::householder::{self, HouseholderInfo};
 use pulp::Simd;
 
 pub use super::super::no_pivoting::factor::recommended_blocksize;
@@ -378,9 +378,9 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 					});
 				}
 
-				let (tau, _) = householder::make_householder_in_place(B00, B10.rb_mut());
-				let tau_inv = recip(real(tau));
-				H[k] = tau;
+				let HouseholderInfo { tau, .. } = householder::make_householder_in_place(B00, B10.rb_mut());
+				let tau_inv = recip(tau);
+				H[k] = from_real(tau);
 
 				if k + 1 == size {
 					if delayed_update {
