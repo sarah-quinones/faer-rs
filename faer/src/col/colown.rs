@@ -112,6 +112,72 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	}
 }
 
+impl<T> Col<T> {
+	fn from_iter_imp<I: Iterator<Item = T>>(iter: I) -> Self {
+		let mut iter = iter;
+		let (min, max) = iter.size_hint();
+
+		if max == Some(min) {
+			// optimization for exact len iterators
+
+			let cap = min;
+			let mut col = Mat::<T>::with_capacity(cap, 1);
+
+			let mut count = 0;
+			iter.take(cap).for_each(|item| unsafe {
+				col.as_ptr_mut().add(count).write(item);
+				count += 1;
+
+				if const { core::mem::needs_drop::<T>() } {
+					col.set_dims(count, 1);
+				}
+			});
+			unsafe {
+				col.set_dims(count, 1);
+			}
+			assert_eq!(count, cap);
+
+			Col { column: col }
+		} else {
+			let mut cap = Ord::max(4, min);
+			let mut col = Mat::<T>::with_capacity(cap, 1);
+
+			let mut count = 0;
+			loop {
+				let expected = cap;
+				iter.by_ref().take(cap - count).for_each(|item| unsafe {
+					col.as_ptr_mut().add(count).write(item);
+					count += 1;
+					if const { core::mem::needs_drop::<T>() } {
+						col.set_dims(count, 1);
+					}
+				});
+				unsafe {
+					col.set_dims(count, 1);
+				}
+
+				if count < expected {
+					break;
+				}
+				if let Some(item) = iter.next() {
+					cap = cap.checked_mul(2).unwrap();
+					col.reserve(cap, 1);
+
+					unsafe {
+						col.as_ptr_mut().add(count).write(item);
+						count += 1;
+						col.set_dims(count, 1);
+					}
+				} else {
+					break;
+				}
+			}
+
+			Col { column: col }
+		}
+	}
+}
+
 impl<T, Rows: Shape> Col<T, Rows> {
 	/// returns the number of rows of the column
 	#[inline]
