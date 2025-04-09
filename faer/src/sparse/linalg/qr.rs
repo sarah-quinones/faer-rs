@@ -696,26 +696,23 @@ pub mod supernodal {
 			self.tau_val
 		}
 
-		/// solves the equation $A x = \text{rhs}$ in the sense of least squares, implicitly
-		/// conjugating $A$ if needed
+		/// Applies $Q^{\top}$ to the rhs in place, implicitly conjugating $Q$ if needed
 		///
 		/// `work` is a temporary workspace with the same dimensions as `rhs`
-		#[track_caller]
 		#[math]
-		pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>, stack: &mut MemStack)
+		pub fn apply_qt_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>, stack: &mut MemStack)
 		where
 			T: ComplexField,
 		{
 			let L_symbolic = self.symbolic().R_adjoint();
 			let H_symbolic = self.symbolic().householder();
 			let n_supernodes = L_symbolic.n_supernodes();
+			let mut stack = stack;
 
 			assert!(rhs.nrows() == self.symbolic().householder().nrows);
 
 			let mut x = rhs;
 			let k = x.ncols();
-
-			let mut stack = stack;
 			let mut tmp = work;
 			tmp.fill(zero());
 
@@ -796,6 +793,28 @@ pub mod supernodal {
 			let n = L_symbolic.nrows();
 			x.rb_mut().subrows_mut(0, n).copy_from(tmp.rb().subrows(0, n));
 			x.rb_mut().subrows_mut(n, m - n).fill(zero());
+		}
+
+		/// solves the equation $A x = \text{rhs}$ in the sense of least squares, implicitly
+		/// conjugating $A$ if needed
+		///
+		/// `work` is a temporary workspace with the same dimensions as `rhs`
+		#[track_caller]
+		#[math]
+		pub fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>, stack: &mut MemStack)
+		where
+			T: ComplexField,
+		{
+			let mut work = work;
+			let mut rhs = rhs;
+			self.apply_qt_in_place_with_conj(conj, rhs.rb_mut(), par, work.rb_mut(), stack);
+
+			let L_symbolic = self.symbolic().R_adjoint();
+			let n_supernodes = L_symbolic.n_supernodes();
+
+			let mut tmp = work;
+			let mut x = rhs;
+			let k = x.ncols();
 
 			// x <- R^-1 x = L^-T x
 			{
@@ -1450,13 +1469,12 @@ pub mod simplicial {
 			self.tau_val
 		}
 
-		/// solves the equation $A x = \text{rhs}$ in the sense of least squares, implicitly
-		/// conjugating $A$ if needed
+		/// Applies $Q^{\top}$ to the input matrix `rhs`, implicitly conjugating the $Q$
+		/// matrix if needed
 		///
 		/// `work` is a temporary workspace with the same dimensions as `rhs`.
-		#[track_caller]
 		#[math]
-		pub fn solve_in_place_with_conj(&self, conj_qr: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>)
+		pub fn apply_qt_in_place_with_conj(&self, conj_qr: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>)
 		where
 			T: ComplexField,
 		{
@@ -1467,10 +1485,6 @@ pub mod simplicial {
 			let m = self.symbolic.nrows;
 			let n = self.symbolic.ncols;
 
-			let r = SparseColMatRef::<'_, I, T>::new(
-				unsafe { SymbolicSparseColMatRef::new_unchecked(n, n, self.r_col_ptr, None, self.r_row_idx) },
-				self.r_val,
-			);
 			let h = SparseColMatRef::<'_, I, T>::new(
 				unsafe { SymbolicSparseColMatRef::new_unchecked(m, n, self.householder_col_ptr, None, self.householder_row_idx) },
 				self.householder_val,
@@ -1513,6 +1527,31 @@ pub mod simplicial {
 			}
 			x.rb_mut().subrows_mut(0, n).copy_from(tmp.rb().subrows(0, n));
 			x.rb_mut().subrows_mut(n, m - n).fill(zero());
+		}
+
+		/// solves the equation $A x = \text{rhs}$ in the sense of least squares, implicitly
+		/// conjugating $A$ if needed
+		///
+		/// `work` is a temporary workspace with the same dimensions as `rhs`.
+		#[track_caller]
+		#[math]
+		pub fn solve_in_place_with_conj(&self, conj_qr: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>)
+		where
+			T: ComplexField,
+		{
+			let mut work = work;
+			let mut rhs = rhs;
+			self.apply_qt_in_place_with_conj(conj_qr, rhs.rb_mut(), par, work.rb_mut());
+
+			let _ = par;
+			assert!(rhs.nrows() == self.symbolic.nrows);
+			let mut x = rhs;
+
+			let n = self.symbolic.ncols;
+			let r = SparseColMatRef::<'_, I, T>::new(
+				unsafe { SymbolicSparseColMatRef::new_unchecked(n, n, self.r_col_ptr, None, self.r_row_idx) },
+				self.r_val,
+			);
 
 			linalg_sp::triangular_solve::solve_upper_triangular_in_place(r, conj_qr, x.rb_mut().subrows_mut(0, n), par);
 		}
