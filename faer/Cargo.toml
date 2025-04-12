@@ -36,7 +36,7 @@ gemm = { version = "0.18.2", default-features = false }
 nano-gemm = { version = "0.1.2", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-private-gemm-x86 = { version = "0.1.6", default-features = false, optional = true }
+private-gemm-x86 = { version = "0.1.7", default-features = false, optional = true }
 
 [features]
 default = [
