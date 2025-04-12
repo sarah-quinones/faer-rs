@@ -1,10 +1,12 @@
 #![allow(non_snake_case, non_camel_case_types, unused_imports, dead_code)]
 
+use std::collections::HashMap;
 use std::ffi::*;
 use std::ptr::*;
 
 use aligned_vec::avec;
 use diol::prelude::*;
+use diol::result::BenchResult;
 use dyn_stack::{MemBuffer, MemStack};
 use equator::assert;
 use reborrow::*;
@@ -1903,13 +1905,14 @@ fn evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 	}
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> eyre::Result<()> {
 	let config = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/bench.toml"))?
 		.parse::<Table>()
 		.unwrap();
 
-	let timings_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/timings.toml");
-	let mut timings = std::fs::read_to_string(timings_path).unwrap_or(String::new()).parse::<Table>().unwrap();
+	let timings_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/timings.json");
+	let mut timings = serde_json::de::from_str::<BenchResult>(&*std::fs::read_to_string(timings_path).unwrap_or(String::new()))
+		.unwrap_or(BenchResult { groups: HashMap::new() });
 
 	let mut parallel = vec![];
 
@@ -1928,19 +1931,20 @@ fn main() -> std::io::Result<()> {
 			.map(|i| PlotArg(i.as_integer().unwrap() as usize))
 			.collect::<Vec<_>>()
 	};
-	let bench_config = BenchConfig::from_args()?;
+	let bench_config = Config::from_args()?;
 
 	macro_rules! register {
 		($T: ty) => {{
 			type T = $T;
 
 			for &parallel in &parallel {
-				let mut bench = Bench::new(&bench_config);
+				let bench = Bench::new(&bench_config);
 
 				macro_rules! register_one {
 					($name: ident, $config: expr) => {
 						match parallel {
 							Par::Seq => bench.register_many(
+								std::stringify!($name),
 								{
 									let list = diol::variadics::Nil;
 									#[cfg(any(openblas, mkl, blis))]
@@ -1965,6 +1969,7 @@ fn main() -> std::io::Result<()> {
 							),
 
 							Par::Rayon(_) => bench.register_many(
+								std::stringify!($name),
 								{
 									let list = diol::variadics::Nil;
 									#[cfg(any(openblas, mkl, blis))]
@@ -2023,64 +2028,20 @@ fn main() -> std::io::Result<()> {
 					(name, ty, backend, thd)
 				}
 
-				for result in &result.groups {
-					let args = &result.args.unwrap_as_plot_arg();
-
-					for f in &result.function {
-						let (name, ty, backend, thd) = get_data(&f.name);
-
-						if !timings.contains_key(ty) {
-							timings.insert(ty.to_string(), Value::Table(Table::new()));
-						}
-						let timings = timings[ty].as_table_mut().unwrap();
-
-						if !timings.contains_key(thd) {
-							timings.insert(thd.to_string(), Value::Table(Table::new()));
-						}
-						let timings = timings[thd].as_table_mut().unwrap();
-
-						if !timings.contains_key(name) {
-							timings.insert(name.to_string(), Value::Table(Table::new()));
-						}
-						let timings = timings[name].as_table_mut().unwrap();
-
-						if !timings.contains_key(backend) {
-							timings.insert(backend.to_string(), Value::Table(Table::new()));
-						}
-						let timings = timings[backend].as_table_mut().unwrap();
-
-						if !timings.contains_key("timings") {
-							timings.insert("timings".to_string(), Value::Array(vec![]));
-						}
-						let timings = timings["timings"].as_array_mut().unwrap();
-
-						for (n, (mean, _)) in core::iter::zip(
-							args.iter().map(|&PlotArg(t)| Value::Integer(t as i64)),
-							f.timings.iter().map(|timings| diol::result::Stats::from_slice(timings).mean_stddev()),
-						) {
-							if mean == diol::Picoseconds(0) {
-								continue;
-							}
-
-							if let Some(old) = timings.iter().position(|p| p.as_array().unwrap()[0] == n) {
-								timings.remove(old);
-							}
-							timings.push(Value::Array(vec![n, Value::Float(mean.to_secs())]));
-						}
-
-						timings.sort_by_key(|e| e.as_array().unwrap()[0].as_integer().unwrap());
-					}
-				}
+				timings = timings.combine(&result);
 			}
 		}};
 	}
 
-	register!(f32);
-	register!(c32);
-	register!(f64);
-	register!(c64);
+	spindle::with_lock(rayon::current_num_threads(), || -> eyre::Result<()> {
+		register!(f32);
+		register!(c32);
+		register!(f64);
+		register!(c64);
+		Ok(())
+	})?;
 
-	std::fs::write(timings_path, toml::to_string(&timings).unwrap())?;
+	std::fs::write(timings_path, serde_json::to_string(&timings).unwrap())?;
 
 	Ok(())
 }

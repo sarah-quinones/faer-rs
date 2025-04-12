@@ -537,6 +537,74 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
 	conj_rhs: Conj,
 	par: Par,
 ) {
+	#[cfg(all(target_arch = "x86_64", feature = "std"))]
+	if const { T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32 } {
+		use private_gemm_x86::*;
+
+		let feat = if std::arch::is_x86_feature_detected!("avx512f") {
+			Some(InstrSet::Avx512)
+		} else if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+			Some(InstrSet::Avx256)
+		} else {
+			None
+		};
+
+		if *dst.nrows() > 0 && *dst.ncols() > 0 && *lhs.ncols() > 0 {
+			if let Some(feat) = feat {
+				unsafe {
+					let (dst, lhs) = if skip_diag {
+						(dst.as_dyn_mut().get_mut(1.., ..), lhs.as_dyn().get(1.., ..))
+					} else {
+						(dst.as_dyn_mut(), lhs.as_dyn())
+					};
+
+					private_gemm_x86::gemm(
+						const {
+							if T::IS_NATIVE_F64 {
+								DType::F64
+							} else if T::IS_NATIVE_F32 {
+								DType::F32
+							} else if T::IS_NATIVE_C64 {
+								DType::C64
+							} else {
+								DType::C32
+							}
+						},
+						const { IType::U32 },
+						feat,
+						dst.nrows(),
+						dst.ncols(),
+						lhs.ncols(),
+						dst.as_ptr_mut() as _,
+						dst.row_stride(),
+						dst.col_stride(),
+						core::ptr::null(),
+						core::ptr::null(),
+						DstKind::Lower,
+						match beta {
+							crate::Accum::Replace => Accum::Replace,
+							crate::Accum::Add => Accum::Add,
+						},
+						lhs.as_ptr() as _,
+						lhs.row_stride(),
+						lhs.col_stride(),
+						conj_lhs == Conj::Yes,
+						core::ptr::null(),
+						0,
+						rhs.as_ptr() as _,
+						rhs.row_stride(),
+						rhs.col_stride(),
+						conj_rhs == Conj::Yes,
+						alpha as *const T as *const (),
+						par.degree(),
+					);
+
+					return;
+				}
+			}
+		}
+	}
+
 	let N = dst.nrows();
 	let K = lhs.ncols();
 	let n = N.unbound();

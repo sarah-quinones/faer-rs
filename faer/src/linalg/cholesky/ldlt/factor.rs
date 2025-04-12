@@ -1,5 +1,6 @@
 use crate::assert;
 use crate::internal_prelude::*;
+use crate::linalg::matmul::internal::*;
 use linalg::matmul::triangular::BlockStructure;
 use pulp::Simd;
 
@@ -455,35 +456,69 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 			}
 			let mut A10 = A10.rb_mut();
 
-			let (A10, L10xD0) = if is_llt {
-				(A10.rb(), A10.rb())
+			if is_llt {
+				linalg::matmul::triangular::matmul(
+					A11.rb_mut(),
+					BlockStructure::TriangularLower,
+					Accum::Add,
+					A10.rb(),
+					BlockStructure::Rectangular,
+					A10.rb().adjoint(),
+					BlockStructure::Rectangular,
+					-one::<T>(),
+					par,
+				);
 			} else {
-				for k in 0..blocksize {
-					let d = real(D0[k]);
-					let d = recip(d);
+				if has_spicy_matmul::<T>() {
+					for k in 0..blocksize {
+						let d = real(D0[k]);
+						let d = recip(d);
 
-					for i in j + blocksize..n {
-						let i = i - (j + blocksize);
-						let a = copy(A10[(i, k)]);
-						A10[(i, k)] = mul_real(A10[(i, k)], d);
-						L10xD0[(i, k)] = a;
+						for i in j + blocksize..n {
+							let i = i - (j + blocksize);
+							A10[(i, k)] = mul_real(A10[(i, k)], d);
+						}
 					}
+					spicy_matmul::<usize, T>(
+						A11.rb_mut(),
+						BlockStructure::TriangularLower,
+						None,
+						None,
+						Accum::Add,
+						A10.rb(),
+						Conj::No,
+						A10.rb().transpose(),
+						Conj::Yes,
+						Some(D0.rb().transpose().as_diagonal()),
+						-one::<T>(),
+						par,
+						MemStack::new(&mut []),
+					);
+				} else {
+					for k in 0..blocksize {
+						let d = real(D0[k]);
+						let d = recip(d);
+
+						for i in j + blocksize..n {
+							let i = i - (j + blocksize);
+							let a = copy(A10[(i, k)]);
+							A10[(i, k)] = mul_real(A10[(i, k)], d);
+							L10xD0[(i, k)] = a;
+						}
+					}
+					linalg::matmul::triangular::matmul(
+						A11.rb_mut(),
+						BlockStructure::TriangularLower,
+						Accum::Add,
+						A10,
+						BlockStructure::Rectangular,
+						L10xD0.adjoint(),
+						BlockStructure::Rectangular,
+						-one::<T>(),
+						par,
+					);
 				}
-
-				(A10.rb(), L10xD0.rb())
 			};
-
-			linalg::matmul::triangular::matmul(
-				A11.rb_mut(),
-				BlockStructure::TriangularLower,
-				Accum::Add,
-				A10,
-				BlockStructure::Rectangular,
-				L10xD0.adjoint(),
-				BlockStructure::Rectangular,
-				-one::<T>(),
-				par,
-			);
 
 			j += blocksize;
 		}
