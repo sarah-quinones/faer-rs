@@ -25,9 +25,6 @@ npyz = { version = "0.8.3", default-features = false, optional = true }
 
 num-complex = { version = "0.4.6", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }
-
-gemm = { version = "0.18.2", default-features = false }
-nano-gemm = { version = "0.1.2", default-features = false }
 dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
 pulp = { version = "0.21.3", default-features = false, features = ["x86-v3"] }
 equator = { version = "0.4.2" }
@@ -35,6 +32,11 @@ equator = { version = "0.4.2" }
 faer-traits = { path = "../faer-traits", version = "0.21.5" }
 faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
+gemm = { version = "0.18.2", default-features = false }
+nano-gemm = { version = "0.1.2", default-features = false }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+private-gemm-x86 = { version = "0.1.9", default-features = false, optional = true }
 
 [features]
 default = [
@@ -48,6 +50,7 @@ std = [
   "pulp/std",
   "gemm/std",
   "nano-gemm/std",
+  "dep:private-gemm-x86",
 ]
 nightly = [
   "pulp/nightly",
@@ -63,7 +66,7 @@ sparse-linalg = [
 ]
 unstable = []
 
-rayon = ["dep:rayon", "gemm/rayon"]
+rayon = ["dep:rayon", "gemm/rayon", "private-gemm-x86?/rayon"]
 perf-warn = ["dep:log"]
 rand = [
   "num-complex/rand",
@@ -82,11 +85,13 @@ npy = [
 aligned-vec = "0.6.4"
 amd = "0.2.2"
 assert_approx_eq = "1.1.0"
-diol = { version = "0.8.3", default-features = false }
+diol = { version = "0.13.0", default-features = false }
 itertools = "0.14.0"
 matrix-market-rs = "0.1.3"
 nalgebra = "0.33.2"
+serde_json = "1.0.140"
 serde_test = "1.0.177"
+spindle = "0.2.1"
 toml = "0.8.20"
 
 [target.'cfg(any(openblas, mkl, blis))'.dev-dependencies]

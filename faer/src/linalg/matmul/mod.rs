@@ -19,6 +19,8 @@ use reborrow::*;
 
 const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
 
+pub(crate) mod internal;
+
 /// triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices
 pub mod triangular;
@@ -1347,7 +1349,7 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			}
 		}
 		macro_rules! gemm_call {
-			($ty: ty, $nanogemm: ident) => {
+			($kind: ident, $ty: ty, $nanogemm: ident) => {
 				unsafe {
 					let dst = core::mem::transmute_copy::<MatMut<'_, T, Dim<'M>, Dim<'N>>, MatMut<'_, $ty, Dim<'M>, Dim<'N>>>(&dst);
 					let lhs = core::mem::transmute_copy::<MatRef<'_, T, Dim<'M>, Dim<'K>>, MatRef<'_, $ty, Dim<'M>, Dim<'K>>>(&lhs);
@@ -1376,52 +1378,103 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 							conj_lhs == Conj::Yes,
 							conj_rhs == Conj::Yes,
 						);
+						return;
 					} else {
-						gemm::gemm(
-							M.unbound(),
-							N.unbound(),
-							K.unbound(),
-							dst.as_ptr_mut(),
-							dst.col_stride(),
-							dst.row_stride(),
-							beta != Accum::Replace,
-							lhs.as_ptr(),
-							lhs.col_stride(),
-							lhs.row_stride(),
-							rhs.as_ptr(),
-							rhs.col_stride(),
-							rhs.row_stride(),
-							match beta {
-								Accum::Replace => core::mem::zeroed(),
-								Accum::Add => 1.0.into(),
-							},
-							alpha,
-							false,
-							conj_lhs == Conj::Yes,
-							conj_rhs == Conj::Yes,
-							match par {
-								Par::Seq => gemm::Parallelism::None,
-								#[cfg(feature = "rayon")]
-								Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
-							},
-						)
+						#[cfg(all(target_arch = "x86_64", feature = "std"))]
+						{
+							use private_gemm_x86::*;
+
+							let feat = if std::arch::is_x86_feature_detected!("avx512f") {
+								Some(InstrSet::Avx512)
+							} else if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+								Some(InstrSet::Avx256)
+							} else {
+								None
+							};
+
+							if let Some(feat) = feat {
+								gemm(
+									DType::$kind,
+									IType::U64,
+									feat,
+									*M,
+									*N,
+									*K,
+									dst.as_ptr_mut() as *mut (),
+									dst.row_stride(),
+									dst.col_stride(),
+									core::ptr::null(),
+									core::ptr::null(),
+									DstKind::Full,
+									match beta {
+										$crate::Accum::Replace => Accum::Replace,
+										$crate::Accum::Add => Accum::Add,
+									},
+									lhs.as_ptr() as *const (),
+									lhs.row_stride(),
+									lhs.col_stride(),
+									conj_lhs == Conj::Yes,
+									core::ptr::null(),
+									0,
+									rhs.as_ptr() as *const (),
+									rhs.row_stride(),
+									rhs.col_stride(),
+									conj_rhs == Conj::Yes,
+									&raw const alpha as *const (),
+									par.degree(),
+								);
+								return;
+							}
+						}
+
+						{
+							gemm::gemm(
+								M.unbound(),
+								N.unbound(),
+								K.unbound(),
+								dst.as_ptr_mut(),
+								dst.col_stride(),
+								dst.row_stride(),
+								beta != Accum::Replace,
+								lhs.as_ptr(),
+								lhs.col_stride(),
+								lhs.row_stride(),
+								rhs.as_ptr(),
+								rhs.col_stride(),
+								rhs.row_stride(),
+								match beta {
+									Accum::Replace => core::mem::zeroed(),
+									Accum::Add => 1.0.into(),
+								},
+								alpha,
+								false,
+								conj_lhs == Conj::Yes,
+								conj_rhs == Conj::Yes,
+								match par {
+									Par::Seq => gemm::Parallelism::None,
+									#[cfg(feature = "rayon")]
+									Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
+								},
+							);
+
+							return;
+						}
 					}
 				};
-				return;
 			};
 		}
 
 		if try_const! { T::IS_NATIVE_F64 } {
-			gemm_call!(f64, execute_f64);
+			gemm_call!(F64, f64, execute_f64);
 		}
 		if try_const! { T::IS_NATIVE_C64 } {
-			gemm_call!(num_complex::Complex<f64>, execute_c64);
+			gemm_call!(C64, num_complex::Complex<f64>, execute_c64);
 		}
 		if try_const! { T::IS_NATIVE_F32 } {
-			gemm_call!(f32, execute_f32);
+			gemm_call!(F32, f32, execute_f32);
 		}
 		if try_const! { T::IS_NATIVE_C32 } {
-			gemm_call!(num_complex::Complex<f32>, execute_c32);
+			gemm_call!(C32, num_complex::Complex<f32>, execute_c32);
 		}
 
 		if const { !(T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32) } {

@@ -1381,6 +1381,7 @@ pub mod simplicial {
 /// factor is somewhat dense
 pub mod supernodal {
 	use super::*;
+	use crate::linalg::matmul::internal::{spicy_matmul, spicy_matmul_scratch};
 	use crate::{Shape, assert, debug_assert};
 
 	#[doc(hidden)]
@@ -2826,8 +2827,17 @@ pub mod supernodal {
 				let d_pattern_start = d_pattern.partition_point(partition_fn(s_start));
 				let d_pattern_mid_len = d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
 
-				d_scratch = d_scratch.and(temp_mat_scratch::<T>(d_pattern.len() - d_pattern_start, d_pattern_mid_len));
-				d_scratch = d_scratch.and(temp_mat_scratch::<T>(d_ncols, d_pattern_mid_len));
+				d_scratch = d_scratch
+					.and(StackReq::new::<I>(d_pattern.len() - d_pattern_start))
+					.and(StackReq::new::<I>(d_pattern_mid_len));
+
+				d_scratch = d_scratch.and(spicy_matmul_scratch::<T>(
+					d_pattern.len() - d_pattern_start,
+					d_pattern_mid_len,
+					d_ncols,
+					true,
+					true,
+				));
 				req = req.or(d_scratch);
 			}
 			req = req.or(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(s_ncols, par, params));
@@ -3154,65 +3164,37 @@ pub mod supernodal {
 
 				let d_pattern_start = d_pattern.partition_point(partition_fn(s_start));
 				let d_pattern_mid_len = d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
-				let d_pattern_mid = d_pattern_start + d_pattern_mid_len;
 
 				let (Ld_top, Ld_mid_bot) = Ld.split_at_row(d_ncols);
 				let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
-				let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
+				let (Ld_mid, _) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
 				let D = Ld_top.diagonal().column_vector();
 
-				let (mut tmp, stack) = unsafe { temp_mat_uninit::<T, _, _>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack) };
-				let tmp = tmp.as_mat_mut();
-				let (mut tmp2, _) = unsafe { temp_mat_uninit::<T, _, _>(Ld_mid.ncols(), Ld_mid.nrows(), stack) };
-				let tmp2 = tmp2.as_mat_mut();
-				let mut Ld_mid_x_D = tmp2.transpose_mut();
-
-				for i in 0..d_pattern_mid_len {
-					for j in 0..d_ncols {
-						Ld_mid_x_D.write(i, j, mul_real(Ld_mid.read(i, j), real(D.read(j))));
-					}
-				}
-
-				let (mut tmp_top, mut tmp_bot) = tmp.split_at_row_mut(d_pattern_mid_len);
-
-				use linalg::matmul;
 				use linalg::matmul::triangular;
-				triangular::matmul(
-					tmp_top.rb_mut(),
+				let (row_idx, stack) = stack.make_with(Ld_mid_bot.nrows(), |i| {
+					if i < d_pattern_mid_len {
+						I::truncate(d_pattern[d_pattern_start + i].zx() - s_start)
+					} else {
+						I::from_signed(global_to_local[d_pattern[d_pattern_start + i].zx()])
+					}
+				});
+				let (col_idx, stack) = stack.make_with(d_pattern_mid_len, |j| I::truncate(d_pattern[d_pattern_start + j].zx() - s_start));
+
+				spicy_matmul(
+					Ls.rb_mut(),
 					triangular::BlockStructure::TriangularLower,
-					Accum::Replace,
-					Ld_mid,
-					triangular::BlockStructure::Rectangular,
-					Ld_mid_x_D.rb().adjoint(),
-					triangular::BlockStructure::Rectangular,
-					one::<T>(),
+					Some(&row_idx),
+					Some(&col_idx),
+					Accum::Add,
+					Ld_mid_bot,
+					Conj::No,
+					Ld_mid.transpose(),
+					Conj::Yes,
+					Some(D.as_diagonal()),
+					-one::<T>(),
 					par,
+					stack,
 				);
-				matmul::matmul(tmp_bot.rb_mut(), Accum::Replace, Ld_bot, Ld_mid_x_D.rb().adjoint(), one::<T>(), par);
-				for (j_idx, j) in d_pattern[d_pattern_start..d_pattern_mid].iter().enumerate() {
-					let j = j.zx();
-					let j_s = j - s_start;
-					for (i_idx, i) in d_pattern[d_pattern_start..d_pattern_mid][j_idx..].iter().enumerate() {
-						let i_idx = i_idx + j_idx;
-
-						let i = i.zx();
-						let i_s = i - s_start;
-
-						debug_assert!(i_s >= j_s);
-
-						Ls[(i_s, j_s)] = Ls[(i_s, j_s)] - tmp_top[(i_idx, j_idx)];
-					}
-				}
-
-				for (j_idx, j) in d_pattern[d_pattern_start..d_pattern_mid].iter().enumerate() {
-					let j = j.zx();
-					let j_s = j - s_start;
-					for (i_idx, i) in d_pattern[d_pattern_mid..].iter().enumerate() {
-						let i = i.zx();
-						let i_s = global_to_local[i].zx();
-						Ls[(i_s, j_s)] = Ls[(i_s, j_s)] - tmp_bot[(i_idx, j_idx)];
-					}
-				}
 			}
 
 			let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
