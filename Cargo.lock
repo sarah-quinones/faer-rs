@@ -1826,9 +1826,9 @@ dependencies = [
 
 [[package]]
 name = "private-gemm-x86"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81b2f6d3da6e7ceb942865103fb36d81a0a53104d27194e8385851a0430b08e8"
+checksum = "00eafae0fd2986557a9fbb14f832d53c74ed35cf242730b776e3621eda88b3e7"
 dependencies = [
  "crossbeam",
  "defer",
