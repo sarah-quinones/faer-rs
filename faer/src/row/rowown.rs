@@ -1,18 +1,9 @@
-use crate::internal_prelude::*;
+use super::*;
 use crate::{ContiguousFwd, Idx, IdxInc, TryReserveError};
-use core::ops::{Index, IndexMut};
-use faer_traits::Real;
 
-use super::RowIndex;
-
-/// heap allocated resizable row vector.
-///
-/// # note
-///
-/// the memory layout of `Row` is guaranteed to be row-major, meaning that it has a column stride
-/// of `1`.
+/// see [`super::Row`]
 #[derive(Clone)]
-pub struct Row<T, Cols: Shape = usize> {
+pub struct Own<T, Cols: Shape = usize> {
 	pub(crate) trans: Col<T, Cols>,
 }
 
@@ -21,7 +12,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline]
 	pub fn from_fn(nrows: Cols, f: impl FnMut(Idx<Cols>) -> T) -> Self {
 		Self {
-			trans: Col::from_fn(nrows, f),
+			0: Own {
+				trans: Col::from_fn(nrows, f),
+			},
 		}
 	}
 
@@ -31,7 +24,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: ComplexField,
 	{
-		Self { trans: Col::zeros(ncols) }
+		Self {
+			0: Own { trans: Col::zeros(ncols) },
+		}
 	}
 
 	/// returns a new row with dimension `nrows`, filled with ones
@@ -40,7 +35,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: ComplexField,
 	{
-		Self { trans: Col::ones(ncols) }
+		Self {
+			0: Own { trans: Col::ones(ncols) },
+		}
 	}
 
 	/// returns a new row with dimension `nrows`, filled with `value`
@@ -50,7 +47,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 		T: Clone,
 	{
 		Self {
-			trans: Col::full(ncols, value),
+			0: Own {
+				trans: Col::full(ncols, value),
+			},
 		}
 	}
 
@@ -58,14 +57,14 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	/// error in case of failure. does nothing if the capacity is already sufficient
 	#[inline]
 	pub fn try_reserve(&mut self, new_row_capacity: usize) -> Result<(), TryReserveError> {
-		self.trans.try_reserve(new_row_capacity)
+		self.0.trans.try_reserve(new_row_capacity)
 	}
 
 	/// reserves the minimum capacity for `col_capacity` columns without reallocating. does nothing
 	/// if the capacity is already sufficient
 	#[track_caller]
 	pub fn reserve(&mut self, new_row_capacity: usize) {
-		self.trans.reserve(new_row_capacity)
+		self.0.trans.reserve(new_row_capacity)
 	}
 
 	/// resizes the row in-place so that the new dimension is `new_ncols`.
@@ -73,7 +72,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	/// are created by calling `f(j)`
 	#[inline]
 	pub fn resize_with(&mut self, new_nrows: Cols, f: impl FnMut(Idx<Cols>) -> T) {
-		self.trans.resize_with(new_nrows, f);
+		self.0.trans.resize_with(new_nrows, f);
 	}
 
 	/// truncates the row so that its new dimensions are `new_ncols`.  
@@ -84,27 +83,31 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	/// - `new_ncols > self.ncols()`
 	#[inline]
 	pub fn truncate(&mut self, new_nrows: Cols) {
-		self.trans.truncate(new_nrows);
+		self.0.trans.truncate(new_nrows);
 	}
 
 	/// see [`RowRef::as_col_shape`]
 	#[inline]
 	pub fn into_col_shape<V: Shape>(self, nrows: V) -> Row<T, V> {
 		Row {
-			trans: self.trans.into_row_shape(nrows),
+			0: Own {
+				trans: self.0.trans.into_row_shape(nrows),
+			},
 		}
 	}
 
 	/// see [`RowRef::as_diagonal`]
 	#[inline]
 	pub fn into_diagonal(self) -> Diag<T, Cols> {
-		Diag { inner: self.trans }
+		Diag {
+			0: crate::diag::Own { inner: self.0.trans },
+		}
 	}
 
 	/// see [`RowRef::transpose`]
 	#[inline]
 	pub fn into_transpose(self) -> Col<T, Cols> {
-		self.trans
+		self.0.trans
 	}
 }
 
@@ -112,112 +115,19 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	/// returns the number of rows of the row (always 1)
 	#[inline]
 	pub fn nrows(&self) -> usize {
-		self.trans.ncols()
+		self.0.trans.ncols()
 	}
 
 	/// returns the number of columns of the row
 	#[inline]
 	pub fn ncols(&self) -> Cols {
-		self.trans.nrows()
-	}
-
-	#[inline]
-	/// returns a view over `self`
-	pub fn as_ref(&self) -> RowRef<'_, T, Cols> {
-		self.trans.as_ref().transpose()
-	}
-
-	#[inline]
-	/// returns a view over `self`
-	pub fn as_mut(&mut self) -> RowMut<'_, T, Cols> {
-		self.trans.as_mut().transpose_mut()
-	}
-
-	#[inline]
-	/// see [`RowRef::norm_max`]
-	pub fn norm_max(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_max()
-	}
-
-	#[inline]
-	/// see [`RowRef::norm_l2`]
-	pub fn norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_l2()
-	}
-
-	#[inline]
-	/// see [`RowRef::squared_norm_l2`]
-	pub fn squared_norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().squared_norm_l2()
-	}
-
-	#[inline]
-	/// see [`RowRef::norm_l1`]
-	pub fn norm_l1(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_l1()
-	}
-
-	#[inline]
-	/// see [`RowRef::sum`]
-	pub fn sum(&self) -> T::Canonical
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().sum()
-	}
-
-	/// see [`RowRef::cloned`]
-	#[inline]
-	pub fn cloned(&self) -> Row<T, Cols>
-	where
-		T: Clone,
-	{
-		self.rb().cloned()
-	}
-
-	/// see [`RowRef::to_owned`]
-	#[inline]
-	pub fn to_owned(&self) -> Row<T::Canonical, Cols>
-	where
-		T: Conjugate,
-	{
-		self.rb().to_owned()
+		self.0.trans.nrows()
 	}
 }
 
-impl<T: core::fmt::Debug, Cols: Shape> core::fmt::Debug for Row<T, Cols> {
+impl<T: core::fmt::Debug, Cols: Shape> core::fmt::Debug for Own<T, Cols> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		self.as_ref().fmt(f)
-	}
-}
-
-impl<T, Cols: Shape> Index<Idx<Cols>> for Row<T, Cols> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, col: Idx<Cols>) -> &Self::Output {
-		self.as_ref().at(col)
-	}
-}
-
-impl<T, Cols: Shape> IndexMut<Idx<Cols>> for Row<T, Cols> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, col: Idx<Cols>) -> &mut Self::Output {
-		self.as_mut().at_mut(col)
+		self.rb().fmt(f)
 	}
 }
 
@@ -225,45 +135,45 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline(always)]
 	/// see [`RowRef::as_ptr`]
 	pub fn as_ptr(&self) -> *const T {
-		self.as_ref().as_ptr()
+		self.rb().as_ptr()
 	}
 
 	#[inline(always)]
 	/// see [`RowRef::shape`]
 	pub fn shape(&self) -> (usize, Cols) {
-		self.as_ref().shape()
+		self.rb().shape()
 	}
 
 	#[inline(always)]
 	/// see [`RowRef::col_stride`]
 	pub fn col_stride(&self) -> isize {
-		self.as_ref().col_stride()
+		self.rb().col_stride()
 	}
 
 	#[inline(always)]
 	/// see [`RowRef::ptr_at`]
 	pub fn ptr_at(&self, col: IdxInc<Cols>) -> *const T {
-		self.as_ref().ptr_at(col)
+		self.rb().ptr_at(col)
 	}
 
 	#[inline(always)]
 	#[track_caller]
 	/// see [`RowRef::ptr_inbounds_at`]
 	pub unsafe fn ptr_inbounds_at(&self, col: Idx<Cols>) -> *const T {
-		self.as_ref().ptr_inbounds_at(col)
+		self.rb().ptr_inbounds_at(col)
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`RowRef::split_at_col`]
 	pub fn split_at_col(&self, col: IdxInc<Cols>) -> (RowRef<'_, T, usize>, RowRef<'_, T, usize>) {
-		self.as_ref().split_at_col(col)
+		self.rb().split_at_col(col)
 	}
 
 	#[inline(always)]
 	/// see [`RowRef::transpose`]
 	pub fn transpose(&self) -> ColRef<'_, T, Cols> {
-		self.as_ref().transpose()
+		self.rb().transpose()
 	}
 
 	#[inline(always)]
@@ -272,7 +182,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Conjugate,
 	{
-		self.as_ref().conjugate()
+		self.rb().conjugate()
 	}
 
 	#[inline(always)]
@@ -281,7 +191,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Conjugate,
 	{
-		self.as_ref().canonical()
+		self.rb().canonical()
 	}
 
 	#[inline(always)]
@@ -290,7 +200,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Conjugate,
 	{
-		self.as_ref().adjoint()
+		self.rb().adjoint()
 	}
 
 	#[track_caller]
@@ -300,7 +210,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		for<'a> RowRef<'a, T, Cols>: RowIndex<ColRange>,
 	{
-		<RowRef<'_, T, Cols> as RowIndex<ColRange>>::get(self.as_ref(), col)
+		<RowRef<'_, T, Cols> as RowIndex<ColRange>>::get(self.rb(), col)
 	}
 
 	#[track_caller]
@@ -310,43 +220,43 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		for<'a> RowRef<'a, T, Cols>: RowIndex<ColRange>,
 	{
-		unsafe { <RowRef<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(self.as_ref(), col) }
+		unsafe { <RowRef<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(self.rb(), col) }
 	}
 
 	#[inline]
 	/// see [`RowRef::reverse_cols`]
 	pub fn reverse_cols(&self) -> RowRef<'_, T, Cols> {
-		self.as_ref().reverse_cols()
+		self.rb().reverse_cols()
 	}
 
 	#[inline]
 	/// see [`RowRef::subcols`]
 	pub fn subcols<V: Shape>(&self, col_start: IdxInc<Cols>, ncols: V) -> RowRef<'_, T, V> {
-		self.as_ref().subcols(col_start, ncols)
+		self.rb().subcols(col_start, ncols)
 	}
 
 	#[inline]
 	/// see [`RowRef::as_col_shape`]
 	pub fn as_col_shape<V: Shape>(&self, ncols: V) -> RowRef<'_, T, V> {
-		self.as_ref().as_col_shape(ncols)
+		self.rb().as_col_shape(ncols)
 	}
 
 	#[inline]
 	/// see [`RowRef::as_dyn_cols`]
 	pub fn as_dyn_cols(&self) -> RowRef<'_, T, usize> {
-		self.as_ref().as_dyn_cols()
+		self.rb().as_dyn_cols()
 	}
 
 	#[inline]
 	/// see [`RowRef::as_dyn_stride`]
 	pub fn as_dyn_stride(&self) -> RowRef<'_, T, Cols, isize> {
-		self.as_ref().as_dyn_stride()
+		self.rb().as_dyn_stride()
 	}
 
 	#[inline]
 	/// see [`RowRef::iter`]
 	pub fn iter(&self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ T> {
-		self.as_ref().iter()
+		self.rb().iter()
 	}
 
 	#[inline]
@@ -356,37 +266,37 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Sync,
 	{
-		self.as_ref().par_iter()
+		self.rb().par_iter()
 	}
 
 	#[inline]
 	/// see [`RowRef::try_as_row_major`]
 	pub fn try_as_row_major(&self) -> Option<RowRef<'_, T, Cols, ContiguousFwd>> {
-		self.as_ref().try_as_row_major()
+		self.rb().try_as_row_major()
 	}
 
 	#[inline]
 	/// see [`RowRef::as_diagonal`]
 	pub fn as_diagonal(&self) -> DiagRef<'_, T, Cols> {
-		self.as_ref().as_diagonal()
+		self.rb().as_diagonal()
 	}
 
 	#[inline(always)]
 	/// see [`RowRef::const_cast`]
 	pub unsafe fn const_cast(&self) -> RowMut<'_, T, Cols> {
-		self.as_ref().const_cast()
+		self.rb().const_cast()
 	}
 
 	#[inline]
 	/// see [`RowRef::as_mat`]
 	pub fn as_mat(&self) -> MatRef<'_, T, usize, Cols, isize> {
-		self.as_ref().as_mat()
+		self.rb().as_mat()
 	}
 
 	#[inline]
 	/// see [`RowRef::as_mat`]
 	pub fn as_mat_mut(&mut self) -> MatMut<'_, T, usize, Cols, isize> {
-		self.as_mut().as_mat_mut()
+		self.rb_mut().as_mat_mut()
 	}
 }
 
@@ -394,33 +304,33 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline(always)]
 	/// see [`RowMut::as_ptr_mut`]
 	pub fn as_ptr_mut(&mut self) -> *mut T {
-		self.as_mut().as_ptr_mut()
+		self.rb_mut().as_ptr_mut()
 	}
 
 	#[inline(always)]
 	/// see [`RowMut::ptr_at_mut`]
 	pub fn ptr_at_mut(&mut self, col: IdxInc<Cols>) -> *mut T {
-		self.as_mut().ptr_at_mut(col)
+		self.rb_mut().ptr_at_mut(col)
 	}
 
 	#[inline(always)]
 	#[track_caller]
 	/// see [`RowMut::ptr_inbounds_at_mut`]
 	pub unsafe fn ptr_inbounds_at_mut(&mut self, col: Idx<Cols>) -> *mut T {
-		self.as_mut().ptr_inbounds_at_mut(col)
+		self.rb_mut().ptr_inbounds_at_mut(col)
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`RowMut::split_at_col_mut`]
 	pub fn split_at_col_mut(&mut self, col: IdxInc<Cols>) -> (RowMut<'_, T, usize>, RowMut<'_, T, usize>) {
-		self.as_mut().split_at_col_mut(col)
+		self.rb_mut().split_at_col_mut(col)
 	}
 
 	#[inline(always)]
 	/// see [`RowMut::transpose_mut`]
 	pub fn transpose_mut(&mut self) -> ColMut<'_, T, Cols> {
-		self.as_mut().transpose_mut()
+		self.rb_mut().transpose_mut()
 	}
 
 	#[inline(always)]
@@ -429,7 +339,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Conjugate,
 	{
-		self.as_mut().conjugate_mut()
+		self.rb_mut().conjugate_mut()
 	}
 
 	#[inline(always)]
@@ -438,7 +348,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Conjugate,
 	{
-		self.as_mut().canonical_mut()
+		self.rb_mut().canonical_mut()
 	}
 
 	#[inline(always)]
@@ -447,7 +357,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Conjugate,
 	{
-		self.as_mut().adjoint_mut()
+		self.rb_mut().adjoint_mut()
 	}
 
 	#[track_caller]
@@ -457,7 +367,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		for<'a> RowMut<'a, T, Cols>: RowIndex<ColRange>,
 	{
-		<RowMut<'_, T, Cols> as RowIndex<ColRange>>::get(self.as_mut(), col)
+		<RowMut<'_, T, Cols> as RowIndex<ColRange>>::get(self.rb_mut(), col)
 	}
 
 	#[track_caller]
@@ -467,43 +377,43 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		for<'a> RowMut<'a, T, Cols>: RowIndex<ColRange>,
 	{
-		unsafe { <RowMut<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(self.as_mut(), col) }
+		unsafe { <RowMut<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(self.rb_mut(), col) }
 	}
 
 	#[inline]
 	/// see [`RowMut::reverse_cols_mut`]
 	pub fn reverse_cols_mut(&mut self) -> RowMut<'_, T, Cols> {
-		self.as_mut().reverse_cols_mut()
+		self.rb_mut().reverse_cols_mut()
 	}
 
 	#[inline]
 	/// see [`RowMut::subcols_mut`]
 	pub fn subcols_mut<V: Shape>(&mut self, col_start: IdxInc<Cols>, ncols: V) -> RowMut<'_, T, V> {
-		self.as_mut().subcols_mut(col_start, ncols)
+		self.rb_mut().subcols_mut(col_start, ncols)
 	}
 
 	#[inline]
 	/// see [`RowMut::as_col_shape_mut`]
 	pub fn as_col_shape_mut<V: Shape>(&mut self, ncols: V) -> RowMut<'_, T, V> {
-		self.as_mut().as_col_shape_mut(ncols)
+		self.rb_mut().as_col_shape_mut(ncols)
 	}
 
 	#[inline]
 	/// see [`RowMut::as_dyn_cols_mut`]
 	pub fn as_dyn_cols_mut(&mut self) -> RowMut<'_, T, usize> {
-		self.as_mut().as_dyn_cols_mut()
+		self.rb_mut().as_dyn_cols_mut()
 	}
 
 	#[inline]
 	/// see [`RowMut::as_dyn_stride_mut`]
 	pub fn as_dyn_stride_mut(&mut self) -> RowMut<'_, T, Cols, isize> {
-		self.as_mut().as_dyn_stride_mut()
+		self.rb_mut().as_dyn_stride_mut()
 	}
 
 	#[inline]
 	/// see [`RowMut::iter_mut`]
 	pub fn iter_mut(&mut self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ mut T> {
-		self.as_mut().iter_mut()
+		self.rb_mut().iter_mut()
 	}
 
 	#[inline]
@@ -513,45 +423,36 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	where
 		T: Send,
 	{
-		self.as_mut().par_iter_mut()
-	}
-
-	#[inline]
-	/// see [`RowMut::copy_from`]
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<T = RhsT, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from(other)
+		self.rb_mut().par_iter_mut()
 	}
 
 	#[inline]
 	/// see [`RowMut::try_as_row_major_mut`]
 	pub fn try_as_row_major_mut(&mut self) -> Option<RowMut<'_, T, Cols, ContiguousFwd>> {
-		self.as_mut().try_as_row_major_mut()
+		self.rb_mut().try_as_row_major_mut()
 	}
 
 	#[inline]
 	/// see [`RowMut::as_diagonal_mut`]
 	pub fn as_diagonal_mut(&mut self) -> DiagMut<'_, T, Cols> {
-		self.as_mut().as_diagonal_mut()
+		self.rb_mut().as_diagonal_mut()
 	}
 }
 
-impl<'short, T, Cols: Shape> Reborrow<'short> for Row<T, Cols> {
-	type Target = RowRef<'short, T, Cols>;
+impl<'short, T, Cols: Shape> Reborrow<'short> for Own<T, Cols> {
+	type Target = Ref<'short, T, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		self.as_ref()
+		Ref { trans: self.trans.rb() }
 	}
 }
-impl<'short, T, Cols: Shape> ReborrowMut<'short> for Row<T, Cols> {
-	type Target = RowMut<'short, T, Cols>;
+impl<'short, T, Cols: Shape> ReborrowMut<'short> for Own<T, Cols> {
+	type Target = Mut<'short, T, Cols>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		self.as_mut()
+		Mut { trans: self.trans.rb_mut() }
 	}
 }
 
@@ -576,7 +477,9 @@ impl<T> FromIterator<T> for Row<T> {
 		I: IntoIterator<Item = T>,
 	{
 		Row {
-			trans: Col::from_iter_imp(iter.into_iter()),
+			0: Own {
+				trans: Col::from_iter_imp(iter.into_iter()),
+			},
 		}
 	}
 }

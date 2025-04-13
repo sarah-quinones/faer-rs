@@ -1,17 +1,9 @@
-use super::{AsColRef, ColIndex};
-use crate::internal_prelude::*;
+use super::*;
 use crate::{Idx, IdxInc, TryReserveError};
-use core::ops::{Index, IndexMut};
-use faer_traits::Real;
 
-/// heap allocated resizable column vector.
-///
-/// # note
-///
-/// the memory layout of `Col` is guaranteed to be column-major, meaning that it has a row stride
-/// of `1`.
+/// see [`super::Col`]
 #[derive(Clone)]
-pub struct Col<T, Rows: Shape = usize> {
+pub struct Own<T, Rows: Shape = usize> {
 	column: Mat<T, Rows, usize>,
 }
 
@@ -26,7 +18,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	/// returns a new column with dimension `nrows`, filled with the provided function
 	pub fn from_fn(nrows: Rows, f: impl FnMut(Idx<Rows>) -> T) -> Self {
 		Self {
-			column: Mat::from_fn(nrows, 1, idx_to_pair(f)),
+			0: Own {
+				column: Mat::from_fn(nrows, 1, idx_to_pair(f)),
+			},
 		}
 	}
 
@@ -37,7 +31,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 		T: ComplexField,
 	{
 		Self {
-			column: Mat::zeros(nrows, 1),
+			0: Own {
+				column: Mat::zeros(nrows, 1),
+			},
 		}
 	}
 
@@ -47,7 +43,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	where
 		T: ComplexField,
 	{
-		Self { column: Mat::ones(nrows, 1) }
+		Self {
+			0: Own { column: Mat::ones(nrows, 1) },
+		}
 	}
 
 	/// returns a new column with dimension `nrows`, filled with `value`
@@ -57,7 +55,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 		T: Clone,
 	{
 		Self {
-			column: Mat::full(nrows, 1, value),
+			0: Own {
+				column: Mat::full(nrows, 1, value),
+			},
 		}
 	}
 
@@ -95,20 +95,26 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[inline]
 	pub fn into_row_shape<V: Shape>(self, nrows: V) -> Col<T, V> {
 		Col {
-			column: self.column.into_shape(nrows, 1),
+			0: Own {
+				column: self.0.column.into_shape(nrows, 1),
+			},
 		}
 	}
 
 	/// see [`ColRef::as_diagonal`]
 	#[inline]
 	pub fn into_diagonal(self) -> Diag<T, Rows> {
-		Diag { inner: self }
+		Diag {
+			0: crate::diag::Own { inner: self },
+		}
 	}
 
 	/// see [`ColRef::transpose`]
 	#[inline]
 	pub fn into_transpose(self) -> Row<T, Rows> {
-		Row { trans: self }
+		Row {
+			0: crate::row::Own { trans: self },
+		}
 	}
 }
 
@@ -137,7 +143,7 @@ impl<T> Col<T> {
 			}
 			assert_eq!(count, cap);
 
-			Col { column: col }
+			Col { 0: Own { column: col } }
 		} else {
 			let mut cap = Ord::max(4, min);
 			let mut col = Mat::<T>::with_capacity(cap, 1);
@@ -173,7 +179,7 @@ impl<T> Col<T> {
 				}
 			}
 
-			Col { column: col }
+			Col { 0: Own { column: col } }
 		}
 	}
 }
@@ -199,104 +205,11 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	pub fn ncols(&self) -> usize {
 		1
 	}
-
-	/// returns a view over `self`
-	#[inline]
-	pub fn as_ref(&self) -> ColRef<'_, T, Rows> {
-		self.column.as_ref().col(0)
-	}
-
-	/// returns a view over `self`
-	#[inline]
-	pub fn as_mut(&mut self) -> ColMut<'_, T, Rows> {
-		self.column.as_mut().col_mut(0)
-	}
-
-	#[inline]
-	/// see [`ColRef::norm_max`]
-	pub fn norm_max(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_max()
-	}
-
-	#[inline]
-	/// see [`ColRef::norm_l2`]
-	pub fn norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_l2()
-	}
-
-	#[inline]
-	/// see [`ColRef::squared_norm_l2`]
-	pub fn squared_norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().squared_norm_l2()
-	}
-
-	#[inline]
-	/// see [`ColRef::norm_l1`]
-	pub fn norm_l1(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_l1()
-	}
-
-	#[inline]
-	/// see [`ColRef::sum`]
-	pub fn sum(&self) -> T::Canonical
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().sum()
-	}
-
-	/// see [`ColRef::cloned`]
-	#[inline]
-	pub fn cloned(&self) -> Col<T, Rows>
-	where
-		T: Clone,
-	{
-		self.rb().cloned()
-	}
-
-	/// see [`ColRef::to_owned`]
-	#[inline]
-	pub fn to_owned(&self) -> Col<T::Canonical, Rows>
-	where
-		T: Conjugate,
-	{
-		self.rb().to_owned()
-	}
 }
 
-impl<T: core::fmt::Debug, Rows: Shape> core::fmt::Debug for Col<T, Rows> {
+impl<T: core::fmt::Debug, Rows: Shape> core::fmt::Debug for Own<T, Rows> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		self.as_ref().fmt(f)
-	}
-}
-
-impl<T, Rows: Shape> Index<Idx<Rows>> for Col<T, Rows> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, row: Idx<Rows>) -> &Self::Output {
-		self.as_ref().at(row)
-	}
-}
-
-impl<T, Rows: Shape> IndexMut<Idx<Rows>> for Col<T, Rows> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, row: Idx<Rows>) -> &mut Self::Output {
-		self.as_mut().at_mut(row)
+		self.rb().fmt(f)
 	}
 }
 
@@ -476,7 +389,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[inline]
 	/// see [`ColRef::as_diagonal`]
 	pub fn as_diagonal(&self) -> DiagRef<'_, T, Rows> {
-		DiagRef { inner: self.as_ref() }
+		self.rb().as_diagonal()
 	}
 }
 
@@ -622,32 +535,36 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	pub fn as_diagonal_mut(&mut self) -> DiagMut<'_, T, Rows> {
 		self.as_mut().as_diagonal_mut()
 	}
-
-	#[inline]
-	#[track_caller]
-	/// see [`ColMut::copy_from`]
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, rhs: impl AsColRef<T = RhsT, Rows = Rows>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from(rhs)
-	}
 }
 
-impl<'short, T, Rows: Shape> Reborrow<'short> for Col<T, Rows> {
-	type Target = ColRef<'short, T, Rows>;
+impl<'short, T, Rows: Shape> Reborrow<'short> for Own<T, Rows> {
+	type Target = Ref<'short, T, Rows>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		self.as_ref()
+		Ref {
+			imp: ColView {
+				nrows: self.column.nrows(),
+				row_stride: 1,
+				ptr: unsafe { NonNull::new_unchecked(self.column.as_ptr() as *mut T) },
+			},
+			__marker: core::marker::PhantomData,
+		}
 	}
 }
-impl<'short, T, Rows: Shape> ReborrowMut<'short> for Col<T, Rows> {
-	type Target = ColMut<'short, T, Rows>;
+impl<'short, T, Rows: Shape> ReborrowMut<'short> for Own<T, Rows> {
+	type Target = Mut<'short, T, Rows>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		self.as_mut()
+		Mut {
+			imp: ColView {
+				nrows: self.column.nrows(),
+				row_stride: 1,
+				ptr: unsafe { NonNull::new_unchecked(self.column.as_ptr_mut()) },
+			},
+			__marker: core::marker::PhantomData,
+		}
 	}
 }
 

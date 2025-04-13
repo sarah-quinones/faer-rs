@@ -1,5 +1,4 @@
-use super::{ColIndex, ColView};
-use crate::internal_prelude::*;
+use super::*;
 use crate::utils::bound::{Array, Dim, Partition};
 use crate::{ContiguousFwd, Idx, IdxInc};
 use core::marker::PhantomData;
@@ -8,46 +7,38 @@ use equator::assert;
 use faer_traits::Real;
 use generativity::Guard;
 
-/// immutable view over a column vector, similar to an immutable reference to a strided
-/// [prim@slice]
-///
-/// # note
-///
-/// unlike a slice, the data pointed to by `ColRef<'_, T>` is allowed to be partially or fully
-/// uninitialized under certain conditions. in this case, care must be taken to not perform any
-/// operations that read the uninitialized values, or form references to them, either directly or
-/// indirectly through any of the numerical library routines, unless it is explicitly permitted
-pub struct ColRef<'a, T, Rows = usize, RStride = isize> {
+/// see [`super::ColRef`]
+pub struct Ref<'a, T, Rows = usize, RStride = isize> {
 	pub(super) imp: ColView<T, Rows, RStride>,
 	pub(super) __marker: PhantomData<&'a T>,
 }
 
-impl<T, Rows: Copy, RStride: Copy> Copy for ColRef<'_, T, Rows, RStride> {}
-impl<T, Rows: Copy, RStride: Copy> Clone for ColRef<'_, T, Rows, RStride> {
+impl<T, Rows: Copy, RStride: Copy> Copy for Ref<'_, T, Rows, RStride> {}
+impl<T, Rows: Copy, RStride: Copy> Clone for Ref<'_, T, Rows, RStride> {
 	#[inline]
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for ColRef<'_, T, Rows, RStride> {
-	type Target = ColRef<'short, T, Rows, RStride>;
+impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for Ref<'_, T, Rows, RStride> {
+	type Target = Ref<'short, T, Rows, RStride>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
 		*self
 	}
 }
-impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for ColRef<'_, T, Rows, RStride> {
-	type Target = ColRef<'short, T, Rows, RStride>;
+impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for Ref<'_, T, Rows, RStride> {
+	type Target = Ref<'short, T, Rows, RStride>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
 		*self
 	}
 }
-impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for ColRef<'a, T, Rows, RStride> {
-	type Target = ColRef<'a, T, Rows, RStride>;
+impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for Ref<'a, T, Rows, RStride> {
+	type Target = Ref<'a, T, Rows, RStride>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
@@ -55,8 +46,8 @@ impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for ColRef<'a, T, Rows, RStride
 	}
 }
 
-unsafe impl<T: Sync, Rows: Sync, RStride: Sync> Sync for ColRef<'_, T, Rows, RStride> {}
-unsafe impl<T: Sync, Rows: Send, RStride: Send> Send for ColRef<'_, T, Rows, RStride> {}
+unsafe impl<T: Sync, Rows: Sync, RStride: Sync> Sync for Ref<'_, T, Rows, RStride> {}
+unsafe impl<T: Sync, Rows: Send, RStride: Send> Send for Ref<'_, T, Rows, RStride> {}
 
 impl<'a, T> ColRef<'a, T> {
 	/// creates a `ColRef` from slice views over the column vector data, the result has the same
@@ -78,12 +69,14 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	#[track_caller]
 	pub unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, row_stride: RStride) -> Self {
 		Self {
-			imp: ColView {
-				ptr: NonNull::new_unchecked(ptr as *mut T),
-				nrows,
-				row_stride,
+			0: Ref {
+				imp: ColView {
+					ptr: NonNull::new_unchecked(ptr as *mut T),
+					nrows,
+					row_stride,
+				},
+				__marker: PhantomData,
 			},
-			__marker: PhantomData,
 		}
 	}
 
@@ -168,7 +161,9 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	/// returns a view over the transpose of `self`
 	#[inline(always)]
 	pub fn transpose(self) -> RowRef<'a, T, Rows, RStride> {
-		RowRef { trans: self }
+		RowRef {
+			0: crate::row::Ref { trans: self },
+		}
 	}
 
 	/// returns a view over the conjugate of `self`
@@ -337,37 +332,6 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 		})
 	}
 
-	/// returns a newly allocated column holding the cloned values of `self`
-	#[inline]
-	pub fn cloned(&self) -> Col<T, Rows>
-	where
-		T: Clone,
-	{
-		fn imp<'M, T: Clone, RStride: Stride>(this: ColRef<'_, T, Dim<'M>, RStride>) -> Col<T, Dim<'M>> {
-			Col::from_fn(this.nrows(), |i| this.at(i).clone())
-		}
-
-		with_dim!(M, self.nrows().unbound());
-		imp(self.as_row_shape(M)).into_row_shape(self.nrows())
-	}
-
-	/// returns a newly allocated column holding the (possibly conjugated) values of `self`
-	#[inline]
-	pub fn to_owned(&self) -> Col<T::Canonical, Rows>
-	where
-		T: Conjugate,
-	{
-		fn imp<'M, T, RStride: Stride>(this: ColRef<'_, T, Dim<'M>, RStride>) -> Col<T::Canonical, Dim<'M>>
-		where
-			T: Conjugate,
-		{
-			Col::from_fn(this.nrows(), |i| Conj::apply::<T>(this.at(i)))
-		}
-
-		with_dim!(M, self.nrows().unbound());
-		imp(self.as_row_shape(M)).into_row_shape(self.nrows())
-	}
-
 	/// returns a view over the column with a static row stride equal to `+1`, or `None` otherwise
 	#[inline]
 	pub fn try_as_col_major(self) -> Option<ColRef<'a, T, Rows, ContiguousFwd>> {
@@ -388,12 +352,6 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	#[inline]
 	pub fn as_mat(self) -> MatRef<'a, T, Rows, usize, RStride, isize> {
 		unsafe { MatRef::from_raw_parts(self.as_ptr(), self.nrows(), self.ncols(), self.row_stride(), 0) }
-	}
-
-	/// returns a view over `self`
-	#[inline]
-	pub fn as_ref(&self) -> ColRef<'_, T, Rows, RStride> {
-		*self
 	}
 
 	#[inline]
@@ -420,7 +378,44 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	/// interprets the column as a diagonal matrix
 	#[inline]
 	pub fn as_diagonal(self) -> DiagRef<'a, T, Rows, RStride> {
-		DiagRef { inner: self }
+		DiagRef {
+			0: crate::diag::Ref { inner: self },
+		}
+	}
+}
+
+impl<T, Rows: Shape, RStride: Stride, Inner: for<'short> Reborrow<'short, Target = Ref<'short, T, Rows, RStride>>> generic::Col<Inner> {
+	/// returns a newly allocated column holding the cloned values of `self`
+	#[inline]
+	pub fn cloned(&self) -> Col<T, Rows>
+	where
+		T: Clone,
+	{
+		fn imp<'M, T: Clone, RStride: Stride>(this: ColRef<'_, T, Dim<'M>, RStride>) -> Col<T, Dim<'M>> {
+			Col::from_fn(this.nrows(), |i| this.at(i).clone())
+		}
+
+		let this = self.rb();
+		with_dim!(M, this.nrows().unbound());
+		imp(this.as_row_shape(M)).into_row_shape(this.nrows())
+	}
+
+	/// returns a newly allocated column holding the (possibly conjugated) values of `self`
+	#[inline]
+	pub fn to_owned(&self) -> Col<T::Canonical, Rows>
+	where
+		T: Conjugate,
+	{
+		fn imp<'M, T, RStride: Stride>(this: ColRef<'_, T, Dim<'M>, RStride>) -> Col<T::Canonical, Dim<'M>>
+		where
+			T: Conjugate,
+		{
+			Col::from_fn(this.nrows(), |i| Conj::apply::<T>(this.at(i)))
+		}
+
+		let this = self.rb();
+		with_dim!(M, this.nrows().unbound());
+		imp(this.as_row_shape(M)).into_row_shape(this.nrows())
 	}
 
 	/// returns the maximum norm of `self`
@@ -467,6 +462,12 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	{
 		self.rb().as_mat().sum()
 	}
+
+	/// returns a view over `self`
+	#[inline]
+	pub fn as_ref(&self) -> ColRef<'_, T, Rows, RStride> {
+		self.rb()
+	}
 }
 
 impl<'a, T, Rows: Shape> ColRef<'a, T, Rows, ContiguousFwd> {
@@ -497,9 +498,9 @@ impl<'ROWS, 'a, T, RStride: Stride> ColRef<'a, T, Dim<'ROWS>, RStride> {
 	}
 }
 
-impl<T: core::fmt::Debug, Rows: Shape, RStride: Stride> core::fmt::Debug for ColRef<'_, T, Rows, RStride> {
+impl<T: core::fmt::Debug, Rows: Shape, RStride: Stride> core::fmt::Debug for Ref<'_, T, Rows, RStride> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		self.transpose().fmt(f)
+		generic::Col::from_inner_ref(self).transpose().fmt(f)
 	}
 }
 
