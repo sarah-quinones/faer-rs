@@ -294,6 +294,14 @@ macro_rules! impl_scalar_mul {
 				self.mul(other.as_ref())
 			}
 		}
+		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs> for &$lhs {
+			type Output = $out;
+
+			#[track_caller]
+			fn mul(self, other: $rhs) -> Self::Output {
+				self.clone().mul(other.as_ref())
+			}
+		}
 	};
 }
 
@@ -307,6 +315,14 @@ macro_rules! impl_mul_scalar {
 				self.as_ref().mul(other)
 			}
 		}
+		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<&$rhs> for $lhs {
+			type Output = $out;
+
+			#[track_caller]
+			fn mul(self, other: &$rhs) -> Self::Output {
+				self.as_ref().mul(other.clone())
+			}
+		}
 	};
 }
 
@@ -317,6 +333,14 @@ macro_rules! impl_div_scalar {
 
 			#[track_caller]
 			fn div(self, other: $rhs) -> Self::Output {
+				self.as_ref().mul(Scale(recip(&other.0)))
+			}
+		}
+		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Div<&$rhs> for $lhs {
+			type Output = $out;
+
+			#[track_caller]
+			fn div(self, other: &$rhs) -> Self::Output {
 				self.as_ref().mul(Scale(recip(&other.0)))
 			}
 		}
@@ -378,6 +402,13 @@ macro_rules! impl_mul_assign_scalar {
 				self.as_mut().mul_assign(other)
 			}
 		}
+
+		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<&$rhs> for $lhs {
+			#[track_caller]
+			fn mul_assign(&mut self, other: &$rhs) {
+				self.as_mut().mul_assign(other.clone())
+			}
+		}
 	};
 }
 
@@ -386,6 +417,12 @@ macro_rules! impl_div_assign_scalar {
 		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> DivAssign<$rhs> for $lhs {
 			#[track_caller]
 			fn div_assign(&mut self, other: $rhs) {
+				self.as_mut().mul_assign(Scale(recip(&other.0)))
+			}
+		}
+		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> DivAssign<&$rhs> for $lhs {
+			#[track_caller]
+			fn div_assign(&mut self, other: &$rhs) {
 				self.as_mut().mul_assign(Scale(recip(&other.0)))
 			}
 		}
@@ -402,6 +439,14 @@ macro_rules! impl_1d_scalar_mul {
 				self.mul(other.as_ref())
 			}
 		}
+		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<$rhs> for &$lhs {
+			type Output = $out;
+
+			#[track_caller]
+			fn mul(self, other: $rhs) -> Self::Output {
+				self.clone().mul(other.as_ref())
+			}
+		}
 	};
 }
 
@@ -415,6 +460,14 @@ macro_rules! impl_1d_mul_scalar {
 				self.as_ref().mul(other)
 			}
 		}
+		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<&$rhs> for $lhs {
+			type Output = $out;
+
+			#[track_caller]
+			fn mul(self, other: &$rhs) -> Self::Output {
+				self.as_ref().mul(other.clone())
+			}
+		}
 	};
 }
 
@@ -425,6 +478,14 @@ macro_rules! impl_1d_div_scalar {
 
 			#[track_caller]
 			fn div(self, other: $rhs) -> Self::Output {
+				self.as_ref().mul(Scale(recip(&other.0)))
+			}
+		}
+		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Div<&$rhs> for $lhs {
+			type Output = $out;
+
+			#[track_caller]
+			fn div(self, other: &$rhs) -> Self::Output {
 				self.as_ref().mul(Scale(recip(&other.0)))
 			}
 		}
@@ -486,6 +547,12 @@ macro_rules! impl_1d_mul_assign_scalar {
 				self.as_mut().mul_assign(other)
 			}
 		}
+		impl<LhsT: ComplexField, Len: Shape> MulAssign<&$rhs> for $lhs {
+			#[track_caller]
+			fn mul_assign(&mut self, other: &$rhs) {
+				self.as_mut().mul_assign(other.clone())
+			}
+		}
 	};
 }
 
@@ -494,6 +561,12 @@ macro_rules! impl_1d_div_assign_scalar {
 		impl<LhsT: ComplexField, Len: Shape> DivAssign<$rhs> for $lhs {
 			#[track_caller]
 			fn div_assign(&mut self, other: $rhs) {
+				self.as_mut().mul_assign(Scale(recip(&other.0)))
+			}
+		}
+		impl<LhsT: ComplexField, Len: Shape> DivAssign<&$rhs> for $lhs {
+			#[track_caller]
+			fn div_assign(&mut self, other: &$rhs) {
 				self.as_mut().mul_assign(Scale(recip(&other.0)))
 			}
 		}
@@ -2264,6 +2337,14 @@ mod sparse {
 					self.mul(other.rb())
 				}
 			}
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for &$lhs {
+				type Output = $out;
+
+				#[track_caller]
+				fn mul(self, other: $rhs) -> Self::Output {
+					self.clone().mul(other.rb())
+				}
+			}
 		};
 	}
 
@@ -2326,6 +2407,23 @@ mod sparse {
 					self.rb().div(other)
 				}
 			}
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<&$rhs> for $lhs {
+				type Output = $out;
+
+				#[track_caller]
+				fn mul(self, other: &$rhs) -> Self::Output {
+					self.rb().mul(other.clone())
+				}
+			}
+
+			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<&$rhs> for $lhs {
+				type Output = $out;
+
+				#[track_caller]
+				fn div(self, other: &$rhs) -> Self::Output {
+					self.rb().div(other.clone())
+				}
+			}
 		};
 	}
 
@@ -2342,6 +2440,19 @@ mod sparse {
 				#[track_caller]
 				fn div_assign(&mut self, other: $rhs) {
 					(*self).rb_mut().div_assign(other)
+				}
+			}
+			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> MulAssign<&$rhs> for $lhs {
+				#[track_caller]
+				fn mul_assign(&mut self, other: &$rhs) {
+					(*self).rb_mut().mul_assign(other.clone())
+				}
+			}
+
+			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> DivAssign<&$rhs> for $lhs {
+				#[track_caller]
+				fn div_assign(&mut self, other: &$rhs) {
+					(*self).rb_mut().div_assign(other.clone())
 				}
 			}
 		};

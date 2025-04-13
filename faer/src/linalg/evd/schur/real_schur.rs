@@ -359,7 +359,7 @@ fn schur_move<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, mut ifst
 }
 
 #[math]
-pub fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: usize, n1: usize, n2: usize) -> isize {
+pub(crate) fn schur_swap<T: RealField>(mut a: MatMut<T>, mut q: Option<MatMut<T>>, j0: usize, n1: usize, n2: usize) -> isize {
 	let n = a.nrows();
 	let epsilon = eps::<T>();
 	let zero_threshold = min_positive::<T>();

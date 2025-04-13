@@ -9,6 +9,8 @@ pub mod conjugate_gradient;
 /// least squares minimal residual
 pub mod lsmr;
 
+pub mod eigen;
+
 mod operator_impl;
 
 /// specifies whether the initial guess should be assumed to be zero or not
