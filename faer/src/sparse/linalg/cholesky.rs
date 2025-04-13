@@ -1,4 +1,4 @@
-//! computes the Cholesky decomposition (either $LL^\top$, $LTL^\top$, or bunch-kaufman) of a given
+//! computes the Cholesky decomposition (either $LL^\top$, $LTL^\top$, or $LBL^\top$) of a given
 //! sparse matrix. see [`crate::linalg::cholesky`] for more info.
 //!
 //! the entry point in this module is [`SymbolicCholesky`] and [`factorize_symbolic_cholesky`].
@@ -229,7 +229,6 @@
 //! 	use faer::dyn_stack::{MemBuffer, MemStack, StackReq};
 //! 	use faer::reborrow::*;
 //!
-//! 	use faer::linalg::cholesky::bunch_kaufman::factor::BunchKaufmanRegularization;
 //! 	use faer::linalg::cholesky::ldlt::factor::LdltRegularization;
 //!
 //! 	use faer::sparse::linalg::amd;
@@ -400,7 +399,7 @@
 //! 			faer::Par::Seq,
 //! 			Default::default(),
 //! 		),
-//! 		supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<usize, f64>(
+//! 		supernodal::factorize_supernodal_numeric_intranode_lblt_scratch::<usize, f64>(
 //! 			&symbolic,
 //! 			faer::Par::Seq,
 //! 			Default::default(),
@@ -438,7 +437,7 @@
 //! 		assert!((&A * &sol - &rhs).norm_max() <= 1e-14);
 //! 	}
 //!
-//! 	// numerical intranodal bunch-kaufman factorization
+//! 	// numerical intranodal LBLT factorization
 //! 	{
 //! 		let mut L_values = Vec::new();
 //! 		let mut subdiag = Vec::new();
@@ -454,13 +453,12 @@
 //! 		pivot_perm_inv.try_reserve(dim)?;
 //! 		pivot_perm_inv.resize(dim, 0usize);
 //!
-//! 		supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman::<usize, f64>(
+//! 		supernodal::factorize_supernodal_numeric_intranode_lblt::<usize, f64>(
 //! 			&mut L_values,
 //! 			&mut subdiag,
 //! 			&mut pivot_perm,
 //! 			&mut pivot_perm_inv,
 //! 			A_perm_lower.rb(),
-//! 			BunchKaufmanRegularization::default(),
 //! 			&symbolic,
 //! 			faer::Par::Seq,
 //! 			stack,
@@ -469,7 +467,7 @@
 //!
 //! 		let piv_perm =
 //! 			unsafe { faer::perm::PermRef::new_unchecked(&pivot_perm, &pivot_perm_inv, dim) };
-//! 		let lblt = supernodal::SupernodalIntranodeBunchKaufmanRef::<'_, usize, f64>::new(
+//! 		let lblt = supernodal::SupernodalIntranodeLbltRef::<'_, usize, f64>::new(
 //! 			&symbolic, &L_values, &subdiag, piv_perm,
 //! 		);
 //!
@@ -502,7 +500,7 @@ use super::super::utils::*;
 use super::ghost;
 use crate::assert;
 use crate::internal_prelude_sp::*;
-use linalg::cholesky::bunch_kaufman::factor::{BunchKaufmanInfo, BunchKaufmanParams, BunchKaufmanRegularization};
+use linalg::cholesky::lblt::factor::{LbltInfo, LbltParams};
 use linalg::cholesky::ldlt::factor::{LdltError, LdltInfo, LdltParams, LdltRegularization};
 use linalg::cholesky::llt::factor::{LltError, LltInfo, LltParams, LltRegularization};
 use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, amd, triangular_solve};
@@ -1528,9 +1526,9 @@ pub mod supernodal {
 		values: &'a [T],
 	}
 
-	/// cholesky bunch-kaufman factors containing both the symbolic and numeric representations
+	/// cholesky $LBL^\top$ factors containing both the symbolic and numeric representations
 	#[derive(Debug)]
-	pub struct SupernodalIntranodeBunchKaufmanRef<'a, I: Index, T> {
+	pub struct SupernodalIntranodeLbltRef<'a, I: Index, T> {
 		symbolic: &'a SymbolicSupernodalCholesky<I>,
 		values: &'a [T],
 		subdiag: &'a [T],
@@ -1747,8 +1745,8 @@ pub mod supernodal {
 			*self
 		}
 	}
-	impl<I: Index, T> Copy for SupernodalIntranodeBunchKaufmanRef<'_, I, T> {}
-	impl<I: Index, T> Clone for SupernodalIntranodeBunchKaufmanRef<'_, I, T> {
+	impl<I: Index, T> Copy for SupernodalIntranodeLbltRef<'_, I, T> {}
+	impl<I: Index, T> Clone for SupernodalIntranodeLbltRef<'_, I, T> {
 		fn clone(&self) -> Self {
 			*self
 		}
@@ -2080,8 +2078,8 @@ pub mod supernodal {
 		}
 	}
 
-	impl<'a, I: Index, T> SupernodalIntranodeBunchKaufmanRef<'a, I, T> {
-		/// creates a new cholesky intranodal bunch-kaufman factor from the symbolic part and
+	impl<'a, I: Index, T> SupernodalIntranodeLbltRef<'a, I, T> {
+		/// creates a new cholesky intranodal $LBL^\top$ factor from the symbolic part and
 		/// numerical values, as well as the pivoting permutation
 		///
 		/// # panics
@@ -2846,12 +2844,12 @@ pub mod supernodal {
 	}
 
 	/// returns the size and alignment of the workspace required to compute the numeric
-	/// cholesky bunch-kaufman factorization with intranodal pivoting of a matrix $A$ with dimension
+	/// cholesky $LBL^\top$ factorization with intranodal pivoting of a matrix $A$ with dimension
 	/// `n`
-	pub fn factorize_supernodal_numeric_intranode_bunch_kaufman_scratch<I: Index, T: ComplexField>(
+	pub fn factorize_supernodal_numeric_intranode_lblt_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
-		params: Spec<BunchKaufmanParams, T>,
+		params: Spec<LbltParams, T>,
 	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
@@ -2893,7 +2891,7 @@ pub mod supernodal {
 			}
 			req = StackReq::any_of(&[
 				req,
-				linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<I, T>(s_ncols, par, params),
+				linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<I, T>(s_ncols, par, params),
 				crate::perm::permute_cols_in_place_scratch::<I, T>(s_pattern.len(), s_ncols),
 			]);
 		}
@@ -3232,7 +3230,7 @@ pub mod supernodal {
 		})
 	}
 
-	/// computes the numeric values of the cholesky bunch-kaufman factors of the matrix $A$ with
+	/// computes the numeric values of the cholesky $LBL^\top$ factors of the matrix $A$ with
 	/// intranodal pivoting, and stores them in `l_values`
 	///
 	/// # note
@@ -3244,21 +3242,19 @@ pub mod supernodal {
 	/// [`factorize_supernodal_symbolic_cholesky`] on a matrix with the same symbolic structure
 	/// otherwise, the behavior is unspecified and panics may occur
 	#[math]
-	pub fn factorize_supernodal_numeric_intranode_bunch_kaufman<I: Index, T: ComplexField>(
+	pub fn factorize_supernodal_numeric_intranode_lblt<I: Index, T: ComplexField>(
 		L_values: &mut [T],
 		subdiag: &mut [T],
 		perm_forward: &mut [I],
 		perm_inverse: &mut [I],
 		A_lower: SparseColMatRef<'_, I, T>,
-		regularization: BunchKaufmanRegularization<'_, T::Real>,
 		symbolic: &SymbolicSupernodalCholesky<I>,
 		par: Par,
 		stack: &mut MemStack,
-		params: Spec<BunchKaufmanParams, T>,
-	) -> BunchKaufmanInfo {
+		params: Spec<LbltParams, T>,
+	) -> LbltInfo {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
-		let mut dynamic_regularization_count = 0usize;
 		let mut transposition_count = 0usize;
 		L_values.fill(zero());
 
@@ -3413,22 +3409,15 @@ pub mod supernodal {
 			let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 			let s_subdiag = &mut subdiag[s_start..s_end];
 
-			let (info, perm) = linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
+			let (info, perm) = linalg::cholesky::lblt::factor::cholesky_in_place(
 				Ls_top.rb_mut(),
 				ColMut::from_slice_mut(s_subdiag).as_diagonal_mut(),
-				BunchKaufmanRegularization {
-					dynamic_regularization_signs: regularization.dynamic_regularization_signs.map(|signs| &signs[s_start..s_end]),
-
-					dynamic_regularization_delta: copy(regularization.dynamic_regularization_delta),
-					dynamic_regularization_epsilon: copy(regularization.dynamic_regularization_epsilon),
-				},
 				&mut perm_forward[s_start..s_end],
 				&mut perm_inverse[s_start..s_end],
 				par,
 				stack,
 				params,
 			);
-			dynamic_regularization_count += info.dynamic_regularization_count;
 			transposition_count += info.transposition_count;
 			z!(Ls_top.rb_mut()).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero::<T>());
 
@@ -3473,10 +3462,7 @@ pub mod supernodal {
 				global_to_local[row.zx()] = none;
 			}
 		}
-		BunchKaufmanInfo {
-			dynamic_regularization_count,
-			transposition_count,
-		}
+		LbltInfo { transposition_count }
 	}
 }
 
@@ -3651,10 +3637,10 @@ impl<I: Index> SymbolicCholesky<I> {
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
 	}
 
-	/// computes the required workspace size and alignment for a numerical intranodal bunch-kaufman
+	/// computes the required workspace size and alignment for a numerical intranodal $LBL^\top$
 	/// factorization
 	#[inline]
-	pub fn factorize_numeric_intranode_bunch_kaufman_scratch<T: ComplexField>(&self, par: Par, params: Spec<BunchKaufmanParams, T>) -> StackReq {
+	pub fn factorize_numeric_intranode_lblt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LbltParams, T>) -> StackReq {
 		let n = self.nrows();
 		let A_nnz = self.A_nnz;
 
@@ -3666,9 +3652,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
 		let factor_scratch = match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(_) => simplicial::factorize_simplicial_numeric_ldlt_scratch::<I, T>(n),
-			SymbolicCholeskyRaw::Supernodal(this) => {
-				supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<I, T>(this, par, params)
-			},
+			SymbolicCholeskyRaw::Supernodal(this) => supernodal::factorize_supernodal_numeric_intranode_lblt_scratch::<I, T>(this, par, params),
 		};
 
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
@@ -3813,9 +3797,9 @@ impl<I: Index> SymbolicCholesky<I> {
 		Ok(LdltRef::<'out, I, T>::new(self, L_values))
 	}
 
-	/// computes a numerical intranodal bunch-kaufman factorization of a
+	/// computes a numerical intranodal $LBL^\top$ factorization of a
 	#[inline]
-	pub fn factorize_numeric_intranode_bunch_kaufman<'out, T: ComplexField>(
+	pub fn factorize_numeric_intranode_lblt<'out, T: ComplexField>(
 		&'out self,
 		L_values: &'out mut [T],
 		subdiag: &'out mut [T],
@@ -3823,19 +3807,16 @@ impl<I: Index> SymbolicCholesky<I> {
 		perm_inverse: &'out mut [I],
 		A: SparseColMatRef<'_, I, T>,
 		side: Side,
-		regularization: BunchKaufmanRegularization<'_, T::Real>,
 		par: Par,
 		stack: &mut MemStack,
-		params: Spec<BunchKaufmanParams, T>,
-	) -> IntranodeBunchKaufmanRef<'out, I, T> {
+		params: Spec<LbltParams, T>,
+	) -> IntranodeLbltRef<'out, I, T> {
 		assert!(A.nrows() == A.ncols());
 		let n = A.nrows();
 
 		with_dim!(N, n);
 		let A_nnz = self.A_nnz;
 		let A = A.as_shape(N, N);
-
-		let (new_signs, stack) = unsafe { stack.make_raw::<i8>(if regularization.dynamic_regularization_signs.is_some() { n } else { 0 }) };
 
 		let (mut new_values, stack) = unsafe { temp_mat_uninit::<T, _, _>(A_nnz, 1, stack) };
 		let new_values = new_values.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap().as_slice_mut();
@@ -3847,44 +3828,25 @@ impl<I: Index> SymbolicCholesky<I> {
 			SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
 		};
 
-		let (A, signs) = match self.perm() {
+		let A = match self.perm() {
 			Some(perm) => {
 				let perm = perm.as_shape(N);
-				let fwd = perm.bound_arrays().0;
-				let signs = regularization.dynamic_regularization_signs.map(|signs| {
-					{
-						let new_signs = Array::from_mut(new_signs, N);
-						let signs = Array::from_ref(signs, N);
-						for i in N.indices() {
-							new_signs[i] = signs[fwd[i].zx()];
-						}
-					}
-					&*new_signs
-				});
-
 				let A = permute_self_adjoint_to_unsorted(new_values, new_col_ptr, new_row_idx, A, perm, side, out_side, stack).into_const();
 
-				(A, signs)
+				A
 			},
 			None => {
 				if side == out_side {
-					(A, regularization.dynamic_regularization_signs)
+					A
 				} else {
-					(
-						adjoint(new_values, new_col_ptr, new_row_idx, A, stack).into_const(),
-						regularization.dynamic_regularization_signs,
-					)
+					adjoint(new_values, new_col_ptr, new_row_idx, A, stack).into_const()
 				}
 			},
 		};
 
 		match &self.raw {
 			SymbolicCholeskyRaw::Simplicial(this) => {
-				let regularization = LdltRegularization {
-					dynamic_regularization_signs: signs.rb(),
-					dynamic_regularization_delta: regularization.dynamic_regularization_delta,
-					dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
-				};
+				let regularization = LdltRegularization::default();
 				for (i, p) in perm_forward.iter_mut().enumerate() {
 					*p = I::truncate(i);
 				}
@@ -3894,19 +3856,12 @@ impl<I: Index> SymbolicCholesky<I> {
 				let _ = simplicial::factorize_simplicial_numeric_ldlt(L_values, A.as_dyn().into_const(), regularization, this, stack);
 			},
 			SymbolicCholeskyRaw::Supernodal(this) => {
-				let regularization = BunchKaufmanRegularization {
-					dynamic_regularization_signs: signs,
-					dynamic_regularization_delta: regularization.dynamic_regularization_delta,
-					dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
-				};
-
-				supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+				supernodal::factorize_supernodal_numeric_intranode_lblt(
 					L_values,
 					subdiag,
 					perm_forward,
 					perm_inverse,
 					A.as_dyn().into_const(),
-					regularization,
 					this,
 					par,
 					stack,
@@ -3915,13 +3870,13 @@ impl<I: Index> SymbolicCholesky<I> {
 			},
 		}
 
-		IntranodeBunchKaufmanRef::<'out, I, T>::new(self, L_values, subdiag, unsafe {
+		IntranodeLbltRef::<'out, I, T>::new(self, L_values, subdiag, unsafe {
 			PermRef::<'out, I>::new_unchecked(perm_forward, perm_inverse, n)
 		})
 	}
 
 	/// computes the required workspace size and alignment for a dense solve in place using an
-	/// $LL^H$, $LDL^H$ or intranodal bunch-kaufman factorization
+	/// $LL^H$, $LDL^H$ or intranodal $LBL^\top$ factorization
 	pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(match self.raw() {
 			SymbolicCholeskyRaw::Simplicial(this) => this.solve_in_place_scratch::<T>(rhs_ncols),
@@ -3944,9 +3899,9 @@ pub struct LdltRef<'a, I: Index, T> {
 	values: &'a [T],
 }
 
-/// sparse intranodal bunch-kaufman factorization wrapper
+/// sparse intranodal $LBL^\top$ factorization wrapper
 #[derive(Debug)]
-pub struct IntranodeBunchKaufmanRef<'a, I: Index, T> {
+pub struct IntranodeLbltRef<'a, I: Index, T> {
 	symbolic: &'a SymbolicCholesky<I>,
 	values: &'a [T],
 	subdiag: &'a [T],
@@ -3969,7 +3924,7 @@ impl<'a, I: Index, T> core::ops::Deref for LdltRef<'a, I, T> {
 		self.symbolic
 	}
 }
-impl<'a, I: Index, T> core::ops::Deref for IntranodeBunchKaufmanRef<'a, I, T> {
+impl<'a, I: Index, T> core::ops::Deref for IntranodeLbltRef<'a, I, T> {
 	type Target = SymbolicCholesky<I>;
 
 	#[inline]
@@ -3980,7 +3935,7 @@ impl<'a, I: Index, T> core::ops::Deref for IntranodeBunchKaufmanRef<'a, I, T> {
 
 impl<'a, I: Index, T> Copy for LltRef<'a, I, T> {}
 impl<'a, I: Index, T> Copy for LdltRef<'a, I, T> {}
-impl<'a, I: Index, T> Copy for IntranodeBunchKaufmanRef<'a, I, T> {}
+impl<'a, I: Index, T> Copy for IntranodeLbltRef<'a, I, T> {}
 
 impl<'a, I: Index, T> Clone for LltRef<'a, I, T> {
 	fn clone(&self) -> Self {
@@ -3992,14 +3947,14 @@ impl<'a, I: Index, T> Clone for LdltRef<'a, I, T> {
 		*self
 	}
 }
-impl<'a, I: Index, T> Clone for IntranodeBunchKaufmanRef<'a, I, T> {
+impl<'a, I: Index, T> Clone for IntranodeLbltRef<'a, I, T> {
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'a, I: Index, T> IntranodeBunchKaufmanRef<'a, I, T> {
-	/// creates a new cholesky intranodal bunch-kaufman factor from the symbolic part and
+impl<'a, I: Index, T> IntranodeLbltRef<'a, I, T> {
+	/// creates a new cholesky intranodal $LBL^\top$ factor from the symbolic part and
 	/// numerical values, as well as the pivoting permutation
 	///
 	/// # panics
@@ -4088,7 +4043,7 @@ impl<'a, I: Index, T> IntranodeBunchKaufmanRef<'a, I, T> {
 					}
 				}
 
-				let this = supernodal::SupernodalIntranodeBunchKaufmanRef::new(symbolic, self.values, self.subdiag, self.perm);
+				let this = supernodal::SupernodalIntranodeLbltRef::new(symbolic, self.values, self.subdiag, self.perm);
 				this.solve_in_place_no_numeric_permute_with_conj(conj, x.rb_mut(), par, stack);
 
 				if let Some(inv) = inv {
@@ -4697,18 +4652,18 @@ pub(super) mod tests {
 			let bwd = &mut *vec![0usize; n];
 			let subdiag = &mut *vec![zero::<c64>(); n];
 
-			supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+			supernodal::factorize_supernodal_numeric_intranode_lblt(
 				L_val,
 				subdiag,
 				fwd,
 				bwd,
 				A_lower,
-				Default::default(),
 				symbolic,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(
-					supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_scratch::<usize, c64>(symbolic, Par::Seq, Default::default()),
-				)),
+				MemStack::new(&mut MemBuffer::new(supernodal::factorize_supernodal_numeric_intranode_lblt_scratch::<
+					usize,
+					c64,
+				>(symbolic, Par::Seq, Default::default()))),
 				Default::default(),
 			);
 
@@ -4726,7 +4681,7 @@ pub(super) mod tests {
 			}
 			.rand::<Mat<c64>>(rng);
 
-			let supernodal = supernodal::SupernodalIntranodeBunchKaufmanRef::new(symbolic, L_val, subdiag, PermRef::new_checked(fwd, bwd, n));
+			let supernodal = supernodal::SupernodalIntranodeLbltRef::new(symbolic, L_val, subdiag, PermRef::new_checked(fwd, bwd, n));
 			for conj in [Conj::No, Conj::Yes] {
 				let mut x = rhs.clone();
 				let mut tmp = x.clone();
@@ -5153,17 +5108,16 @@ pub(super) mod tests {
 					let subdiag = &mut *vec![zero::<c64>(); n];
 
 					let L_val = &mut *vec![zero::<c64>(); symbolic.len_val()];
-					let lblt = symbolic.factorize_numeric_intranode_bunch_kaufman(
+					let lblt = symbolic.factorize_numeric_intranode_lblt(
 						L_val,
 						subdiag,
 						fwd,
 						bwd,
 						A,
 						side,
-						Default::default(),
 						par,
 						MemStack::new(&mut MemBuffer::new(
-							symbolic.factorize_numeric_intranode_bunch_kaufman_scratch::<c64>(par, Default::default()),
+							symbolic.factorize_numeric_intranode_lblt_scratch::<c64>(par, Default::default()),
 						)),
 						Default::default(),
 					);

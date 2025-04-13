@@ -18,7 +18,7 @@ mod tests {
 	use crate::stats::prelude::*;
 	use crate::{assert, c64};
 	use dyn_stack::MemBuffer;
-	use factor::BunchKaufmanParams;
+	use factor::LbltParams;
 	use std::vec;
 
 	#[test]
@@ -52,7 +52,6 @@ mod tests {
 			let (_, perm) = factor::cholesky_in_place(
 				ldl.as_mut(),
 				subdiag.as_mut(),
-				Default::default(),
 				&mut perm,
 				&mut perm_inv,
 				Par::Seq,
@@ -119,7 +118,7 @@ mod tests {
 				let mut perm = vec![0usize; n];
 				let mut perm_inv = vec![0; n];
 
-				let params = BunchKaufmanParams {
+				let params = LbltParams {
 					pivoting,
 					blocksize: 4,
 					..auto!(c64)
@@ -128,7 +127,6 @@ mod tests {
 				let (_, perm) = factor::cholesky_in_place(
 					ldl.as_mut(),
 					subdiag.as_mut(),
-					Default::default(),
 					&mut perm,
 					&mut perm_inv,
 					Par::Seq,

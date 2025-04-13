@@ -27,7 +27,7 @@ pub enum PivotingStrategy {
 
 /// tuning parameters for the decomposition
 #[derive(Copy, Clone, Debug)]
-pub struct BunchKaufmanParams {
+pub struct LbltParams {
 	/// pivoting strategy
 	pub pivoting: PivotingStrategy,
 	/// block size of the algorithm
@@ -38,20 +38,6 @@ pub struct BunchKaufmanParams {
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
-}
-
-/// dynamic bunch-kaufman regularization
-///
-/// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
-/// their corrected sign
-#[derive(Copy, Clone, Debug)]
-pub struct BunchKaufmanRegularization<'a, T> {
-	/// expected signs for the diagonal at each step of the decomposition
-	pub dynamic_regularization_signs: Option<&'a [i8]>,
-	/// regularized value
-	pub dynamic_regularization_delta: T,
-	/// regularization threshold
-	pub dynamic_regularization_epsilon: T,
 }
 
 #[math]
@@ -298,7 +284,7 @@ fn rank_2_update_and_argmax<'N, T: ComplexField>(
 }
 
 #[math]
-fn lblt_full_piv<T: ComplexField>(A: MatMut<'_, T>, subdiag: DiagMut<'_, T>, pivots: &mut [usize], par: Par, params: BunchKaufmanParams) {
+fn lblt_full_piv<T: ComplexField>(A: MatMut<'_, T>, subdiag: DiagMut<'_, T>, pivots: &mut [usize], par: Par, params: LbltParams) {
 	let alpha = (one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0))) * from_f64::<T::Real>(0.125);
 	let alpha = alpha * alpha;
 
@@ -995,17 +981,7 @@ fn lblt_unblocked<T: ComplexField>(
 	}
 }
 
-impl<T: RealField> Default for BunchKaufmanRegularization<'_, T> {
-	fn default() -> Self {
-		Self {
-			dynamic_regularization_signs: None,
-			dynamic_regularization_delta: zero(),
-			dynamic_regularization_epsilon: zero(),
-		}
-	}
-}
-
-impl<T: ComplexField> Auto<T> for BunchKaufmanParams {
+impl<T: ComplexField> Auto<T> for LbltParams {
 	fn auto() -> Self {
 		Self {
 			pivoting: PivotingStrategy::PartialDiag,
@@ -1016,9 +992,9 @@ impl<T: ComplexField> Auto<T> for BunchKaufmanParams {
 	}
 }
 
-/// computes the size and alignment of required workspace for performing a bunch-kaufman
+/// computes the size and alignment of required workspace for performing an $LBL^\top$
 /// decomposition
-pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<BunchKaufmanParams, T>) -> StackReq {
+pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<LbltParams, T>) -> StackReq {
 	let params = params.config;
 	let _ = par;
 	let mut bs = params.blocksize;
@@ -1028,16 +1004,14 @@ pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par
 	StackReq::new::<usize>(dim).and(temp_mat_scratch::<T>(dim, bs))
 }
 
-/// info about the result of the bunch-kaufman factorization
+/// info about the result of the $LBL^\top$ factorization
 #[derive(Copy, Clone, Debug)]
-pub struct BunchKaufmanInfo {
-	/// number of pivots whose value or sign had to be corrected
-	pub dynamic_regularization_count: usize,
+pub struct LbltInfo {
 	/// number of pivoting transpositions
 	pub transposition_count: usize,
 }
 
-/// computes the bunch-kaufman factorization of $A$ and stores the factorization in `matrix` and
+/// computes the $LBL^\top$ factorization of $A$ and stores the factorization in `matrix` and
 /// `subdiag`
 ///
 /// the diagonal of the block diagonal matrix is stored on the diagonal
@@ -1055,15 +1029,13 @@ pub struct BunchKaufmanInfo {
 pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	A: MatMut<'_, T>,
 	subdiag: DiagMut<'_, T>,
-	regularization: BunchKaufmanRegularization<'_, T::Real>,
 	perm: &'out mut [I],
 	perm_inv: &'out mut [I],
 	par: Par,
 	stack: &mut MemStack,
-	params: Spec<BunchKaufmanParams, T>,
-) -> (BunchKaufmanInfo, PermRef<'out, I>) {
+	params: Spec<LbltParams, T>,
+) -> (LbltInfo, PermRef<'out, I>) {
 	let params = params.config;
-	let _ = regularization;
 
 	let truncate = <I::Signed as SignedIndex>::truncate;
 
@@ -1073,10 +1045,10 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	#[cfg(feature = "perf-warn")]
 	if A.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(CHOLESKY_WARN) {
 		if A.col_stride().unsigned_abs() == 1 {
-			log::warn!(target: "faer_perf", "Bunch-Kaufman decomposition prefers column-major
+			log::warn!(target: "faer_perf", "$LBL^\top$ decomposition prefers column-major
     matrix. Found row-major matrix.");
 		} else {
-			log::warn!(target: "faer_perf", "Bunch-Kaufman decomposition prefers column-major
+			log::warn!(target: "faer_perf", "$LBL^\top$ decomposition prefers column-major
     matrix. Found matrix with generic strides.");
 		}
 	}
@@ -1122,11 +1094,5 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 		perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
 	}
 
-	(
-		BunchKaufmanInfo {
-			dynamic_regularization_count: 0,
-			transposition_count,
-		},
-		unsafe { PermRef::new_unchecked(perm, perm_inv, n) },
-	)
+	(LbltInfo { transposition_count }, unsafe { PermRef::new_unchecked(perm, perm_inv, n) })
 }
