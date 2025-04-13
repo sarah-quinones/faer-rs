@@ -4,6 +4,184 @@ use crate::{Idx, MaybeIdx, assert, debug_assert};
 use core::ops::Range;
 use core::{fmt, iter};
 
+/// implementation of symbolic representation
+pub mod symbolic {
+	/// generic `SymbolicSparseColMat` wrapper
+	pub mod generic {
+		use core::fmt::Debug;
+		use reborrow::*;
+
+		/// generic `SymbolicSparseColMat` wrapper
+		#[derive(Copy, Clone)]
+		#[repr(transparent)]
+		pub struct SymbolicSparseColMat<Inner>(pub Inner);
+
+		impl<Inner: Debug> Debug for SymbolicSparseColMat<Inner> {
+			#[inline(always)]
+			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+				self.0.fmt(f)
+			}
+		}
+
+		impl<Inner> SymbolicSparseColMat<Inner> {
+			/// wrap by reference
+			#[inline(always)]
+			pub fn from_inner_ref(inner: &Inner) -> &Self {
+				unsafe { &*(inner as *const Inner as *const Self) }
+			}
+
+			/// wrap by mutable reference
+			#[inline(always)]
+			pub fn from_inner_mut(inner: &mut Inner) -> &mut Self {
+				unsafe { &mut *(inner as *mut Inner as *mut Self) }
+			}
+		}
+
+		impl<Inner> core::ops::Deref for SymbolicSparseColMat<Inner> {
+			type Target = Inner;
+
+			#[inline(always)]
+			fn deref(&self) -> &Self::Target {
+				&self.0
+			}
+		}
+
+		impl<Inner> core::ops::DerefMut for SymbolicSparseColMat<Inner> {
+			#[inline(always)]
+			fn deref_mut(&mut self) -> &mut Self::Target {
+				&mut self.0
+			}
+		}
+
+		impl<'short, Inner: Reborrow<'short>> Reborrow<'short> for SymbolicSparseColMat<Inner> {
+			type Target = SymbolicSparseColMat<Inner::Target>;
+
+			#[inline(always)]
+			fn rb(&'short self) -> Self::Target {
+				SymbolicSparseColMat(self.0.rb())
+			}
+		}
+
+		impl<'short, Inner: ReborrowMut<'short>> ReborrowMut<'short> for SymbolicSparseColMat<Inner> {
+			type Target = SymbolicSparseColMat<Inner::Target>;
+
+			#[inline(always)]
+			fn rb_mut(&'short mut self) -> Self::Target {
+				SymbolicSparseColMat(self.0.rb_mut())
+			}
+		}
+
+		impl<Inner: IntoConst> IntoConst for SymbolicSparseColMat<Inner> {
+			type Target = SymbolicSparseColMat<Inner::Target>;
+
+			#[inline(always)]
+			fn into_const(self) -> Self::Target {
+				SymbolicSparseColMat(self.0.into_const())
+			}
+		}
+	}
+
+	/// see [`super::SymbolicSparseColMatRef`]
+	pub struct Ref<'a, I, Rows = usize, Cols = usize> {
+		pub(crate) nrows: Rows,
+		pub(crate) ncols: Cols,
+		pub(crate) col_ptr: &'a [I],
+		pub(crate) col_nnz: Option<&'a [I]>,
+		pub(crate) row_idx: &'a [I],
+	}
+
+	/// see [`super::SymbolicSparseColMat`]
+	#[derive(Clone)]
+	pub struct Own<I, Rows = usize, Cols = usize> {
+		pub(crate) nrows: Rows,
+		pub(crate) ncols: Cols,
+		pub(crate) col_ptr: alloc::vec::Vec<I>,
+		pub(crate) col_nnz: Option<alloc::vec::Vec<I>>,
+		pub(crate) row_idx: alloc::vec::Vec<I>,
+	}
+}
+
+/// implementation of numeric representation
+pub mod numeric {
+	/// generic `SparseColMat` wrapper
+	pub mod generic {
+		use core::fmt::Debug;
+		use reborrow::*;
+
+		/// generic `SparseColMat` wrapper
+		#[derive(Copy, Clone)]
+		#[repr(transparent)]
+		pub struct SparseColMat<Inner>(pub Inner);
+
+		impl<Inner: Debug> Debug for SparseColMat<Inner> {
+			#[inline(always)]
+			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+				self.0.fmt(f)
+			}
+		}
+
+		impl<Inner> SparseColMat<Inner> {
+			/// wrap by reference
+			#[inline(always)]
+			pub fn from_inner_ref(inner: &Inner) -> &Self {
+				unsafe { &*(inner as *const Inner as *const Self) }
+			}
+
+			/// wrap by mutable reference
+			#[inline(always)]
+			pub fn from_inner_mut(inner: &mut Inner) -> &mut Self {
+				unsafe { &mut *(inner as *mut Inner as *mut Self) }
+			}
+		}
+
+		impl<'short, Inner: Reborrow<'short>> Reborrow<'short> for SparseColMat<Inner> {
+			type Target = SparseColMat<Inner::Target>;
+
+			#[inline(always)]
+			fn rb(&'short self) -> Self::Target {
+				SparseColMat(self.0.rb())
+			}
+		}
+
+		impl<'short, Inner: ReborrowMut<'short>> ReborrowMut<'short> for SparseColMat<Inner> {
+			type Target = SparseColMat<Inner::Target>;
+
+			#[inline(always)]
+			fn rb_mut(&'short mut self) -> Self::Target {
+				SparseColMat(self.0.rb_mut())
+			}
+		}
+
+		impl<Inner: IntoConst> IntoConst for SparseColMat<Inner> {
+			type Target = SparseColMat<Inner::Target>;
+
+			#[inline(always)]
+			fn into_const(self) -> Self::Target {
+				SparseColMat(self.0.into_const())
+			}
+		}
+	}
+
+	/// see [`super::SparseColMatRef`]
+	pub struct Ref<'a, I, T, Rows = usize, Cols = usize> {
+		pub(crate) symbolic: super::SymbolicSparseColMatRef<'a, I, Rows, Cols>,
+		pub(crate) val: &'a [T],
+	}
+
+	/// see [`super::SparseColMatMut`]
+	pub struct Mut<'a, I, T, Rows = usize, Cols = usize> {
+		pub(crate) symbolic: super::SymbolicSparseColMatRef<'a, I, Rows, Cols>,
+		pub(crate) val: &'a mut [T],
+	}
+
+	/// see [`super::SparseColMat`]
+	#[derive(Clone)]
+	pub struct Own<I, T, Rows = usize, Cols = usize> {
+		pub(crate) symbolic: super::SymbolicSparseColMat<I, Rows, Cols>,
+		pub(crate) val: alloc::vec::Vec<T>,
+	}
+}
+
 /// symbolic view structure of sparse matrix in column format, either compressed or uncompressed
 ///
 /// # invariants
@@ -28,51 +206,28 @@ use core::{fmt, iter};
 ///
 /// passing such a matrix to an algorithm that does not explicitly permit this is unspecified
 /// (though not undefined) behavior
-pub struct SymbolicSparseColMatRef<'a, I, Rows = usize, Cols = usize> {
-	pub(super) nrows: Rows,
-	pub(super) ncols: Cols,
-	pub(super) col_ptr: &'a [I],
-	pub(super) col_nnz: Option<&'a [I]>,
-	pub(super) row_idx: &'a [I],
-}
-
-/// view over sparse column major matrix
-///
-/// see [`SymbolicSparseColMatRef`]
-pub struct SparseColMatRef<'a, I, T, Rows = usize, Cols = usize> {
-	pub(super) symbolic: SymbolicSparseColMatRef<'a, I, Rows, Cols>,
-	pub(super) val: &'a [T],
-}
-
-/// view over sparse column major matrix
-///
-/// see [`SymbolicSparseColMatRef`]
-pub struct SparseColMatMut<'a, I, T, Rows = usize, Cols = usize> {
-	pub(super) symbolic: SymbolicSparseColMatRef<'a, I, Rows, Cols>,
-	pub(super) val: &'a mut [T],
-}
+pub type SymbolicSparseColMatRef<'a, I, Rows = usize, Cols = usize> = symbolic::generic::SymbolicSparseColMat<symbolic::Ref<'a, I, Rows, Cols>>;
 
 /// owning symbolic structure of sparse matrix in column format, either compressed or
 /// uncompressed
 ///
 /// see [`SymbolicSparseColMatRef`]
-#[derive(Clone)]
-pub struct SymbolicSparseColMat<I, Rows = usize, Cols = usize> {
-	pub(super) nrows: Rows,
-	pub(super) ncols: Cols,
-	pub(super) col_ptr: alloc::vec::Vec<I>,
-	pub(super) col_nnz: Option<alloc::vec::Vec<I>>,
-	pub(super) row_idx: alloc::vec::Vec<I>,
-}
+pub type SymbolicSparseColMat<I, Rows = usize, Cols = usize> = symbolic::generic::SymbolicSparseColMat<symbolic::Own<I, Rows, Cols>>;
+
+/// view over sparse column major matrix
+///
+/// see [`SymbolicSparseColMatRef`]
+pub type SparseColMatRef<'a, I, T, Rows = usize, Cols = usize> = numeric::generic::SparseColMat<numeric::Ref<'a, I, T, Rows, Cols>>;
+
+/// view over sparse column major matrix
+///
+/// see [`SymbolicSparseColMatRef`]
+pub type SparseColMatMut<'a, I, T, Rows = usize, Cols = usize> = numeric::generic::SparseColMat<numeric::Mut<'a, I, T, Rows, Cols>>;
 
 /// owning sparse column major matrix
 ///
 /// see [`SymbolicSparseColMatRef`]
-#[derive(Clone)]
-pub struct SparseColMat<I, T, Rows = usize, Cols = usize> {
-	pub(super) symbolic: SymbolicSparseColMat<I, Rows, Cols>,
-	pub(super) val: alloc::vec::Vec<T>,
-}
+pub type SparseColMat<I, T, Rows = usize, Cols = usize> = numeric::generic::SparseColMat<numeric::Own<I, T, Rows, Cols>>;
 
 pub(crate) fn partition_by_lt<I: Index>(upper: I) -> impl Fn(&I) -> bool {
 	move |&p| p < upper
@@ -81,24 +236,24 @@ pub(crate) fn partition_by_le<I: Index>(upper: I) -> impl Fn(&I) -> bool {
 	move |&p| p <= upper
 }
 
-impl<'a, I, Rows: Copy, Cols: Copy> Copy for SymbolicSparseColMatRef<'a, I, Rows, Cols> {}
-impl<'a, I, T, Rows: Copy, Cols: Copy> Copy for SparseColMatRef<'a, I, T, Rows, Cols> {}
+impl<'a, I, Rows: Copy, Cols: Copy> Copy for symbolic::Ref<'a, I, Rows, Cols> {}
+impl<'a, I, T, Rows: Copy, Cols: Copy> Copy for numeric::Ref<'a, I, T, Rows, Cols> {}
 
-impl<'a, I, Rows: Copy, Cols: Copy> Clone for SymbolicSparseColMatRef<'a, I, Rows, Cols> {
+impl<'a, I, Rows: Copy, Cols: Copy> Clone for symbolic::Ref<'a, I, Rows, Cols> {
 	#[inline]
 	fn clone(&self) -> Self {
 		*self
 	}
 }
-impl<'a, I, T, Rows: Copy, Cols: Copy> Clone for SparseColMatRef<'a, I, T, Rows, Cols> {
+impl<'a, I, T, Rows: Copy, Cols: Copy> Clone for numeric::Ref<'a, I, T, Rows, Cols> {
 	#[inline]
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'a, I, Rows: Copy, Cols: Copy> IntoConst for SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-	type Target = SymbolicSparseColMatRef<'a, I, Rows, Cols>;
+impl<'a, I, Rows: Copy, Cols: Copy> IntoConst for symbolic::Ref<'a, I, Rows, Cols> {
+	type Target = symbolic::Ref<'a, I, Rows, Cols>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
@@ -106,8 +261,8 @@ impl<'a, I, Rows: Copy, Cols: Copy> IntoConst for SymbolicSparseColMatRef<'a, I,
 	}
 }
 
-impl<'short, 'a, I, Rows: Copy, Cols: Copy> ReborrowMut<'short> for SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-	type Target = SymbolicSparseColMatRef<'short, I, Rows, Cols>;
+impl<'short, 'a, I, Rows: Copy, Cols: Copy> ReborrowMut<'short> for symbolic::Ref<'a, I, Rows, Cols> {
+	type Target = symbolic::Ref<'short, I, Rows, Cols>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
@@ -115,8 +270,8 @@ impl<'short, 'a, I, Rows: Copy, Cols: Copy> ReborrowMut<'short> for SymbolicSpar
 	}
 }
 
-impl<'short, 'a, I, Rows: Copy, Cols: Copy> Reborrow<'short> for SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-	type Target = SymbolicSparseColMatRef<'short, I, Rows, Cols>;
+impl<'short, 'a, I, Rows: Copy, Cols: Copy> Reborrow<'short> for symbolic::Ref<'a, I, Rows, Cols> {
+	type Target = symbolic::Ref<'short, I, Rows, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
@@ -124,8 +279,8 @@ impl<'short, 'a, I, Rows: Copy, Cols: Copy> Reborrow<'short> for SymbolicSparseC
 	}
 }
 
-impl<'a, I, T, Rows: Copy, Cols: Copy> IntoConst for SparseColMatRef<'a, I, T, Rows, Cols> {
-	type Target = SparseColMatRef<'a, I, T, Rows, Cols>;
+impl<'a, I, T, Rows: Copy, Cols: Copy> IntoConst for numeric::Ref<'a, I, T, Rows, Cols> {
+	type Target = numeric::Ref<'a, I, T, Rows, Cols>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
@@ -133,8 +288,8 @@ impl<'a, I, T, Rows: Copy, Cols: Copy> IntoConst for SparseColMatRef<'a, I, T, R
 	}
 }
 
-impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for SparseColMatRef<'a, I, T, Rows, Cols> {
-	type Target = SparseColMatRef<'short, I, T, Rows, Cols>;
+impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for numeric::Ref<'a, I, T, Rows, Cols> {
+	type Target = numeric::Ref<'short, I, T, Rows, Cols>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
@@ -142,8 +297,8 @@ impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for SparseCol
 	}
 }
 
-impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for SparseColMatRef<'a, I, T, Rows, Cols> {
-	type Target = SparseColMatRef<'short, I, T, Rows, Cols>;
+impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for numeric::Ref<'a, I, T, Rows, Cols> {
+	type Target = numeric::Ref<'short, I, T, Rows, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
@@ -151,72 +306,72 @@ impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for SparseColMat
 	}
 }
 
-impl<'a, I, T, Rows: Copy, Cols: Copy> IntoConst for SparseColMatMut<'a, I, T, Rows, Cols> {
-	type Target = SparseColMatRef<'a, I, T, Rows, Cols>;
+impl<'a, I, T, Rows: Copy, Cols: Copy> IntoConst for numeric::Mut<'a, I, T, Rows, Cols> {
+	type Target = numeric::Ref<'a, I, T, Rows, Cols>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		SparseColMatRef {
+		numeric::Ref {
 			symbolic: self.symbolic,
 			val: self.val,
 		}
 	}
 }
 
-impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for SparseColMatMut<'a, I, T, Rows, Cols> {
-	type Target = SparseColMatMut<'short, I, T, Rows, Cols>;
+impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for numeric::Mut<'a, I, T, Rows, Cols> {
+	type Target = numeric::Mut<'short, I, T, Rows, Cols>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		SparseColMatMut {
+		numeric::Mut {
 			symbolic: self.symbolic,
 			val: self.val,
 		}
 	}
 }
 
-impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for SparseColMatMut<'a, I, T, Rows, Cols> {
-	type Target = SparseColMatRef<'short, I, T, Rows, Cols>;
+impl<'short, 'a, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for numeric::Mut<'a, I, T, Rows, Cols> {
+	type Target = numeric::Ref<'short, I, T, Rows, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		SparseColMatRef {
+		numeric::Ref {
 			symbolic: self.symbolic,
 			val: self.val,
 		}
 	}
 }
 
-impl<'short, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for SparseColMat<I, T, Rows, Cols> {
-	type Target = SparseColMatMut<'short, I, T, Rows, Cols>;
+impl<'short, I, T, Rows: Copy, Cols: Copy> ReborrowMut<'short> for numeric::Own<I, T, Rows, Cols> {
+	type Target = numeric::Mut<'short, I, T, Rows, Cols>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		SparseColMatMut {
+		numeric::Mut {
 			symbolic: self.symbolic.rb(),
 			val: &mut self.val,
 		}
 	}
 }
 
-impl<'short, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for SparseColMat<I, T, Rows, Cols> {
-	type Target = SparseColMatRef<'short, I, T, Rows, Cols>;
+impl<'short, I, T, Rows: Copy, Cols: Copy> Reborrow<'short> for numeric::Own<I, T, Rows, Cols> {
+	type Target = numeric::Ref<'short, I, T, Rows, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		SparseColMatRef {
+		numeric::Ref {
 			symbolic: self.symbolic.rb(),
 			val: &self.val,
 		}
 	}
 }
 
-impl<'short, I, Rows: Copy, Cols: Copy> Reborrow<'short> for SymbolicSparseColMat<I, Rows, Cols> {
-	type Target = SymbolicSparseColMatRef<'short, I, Rows, Cols>;
+impl<'short, I, Rows: Copy, Cols: Copy> Reborrow<'short> for symbolic::Own<I, Rows, Cols> {
+	type Target = symbolic::Ref<'short, I, Rows, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		SymbolicSparseColMatRef {
+		symbolic::Ref {
 			nrows: self.nrows,
 			ncols: self.ncols,
 			col_ptr: &self.col_ptr,
@@ -323,11 +478,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		assume_col_ptr(nrows.unbound(), ncols.unbound(), col_ptr, col_nnz, row_idx);
 
 		Self {
-			nrows,
-			ncols,
-			col_ptr,
-			col_nnz,
-			row_idx,
+			0: symbolic::Ref {
+				nrows,
+				ncols,
+				col_ptr,
+				col_nnz,
+				row_idx,
+			},
 		}
 	}
 
@@ -342,11 +499,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		check_row_idx(nrows.unbound(), ncols.unbound(), col_ptr, col_nnz, row_idx);
 
 		Self {
-			nrows,
-			ncols,
-			col_ptr,
-			col_nnz,
-			row_idx,
+			0: symbolic::Ref {
+				nrows,
+				ncols,
+				col_ptr,
+				col_nnz,
+				row_idx,
+			},
 		}
 	}
 
@@ -361,11 +520,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		check_row_idx_unsorted(nrows.unbound(), ncols.unbound(), col_ptr, col_nnz, row_idx);
 
 		Self {
-			nrows,
-			ncols,
-			col_ptr,
-			col_nnz,
-			row_idx,
+			0: symbolic::Ref {
+				nrows,
+				ncols,
+				col_ptr,
+				col_nnz,
+				row_idx,
+			},
 		}
 	}
 
@@ -402,11 +563,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 	#[inline]
 	pub fn transpose(self) -> SymbolicSparseRowMatRef<'a, I, Cols, Rows> {
 		SymbolicSparseRowMatRef {
-			nrows: self.ncols,
-			ncols: self.nrows,
-			row_ptr: self.col_ptr,
-			row_nnz: self.col_nnz,
-			col_idx: self.row_idx,
+			0: super::csr::symbolic::Ref {
+				nrows: self.ncols,
+				ncols: self.nrows,
+				row_ptr: self.col_ptr,
+				row_nnz: self.col_nnz,
+				col_idx: self.row_idx,
+			},
 		}
 	}
 
@@ -414,11 +577,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 	#[inline]
 	pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I, Rows, Cols>, FaerError> {
 		Ok(SymbolicSparseColMat {
-			nrows: self.nrows,
-			ncols: self.ncols,
-			col_ptr: try_collect(self.col_ptr.iter().copied())?,
-			col_nnz: self.col_nnz.map(|col_nnz| try_collect(col_nnz.iter().copied())).transpose()?,
-			row_idx: try_collect(self.row_idx.iter().copied())?,
+			0: symbolic::Own {
+				nrows: self.nrows,
+				ncols: self.ncols,
+				col_ptr: try_collect(self.col_ptr.iter().copied())?,
+				col_nnz: self.col_nnz.map(|col_nnz| try_collect(col_nnz.iter().copied())).transpose()?,
+				row_idx: try_collect(self.row_idx.iter().copied())?,
+			},
 		})
 	}
 
@@ -426,7 +591,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 	#[inline]
 	pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I, Rows, Cols>, FaerError> {
 		let mat = SparseColMatRef::new(*self, Symbolic::materialize(self.row_idx.len()));
-		Ok(mat.to_row_major()?.symbolic)
+		Ok(mat.to_row_major()?.0.symbolic)
 	}
 
 	/// returns the number of non-zero elements in the matrix
@@ -522,11 +687,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		assert!(all(self.nrows.unbound() == nrows.unbound(), self.ncols.unbound() == ncols.unbound()));
 
 		SymbolicSparseColMatRef {
-			nrows,
-			ncols,
-			col_ptr: self.col_ptr,
-			col_nnz: self.col_nnz,
-			row_idx: self.row_idx,
+			0: symbolic::Ref {
+				nrows,
+				ncols,
+				col_ptr: self.col_ptr,
+				col_nnz: self.col_nnz,
+				row_idx: self.row_idx,
+			},
 		}
 	}
 
@@ -534,11 +701,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 	#[inline]
 	pub fn as_dyn(self) -> SymbolicSparseColMatRef<'a, I> {
 		SymbolicSparseColMatRef {
-			nrows: self.nrows.unbound(),
-			ncols: self.ncols.unbound(),
-			col_ptr: self.col_ptr,
-			col_nnz: self.col_nnz,
-			row_idx: self.row_idx,
+			0: symbolic::Ref {
+				nrows: self.nrows.unbound(),
+				ncols: self.ncols.unbound(),
+				col_ptr: self.col_ptr,
+				col_nnz: self.col_nnz,
+				row_idx: self.row_idx,
+			},
 		}
 	}
 
@@ -546,11 +715,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 	#[inline]
 	pub fn as_ref(self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
 		SymbolicSparseColMatRef {
-			nrows: self.nrows,
-			ncols: self.ncols,
-			col_ptr: self.col_ptr,
-			col_nnz: self.col_nnz,
-			row_idx: self.row_idx,
+			0: symbolic::Ref {
+				nrows: self.nrows,
+				ncols: self.ncols,
+				col_ptr: self.col_ptr,
+				col_nnz: self.col_nnz,
+				row_idx: self.row_idx,
+			},
 		}
 	}
 }
@@ -572,11 +743,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 		assume_col_ptr(nrows.unbound(), ncols.unbound(), &col_ptr, col_nnz.as_deref(), &row_idx);
 
 		Self {
-			nrows,
-			ncols,
-			col_ptr,
-			col_nnz,
-			row_idx,
+			0: symbolic::Own {
+				nrows,
+				ncols,
+				col_ptr,
+				col_nnz,
+				row_idx,
+			},
 		}
 	}
 
@@ -597,11 +770,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 		check_row_idx(nrows.unbound(), ncols.unbound(), &col_ptr, col_nnz.as_deref(), &row_idx);
 
 		Self {
-			nrows,
-			ncols,
-			col_ptr,
-			col_nnz,
-			row_idx,
+			0: symbolic::Own {
+				nrows,
+				ncols,
+				col_ptr,
+				col_nnz,
+				row_idx,
+			},
 		}
 	}
 
@@ -622,11 +797,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 		check_row_idx_unsorted(nrows.unbound(), ncols.unbound(), &col_ptr, col_nnz.as_deref(), &row_idx);
 
 		Self {
-			nrows,
-			ncols,
-			col_ptr,
-			col_nnz,
-			row_idx,
+			0: symbolic::Own {
+				nrows,
+				ncols,
+				col_ptr,
+				col_nnz,
+				row_idx,
+			},
 		}
 	}
 
@@ -639,7 +816,7 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 	#[inline]
 	/// see [`SymbolicSparseColMatRef::parts`]
 	pub fn into_parts(self) -> (Rows, Cols, alloc::vec::Vec<I>, Option<alloc::vec::Vec<I>>, alloc::vec::Vec<I>) {
-		(self.nrows, self.ncols, self.col_ptr, self.col_nnz, self.row_idx)
+		(self.0.nrows, self.0.ncols, self.0.col_ptr, self.0.col_nnz, self.0.row_idx)
 	}
 
 	#[inline]
@@ -670,11 +847,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 	/// returns the transpose of `self`
 	pub fn into_transpose(self) -> SymbolicSparseRowMat<I, Cols, Rows> {
 		SymbolicSparseRowMat {
-			nrows: self.ncols,
-			ncols: self.nrows,
-			row_ptr: self.col_ptr,
-			row_nnz: self.col_nnz,
-			col_idx: self.row_idx,
+			0: super::csr::symbolic::Own {
+				nrows: self.0.ncols,
+				ncols: self.0.nrows,
+				row_ptr: self.0.col_ptr,
+				row_nnz: self.0.col_nnz,
+				col_idx: self.0.row_idx,
+			},
 		}
 	}
 
@@ -755,11 +934,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 	pub fn into_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> SymbolicSparseColMat<I, V, H> {
 		assert!(all(self.nrows().unbound() == nrows.unbound(), self.ncols().unbound() == ncols.unbound()));
 		SymbolicSparseColMat {
-			nrows,
-			ncols,
-			col_ptr: self.col_ptr,
-			col_nnz: self.col_nnz,
-			row_idx: self.row_idx,
+			0: symbolic::Own {
+				nrows,
+				ncols,
+				col_ptr: self.0.col_ptr,
+				col_nnz: self.0.col_nnz,
+				row_idx: self.0.row_idx,
+			},
 		}
 	}
 
@@ -773,11 +954,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 	/// see [`SymbolicSparseColMatRef::as_dyn`]
 	pub fn into_dyn(self) -> SymbolicSparseColMat<I> {
 		SymbolicSparseColMat {
-			nrows: self.nrows.unbound(),
-			ncols: self.ncols.unbound(),
-			col_ptr: self.col_ptr,
-			col_nnz: self.col_nnz,
-			row_idx: self.row_idx,
+			0: symbolic::Own {
+				nrows: self.0.nrows.unbound(),
+				ncols: self.0.ncols.unbound(),
+				col_ptr: self.0.col_ptr,
+				col_nnz: self.0.col_nnz,
+				row_idx: self.0.row_idx,
+			},
 		}
 	}
 
@@ -785,11 +968,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 	#[inline]
 	pub fn as_ref(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
 		SymbolicSparseColMatRef {
-			nrows: self.nrows,
-			ncols: self.ncols,
-			col_ptr: &self.col_ptr,
-			col_nnz: self.col_nnz.as_deref(),
-			row_idx: &self.row_idx,
+			0: symbolic::Ref {
+				nrows: self.nrows,
+				ncols: self.ncols,
+				col_ptr: &self.col_ptr,
+				col_nnz: self.col_nnz.as_deref(),
+				row_idx: &self.row_idx,
+			},
 		}
 	}
 
@@ -808,11 +993,13 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 		if all_nnz == 0 {
 			return Ok((
 				Self {
-					nrows,
-					ncols,
-					col_ptr: try_zeroed(ncols.unbound() + 1)?,
-					col_nnz: None,
-					row_idx: alloc::vec::Vec::new(),
+					0: symbolic::Own {
+						nrows,
+						ncols,
+						col_ptr: try_zeroed(ncols.unbound() + 1)?,
+						col_nnz: None,
+						row_idx: alloc::vec::Vec::new(),
+					},
 				},
 				Argsort {
 					idx: alloc::vec::Vec::new(),
@@ -961,32 +1148,34 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	#[track_caller]
 	pub fn new(symbolic: SymbolicSparseColMatRef<'a, I, Rows, Cols>, val: &'a [T]) -> Self {
 		assert!(symbolic.row_idx().len() == val.len());
-		Self { symbolic, val }
+		Self {
+			0: numeric::Ref { symbolic, val },
+		}
 	}
 
 	/// returns the symbolic and numeric components of the sparse matrix
 	#[inline]
 	pub fn parts(self) -> (SymbolicSparseColMatRef<'a, I, Rows, Cols>, &'a [T]) {
-		(self.symbolic, self.val)
+		(self.0.symbolic, self.0.val)
 	}
 
 	/// returns the symbolic component of the sparse matrix
 	#[inline]
 	pub fn symbolic(&self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-		self.symbolic
+		self.0.symbolic
 	}
 
 	/// returns the numeric component of the sparse matrix
 	#[inline]
 	pub fn val(self) -> &'a [T] {
-		self.val
+		self.0.val
 	}
 
 	/// returns a view over the values of column `j`
 	#[inline]
 	#[track_caller]
 	pub fn val_of_col(self, j: Idx<Cols>) -> &'a [T] {
-		unsafe { self.val.get_unchecked(self.col_range(j)) }
+		unsafe { self.0.val.get_unchecked(self.col_range(j)) }
 	}
 
 	/// returns the input matrix with the given shape after checking that it matches the
@@ -995,8 +1184,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	#[track_caller]
 	pub fn as_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> SparseColMatRef<'a, I, T, V, H> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_shape(nrows, ncols),
-			val: self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_shape(nrows, ncols),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1022,8 +1213,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	#[inline]
 	pub fn as_dyn(self) -> SparseColMatRef<'a, I, T> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_dyn(),
-			val: self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_dyn(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1031,8 +1224,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	#[inline]
 	pub fn as_ref(self) -> SparseColMatRef<'a, I, T, Rows, Cols> {
 		SparseColMatRef {
-			symbolic: self.symbolic,
-			val: self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic,
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1040,8 +1235,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	#[inline]
 	pub fn transpose(self) -> SparseRowMatRef<'a, I, T, Cols, Rows> {
 		SparseRowMatRef {
-			symbolic: self.symbolic.transpose(),
-			val: self.val,
+			0: super::csr::numeric::Ref {
+				symbolic: self.0.symbolic.transpose(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1051,10 +1248,12 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatRef {
-			symbolic: self.symbolic,
-			val: unsafe { core::slice::from_raw_parts(self.val.as_ptr() as *const T::Conj, len) },
+			0: numeric::Ref {
+				symbolic: self.0.symbolic,
+				val: unsafe { core::slice::from_raw_parts(self.0.val.as_ptr() as *const T::Conj, len) },
+			},
 		}
 	}
 
@@ -1073,10 +1272,12 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatRef {
-			symbolic: self.symbolic,
-			val: unsafe { core::slice::from_raw_parts(self.val.as_ptr() as *const T::Canonical, len) },
+			0: numeric::Ref {
+				symbolic: self.0.symbolic,
+				val: unsafe { core::slice::from_raw_parts(self.0.val.as_ptr() as *const T::Canonical, len) },
+			},
 		}
 	}
 
@@ -1152,51 +1353,53 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::new`]
 	pub fn new(symbolic: SymbolicSparseColMatRef<'a, I, Rows, Cols>, val: &'a mut [T]) -> Self {
 		assert!(symbolic.row_idx().len() == val.len());
-		Self { symbolic, val }
+		Self {
+			0: numeric::Mut { symbolic, val },
+		}
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::parts`]
 	pub fn parts(self) -> (SymbolicSparseColMatRef<'a, I, Rows, Cols>, &'a [T]) {
-		(self.symbolic, self.val)
+		(self.0.symbolic, self.0.val)
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::parts`]
 	pub fn parts_mut(self) -> (SymbolicSparseColMatRef<'a, I, Rows, Cols>, &'a mut [T]) {
-		(self.symbolic, self.val)
+		(self.0.symbolic, self.0.val)
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::symbolic`]
 	pub fn symbolic(&self) -> SymbolicSparseColMatRef<'a, I, Rows, Cols> {
-		self.symbolic
+		self.0.symbolic
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::val`]
 	pub fn val(self) -> &'a [T] {
-		self.val
+		self.0.val
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::val`]
 	pub fn val_mut(self) -> &'a mut [T] {
-		self.val
+		self.0.val
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`SparseColMatRef::val_of_col`]
 	pub fn val_of_col(self, j: Idx<Cols>) -> &'a [T] {
-		unsafe { self.val.get_unchecked(self.col_range(j)) }
+		unsafe { self.0.val.get_unchecked(self.col_range(j)) }
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`SparseColMatRef::val_of_col`]
 	pub fn val_of_col_mut(self, j: Idx<Cols>) -> &'a mut [T] {
-		unsafe { self.val.get_unchecked_mut(self.col_range(j)) }
+		unsafe { self.0.val.get_unchecked_mut(self.col_range(j)) }
 	}
 
 	#[inline]
@@ -1208,7 +1411,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 		Cols: 'a,
 	{
 		let range = self.col_range(j);
-		unsafe { (self.symbolic.row_idx_of_col(j), self.val.get_unchecked_mut(range)) }
+		unsafe { (self.0.symbolic.row_idx_of_col(j), self.0.val.get_unchecked_mut(range)) }
 	}
 
 	#[inline]
@@ -1216,8 +1419,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::as_shape`]
 	pub fn as_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> SparseColMatRef<'a, I, T, V, H> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_shape(nrows, ncols),
-			val: self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_shape(nrows, ncols),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1226,8 +1431,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::as_shape`]
 	pub fn as_shape_mut<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> SparseColMatMut<'a, I, T, V, H> {
 		SparseColMatMut {
-			symbolic: self.symbolic.as_shape(nrows, ncols),
-			val: self.val,
+			0: numeric::Mut {
+				symbolic: self.0.symbolic.as_shape(nrows, ncols),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1235,8 +1442,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::as_dyn`]
 	pub fn as_dyn(self) -> SparseColMatRef<'a, I, T> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_dyn(),
-			val: self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_dyn(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1261,8 +1470,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::as_dyn`]
 	pub fn as_dyn_mut(self) -> SparseColMatMut<'a, I, T> {
 		SparseColMatMut {
-			symbolic: self.symbolic.as_dyn(),
-			val: self.val,
+			0: numeric::Mut {
+				symbolic: self.0.symbolic.as_dyn(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1270,8 +1481,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::transpose`]
 	pub fn transpose(self) -> SparseRowMatRef<'a, I, T, Cols, Rows> {
 		SparseRowMatRef {
-			symbolic: self.symbolic.transpose(),
-			val: self.val,
+			0: super::csr::numeric::Ref {
+				symbolic: self.0.symbolic.transpose(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1279,8 +1492,10 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	/// see [`SparseColMatRef::transpose`]
 	pub fn transpose_mut(self) -> SparseRowMatMut<'a, I, T, Cols, Rows> {
 		SparseRowMatMut {
-			symbolic: self.symbolic.transpose(),
-			val: self.val,
+			0: super::csr::numeric::Mut {
+				symbolic: self.0.symbolic.transpose(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1290,10 +1505,12 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatRef {
-			symbolic: self.symbolic,
-			val: unsafe { core::slice::from_raw_parts(self.val.as_ptr() as *const T::Conj, len) },
+			0: numeric::Ref {
+				symbolic: self.0.symbolic,
+				val: unsafe { core::slice::from_raw_parts(self.0.val.as_ptr() as *const T::Conj, len) },
+			},
 		}
 	}
 
@@ -1303,10 +1520,12 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatMut {
-			symbolic: self.symbolic,
-			val: unsafe { core::slice::from_raw_parts_mut(self.val.as_mut_ptr() as *mut T::Conj, len) },
+			0: numeric::Mut {
+				symbolic: self.0.symbolic,
+				val: unsafe { core::slice::from_raw_parts_mut(self.0.val.as_mut_ptr() as *mut T::Conj, len) },
+			},
 		}
 	}
 
@@ -1334,10 +1553,12 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatRef {
-			symbolic: self.symbolic,
-			val: unsafe { core::slice::from_raw_parts(self.val.as_ptr() as *const T::Canonical, len) },
+			0: numeric::Ref {
+				symbolic: self.0.symbolic,
+				val: unsafe { core::slice::from_raw_parts(self.0.val.as_ptr() as *const T::Canonical, len) },
+			},
 		}
 	}
 
@@ -1347,10 +1568,12 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatMut {
-			symbolic: self.symbolic,
-			val: unsafe { core::slice::from_raw_parts_mut(self.val.as_mut_ptr() as *mut T::Canonical, len) },
+			0: numeric::Mut {
+				symbolic: self.0.symbolic,
+				val: unsafe { core::slice::from_raw_parts_mut(self.0.val.as_mut_ptr() as *mut T::Canonical, len) },
+			},
 		}
 	}
 
@@ -1379,57 +1602,59 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::new`]
 	pub fn new(symbolic: SymbolicSparseColMat<I, Rows, Cols>, val: alloc::vec::Vec<T>) -> Self {
 		assert!(symbolic.row_idx().len() == val.len());
-		Self { symbolic, val }
+		Self {
+			0: numeric::Own { symbolic, val },
+		}
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::parts`]
 	pub fn parts(&self) -> (SymbolicSparseColMatRef<'_, I, Rows, Cols>, &'_ [T]) {
-		(self.symbolic.rb(), &self.val)
+		(self.0.symbolic.rb(), &self.0.val)
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::parts`]
 	pub fn parts_mut(&mut self) -> (SymbolicSparseColMatRef<'_, I, Rows, Cols>, &'_ mut [T]) {
-		(self.symbolic.rb(), &mut self.val)
+		(self.0.symbolic.rb(), &mut self.0.val)
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::parts`]
 	pub fn into_parts(self) -> (SymbolicSparseColMat<I, Rows, Cols>, alloc::vec::Vec<T>) {
-		(self.symbolic, self.val)
+		(self.0.symbolic, self.0.val)
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::symbolic`]
 	pub fn symbolic(&self) -> SymbolicSparseColMatRef<'_, I, Rows, Cols> {
-		self.symbolic.rb()
+		self.0.symbolic.rb()
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::val`]
 	pub fn val(&self) -> &'_ [T] {
-		&self.val
+		&self.0.val
 	}
 
 	#[inline]
 	/// see [`SparseColMatRef::val`]
 	pub fn val_mut(&mut self) -> &'_ mut [T] {
-		&mut self.val
+		&mut self.0.val
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`SparseColMatRef::val_of_col`]
 	pub fn val_of_col(&self, j: Idx<Cols>) -> &'_ [T] {
-		unsafe { self.val.get_unchecked(self.col_range(j)) }
+		unsafe { self.0.val.get_unchecked(self.col_range(j)) }
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`SparseColMatRef::val_of_col`]
 	pub fn val_of_col_mut(&mut self, j: Idx<Cols>) -> &'_ mut [T] {
-		unsafe { self.val.get_unchecked_mut(self.symbolic.col_range(j)) }
+		unsafe { self.0.val.get_unchecked_mut(self.0.symbolic.col_range(j)) }
 	}
 
 	#[inline]
@@ -1437,8 +1662,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_shape`]
 	pub fn as_shape<V: Shape, H: Shape>(&self, nrows: V, ncols: H) -> SparseColMatRef<'_, I, T, V, H> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_shape(nrows, ncols),
-			val: &self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_shape(nrows, ncols),
+				val: &self.0.val,
+			},
 		}
 	}
 
@@ -1447,8 +1674,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_shape`]
 	pub fn as_shape_mut<V: Shape, H: Shape>(&mut self, nrows: V, ncols: H) -> SparseColMatMut<'_, I, T, V, H> {
 		SparseColMatMut {
-			symbolic: self.symbolic.as_shape(nrows, ncols),
-			val: &mut self.val,
+			0: numeric::Mut {
+				symbolic: self.0.symbolic.as_shape(nrows, ncols),
+				val: &mut self.0.val,
+			},
 		}
 	}
 
@@ -1457,8 +1686,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_shape`]
 	pub fn into_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> SparseColMat<I, T, V, H> {
 		SparseColMat {
-			symbolic: self.symbolic.into_shape(nrows, ncols),
-			val: self.val,
+			0: numeric::Own {
+				symbolic: self.0.symbolic.into_shape(nrows, ncols),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1466,8 +1697,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_dyn`]
 	pub fn as_dyn(&self) -> SparseColMatRef<'_, I, T> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_dyn(),
-			val: &self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_dyn(),
+				val: &self.0.val,
+			},
 		}
 	}
 
@@ -1475,8 +1708,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_dyn`]
 	pub fn as_dyn_mut(&mut self) -> SparseColMatMut<'_, I, T> {
 		SparseColMatMut {
-			symbolic: self.symbolic.as_dyn(),
-			val: &mut self.val,
+			0: numeric::Mut {
+				symbolic: self.0.symbolic.as_dyn(),
+				val: &mut self.0.val,
+			},
 		}
 	}
 
@@ -1484,8 +1719,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_dyn`]
 	pub fn into_dyn(self) -> SparseColMat<I, T> {
 		SparseColMat {
-			symbolic: self.symbolic.into_dyn(),
-			val: self.val,
+			0: numeric::Own {
+				symbolic: self.0.symbolic.into_dyn(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1493,8 +1730,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::as_ref`]
 	pub fn as_ref(&self) -> SparseColMatRef<'_, I, T, Rows, Cols> {
 		SparseColMatRef {
-			symbolic: self.symbolic.as_ref(),
-			val: &self.val,
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.as_ref(),
+				val: &self.0.val,
+			},
 		}
 	}
 
@@ -1502,8 +1741,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::transpose`]
 	pub fn transpose(&self) -> SparseRowMatRef<'_, I, T, Cols, Rows> {
 		SparseRowMatRef {
-			symbolic: self.symbolic.transpose(),
-			val: &self.val,
+			0: super::csr::numeric::Ref {
+				symbolic: self.0.symbolic.transpose(),
+				val: &self.0.val,
+			},
 		}
 	}
 
@@ -1511,8 +1752,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::transpose`]
 	pub fn transpose_mut(&mut self) -> SparseRowMatMut<'_, I, T, Cols, Rows> {
 		SparseRowMatMut {
-			symbolic: self.symbolic.transpose(),
-			val: &mut self.val,
+			0: super::csr::numeric::Mut {
+				symbolic: self.0.symbolic.transpose(),
+				val: &mut self.0.val,
+			},
 		}
 	}
 
@@ -1520,8 +1763,10 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	/// see [`SparseColMatRef::transpose`]
 	pub fn into_transpose(self) -> SparseRowMat<I, T, Cols, Rows> {
 		SparseRowMat {
-			symbolic: self.symbolic.into_transpose(),
-			val: self.val,
+			0: super::csr::numeric::Own {
+				symbolic: self.0.symbolic.into_transpose(),
+				val: self.0.val,
+			},
 		}
 	}
 
@@ -1549,14 +1794,16 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	where
 		T: Conjugate,
 	{
-		let mut vec = core::mem::ManuallyDrop::new(self.val);
+		let mut vec = core::mem::ManuallyDrop::new(self.0.val);
 		let len = vec.len();
 		let cap = vec.capacity();
 		let ptr = vec.as_mut_ptr();
 
 		SparseColMat {
-			symbolic: self.symbolic,
-			val: unsafe { alloc::vec::Vec::from_raw_parts(ptr as *mut T::Conj, len, cap) },
+			0: numeric::Own {
+				symbolic: self.0.symbolic,
+				val: unsafe { alloc::vec::Vec::from_raw_parts(ptr as *mut T::Conj, len, cap) },
+			},
 		}
 	}
 
@@ -1593,10 +1840,12 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatRef {
-			symbolic: self.symbolic.rb(),
-			val: unsafe { core::slice::from_raw_parts(self.val.as_ptr() as *const T::Canonical, len) },
+			0: numeric::Ref {
+				symbolic: self.0.symbolic.rb(),
+				val: unsafe { core::slice::from_raw_parts(self.0.val.as_ptr() as *const T::Canonical, len) },
+			},
 		}
 	}
 
@@ -1606,10 +1855,12 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	where
 		T: Conjugate,
 	{
-		let len = self.val.len();
+		let len = self.0.val.len();
 		SparseColMatMut {
-			symbolic: self.symbolic.rb(),
-			val: unsafe { core::slice::from_raw_parts_mut(self.val.as_mut_ptr() as *mut T::Canonical, len) },
+			0: numeric::Mut {
+				symbolic: self.0.symbolic.rb(),
+				val: unsafe { core::slice::from_raw_parts_mut(self.0.val.as_mut_ptr() as *mut T::Canonical, len) },
+			},
 		}
 	}
 
@@ -1619,14 +1870,16 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 	where
 		T: Conjugate,
 	{
-		let mut vec = core::mem::ManuallyDrop::new(self.val);
+		let mut vec = core::mem::ManuallyDrop::new(self.0.val);
 		let len = vec.len();
 		let cap = vec.capacity();
 		let ptr = vec.as_mut_ptr();
 
 		SparseColMat {
-			symbolic: self.symbolic,
-			val: unsafe { alloc::vec::Vec::from_raw_parts(ptr as *mut T::Canonical, len, cap) },
+			0: numeric::Own {
+				symbolic: self.0.symbolic,
+				val: unsafe { alloc::vec::Vec::from_raw_parts(ptr as *mut T::Canonical, len, cap) },
+			},
 		}
 	}
 
@@ -1690,7 +1943,9 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 			pos += 1;
 		}
 
-		Ok(Self { symbolic, val })
+		Ok(Self {
+			0: numeric::Own { symbolic, val },
+		})
 	}
 
 	/// create a new matrix from a previously created symbolic structure and value order
@@ -1773,7 +2028,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> core::ops::Deref for SparseColMa
 
 	#[inline]
 	fn deref(&self) -> &Self::Target {
-		&self.symbolic
+		&self.0.symbolic
 	}
 }
 
@@ -1782,7 +2037,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> core::ops::Deref for SparseColMa
 
 	#[inline]
 	fn deref(&self) -> &Self::Target {
-		&self.symbolic
+		&self.0.symbolic
 	}
 }
 
@@ -1791,11 +2046,11 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> core::ops::Deref for SparseColMat<I,
 
 	#[inline]
 	fn deref(&self) -> &Self::Target {
-		&self.symbolic
+		&self.0.symbolic
 	}
 }
 
-impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseColMatRef<'_, I, Rows, Cols> {
+impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for symbolic::Ref<'_, I, Rows, Cols> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		fn imp<'ROWS, 'COLS, I: Index>(mat: SymbolicSparseColMatRef<'_, I, Dim<'ROWS>, Dim<'COLS>>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 			struct Entries<'a, 'ROWS, 'COLS, I>(SymbolicSparseColMatRef<'a, I, Dim<'ROWS>, Dim<'COLS>>);
@@ -1820,20 +2075,22 @@ impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseColMatRef<
 				.field("entries", &Entries(mat))
 				.finish()
 		}
-		with_dim!(ROWS, self.nrows().unbound());
-		with_dim!(COLS, self.ncols().unbound());
 
-		imp(self.as_shape(ROWS, COLS), f)
+		let this = symbolic::generic::SymbolicSparseColMat::from_inner_ref(self);
+		with_dim!(ROWS, this.nrows().unbound());
+		with_dim!(COLS, this.ncols().unbound());
+
+		imp(this.as_shape(ROWS, COLS), f)
 	}
 }
 
-impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for SymbolicSparseColMat<I, Rows, Cols> {
+impl<Rows: Shape, Cols: Shape, I: Index> fmt::Debug for symbolic::Own<I, Rows, Cols> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.rb().fmt(f)
 	}
 }
 
-impl<Rows: Shape, Cols: Shape, I: Index, T: fmt::Debug> fmt::Debug for SparseColMatRef<'_, I, T, Rows, Cols> {
+impl<Rows: Shape, Cols: Shape, I: Index, T: fmt::Debug> fmt::Debug for numeric::Ref<'_, I, T, Rows, Cols> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		fn imp<'ROWS, 'COLS, I: Index, T: fmt::Debug>(
 			mat: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
@@ -1867,10 +2124,11 @@ impl<Rows: Shape, Cols: Shape, I: Index, T: fmt::Debug> fmt::Debug for SparseCol
 				.finish()
 		}
 
-		with_dim!(ROWS, self.nrows().unbound());
-		with_dim!(COLS, self.ncols().unbound());
+		let this = numeric::generic::SparseColMat::from_inner_ref(self);
+		with_dim!(ROWS, this.nrows().unbound());
+		with_dim!(COLS, this.ncols().unbound());
 
-		imp(self.as_shape(ROWS, COLS), f)
+		imp(this.as_shape(ROWS, COLS), f)
 	}
 }
 

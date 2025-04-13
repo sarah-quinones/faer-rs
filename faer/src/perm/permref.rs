@@ -2,39 +2,39 @@ use super::*;
 use crate::utils::bound::{Array, Dim};
 use crate::{Idx, assert};
 
-/// immutable permutation matrix view
+/// see [`super::PermRef`]
 #[derive(Debug)]
-pub struct PermRef<'a, I: Index, N: Shape = usize> {
+pub struct Ref<'a, I: Index, N: Shape = usize> {
 	pub(super) forward: &'a [N::Idx<I>],
 	pub(super) inverse: &'a [N::Idx<I>],
 }
 
-impl<I: Index, N: Shape> Copy for PermRef<'_, I, N> {}
-impl<I: Index, N: Shape> Clone for PermRef<'_, I, N> {
+impl<I: Index, N: Shape> Copy for Ref<'_, I, N> {}
+impl<I: Index, N: Shape> Clone for Ref<'_, I, N> {
 	#[inline]
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'short, I: Index, N: Shape> Reborrow<'short> for PermRef<'_, I, N> {
-	type Target = PermRef<'short, I, N>;
+impl<'short, I: Index, N: Shape> Reborrow<'short> for Ref<'_, I, N> {
+	type Target = Ref<'short, I, N>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
 		*self
 	}
 }
-impl<'short, I: Index, N: Shape> ReborrowMut<'short> for PermRef<'_, I, N> {
-	type Target = PermRef<'short, I, N>;
+impl<'short, I: Index, N: Shape> ReborrowMut<'short> for Ref<'_, I, N> {
+	type Target = Ref<'short, I, N>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
 		*self
 	}
 }
-impl<'a, I: Index, N: Shape> IntoConst for PermRef<'a, I, N> {
-	type Target = PermRef<'a, I, N>;
+impl<'a, I: Index, N: Shape> IntoConst for Ref<'a, I, N> {
+	type Target = Ref<'a, I, N>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
@@ -42,16 +42,15 @@ impl<'a, I: Index, N: Shape> IntoConst for PermRef<'a, I, N> {
 	}
 }
 
-impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
+impl<I: Index, N: Shape, Inner: for<'short> Reborrow<'short, Target = Ref<'short, I, N>>> generic::Perm<Inner> {
 	/// convert `self` to a permutation view
 	#[inline]
 	pub fn as_ref(&self) -> PermRef<'_, I, N> {
-		PermRef {
-			forward: self.forward,
-			inverse: self.inverse,
-		}
+		PermRef { 0: self.0.rb() }
 	}
+}
 
+impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 	/// returns the input permutation with the given shape after checking that it matches the
 	/// current shape
 	#[inline]
@@ -59,8 +58,10 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		assert!(self.len().unbound() == dim.unbound());
 
 		PermRef {
-			forward: unsafe { core::slice::from_raw_parts(self.forward.as_ptr() as _, dim.unbound()) },
-			inverse: unsafe { core::slice::from_raw_parts(self.inverse.as_ptr() as _, dim.unbound()) },
+			0: Ref {
+				forward: unsafe { core::slice::from_raw_parts(self.forward.as_ptr() as _, dim.unbound()) },
+				inverse: unsafe { core::slice::from_raw_parts(self.inverse.as_ptr() as _, dim.unbound()) },
+			},
 		}
 	}
 
@@ -89,7 +90,7 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 			I::canonicalize(N::cast_idx_slice(inverse)),
 			dim.unbound(),
 		);
-		Self { forward, inverse }
+		Self { 0: Ref { forward, inverse } }
 	}
 
 	/// creates a new permutation reference, without checking the validity of the inputs
@@ -106,7 +107,7 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 			forward.len() == dim.unbound(),
 			inverse.len() == dim.unbound(),
 		));
-		Self { forward, inverse }
+		Self { 0: Ref { forward, inverse } }
 	}
 
 	/// returns the permutation as an array
@@ -125,8 +126,10 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 	#[inline]
 	pub fn inverse(self) -> Self {
 		Self {
-			forward: self.inverse,
-			inverse: self.forward,
+			0: Ref {
+				forward: self.inverse,
+				inverse: self.forward,
+			},
 		}
 	}
 
@@ -135,8 +138,10 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 	pub fn canonicalized(self) -> PermRef<'a, I::FixedWidth, N> {
 		unsafe {
 			PermRef {
-				forward: core::slice::from_raw_parts(self.forward.as_ptr() as _, self.forward.len()),
-				inverse: core::slice::from_raw_parts(self.inverse.as_ptr() as _, self.inverse.len()),
+				0: Ref {
+					forward: core::slice::from_raw_parts(self.forward.as_ptr() as _, self.forward.len()),
+					inverse: core::slice::from_raw_parts(self.inverse.as_ptr() as _, self.inverse.len()),
+				},
 			}
 		}
 	}
@@ -147,8 +152,10 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());
 		unsafe {
 			PermRef {
-				forward: core::slice::from_raw_parts(self.forward.as_ptr() as _, self.forward.len()),
-				inverse: core::slice::from_raw_parts(self.inverse.as_ptr() as _, self.inverse.len()),
+				0: Ref {
+					forward: core::slice::from_raw_parts(self.forward.as_ptr() as _, self.forward.len()),
+					inverse: core::slice::from_raw_parts(self.inverse.as_ptr() as _, self.inverse.len()),
+				},
 			}
 		}
 	}

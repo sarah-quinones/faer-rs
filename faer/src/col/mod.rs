@@ -33,10 +33,144 @@ pub(crate) mod colmut;
 pub(crate) mod colown;
 pub(crate) mod colref;
 
-pub use colmut::ColMut;
-pub use colown::Col;
-pub use colref::ColRef;
+pub use colmut::Mut;
+pub use colown::Own;
+pub use colref::Ref;
 use mat::AsMat;
+
+/// immutable view over a column vector, similar to an immutable reference to a strided
+/// [prim@slice]
+///
+/// # note
+///
+/// unlike a slice, the data pointed to by `ColRef<'_, T>` is allowed to be partially or fully
+/// uninitialized under certain conditions. in this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly or
+/// indirectly through any of the numerical library routines, unless it is explicitly permitted
+pub type ColRef<'a, T, Rows = usize, RStride = isize> = generic::Col<Ref<'a, T, Rows, RStride>>;
+
+/// mutable view over a column vector, similar to a mutable reference to a strided
+/// [prim@slice]
+///
+/// # note
+///
+/// unlike a slice, the data pointed to by `ColMut<'_, T>` is allowed to be partially or fully
+/// uninitialized under certain conditions. in this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly or
+/// indirectly through any of the numerical library routines, unless it is explicitly permitted
+pub type ColMut<'a, T, Rows = usize, RStride = isize> = generic::Col<Mut<'a, T, Rows, RStride>>;
+
+/// heap allocated resizable column vector.
+///
+/// # note
+///
+/// the memory layout of `Col` is guaranteed to be column-major, meaning that it has a row stride
+/// of `1`.
+pub type Col<T, Rows = usize> = generic::Col<Own<T, Rows>>;
+
+/// generic `Col` wrapper
+pub mod generic {
+	use crate::{Idx, Shape, Stride};
+	use core::fmt::Debug;
+	use core::ops::{Index, IndexMut};
+	use reborrow::*;
+
+	/// generic `Col` wrapper
+	#[derive(Copy, Clone)]
+	#[repr(transparent)]
+	pub struct Col<Inner>(pub Inner);
+
+	impl<Inner: Debug> Debug for Col<Inner> {
+		#[inline(always)]
+		fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+			self.0.fmt(f)
+		}
+	}
+
+	impl<Inner> Col<Inner> {
+		/// wrap by reference
+		#[inline(always)]
+		pub fn from_inner_ref(inner: &Inner) -> &Self {
+			unsafe { &*(inner as *const Inner as *const Self) }
+		}
+
+		/// wrap by mutable reference
+		#[inline(always)]
+		pub fn from_inner_mut(inner: &mut Inner) -> &mut Self {
+			unsafe { &mut *(inner as *mut Inner as *mut Self) }
+		}
+	}
+
+	impl<Inner> core::ops::Deref for Col<Inner> {
+		type Target = Inner;
+
+		#[inline(always)]
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<Inner> core::ops::DerefMut for Col<Inner> {
+		#[inline(always)]
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<'short, Inner: Reborrow<'short>> Reborrow<'short> for Col<Inner> {
+		type Target = Col<Inner::Target>;
+
+		#[inline(always)]
+		fn rb(&'short self) -> Self::Target {
+			Col(self.0.rb())
+		}
+	}
+
+	impl<'short, Inner: ReborrowMut<'short>> ReborrowMut<'short> for Col<Inner> {
+		type Target = Col<Inner::Target>;
+
+		#[inline(always)]
+		fn rb_mut(&'short mut self) -> Self::Target {
+			Col(self.0.rb_mut())
+		}
+	}
+
+	impl<Inner: IntoConst> IntoConst for Col<Inner> {
+		type Target = Col<Inner::Target>;
+
+		#[inline(always)]
+		fn into_const(self) -> Self::Target {
+			Col(self.0.into_const())
+		}
+	}
+
+	impl<T, Rows: Shape, RStride: Stride, Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Rows, RStride>>> Index<Idx<Rows>>
+		for Col<Inner>
+	{
+		type Output = T;
+
+		#[inline]
+		#[track_caller]
+		fn index(&self, row: Idx<Rows>) -> &Self::Output {
+			self.rb().at(row)
+		}
+	}
+
+	impl<
+		T,
+		Rows: Shape,
+		RStride: Stride,
+		Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Rows, RStride>>
+			+ for<'short> ReborrowMut<'short, Target = super::Mut<'short, T, Rows, RStride>>,
+	> IndexMut<Idx<Rows>> for Col<Inner>
+	{
+		#[inline]
+		#[track_caller]
+		fn index_mut(&mut self, row: Idx<Rows>) -> &mut Self::Output {
+			self.rb_mut().at_mut(row)
+		}
+	}
+}
 
 /// trait for types that can be converted to a column view
 pub trait AsColMut: AsColRef {

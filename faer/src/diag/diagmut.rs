@@ -1,14 +1,12 @@
 use super::*;
-use crate::Idx;
 use crate::internal_prelude::DiagRef;
-use core::ops::{Index, IndexMut};
 
-/// diagonal mutable matrix view
-pub struct DiagMut<'a, T, Dim = usize, Stride = isize> {
+/// see [`super::DiagMut`]
+pub struct Mut<'a, T, Dim = usize, Stride = isize> {
 	pub(crate) inner: ColMut<'a, T, Dim, Stride>,
 }
 
-impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for DiagMut<'_, T, Dim, S> {
+impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for Mut<'_, T, Dim, S> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.inner.fmt(f)
 	}
@@ -24,7 +22,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// returns the diagonal as a mutable column vector view
 	#[inline(always)]
 	pub fn column_vector_mut(self) -> ColMut<'a, T, Dim, Stride> {
-		self.inner
+		self.0.inner
 	}
 
 	/// returns a view over `self`
@@ -45,7 +43,7 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	where
 		T: Clone,
 	{
-		self.inner.fill(value)
+		self.0.inner.fill(value)
 	}
 
 	#[inline]
@@ -53,7 +51,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// see [`DiagRef::as_shape`]
 	pub fn as_shape<D: Shape>(self, len: D) -> DiagRef<'a, T, D, Stride> {
 		DiagRef {
-			inner: self.inner.as_row_shape(len),
+			0: Ref {
+				inner: self.0.inner.as_row_shape(len),
+			},
 		}
 	}
 
@@ -61,7 +61,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// see [`DiagRef::as_dyn`]
 	pub fn as_dyn(self) -> DiagRef<'a, T, usize, Stride> {
 		DiagRef {
-			inner: self.inner.as_dyn_rows(),
+			0: Ref {
+				inner: self.0.inner.as_dyn_rows(),
+			},
 		}
 	}
 
@@ -69,7 +71,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// see [`DiagRef::as_dyn_stride`]
 	pub fn as_dyn_stride(self) -> DiagRef<'a, T, Dim> {
 		DiagRef {
-			inner: self.inner.as_dyn_stride(),
+			0: Ref {
+				inner: self.0.inner.as_dyn_stride(),
+			},
 		}
 	}
 
@@ -80,7 +84,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 		T: Conjugate,
 	{
 		DiagRef {
-			inner: self.inner.conjugate(),
+			0: Ref {
+				inner: self.0.inner.conjugate(),
+			},
 		}
 	}
 
@@ -91,7 +97,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 		T: Conjugate,
 	{
 		DiagRef {
-			inner: self.inner.canonical(),
+			0: Ref {
+				inner: self.0.inner.canonical(),
+			},
 		}
 	}
 
@@ -100,7 +108,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// see [`DiagRef::as_shape`]
 	pub fn as_shape_mut<D: Shape>(self, len: D) -> DiagMut<'a, T, D, Stride> {
 		DiagMut {
-			inner: self.inner.as_row_shape_mut(len),
+			0: Mut {
+				inner: self.0.inner.as_row_shape_mut(len),
+			},
 		}
 	}
 
@@ -108,7 +118,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// see [`DiagRef::as_dyn`]
 	pub fn as_dyn_mut(self) -> DiagMut<'a, T, usize, Stride> {
 		DiagMut {
-			inner: self.inner.as_dyn_rows_mut(),
+			0: Mut {
+				inner: self.0.inner.as_dyn_rows_mut(),
+			},
 		}
 	}
 
@@ -116,7 +128,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// see [`DiagRef::as_dyn_stride`]
 	pub fn as_dyn_stride_mut(self) -> DiagMut<'a, T, Dim> {
 		DiagMut {
-			inner: self.inner.as_dyn_stride_mut(),
+			0: Mut {
+				inner: self.0.inner.as_dyn_stride_mut(),
+			},
 		}
 	}
 
@@ -127,7 +141,9 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 		T: Conjugate,
 	{
 		DiagMut {
-			inner: self.inner.conjugate_mut(),
+			0: Mut {
+				inner: self.0.inner.conjugate_mut(),
+			},
 		}
 	}
 
@@ -138,14 +154,16 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 		T: Conjugate,
 	{
 		DiagMut {
-			inner: self.inner.canonical_mut(),
+			0: Mut {
+				inner: self.0.inner.canonical_mut(),
+			},
 		}
 	}
 
 	/// returns the dimension of `self`
 	#[inline]
 	pub fn dim(&self) -> Dim {
-		self.inner.nrows()
+		self.0.inner.nrows()
 	}
 
 	/// copies `other` into `self`
@@ -155,81 +173,35 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	where
 		T: ComplexField,
 	{
-		self.inner.copy_from(rhs.as_diag_ref().inner)
+		self.0.inner.copy_from(rhs.as_diag_ref().inner)
 	}
 }
 
-impl<'short, T, N: Copy, Stride: Copy> Reborrow<'short> for DiagMut<'_, T, N, Stride> {
-	type Target = DiagRef<'short, T, N, Stride>;
+impl<'short, T, N: Copy, Stride: Copy> Reborrow<'short> for Mut<'_, T, N, Stride> {
+	type Target = Ref<'short, T, N, Stride>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		DiagRef { inner: self.inner.rb() }
+		Ref { inner: self.inner.rb() }
 	}
 }
 
-impl<'short, T, N: Copy, Stride: Copy> ReborrowMut<'short> for DiagMut<'_, T, N, Stride> {
-	type Target = DiagMut<'short, T, N, Stride>;
+impl<'short, T, N: Copy, Stride: Copy> ReborrowMut<'short> for Mut<'_, T, N, Stride> {
+	type Target = Mut<'short, T, N, Stride>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		DiagMut { inner: self.inner.rb_mut() }
+		Mut { inner: self.inner.rb_mut() }
 	}
 }
 
-impl<'a, T, N: Copy, Stride: Copy> IntoConst for DiagMut<'a, T, N, Stride> {
-	type Target = DiagRef<'a, T, N, Stride>;
+impl<'a, T, N: Copy, Stride: Copy> IntoConst for Mut<'a, T, N, Stride> {
+	type Target = Ref<'a, T, N, Stride>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		DiagRef {
+		Ref {
 			inner: self.inner.into_const(),
 		}
-	}
-}
-
-impl<T, Dim: Shape, Stride: crate::Stride> Index<Idx<Dim>> for DiagRef<'_, T, Dim, Stride> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, idx: Idx<Dim>) -> &Self::Output {
-		self.inner.at(idx)
-	}
-}
-
-impl<T, Dim: Shape, Stride: crate::Stride> Index<Idx<Dim>> for DiagMut<'_, T, Dim, Stride> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, idx: Idx<Dim>) -> &Self::Output {
-		self.rb().inner.at(idx)
-	}
-}
-
-impl<T, Dim: Shape, Stride: crate::Stride> IndexMut<Idx<Dim>> for DiagMut<'_, T, Dim, Stride> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, idx: Idx<Dim>) -> &mut Self::Output {
-		self.inner.rb_mut().at_mut(idx)
-	}
-}
-
-impl<T, Dim: Shape> Index<Idx<Dim>> for Diag<T, Dim> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, idx: Idx<Dim>) -> &Self::Output {
-		&self.inner[idx]
-	}
-}
-
-impl<T, Dim: Shape> IndexMut<Idx<Dim>> for Diag<T, Dim> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, idx: Idx<Dim>) -> &mut Self::Output {
-		&mut self.inner[idx]
 	}
 }

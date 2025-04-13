@@ -1,13 +1,13 @@
 use super::*;
 use crate::internal_prelude::{DiagMut, DiagRef};
 
-/// diagonal matrix
+/// see [`super::Diag`]
 #[derive(Clone)]
-pub struct Diag<T, Dim: Shape = usize> {
+pub struct Own<T, Dim: Shape = usize> {
 	pub(crate) inner: Col<T, Dim>,
 }
 
-impl<T: core::fmt::Debug, Dim: Shape> core::fmt::Debug for Diag<T, Dim> {
+impl<T: core::fmt::Debug, Dim: Shape> core::fmt::Debug for Own<T, Dim> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.inner.fmt(f)
 	}
@@ -29,19 +29,27 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	/// returns the diagonal as a column vector
 	#[inline(always)]
 	pub fn into_column_vector(self) -> Col<T, Dim> {
-		self.inner
+		self.0.inner
 	}
 
 	/// returns a view over `self`
 	#[inline(always)]
 	pub fn as_ref(&self) -> DiagRef<'_, T, Dim> {
-		DiagRef { inner: self.inner.as_ref() }
+		DiagRef {
+			0: Ref {
+				inner: self.0.inner.as_ref(),
+			},
+		}
 	}
 
 	/// returns a view over `self`
 	#[inline(always)]
 	pub fn as_mut(&mut self) -> DiagMut<'_, T, Dim> {
-		DiagMut { inner: self.inner.as_mut() }
+		DiagMut {
+			0: Mut {
+				inner: self.0.inner.as_mut(),
+			},
+		}
 	}
 
 	#[inline]
@@ -49,7 +57,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	/// see [`DiagRef::as_shape`]
 	pub fn as_shape<D: Shape>(&self, len: D) -> DiagRef<'_, T, D> {
 		DiagRef {
-			inner: self.inner.as_row_shape(len),
+			0: Ref {
+				inner: self.0.inner.as_row_shape(len),
+			},
 		}
 	}
 
@@ -72,7 +82,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: Conjugate,
 	{
 		DiagRef {
-			inner: self.inner.conjugate(),
+			0: Ref {
+				inner: self.0.inner.conjugate(),
+			},
 		}
 	}
 
@@ -83,7 +95,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: Conjugate,
 	{
 		DiagRef {
-			inner: self.inner.canonical(),
+			0: Ref {
+				inner: self.0.inner.canonical(),
+			},
 		}
 	}
 
@@ -92,7 +106,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	/// see [`DiagMut::as_shape_mut`]
 	pub fn as_shape_mut<D: Shape>(&mut self, len: D) -> DiagMut<'_, T, D> {
 		DiagMut {
-			inner: self.inner.as_row_shape_mut(len),
+			0: Mut {
+				inner: self.0.inner.as_row_shape_mut(len),
+			},
 		}
 	}
 
@@ -103,7 +119,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: Conjugate,
 	{
 		DiagMut {
-			inner: self.inner.conjugate_mut(),
+			0: Mut {
+				inner: self.0.inner.conjugate_mut(),
+			},
 		}
 	}
 
@@ -114,14 +132,16 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: Conjugate,
 	{
 		DiagMut {
-			inner: self.inner.canonical_mut(),
+			0: Mut {
+				inner: self.0.inner.canonical_mut(),
+			},
 		}
 	}
 
 	/// returns the dimension of `self`
 	#[inline]
 	pub fn dim(&self) -> Dim {
-		self.inner.nrows()
+		self.0.inner.nrows()
 	}
 
 	/// returns a new diagonal with dimension `dim`, filled with zeros
@@ -130,7 +150,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: ComplexField,
 	{
-		Self { inner: Col::zeros(dim) }
+		Self {
+			0: Own { inner: Col::zeros(dim) },
+		}
 	}
 
 	/// returns a new diagonal with dimension `dim`, filled with ones
@@ -139,7 +161,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: ComplexField,
 	{
-		Self { inner: Col::ones(dim) }
+		Self {
+			0: Own { inner: Col::ones(dim) },
+		}
 	}
 
 	/// returns a new diagonal with dimension `dim`, filled with `value`
@@ -149,7 +173,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: Clone,
 	{
 		Self {
-			inner: Col::full(dim, value),
+			0: Own {
+				inner: Col::full(dim, value),
+			},
 		}
 	}
 
@@ -160,23 +186,23 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	where
 		T: ComplexField,
 	{
-		self.inner.copy_from(rhs.as_diag_ref().inner)
+		self.0.inner.copy_from(rhs.as_diag_ref().inner)
 	}
 }
 
-impl<'short, T, Dim: Shape> Reborrow<'short> for Diag<T, Dim> {
-	type Target = DiagRef<'short, T, Dim>;
+impl<'short, T, Dim: Shape> Reborrow<'short> for Own<T, Dim> {
+	type Target = Ref<'short, T, Dim>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		self.as_ref()
+		Ref { inner: self.inner.rb() }
 	}
 }
-impl<'short, T, Dim: Shape> ReborrowMut<'short> for Diag<T, Dim> {
-	type Target = DiagMut<'short, T, Dim>;
+impl<'short, T, Dim: Shape> ReborrowMut<'short> for Own<T, Dim> {
+	type Target = Mut<'short, T, Dim>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		self.as_mut()
+		Mut { inner: self.inner.rb_mut() }
 	}
 }

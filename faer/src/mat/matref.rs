@@ -1,7 +1,7 @@
 use super::{Mat, MatMut, MatRef, *};
-use crate::col::colref::ColRef;
+use crate::col::ColRef;
 use crate::internal_prelude::*;
-use crate::row::rowref::RowRef;
+use crate::row::RowRef;
 use crate::utils::bound::{Dim, Partition};
 use crate::{ContiguousFwd, Idx, IdxInc};
 use equator::{assert, debug_assert};
@@ -1234,7 +1234,9 @@ impl<'a, T, Dim: Shape, RStride: Stride, CStride: Stride> MatRef<'a, T, Dim, Dim
 	pub fn diagonal(self) -> DiagRef<'a, T, Dim, isize> {
 		let k = Ord::min(self.nrows(), self.ncols());
 		DiagRef {
-			inner: unsafe { ColRef::from_raw_parts(self.as_ptr(), k, self.row_stride().element_stride() + self.col_stride().element_stride()) },
+			0: crate::diag::Ref {
+				inner: unsafe { ColRef::from_raw_parts(self.as_ptr(), k, self.row_stride().element_stride() + self.col_stride().element_stride()) },
+			},
 		}
 	}
 }

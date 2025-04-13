@@ -1,47 +1,35 @@
-use crate::internal_prelude::*;
+use super::*;
 use crate::utils::bound::{Array, Dim, Partition};
 use crate::{ContiguousFwd, Idx, IdxInc};
-use core::ops::{Index, IndexMut};
 use equator::{assert, debug_assert};
-use faer_traits::Real;
 
-use super::RowIndex;
-
-/// mutable view over a row vector, similar to a mutable reference to a strided
-/// [prim@slice]
-///
-/// # note
-///
-/// unlike a slice, the data pointed to by `RowMut<'_, T>` is allowed to be partially or fully
-/// uninitialized under certain conditions. in this case, care must be taken to not perform any
-/// operations that read the uninitialized values, or form references to them, either directly or
-/// indirectly through any of the numerical library routines, unless it is explicitly permitted
-pub struct RowMut<'a, T, Cols = usize, CStride = isize> {
+/// see [`super::RowMut`]
+pub struct Mut<'a, T, Cols = usize, CStride = isize> {
 	pub(crate) trans: ColMut<'a, T, Cols, CStride>,
 }
 
-impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for RowMut<'_, T, Rows, RStride> {
-	type Target = RowRef<'short, T, Rows, RStride>;
+impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for Mut<'_, T, Rows, RStride> {
+	type Target = Ref<'short, T, Rows, RStride>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		RowRef { trans: self.trans.rb() }
+		Ref { trans: self.trans.rb() }
 	}
 }
-impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for RowMut<'_, T, Rows, RStride> {
-	type Target = RowMut<'short, T, Rows, RStride>;
+impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for Mut<'_, T, Rows, RStride> {
+	type Target = Mut<'short, T, Rows, RStride>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		RowMut { trans: self.trans.rb_mut() }
+		Mut { trans: self.trans.rb_mut() }
 	}
 }
-impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for RowMut<'a, T, Rows, RStride> {
-	type Target = RowRef<'a, T, Rows, RStride>;
+impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for Mut<'a, T, Rows, RStride> {
+	type Target = Ref<'a, T, Rows, RStride>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		RowRef {
+		Ref {
 			trans: self.trans.into_const(),
 		}
 	}
@@ -57,7 +45,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[track_caller]
 	pub unsafe fn from_raw_parts_mut(ptr: *mut T, ncols: Cols, col_stride: CStride) -> Self {
 		Self {
-			trans: ColMut::from_raw_parts_mut(ptr, ncols, col_stride),
+			0: Mut {
+				trans: ColMut::from_raw_parts_mut(ptr, ncols, col_stride),
+			},
 		}
 	}
 
@@ -207,7 +197,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	where
 		Cols: 'a,
 	{
-		self.trans.iter()
+		self.0.trans.iter()
 	}
 
 	#[inline]
@@ -218,7 +208,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 		T: Sync,
 		Cols: 'a,
 	{
-		self.trans.par_iter()
+		self.0.trans.par_iter()
 	}
 
 	#[inline]
@@ -231,7 +221,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	/// see [`RowRef::as_diagonal`]
 	pub fn as_diagonal(self) -> DiagRef<'a, T, Cols, CStride> {
 		DiagRef {
-			inner: self.trans.into_const(),
+			0: crate::diag::Ref {
+				inner: self.0.trans.into_const(),
+			},
 		}
 	}
 
@@ -239,20 +231,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[doc(hidden)]
 	pub unsafe fn const_cast(self) -> RowMut<'a, T, Cols, CStride> {
 		RowMut {
-			trans: self.trans.const_cast(),
+			0: Mut {
+				trans: self.0.trans.const_cast(),
+			},
 		}
-	}
-
-	#[inline]
-	/// returns a view over `self`
-	pub fn as_ref(&self) -> RowRef<'_, T, Cols, CStride> {
-		self.rb()
-	}
-
-	#[inline]
-	/// returns a view over `self`
-	pub fn as_mut(&mut self) -> RowMut<'_, T, Cols, CStride> {
-		self.rb_mut()
 	}
 
 	#[inline]
@@ -266,68 +248,30 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	pub fn as_mat_mut(self) -> MatMut<'a, T, usize, Cols, isize, CStride> {
 		unsafe { self.into_const().as_mat().const_cast() }
 	}
+}
 
+impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> ReborrowMut<'short, Target = Mut<'short, T, Cols, CStride>>> generic::Row<Inner> {
 	#[inline]
-	/// see [`RowRef::norm_max`]
-	pub fn norm_max(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_max()
+	/// returns a view over `self`
+	pub fn as_mut(&mut self) -> RowMut<'_, T, Cols, CStride> {
+		self.rb_mut()
 	}
 
 	#[inline]
-	/// see [`RowRef::norm_l2`]
-	pub fn norm_l2(&self) -> Real<T>
+	/// copies `other` into `self`
+	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<T = RhsT, Cols = Cols>)
 	where
-		T: Conjugate,
+		T: ComplexField,
 	{
-		self.rb().as_mat().norm_l2()
+		self.rb_mut().transpose_mut().copy_from(other.as_row_ref().transpose());
 	}
 
-	#[inline]
-	/// see [`RowRef::squared_norm_l2`]
-	pub fn squared_norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().squared_norm_l2()
-	}
-
-	#[inline]
-	/// see [`RowRef::norm_l1`]
-	pub fn norm_l1(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().norm_l1()
-	}
-
-	#[inline]
-	/// see [`RowRef::sum`]
-	pub fn sum(&self) -> T::Canonical
-	where
-		T: Conjugate,
-	{
-		self.rb().as_mat().sum()
-	}
-
-	/// see [`RowRef::cloned`]
-	#[inline]
-	pub fn cloned(&self) -> Row<T, Cols>
+	/// fills all the elements of `self` with `value`
+	pub fn fill(&mut self, value: T)
 	where
 		T: Clone,
 	{
-		self.rb().cloned()
-	}
-
-	/// see [`RowRef::to_owned`]
-	#[inline]
-	pub fn to_owned(&self) -> Row<T::Canonical, Cols>
-	where
-		T: Conjugate,
-	{
-		self.rb().to_owned()
+		self.rb_mut().transpose_mut().fill(value)
 	}
 }
 
@@ -363,7 +307,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[inline(always)]
 	/// see [`RowRef::transpose`]
 	pub fn transpose_mut(self) -> ColMut<'a, T, Cols, CStride> {
-		self.trans
+		self.0.trans
 	}
 
 	#[inline(always)]
@@ -463,7 +407,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	where
 		Cols: 'a,
 	{
-		self.trans.iter_mut()
+		self.0.trans.iter_mut()
 	}
 
 	#[inline]
@@ -474,7 +418,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 		T: Send,
 		Cols: 'a,
 	{
-		self.trans.par_iter_mut()
+		self.0.trans.par_iter_mut()
 	}
 
 	#[inline]
@@ -513,15 +457,6 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	}
 
 	#[inline]
-	/// copies `other` into `self`
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<T = RhsT, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.rb_mut().transpose_mut().copy_from(other.as_row_ref().transpose());
-	}
-
-	#[inline]
 	/// see [`RowRef::try_as_row_major`]
 	pub fn try_as_row_major_mut(self) -> Option<RowMut<'a, T, Cols, ContiguousFwd>> {
 		self.into_const().try_as_row_major().map(|x| unsafe { x.const_cast() })
@@ -530,15 +465,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[inline]
 	/// see [`RowRef::as_diagonal`]
 	pub fn as_diagonal_mut(self) -> DiagMut<'a, T, Cols, CStride> {
-		DiagMut { inner: self.trans }
-	}
-
-	/// fills all the elements of `self` with `value`
-	pub fn fill(&mut self, value: T)
-	where
-		T: Clone,
-	{
-		self.rb_mut().transpose_mut().fill(value)
+		DiagMut {
+			0: crate::diag::Mut { inner: self.0.trans },
+		}
 	}
 
 	#[inline]
@@ -603,37 +532,9 @@ impl<'COLS, 'a, T, CStride: Stride> RowMut<'a, T, Dim<'COLS>, CStride> {
 	}
 }
 
-impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug for RowMut<'_, T, Cols, CStride> {
+impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug for Mut<'_, T, Cols, CStride> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.rb().fmt(f)
-	}
-}
-
-impl<T, Cols: Shape, RStride: Stride> Index<Idx<Cols>> for RowRef<'_, T, Cols, RStride> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, col: Idx<Cols>) -> &Self::Output {
-		self.at(col)
-	}
-}
-
-impl<T, Cols: Shape, RStride: Stride> Index<Idx<Cols>> for RowMut<'_, T, Cols, RStride> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, col: Idx<Cols>) -> &Self::Output {
-		self.rb().at(col)
-	}
-}
-
-impl<T, Cols: Shape, RStride: Stride> IndexMut<Idx<Cols>> for RowMut<'_, T, Cols, RStride> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, col: Idx<Cols>) -> &mut Self::Output {
-		self.rb_mut().at_mut(col)
 	}
 }
 

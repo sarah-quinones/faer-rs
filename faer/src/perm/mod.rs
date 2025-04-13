@@ -159,8 +159,89 @@ pub fn swap_cols_idx<M: Shape, N: Shape, T>(mat: MatMut<'_, T, M, N>, a: Idx<N>,
 mod permown;
 mod permref;
 
-pub use permown::Perm;
-pub use permref::PermRef;
+/// permutation matrix
+pub type Perm<I, N = usize> = generic::Perm<Own<I, N>>;
+
+/// immutable permutation matrix view
+pub type PermRef<'a, I, N = usize> = generic::Perm<Ref<'a, I, N>>;
+
+pub use permown::Own;
+pub use permref::Ref;
+
+/// generic `Perm` wrapper
+pub mod generic {
+	use core::fmt::Debug;
+	use reborrow::*;
+
+	/// generic `Perm` wrapper
+	#[derive(Copy, Clone)]
+	#[repr(transparent)]
+	pub struct Perm<Inner>(pub Inner);
+
+	impl<Inner: Debug> Debug for Perm<Inner> {
+		#[inline(always)]
+		fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+			self.0.fmt(f)
+		}
+	}
+
+	impl<Inner> Perm<Inner> {
+		/// wrap by reference
+		#[inline(always)]
+		pub fn from_inner_ref(inner: &Inner) -> &Self {
+			unsafe { &*(inner as *const Inner as *const Self) }
+		}
+
+		/// wrap by mutable reference
+		#[inline(always)]
+		pub fn from_inner_mut(inner: &mut Inner) -> &mut Self {
+			unsafe { &mut *(inner as *mut Inner as *mut Self) }
+		}
+	}
+
+	impl<Inner> core::ops::Deref for Perm<Inner> {
+		type Target = Inner;
+
+		#[inline(always)]
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<Inner> core::ops::DerefMut for Perm<Inner> {
+		#[inline(always)]
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<'short, Inner: Reborrow<'short>> Reborrow<'short> for Perm<Inner> {
+		type Target = Perm<Inner::Target>;
+
+		#[inline(always)]
+		fn rb(&'short self) -> Self::Target {
+			Perm(self.0.rb())
+		}
+	}
+
+	impl<'short, Inner: ReborrowMut<'short>> ReborrowMut<'short> for Perm<Inner> {
+		type Target = Perm<Inner::Target>;
+
+		#[inline(always)]
+		fn rb_mut(&'short mut self) -> Self::Target {
+			Perm(self.0.rb_mut())
+		}
+	}
+
+	impl<Inner: IntoConst> IntoConst for Perm<Inner> {
+		type Target = Perm<Inner::Target>;
+
+		#[inline(always)]
+		fn into_const(self) -> Self::Target {
+			Perm(self.0.into_const())
+		}
+	}
+}
 
 use self::linalg::temp_mat_scratch;
 
