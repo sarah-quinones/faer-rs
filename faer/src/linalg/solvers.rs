@@ -279,7 +279,7 @@ impl<C: Conjugate> MatRef<'_, C> {
 	}
 
 	#[track_caller]
-	/// returns the bunch-kaufman decomposition of `self`
+	/// returns the $LBL^\top$ decomposition of `self`
 	pub fn lblt(&self, side: Side) -> Lblt<C::Canonical> {
 		Lblt::new(self.as_mat_ref(), side)
 	}
@@ -501,7 +501,7 @@ impl<C: Conjugate> MatMut<'_, C> {
 	}
 
 	#[track_caller]
-	/// returns the bunch-kaufman decomposition of `self`
+	/// returns the $LBL^\top$ decomposition of `self`
 	pub fn lblt(&self, side: Side) -> Lblt<C::Canonical> {
 		self.rb().lblt(side)
 	}
@@ -613,7 +613,7 @@ impl<C: Conjugate> Mat<C> {
 	}
 
 	#[track_caller]
-	/// returns the bunch-kaufman decomposition of `self`
+	/// returns the $LBL^\top$ decomposition of `self`
 	pub fn lblt(&self, side: Side) -> Lblt<C::Canonical> {
 		self.rb().lblt(side)
 	}
@@ -693,7 +693,7 @@ pub struct Ldlt<T> {
 	D: Diag<T>,
 }
 
-/// bunch-kaufman decomposition
+/// $LBL^\top$ decomposition
 #[derive(Clone, Debug)]
 pub struct Lblt<T> {
 	L: Mat<T>,
@@ -842,7 +842,7 @@ impl<T: ComplexField> Ldlt<T> {
 }
 
 impl<T: ComplexField> Lblt<T> {
-	/// returns the bunch-kaufman decomposition of $A$
+	/// returns the $LBL^\top$ decomposition of $A$
 	#[track_caller]
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>, side: Side) -> Self {
 		assert!(all(A.nrows() == A.ncols()));
@@ -867,23 +867,10 @@ impl<T: ComplexField> Lblt<T> {
 		let mut perm_fwd = vec![0usize; n];
 		let mut perm_bwd = vec![0usize; n];
 
-		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-			n,
-			par,
-			default(),
-		));
+		let mut mem = MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, par, default()));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
-			L.as_mut(),
-			subdiag.as_mut(),
-			Default::default(),
-			&mut perm_fwd,
-			&mut perm_bwd,
-			par,
-			stack,
-			default(),
-		);
+		linalg::cholesky::lblt::factor::cholesky_in_place(L.as_mut(), subdiag.as_mut(), &mut perm_fwd, &mut perm_bwd, par, stack, default());
 
 		diag.copy_from(L.diagonal());
 		L.diagonal_mut().fill(one());
@@ -1768,37 +1755,28 @@ impl<T: ComplexField> SolveCore<T> for Lblt<T> {
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
-		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::solve::solve_in_place_scratch::<usize, T>(
+		let mut mem = MemBuffer::new(linalg::cholesky::lblt::solve::solve_in_place_scratch::<usize, T>(
 			self.L.nrows(),
 			rhs.ncols(),
 			par,
 		));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
-			self.L.as_ref(),
-			self.B_diag(),
-			self.B_subdiag(),
-			conj,
-			self.P(),
-			rhs,
-			par,
-			stack,
-		);
+		linalg::cholesky::lblt::solve::solve_in_place_with_conj(self.L.as_ref(), self.B_diag(), self.B_subdiag(), conj, self.P(), rhs, par, stack);
 	}
 
 	#[track_caller]
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
-		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::solve::solve_in_place_scratch::<usize, T>(
+		let mut mem = MemBuffer::new(linalg::cholesky::lblt::solve::solve_in_place_scratch::<usize, T>(
 			self.L.nrows(),
 			rhs.ncols(),
 			par,
 		));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
+		linalg::cholesky::lblt::solve::solve_in_place_with_conj(
 			self.L(),
 			self.B_diag(),
 			self.B_subdiag(),
@@ -1819,10 +1797,10 @@ impl<T: ComplexField> DenseSolveCore<T> for Lblt<T> {
 		let n = self.L.nrows();
 		let mut out = Mat::zeros(n, n);
 
-		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::reconstruct::reconstruct_scratch::<usize, T>(n, par));
+		let mut mem = MemBuffer::new(linalg::cholesky::lblt::reconstruct::reconstruct_scratch::<usize, T>(n, par));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::reconstruct::reconstruct(out.as_mut(), self.L(), self.B_diag(), self.B_subdiag(), self.P(), par, stack);
+		linalg::cholesky::lblt::reconstruct::reconstruct(out.as_mut(), self.L(), self.B_diag(), self.B_subdiag(), self.P(), par, stack);
 
 		make_self_adjoint(out.as_mut());
 		out
@@ -1835,10 +1813,10 @@ impl<T: ComplexField> DenseSolveCore<T> for Lblt<T> {
 		let n = self.L.nrows();
 		let mut out = Mat::zeros(n, n);
 
-		let mut mem = MemBuffer::new(linalg::cholesky::bunch_kaufman::inverse::inverse_scratch::<usize, T>(n, par));
+		let mut mem = MemBuffer::new(linalg::cholesky::lblt::inverse::inverse_scratch::<usize, T>(n, par));
 		let stack = MemStack::new(&mut mem);
 
-		linalg::cholesky::bunch_kaufman::inverse::inverse(out.as_mut(), self.L(), self.B_diag(), self.B_subdiag(), self.P(), par, stack);
+		linalg::cholesky::lblt::inverse::inverse(out.as_mut(), self.L(), self.B_diag(), self.B_subdiag(), self.P(), par, stack);
 
 		make_self_adjoint(out.as_mut());
 		out

@@ -60,7 +60,7 @@
 //!
 //! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Llt)
 //!
-//! ## bunch-kaufman decomposition
+//! ## $LBL^\top$ decomposition
 //! [`Mat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
 //! $$P A P^\top = LBL^H,$$
 //! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$ is a block

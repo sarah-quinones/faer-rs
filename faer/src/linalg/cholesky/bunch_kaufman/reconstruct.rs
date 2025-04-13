@@ -99,7 +99,7 @@ mod tests {
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use dyn_stack::MemBuffer;
-	use linalg::cholesky::bunch_kaufman::*;
+	use linalg::cholesky::lblt::*;
 
 	#[test]
 	fn test_reconstruct() {
@@ -122,7 +122,6 @@ mod tests {
 		let (_, perm) = factor::cholesky_in_place(
 			LB.as_mut(),
 			subdiag.as_mut(),
-			Default::default(),
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,

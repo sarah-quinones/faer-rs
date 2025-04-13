@@ -13,7 +13,7 @@ use reborrow::*;
 use toml::{Table, Value};
 
 use ::faer::diag::Diag;
-use ::faer::linalg::cholesky::bunch_kaufman::factor::BunchKaufmanParams;
+use ::faer::linalg::cholesky::lblt::factor::LbltParams;
 use ::faer::prelude::*;
 use ::faer::stats::prelude::*;
 use ::faer::{Auto, linalg};
@@ -315,8 +315,8 @@ fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 	let fwd = &mut *avec![0usize; n];
 	let bwd = &mut *avec![0usize; n];
 
-	let params = BunchKaufmanParams {
-		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Partial,
+	let params = LbltParams {
+		pivoting: linalg::cholesky::lblt::factor::PivotingStrategy::Partial,
 		..Auto::<T>::auto()
 	}
 	.into();
@@ -383,25 +383,14 @@ fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 	#[cfg(any(openblas, mkl, blis))]
 	let work = &mut *avec![zero::<T>(); lwork];
 
-	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 
 	if Lib::FAER || (Lib::LAPACK && T::IS_NATIVE) {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
 			if Lib::FAER {
-				linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
-					L.rb_mut(),
-					subdiag.rb_mut(),
-					Default::default(),
-					fwd,
-					bwd,
-					parallel,
-					stack,
-					params,
-				);
+				linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
 			} else if Lib::LAPACK {
 				fwd.fill(0);
 
@@ -476,29 +465,18 @@ fn lblt_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 	let fwd = &mut *avec![0usize; n];
 	let bwd = &mut *avec![0usize; n];
 
-	let params = BunchKaufmanParams {
-		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::PartialDiag,
+	let params = LbltParams {
+		pivoting: linalg::cholesky::lblt::factor::PivotingStrategy::PartialDiag,
 		..Auto::<T>::auto()
 	}
 	.into();
 
-	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
-				L.rb_mut(),
-				subdiag.rb_mut(),
-				Default::default(),
-				fwd,
-				bwd,
-				parallel,
-				stack,
-				params,
-			);
+			linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
 		})
 	}
 }
@@ -521,8 +499,8 @@ fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 	let fwd = &mut *avec![0usize; n];
 	let bwd = &mut *avec![0usize; n];
 
-	let params = BunchKaufmanParams {
-		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Rook,
+	let params = LbltParams {
+		pivoting: linalg::cholesky::lblt::factor::PivotingStrategy::Rook,
 		..Auto::<T>::auto()
 	}
 	.into();
@@ -589,24 +567,13 @@ fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 	#[cfg(any(openblas, mkl, blis))]
 	let work = &mut *avec![zero::<T>(); lwork];
 
-	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 	if Lib::FAER || (Lib::LAPACK && T::IS_NATIVE) {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
 			if Lib::FAER {
-				linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
-					L.rb_mut(),
-					subdiag.rb_mut(),
-					Default::default(),
-					fwd,
-					bwd,
-					parallel,
-					stack,
-					params,
-				);
+				linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
 			} else if Lib::LAPACK {
 				fwd.fill(0);
 
@@ -681,30 +648,19 @@ fn lblt_rook_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 	let fwd = &mut *avec![0usize; n];
 	let bwd = &mut *avec![0usize; n];
 
-	let params = BunchKaufmanParams {
-		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Rook,
+	let params = LbltParams {
+		pivoting: linalg::cholesky::lblt::factor::PivotingStrategy::Rook,
 		..Auto::<T>::auto()
 	}
 	.into();
 
-	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
-				L.rb_mut(),
-				subdiag.rb_mut(),
-				Default::default(),
-				fwd,
-				bwd,
-				parallel,
-				stack,
-				params,
-			);
+			linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
 		})
 	}
 }
@@ -726,30 +682,19 @@ fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 	let fwd = &mut *avec![0usize; n];
 	let bwd = &mut *avec![0usize; n];
 
-	let params = BunchKaufmanParams {
-		pivoting: linalg::cholesky::bunch_kaufman::factor::PivotingStrategy::Full,
+	let params = LbltParams {
+		pivoting: linalg::cholesky::lblt::factor::PivotingStrategy::Full,
 		..Auto::<T>::auto()
 	}
 	.into();
 
-	let stack = &mut MemBuffer::new(linalg::cholesky::bunch_kaufman::factor::cholesky_in_place_scratch::<usize, T>(
-		n, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
 	let stack = MemStack::new(stack);
 
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::bunch_kaufman::factor::cholesky_in_place(
-				L.rb_mut(),
-				subdiag.rb_mut(),
-				Default::default(),
-				fwd,
-				bwd,
-				parallel,
-				stack,
-				params,
-			);
+			linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
 		})
 	}
 }
