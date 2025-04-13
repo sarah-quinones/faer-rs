@@ -807,6 +807,45 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 	n
 }
 
+pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, max_dim: usize, n_eigval: usize, par: Par) -> StackReq {
+	let n = A.nrows();
+	assert!(A.ncols() == n);
+
+	let n_eigval = Ord::min(n_eigval, n);
+
+	let max_dim = Ord::min(Ord::max(max_dim, Ord::max(20, 2 * n_eigval)), n);
+
+	let w = temp_mat_scratch::<T>(max_dim, if T::IS_REAL { 2 } else { 1 });
+	let residual = temp_mat_scratch::<T::Real>(max_dim, 1);
+	let H = temp_mat_scratch::<T>(max_dim + 1, max_dim);
+	let V = temp_mat_scratch::<T>(n, max_dim + 1);
+	let Q = temp_mat_scratch::<T>(max_dim, max_dim);
+	let X = Q;
+	let vecs = Q;
+	let tmp = temp_mat_scratch::<T>(n, max_dim);
+
+	let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(max_dim, max_dim);
+	let householder = temp_mat_scratch::<T>(blocksize, max_dim);
+	let arnoldi = A.apply_scratch(1, par);
+
+	let hess = linalg::evd::hessenberg::hessenberg_in_place_scratch::<T>(max_dim, blocksize, par, default());
+	let apply_house = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(max_dim - 1, blocksize, max_dim - 1);
+	let schur = schur::multishift_qr_scratch::<T>(max_dim, max_dim, true, true, par, auto!(T));
+
+	StackReq::all_of(&[
+		w,
+		residual,
+		H,
+		V,
+		Q,
+		X,
+		vecs,
+		tmp,
+		householder,
+		StackReq::any_of(&[hess, apply_house, schur]),
+	])
+}
+
 pub fn partial_eigen<T: ComplexField>(
 	eigvecs: MatMut<'_, Complex<T::Real>>,
 	eigvals: &mut [Complex<T::Real>],
@@ -862,7 +901,7 @@ mod tests {
 	#[test]
 	fn test_arnoldi_real() {
 		let rng = &mut StdRng::seed_from_u64(1);
-		let n = 2000;
+		let n = 1000;
 		let n_eigval = 20;
 		let min_dim = 30;
 		let max_dim = 60;
@@ -886,7 +925,7 @@ mod tests {
 		let v0 = v0.as_ref();
 
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(StackReq::new::<u8>(1024 * 1024 * 1024));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, max_dim, n_eigval, par));
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
 
@@ -913,7 +952,7 @@ mod tests {
 	#[test]
 	fn test_arnoldi_cplx() {
 		let rng = &mut StdRng::seed_from_u64(1);
-		let n = 2000;
+		let n = 1000;
 		let n_eigval = 20;
 		let min_dim = 30;
 		let max_dim = 60;
@@ -937,7 +976,7 @@ mod tests {
 		let v0 = v0.as_ref();
 
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(StackReq::new::<u8>(1024 * 1024 * 1024));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, max_dim, n_eigval, par));
 
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
@@ -987,14 +1026,15 @@ mod tests {
 		let v0 = v0.as_ref();
 
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(StackReq::new::<u8>(1024 * 1024 * 1024));
-
 		let n_eigval = 5;
+		let min_dim = 7;
+		let max_dim = 9;
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, max_dim, n_eigval, par));
 
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
 
-		let n_eigval = partial_eigen(V.rb_mut(), &mut w, &A, v0, 7, 9, 0.000001, 20, par, MemStack::new(mem));
+		let n_eigval = partial_eigen(V.rb_mut(), &mut w, &A, v0, min_dim, max_dim, 0.000001, 20, par, MemStack::new(mem));
 
 		let A = &zip!(A).map(|unzip!(x)| Complex::from(*x));
 		for j in 0..n_eigval {
