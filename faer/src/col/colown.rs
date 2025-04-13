@@ -113,7 +113,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
 }
 
 impl<T> Col<T> {
-	fn from_iter_imp<I: Iterator<Item = T>>(iter: I) -> Self {
+	pub(crate) fn from_iter_imp<I: Iterator<Item = T>>(iter: I) -> Self {
 		let mut iter = iter;
 		let (min, max) = iter.size_hint();
 
@@ -175,6 +175,15 @@ impl<T> Col<T> {
 
 			Col { column: col }
 		}
+	}
+}
+
+impl<T> FromIterator<T> for Col<T> {
+	fn from_iter<I>(iter: I) -> Self
+	where
+		I: IntoIterator<Item = T>,
+	{
+		Self::from_iter_imp(iter.into_iter()).into()
 	}
 }
 
@@ -677,5 +686,13 @@ mod tests {
 
 		let empty: Col<f64> = Col::from_fn(0, |_| 0.0);
 		assert_eq!(empty.max(), None);
+	}
+
+	#[test]
+	fn test_from_iter() {
+		let col: Col<i32> = (0..10).collect();
+		assert_eq!(col.nrows(), 10);
+		assert_eq!(col[0], 0);
+		assert_eq!(col[9], 9);
 	}
 }
