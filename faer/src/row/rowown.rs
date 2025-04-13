@@ -570,6 +570,17 @@ where
 	}
 }
 
+impl<T> FromIterator<T> for Row<T> {
+	fn from_iter<I>(iter: I) -> Self
+	where
+		I: IntoIterator<Item = T>,
+	{
+		Row {
+			trans: Col::from_iter_imp(iter.into_iter()),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::Row;
@@ -590,5 +601,13 @@ mod tests {
 
 		let empty: Row<f64> = Row::from_fn(0, |_| 0.0);
 		assert_eq!(empty.max(), None);
+	}
+
+	#[test]
+	fn test_from_iter() {
+		let row: Row<i32> = (0..10).collect();
+		assert_eq!(row.nrows(), 10);
+		assert_eq!(row[0], 0);
+		assert_eq!(row[9], 9);
 	}
 }
