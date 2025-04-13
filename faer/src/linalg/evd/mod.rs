@@ -408,7 +408,7 @@ fn dot2x2<T: RealField>(lhs0: RowRef<'_, T>, lhs1: RowRef<'_, T>, rhs0: ColRef<'
 }
 
 #[math]
-fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<'_, T>, par: Par, params: EvdFromSchurParams) {
+pub(crate) fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<'_, T>, par: Par, params: EvdFromSchurParams) {
 	let one = one::<T>;
 	let zero = zero::<T>;
 
@@ -488,7 +488,7 @@ fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<'_, T>, par
 }
 
 #[math]
-fn evd_from_cplx_schur_imp<T: ComplexField>(A: MatRef<'_, T>, conj_A: Conj, V: MatMut<'_, T>, par: Par, params: EvdFromSchurParams) {
+pub(crate) fn evd_from_cplx_schur_imp<T: ComplexField>(A: MatRef<'_, T>, conj_A: Conj, V: MatMut<'_, T>, par: Par, params: EvdFromSchurParams) {
 	let one = one::<T>;
 
 	let mut V = V;

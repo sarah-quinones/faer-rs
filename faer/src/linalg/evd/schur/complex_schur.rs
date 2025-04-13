@@ -528,7 +528,7 @@ fn schur_move<T: ComplexField>(mut a: MatMut<'_, T>, mut q: Option<MatMut<'_, T>
 }
 
 #[math]
-fn schur_swap<T: ComplexField>(mut a: MatMut<'_, T>, q: Option<MatMut<'_, T>>, j0: usize) -> isize {
+pub(crate) fn schur_swap<T: ComplexField>(mut a: MatMut<'_, T>, q: Option<MatMut<'_, T>>, j0: usize) -> isize {
 	let n = a.nrows();
 	let j1 = j0 + 1;
 	let j2 = j0 + 2;
