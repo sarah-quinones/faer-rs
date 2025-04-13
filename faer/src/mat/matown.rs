@@ -2,11 +2,8 @@ use super::*;
 use crate::internal_prelude::*;
 use crate::{Idx, IdxInc, TryReserveError};
 use core::alloc::Layout;
-use core::ops::{Index, IndexMut};
 use dyn_stack::StackReq;
-use faer_traits::{ComplexField, Real};
-use matmut::MatMut;
-use matref::MatRef;
+use faer_traits::ComplexField;
 
 #[inline]
 pub(crate) fn align_for(size: usize, align: usize, needs_drop: bool) -> usize {
@@ -233,41 +230,15 @@ impl<T> Drop for RawMat<T> {
 	}
 }
 
-/// heap allocated resizable matrix, similar to a 2d [`alloc::vec::Vec`]
-///
-/// # note
-///
-/// the memory layout of `Mat` is guaranteed to be column-major, meaning that it has a row stride
-/// of `1`, and an unspecified column stride that can be queried with [`Mat::col_stride`]
-///
-/// this implies that while each individual column is stored contiguously in memory, the matrix as
-/// a whole may not necessarily be contiguous. the implementation may add padding at the end of
-/// each column when overaligning each column can provide a performance gain
-///
-/// let us consider a 3×4 matrix
-///
-/// ```notcode
-///  0 │ 3 │ 6 │  9
-/// ───┼───┼───┼───
-///  1 │ 4 │ 7 │ 10
-/// ───┼───┼───┼───
-///  2 │ 5 │ 8 │ 11
-/// ```
-/// the memory representation of the data held by such a matrix could look like the following:
-///
-/// ```notcode
-/// [0, 1, 2, x, 3, 4, 5, x, 6, 7, 8, x, 9, 10, 11, x]
-/// ```
-///
-/// where `x` represents padding elements
-pub struct Mat<T, Rows: Shape = usize, Cols: Shape = usize> {
+/// see [`super::Mat`]
+pub struct Own<T, Rows: Shape = usize, Cols: Shape = usize> {
 	raw: RawMat<T>,
 	nrows: Rows,
 	ncols: Cols,
 }
 
-unsafe impl<T: Send, Rows: Shape, Cols: Shape> Send for Mat<T, Rows, Cols> {}
-unsafe impl<T: Sync, Rows: Shape, Cols: Shape> Sync for Mat<T, Rows, Cols> {}
+unsafe impl<T: Send, Rows: Shape, Cols: Shape> Send for Own<T, Rows, Cols> {}
+unsafe impl<T: Sync, Rows: Shape, Cols: Shape> Sync for Own<T, Rows, Cols> {}
 
 pub(crate) struct DropCol<T> {
 	ptr: *mut T,
@@ -309,7 +280,7 @@ impl<T> Drop for DropMat<T> {
 	}
 }
 
-impl<T, Rows: Shape, Cols: Shape> Drop for Mat<T, Rows, Cols> {
+impl<T, Rows: Shape, Cols: Shape> Drop for Own<T, Rows, Cols> {
 	#[inline]
 	fn drop(&mut self) {
 		if try_const! { core::mem::needs_drop::<T>() } {
@@ -334,7 +305,7 @@ impl<T> Mat<T> {
 	/// returns an empty matrix of dimension `0×0`.
 	#[inline]
 	pub const fn new() -> Self {
-		Self {
+		Self(Own {
 			raw: RawMat {
 				ptr: NonNull::dangling(),
 				row_capacity: 0,
@@ -344,7 +315,7 @@ impl<T> Mat<T> {
 			},
 			nrows: 0,
 			ncols: 0,
-		}
+		})
 	}
 
 	/// reserves the minimum capacity for `row_capacity` rows and `col_capacity`
@@ -402,7 +373,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			let ptr = raw.ptr.as_ptr();
 			Self::init_with(ptr, Rows::start(), Cols::start(), nrows.end(), ncols.end(), raw.row_capacity, &mut { f });
 
-			Self { raw, nrows, ncols }
+			Self(Own { raw, nrows, ncols })
 		}
 	}
 
@@ -450,8 +421,9 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	/// columns without reallocating, or returns an error in case of failure. does nothing if the
 	/// capacity is already sufficient
 	pub fn try_reserve(&mut self, new_row_capacity: usize, new_col_capacity: usize) -> Result<(), TryReserveError> {
-		self.raw
-			.try_reserve(self.nrows.unbound(), self.ncols.unbound(), new_row_capacity, new_col_capacity)
+		self.0
+			.raw
+			.try_reserve(self.0.nrows.unbound(), self.0.ncols.unbound(), new_row_capacity, new_col_capacity)
 	}
 
 	/// reserves the minimum capacity for `new_row_capacity` rows and `new_col_capacity`
@@ -468,42 +440,42 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		unsafe {
 			let this = &mut *self;
 
-			if new_nrows == this.nrows && new_ncols == this.ncols {
+			if new_nrows == this.0.nrows && new_ncols == this.0.ncols {
 				return;
 			}
 
 			this.truncate(new_nrows, new_ncols);
 
-			if new_nrows > this.nrows || new_ncols > this.ncols {
+			if new_nrows > this.0.nrows || new_ncols > this.0.ncols {
 				this.reserve(new_nrows.unbound(), new_ncols.unbound());
 			}
 
 			let mut f = f;
 
-			if new_nrows > this.nrows {
+			if new_nrows > this.0.nrows {
 				Self::init_with(
-					this.raw.ptr.as_ptr(),
-					this.nrows.end(),
+					this.0.raw.ptr.as_ptr(),
+					this.0.nrows.end(),
 					Cols::start(),
 					new_nrows.end(),
-					this.ncols.end(),
-					this.raw.row_capacity,
+					this.0.ncols.end(),
+					this.0.raw.row_capacity,
 					&mut f,
 				);
-				this.nrows = new_nrows;
+				this.0.nrows = new_nrows;
 			}
 
-			if new_ncols > this.ncols {
+			if new_ncols > this.0.ncols {
 				Self::init_with(
-					this.raw.ptr.as_ptr(),
+					this.0.raw.ptr.as_ptr(),
 					Rows::start(),
-					this.ncols.end(),
+					this.0.ncols.end(),
 					new_nrows.end(),
 					new_ncols.end(),
-					this.raw.row_capacity,
+					this.0.raw.row_capacity,
 					&mut f,
 				);
-				this.ncols = new_ncols;
+				this.0.ncols = new_ncols;
 			}
 		};
 	}
@@ -516,28 +488,28 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	/// - `new_nrows > self.nrows()`
 	/// - `new_ncols > self.ncols()`
 	pub fn truncate(&mut self, new_nrows: Rows, new_ncols: Cols) {
-		if new_ncols < self.ncols {
-			let stride = self.raw.row_capacity;
+		if new_ncols < self.0.ncols {
+			let stride = self.0.raw.row_capacity;
 
 			drop(DropMat {
-				ptr: self.raw.ptr.as_ptr().wrapping_add(stride * new_ncols.unbound()),
-				nrows: self.nrows.unbound(),
-				ncols: self.ncols.unbound() - new_ncols.unbound(),
+				ptr: self.0.raw.ptr.as_ptr().wrapping_add(stride * new_ncols.unbound()),
+				nrows: self.0.nrows.unbound(),
+				ncols: self.0.ncols.unbound() - new_ncols.unbound(),
 				byte_col_stride: stride,
 			});
-			self.ncols = new_ncols;
+			self.0.ncols = new_ncols;
 		}
-		if new_nrows < self.nrows {
+		if new_nrows < self.0.nrows {
 			let size = core::mem::size_of::<T>();
-			let stride = size * self.raw.row_capacity;
+			let stride = size * self.0.raw.row_capacity;
 
 			drop(DropMat {
-				ptr: self.raw.ptr.as_ptr().wrapping_add(new_nrows.unbound()),
-				nrows: self.nrows.unbound() - new_nrows.unbound(),
-				ncols: self.ncols.unbound(),
+				ptr: self.0.raw.ptr.as_ptr().wrapping_add(new_nrows.unbound()),
+				nrows: self.0.nrows.unbound() - new_nrows.unbound(),
+				ncols: self.0.ncols.unbound(),
 				byte_col_stride: stride,
 			});
-			self.nrows = new_nrows;
+			self.0.nrows = new_nrows;
 		}
 	}
 
@@ -546,15 +518,17 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		let this = core::mem::ManuallyDrop::new(self);
 
 		Mat {
-			raw: RawMat {
-				ptr: this.raw.ptr,
-				row_capacity: this.raw.row_capacity,
-				col_capacity: this.raw.col_capacity,
-				layout: this.raw.layout,
-				__marker: PhantomData,
+			0: Own {
+				raw: RawMat {
+					ptr: this.0.raw.ptr,
+					row_capacity: this.0.raw.row_capacity,
+					col_capacity: this.0.raw.col_capacity,
+					layout: this.0.raw.layout,
+					__marker: PhantomData,
+				},
+				nrows,
+				ncols,
 			},
-			nrows,
-			ncols,
 		}
 	}
 
@@ -567,8 +541,8 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	/// - the elements that were previously out of bounds but are now in bounds must be
 	/// initialized
 	pub unsafe fn set_dims(&mut self, nrows: Rows, ncols: Cols) {
-		self.nrows = nrows;
-		self.ncols = ncols;
+		self.0.nrows = nrows;
+		self.0.ncols = ncols;
 	}
 
 	/// returns a reference to a slice over the column at the given index
@@ -586,67 +560,32 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	/// returns the number of rows of the matrix
 	#[inline]
 	pub fn nrows(&self) -> Rows {
-		self.nrows
+		self.0.nrows
 	}
 
 	/// returns the number of columns of the matrix
 	#[inline]
 	pub fn ncols(&self) -> Cols {
-		self.ncols
-	}
-
-	/// returns a view over `self`
-	#[inline]
-	pub fn as_ref(&self) -> MatRef<'_, T, Rows, Cols> {
-		unsafe {
-			MatRef::from_raw_parts(
-				self.raw.ptr.as_ptr() as *const T,
-				self.nrows,
-				self.ncols,
-				1,
-				self.raw.row_capacity as isize,
-			)
-		}
-	}
-
-	/// returns a view over `self`
-	#[inline]
-	pub fn as_mut(&mut self) -> MatMut<'_, T, Rows, Cols> {
-		unsafe { MatMut::from_raw_parts_mut(self.raw.ptr.as_ptr(), self.nrows, self.ncols, 1, self.raw.row_capacity as isize) }
+		self.0.ncols
 	}
 }
 
-impl<T: Clone, Rows: Shape, Cols: Shape> Clone for Mat<T, Rows, Cols> {
+impl<T: Clone, Rows: Shape, Cols: Shape> Clone for Own<T, Rows, Cols> {
 	#[inline]
 	fn clone(&self) -> Self {
-		with_dim!(M, self.nrows().unbound());
-		with_dim!(N, self.ncols().unbound());
-		let this = self.as_ref().as_shape(M, N);
-		Mat::from_fn(this.nrows(), this.ncols(), |i, j| this.at(i, j).clone()).into_shape(self.nrows(), self.ncols())
+		let __self__ = Mat::from_inner_ref(self);
+		with_dim!(M, __self__.nrows().unbound());
+		with_dim!(N, __self__.ncols().unbound());
+		let this = __self__.as_ref().as_shape(M, N);
+		Mat::from_fn(this.nrows(), this.ncols(), |i, j| this.at(i, j).clone())
+			.into_shape(__self__.nrows(), __self__.ncols())
+			.0
 	}
 }
 
-impl<T, Rows: Shape, Cols: Shape> Index<(Idx<Rows>, Idx<Cols>)> for Mat<T, Rows, Cols> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &Self::Output {
-		self.as_ref().at(row, col)
-	}
-}
-
-impl<T, Rows: Shape, Cols: Shape> IndexMut<(Idx<Rows>, Idx<Cols>)> for Mat<T, Rows, Cols> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &mut Self::Output {
-		self.as_mut().at_mut(row, col)
-	}
-}
-
-impl<T: core::fmt::Debug, Rows: Shape, Cols: Shape> core::fmt::Debug for Mat<T, Rows, Cols> {
+impl<T: core::fmt::Debug, Rows: Shape, Cols: Shape> core::fmt::Debug for Own<T, Rows, Cols> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		self.as_ref().fmt(f)
+		self.rb().fmt(f)
 	}
 }
 
@@ -672,7 +611,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	/// returns the column stride of the matrix, specified in number of elements, not in bytes
 	#[inline(always)]
 	pub fn col_stride(&self) -> isize {
-		self.raw.row_capacity as isize
+		self.0.raw.row_capacity as isize
 	}
 
 	/// returns a raw pointer to the element at the given index
@@ -938,33 +877,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		self.as_ref().try_as_row_major()
 	}
 
-	#[inline]
-	/// see [`MatRef::norm_max`]
-	pub fn norm_max(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.as_ref().norm_max()
-	}
-
-	#[inline]
-	/// see [`MatRef::norm_l2`]
-	pub fn norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.as_ref().norm_l2()
-	}
-
-	#[inline]
-	/// see [`MatRef::determinant`]
-	pub fn determinant(&self) -> T::Canonical
-	where
-		T: Conjugate,
-	{
-		self.as_ref().determinant()
-	}
-
 	#[track_caller]
 	#[inline]
 	/// see [`MatRef::get`]
@@ -1011,24 +923,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 		for<'a> MatMut<'a, T, Rows, Cols>: MatIndex<RowRange, ColRange>,
 	{
 		unsafe { <MatMut<'_, T, Rows, Cols> as MatIndex<RowRange, ColRange>>::get_unchecked(self.as_mut(), row, col) }
-	}
-
-	#[inline]
-	/// see [`MatRef::cloned`]
-	pub fn cloned(&self) -> Mat<T, Rows, Cols>
-	where
-		T: Clone,
-	{
-		self.as_ref().cloned()
-	}
-
-	#[inline]
-	/// see [`MatRef::to_owned`]
-	pub fn to_owned(&self) -> Mat<T::Canonical, Rows, Cols>
-	where
-		T: Conjugate,
-	{
-		self.as_ref().to_owned()
 	}
 }
 
@@ -1321,51 +1215,6 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	pub fn two_rows_mut(&mut self, i0: Idx<Rows>, i1: Idx<Rows>) -> (RowMut<'_, T, Cols>, RowMut<'_, T, Cols>) {
 		self.as_mut().two_rows_mut(i0, i1)
 	}
-
-	#[inline]
-	/// see [`MatMut::copy_from`]
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from(other)
-	}
-
-	#[inline]
-	/// see [`MatMut::copy_from_triangular_lower`]
-	pub fn copy_from_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from_triangular_lower(other)
-	}
-
-	#[inline]
-	/// see [`MatMut::copy_from_strict_triangular_lower`]
-	pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from_strict_triangular_lower(other)
-	}
-
-	#[inline]
-	/// see [`MatMut::copy_from_triangular_upper`]
-	pub fn copy_from_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from_triangular_upper(other)
-	}
-
-	#[inline]
-	/// see [`MatMut::copy_from_strict_triangular_upper`]
-	pub fn copy_from_strict_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		self.as_mut().copy_from_strict_triangular_upper(other)
-	}
 }
 
 impl<T, Dim: Shape> Mat<T, Dim, Dim> {
@@ -1382,20 +1231,38 @@ impl<T, Dim: Shape> Mat<T, Dim, Dim> {
 	}
 }
 
-impl<'short, T, Rows: Shape, Cols: Shape> Reborrow<'short> for Mat<T, Rows, Cols> {
-	type Target = MatRef<'short, T, Rows, Cols>;
+impl<'short, T, Rows: Shape, Cols: Shape> Reborrow<'short> for Own<T, Rows, Cols> {
+	type Target = Ref<'short, T, Rows, Cols>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		self.as_ref()
+		Ref {
+			imp: MatView {
+				ptr: self.raw.ptr,
+				nrows: self.nrows,
+				ncols: self.ncols,
+				row_stride: 1,
+				col_stride: self.raw.row_capacity as isize,
+			},
+			__marker: PhantomData,
+		}
 	}
 }
-impl<'short, T, Rows: Shape, Cols: Shape> ReborrowMut<'short> for Mat<T, Rows, Cols> {
-	type Target = MatMut<'short, T, Rows, Cols>;
+impl<'short, T, Rows: Shape, Cols: Shape> ReborrowMut<'short> for Own<T, Rows, Cols> {
+	type Target = Mut<'short, T, Rows, Cols>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		self.as_mut()
+		Mut {
+			imp: MatView {
+				ptr: self.raw.ptr,
+				nrows: self.nrows,
+				ncols: self.ncols,
+				row_stride: 1,
+				col_stride: self.raw.row_capacity as isize,
+			},
+			__marker: PhantomData,
+		}
 	}
 }
 

@@ -1,59 +1,14 @@
-use super::*;
+use super::{MatRef, *};
 use crate::internal_prelude::*;
 use crate::utils::bound::{Dim, Partition};
 use crate::{Conj, ContiguousFwd, Idx, IdxInc, unzip, zip};
-use core::ops::{Index, IndexMut};
 use equator::assert;
-use faer_traits::{ComplexField, Real};
+use faer_traits::ComplexField;
 use generativity::{Guard, make_guard};
 use linalg::zip::Last;
-use matref::MatRef;
 
-/// mutable view over a matrix, similar to a mutable reference to a 2d strided [prim@slice]
-///
-/// # note
-///
-/// unlike a slice, the data pointed to by `MatMut<'_, T>` is allowed to be partially or fully
-/// uninitialized under certain conditions. In this case, care must be taken to not perform any
-/// operations that read the uninitialized values, either directly or indirectly through any of the
-/// numerical library routines, unless it is explicitly permitted
-///
-/// # move semantics
-/// since `MatMut` mutably borrows data, it cannot be [`Copy`]. this means that if we pass a
-/// `MatMut` to a function that takes it by value, or use a method that consumes `self` like
-/// [`MatMut::transpose_mut`], this renders the original variable unusable
-///
-/// ```compile_fail
-/// use faer::{Mat, MatMut};
-///
-/// fn takes_matmut(view: MatMut<'_, f64>) {}
-///
-/// let mut matrix = Mat::new();
-/// let view = matrix.as_mut();
-///
-/// takes_matmut(view); // `view` is moved (passed by value)
-/// takes_matmut(view); // this fails to compile since `view` was moved
-/// ```
-/// the way to get around it is to use the [`reborrow::ReborrowMut`] trait, which allows us to
-/// mutably borrow a `MatMut` to obtain another `MatMut` for the lifetime of the borrow.
-/// it's also similarly possible to immutably borrow a `MatMut` to obtain a `MatRef` for the
-/// lifetime of the borrow, using [`reborrow::Reborrow`]
-/// ```
-/// use faer::{Mat, MatMut, MatRef};
-/// use reborrow::*;
-///
-/// fn takes_matmut(view: MatMut<'_, f64>) {}
-/// fn takes_matref(view: MatRef<'_, f64>) {}
-///
-/// let mut matrix = Mat::new();
-/// let mut view = matrix.as_mut();
-///
-/// takes_matmut(view.rb_mut());
-/// takes_matmut(view.rb_mut());
-/// takes_matref(view.rb());
-/// // view is still usable here
-/// ```
-pub struct MatMut<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> {
+/// see [`super::MatMut`]
+pub struct Mut<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> {
 	pub(super) imp: MatView<T, Rows, Cols, RStride, CStride>,
 	pub(super) __marker: PhantomData<&'a mut T>,
 }
@@ -62,42 +17,42 @@ pub struct MatMut<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = 
 pub(crate) struct SyncCell<T>(T);
 unsafe impl<T> Sync for SyncCell<T> {}
 
-impl<'short, T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> Reborrow<'short> for MatMut<'_, T, Rows, Cols, RStride, CStride> {
-	type Target = MatRef<'short, T, Rows, Cols, RStride, CStride>;
+impl<'short, T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> Reborrow<'short> for Mut<'_, T, Rows, Cols, RStride, CStride> {
+	type Target = Ref<'short, T, Rows, Cols, RStride, CStride>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		MatRef {
+		Ref {
 			imp: self.imp,
 			__marker: PhantomData,
 		}
 	}
 }
-impl<'short, T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> ReborrowMut<'short> for MatMut<'_, T, Rows, Cols, RStride, CStride> {
-	type Target = MatMut<'short, T, Rows, Cols, RStride, CStride>;
+impl<'short, T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> ReborrowMut<'short> for Mut<'_, T, Rows, Cols, RStride, CStride> {
+	type Target = Mut<'short, T, Rows, Cols, RStride, CStride>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		MatMut {
+		Mut {
 			imp: self.imp,
 			__marker: PhantomData,
 		}
 	}
 }
-impl<'a, T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> IntoConst for MatMut<'a, T, Rows, Cols, RStride, CStride> {
-	type Target = MatRef<'a, T, Rows, Cols, RStride, CStride>;
+impl<'a, T, Rows: Copy, Cols: Copy, RStride: Copy, CStride: Copy> IntoConst for Mut<'a, T, Rows, Cols, RStride, CStride> {
+	type Target = Ref<'a, T, Rows, Cols, RStride, CStride>;
 
 	#[inline]
 	fn into_const(self) -> Self::Target {
-		MatRef {
+		Ref {
 			imp: self.imp,
 			__marker: PhantomData,
 		}
 	}
 }
 
-unsafe impl<T: Sync, Rows: Sync, Cols: Sync, RStride: Sync, CStride: Sync> Sync for MatMut<'_, T, Rows, Cols, RStride, CStride> {}
-unsafe impl<T: Send, Rows: Send, Cols: Send, RStride: Send, CStride: Send> Send for MatMut<'_, T, Rows, Cols, RStride, CStride> {}
+unsafe impl<T: Sync, Rows: Sync, Cols: Sync, RStride: Sync, CStride: Sync> Sync for Mut<'_, T, Rows, Cols, RStride, CStride> {}
+unsafe impl<T: Send, Rows: Send, Cols: Send, RStride: Send, CStride: Send> Send for Mut<'_, T, Rows, Cols, RStride, CStride> {}
 
 impl<'a, T> MatMut<'a, T> {
 	/// equivalent to `MatMut::from_row_major_slice_mut(array.as_flattened_mut(), ROWS, COLS)`
@@ -157,15 +112,17 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	#[inline]
 	#[track_caller]
 	pub unsafe fn from_raw_parts_mut(ptr: *mut T, nrows: Rows, ncols: Cols, row_stride: RStride, col_stride: CStride) -> Self {
-		Self {
-			imp: MatView {
-				ptr: NonNull::new_unchecked(ptr),
-				nrows,
-				ncols,
-				row_stride,
-				col_stride,
+		MatMut {
+			0: Mut {
+				imp: MatView {
+					ptr: NonNull::new_unchecked(ptr),
+					nrows,
+					ncols,
+					row_stride,
+					col_stride,
+				},
+				__marker: PhantomData,
 			},
-			__marker: PhantomData,
 		}
 	}
 
@@ -258,14 +215,16 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	/// see [`MatRef::transpose`]
 	pub fn transpose(self) -> MatRef<'a, T, Cols, Rows, CStride, RStride> {
 		MatRef {
-			imp: MatView {
-				ptr: self.imp.ptr,
-				nrows: self.imp.ncols,
-				ncols: self.imp.nrows,
-				row_stride: self.imp.col_stride,
-				col_stride: self.imp.row_stride,
+			0: Ref {
+				imp: MatView {
+					ptr: self.imp.ptr,
+					nrows: self.imp.ncols,
+					ncols: self.imp.nrows,
+					row_stride: self.imp.col_stride,
+					col_stride: self.imp.row_stride,
+				},
+				__marker: PhantomData,
 			},
-			__marker: PhantomData,
 		}
 	}
 
@@ -526,18 +485,6 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 		self
 	}
 
-	#[inline]
-	/// returns a view over `self`
-	pub fn as_ref(&self) -> MatRef<'_, T, Rows, Cols, RStride, CStride> {
-		self.rb()
-	}
-
-	#[inline]
-	/// returns a view over `self`
-	pub fn as_mut(&mut self) -> MatMut<'_, T, Rows, Cols, RStride, CStride> {
-		self.rb_mut()
-	}
-
 	/// see [`MatRef::)]`]	#[doc(hidden)]
 	#[inline]
 	pub fn bind<'M, 'N>(self, row: Guard<'M>, col: Guard<'N>) -> MatMut<'a, T, Dim<'M>, Dim<'N>, RStride, CStride> {
@@ -578,61 +525,6 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 				self.col_stride(),
 			)
 		}
-	}
-
-	#[inline]
-	/// see [`MatRef::norm_max`]
-	pub fn norm_max(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().norm_max()
-	}
-
-	#[inline]
-	/// see [`MatRef::norm_l2`]
-	pub fn norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().norm_l2()
-	}
-
-	#[inline]
-	/// see [`MatRef::squared_norm_l2`]
-	pub fn squared_norm_l2(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().squared_norm_l2()
-	}
-
-	#[inline]
-	/// see [`MatRef::norm_l1`]
-	pub fn norm_l1(&self) -> Real<T>
-	where
-		T: Conjugate,
-	{
-		self.rb().norm_l1()
-	}
-
-	#[inline]
-	#[math]
-	/// see [`MatRef::sum`]
-	pub fn sum(&self) -> T::Canonical
-	where
-		T: Conjugate,
-	{
-		self.rb().sum()
-	}
-
-	#[inline]
-	/// see [`MatRef::determinant`]
-	pub fn determinant(&self) -> T::Canonical
-	where
-		T: Conjugate,
-	{
-		self.rb().determinant()
 	}
 
 	#[track_caller]
@@ -696,23 +588,162 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	{
 		unsafe { <MatMut<'a, T, Rows, Cols, RStride, CStride> as MatIndex<RowRange, ColRange>>::get_unchecked(self, row, col) }
 	}
+}
 
+impl<
+	T,
+	Rows: Shape,
+	Cols: Shape,
+	RStride: Stride,
+	CStride: Stride,
+	Inner: for<'short> ReborrowMut<'short, Target = Mut<'short, T, Rows, Cols, RStride, CStride>>,
+> generic::Mat<Inner>
+{
+	/// returns a view over `self`
 	#[inline]
-	/// see [`MatRef::cloned`]
-	pub fn cloned(&self) -> Mat<T, Rows, Cols>
+	pub fn as_mut(&mut self) -> MatMut<'_, T, Rows, Cols, RStride, CStride> {
+		self.rb_mut()
+	}
+
+	/// copies the lower triangular half of `other`, including the diagonal, into `self`
+	#[inline]
+	#[track_caller]
+	pub fn copy_from_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
+	where
+		T: ComplexField,
+	{
+		let other = other.as_mat_ref();
+		let mut this = self.rb_mut();
+
+		assert!(all(this.nrows() == other.nrows(), this.ncols() == other.ncols(),));
+		let (m, n) = this.shape();
+
+		make_guard!(M);
+		make_guard!(N);
+		let M = m.bind(M);
+		let N = n.bind(N);
+		let this = this.rb_mut().as_shape_mut(M, N).as_dyn_stride_mut();
+		let other = other.as_shape(M, N);
+		imp(this, other.canonical(), Conj::get::<RhsT>());
+
+		#[math]
+		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
+			match conj_ {
+				Conj::No => {
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzip!(dst, src)| *dst = copy(&src));
+				},
+				Conj::Yes => {
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzip!(dst, src)| *dst = conj(&src));
+				},
+			}
+		}
+	}
+
+	/// copies the upper triangular half of `other`, including the diagonal, into `self`
+	#[inline]
+	#[track_caller]
+	pub fn copy_from_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
+	where
+		T: ComplexField,
+	{
+		(*self)
+			.rb_mut()
+			.transpose_mut()
+			.copy_from_triangular_lower(other.as_mat_ref().transpose())
+	}
+
+	/// copies `other` into `self`
+	#[inline]
+	#[track_caller]
+	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
+	where
+		T: ComplexField,
+	{
+		let other = other.as_mat_ref();
+		let mut this = self.rb_mut();
+
+		assert!(all(this.nrows() == other.nrows(), this.ncols() == other.ncols(),));
+		let (m, n) = this.shape();
+
+		make_guard!(M);
+		make_guard!(N);
+		let M = m.bind(M);
+		let N = n.bind(N);
+		let this = this.rb_mut().as_shape_mut(M, N).as_dyn_stride_mut();
+		let other = other.as_shape(M, N);
+		imp(this, other.canonical(), Conj::get::<RhsT>());
+
+		#[math]
+		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
+			match conj_ {
+				Conj::No => {
+					zip!(this, other).for_each(|unzip!(dst, src)| *dst = copy(&src));
+				},
+				Conj::Yes => {
+					zip!(this, other).for_each(|unzip!(dst, src)| *dst = conj(&src));
+				},
+			}
+		}
+	}
+
+	/// copies the lower triangular half of `other`, excluding the diagonal, into `self`
+	#[inline]
+	#[track_caller]
+	pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
+	where
+		T: ComplexField,
+	{
+		let other = other.as_mat_ref();
+		let mut this = self.rb_mut();
+
+		assert!(all(this.nrows() == other.nrows(), this.ncols() == other.ncols(),));
+		let (m, n) = this.shape();
+
+		make_guard!(M);
+		make_guard!(N);
+		let M = m.bind(M);
+		let N = n.bind(N);
+		let this = this.rb_mut().as_shape_mut(M, N).as_dyn_stride_mut();
+		let other = other.as_shape(M, N);
+		imp(this, other.canonical(), Conj::get::<RhsT>());
+
+		#[math]
+		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
+			match conj_ {
+				Conj::No => {
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzip!(dst, src)| *dst = copy(&src));
+				},
+				Conj::Yes => {
+					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzip!(dst, src)| *dst = conj(&src));
+				},
+			}
+		}
+	}
+
+	/// copies the upper triangular half of `other`, excluding the diagonal, into `self`
+	#[inline]
+	#[track_caller]
+	pub fn copy_from_strict_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
+	where
+		T: ComplexField,
+	{
+		(*self)
+			.rb_mut()
+			.transpose_mut()
+			.copy_from_strict_triangular_lower(other.as_mat_ref().transpose())
+	}
+
+	/// fills all the elements of `self` with `value`
+	#[inline]
+	pub fn fill(&mut self, value: T)
 	where
 		T: Clone,
 	{
-		self.rb().cloned()
-	}
-
-	/// see [`MatRef::to_owned`]
-	#[inline]
-	pub fn to_owned(&self) -> Mat<T::Canonical, Rows, Cols>
-	where
-		T: Conjugate,
-	{
-		self.rb().to_owned()
+		fn cloner<T: Clone>(value: T) -> impl for<'a> FnMut(Last<&'a mut T>) {
+			#[inline]
+			move |x| *x.0 = value.clone()
+		}
+		z!(self.rb_mut().as_dyn_mut()).for_each(cloner::<T>(value));
 	}
 }
 
@@ -773,14 +804,16 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	/// see [`MatRef::transpose`]
 	pub fn transpose_mut(self) -> MatMut<'a, T, Cols, Rows, CStride, RStride> {
 		MatMut {
-			imp: MatView {
-				ptr: self.imp.ptr,
-				nrows: self.imp.ncols,
-				ncols: self.imp.nrows,
-				row_stride: self.imp.col_stride,
-				col_stride: self.imp.row_stride,
+			0: Mut {
+				imp: MatView {
+					ptr: self.imp.ptr,
+					nrows: self.imp.ncols,
+					ncols: self.imp.nrows,
+					row_stride: self.imp.col_stride,
+					col_stride: self.imp.row_stride,
+				},
+				__marker: PhantomData,
 			},
-			__marker: PhantomData,
 		}
 	}
 
@@ -1195,144 +1228,6 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 		unsafe { (this.row(i0).const_cast(), this.row(i1).const_cast()) }
 	}
 
-	/// copies the lower triangular half of `other`, including the diagonal, into `self`
-	#[inline]
-	#[track_caller]
-	pub fn copy_from_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		let other = other.as_mat_ref();
-
-		assert!(all(self.nrows() == other.nrows(), self.ncols() == other.ncols(),));
-		let (m, n) = self.shape();
-
-		make_guard!(M);
-		make_guard!(N);
-		let M = m.bind(M);
-		let N = n.bind(N);
-		let this = self.rb_mut().as_shape_mut(M, N).as_dyn_stride_mut();
-		let other = other.as_shape(M, N);
-		imp(this, other.canonical(), Conj::get::<RhsT>());
-
-		#[math]
-		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
-			match conj_ {
-				Conj::No => {
-					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzip!(dst, src)| *dst = copy(&src));
-				},
-				Conj::Yes => {
-					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Include, |unzip!(dst, src)| *dst = conj(&src));
-				},
-			}
-		}
-	}
-
-	/// copies the upper triangular half of `other`, including the diagonal, into `self`
-	#[inline]
-	#[track_caller]
-	pub fn copy_from_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		(*self)
-			.rb_mut()
-			.transpose_mut()
-			.copy_from_triangular_lower(other.as_mat_ref().transpose())
-	}
-
-	/// copies `other` into `self`
-	#[inline]
-	#[track_caller]
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		let other = other.as_mat_ref();
-
-		assert!(all(self.nrows() == other.nrows(), self.ncols() == other.ncols(),));
-		let (m, n) = self.shape();
-
-		make_guard!(M);
-		make_guard!(N);
-		let M = m.bind(M);
-		let N = n.bind(N);
-		let this = self.rb_mut().as_shape_mut(M, N).as_dyn_stride_mut();
-		let other = other.as_shape(M, N);
-		imp(this, other.canonical(), Conj::get::<RhsT>());
-
-		#[math]
-		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
-			match conj_ {
-				Conj::No => {
-					zip!(this, other).for_each(|unzip!(dst, src)| *dst = copy(&src));
-				},
-				Conj::Yes => {
-					zip!(this, other).for_each(|unzip!(dst, src)| *dst = conj(&src));
-				},
-			}
-		}
-	}
-
-	/// copies the lower triangular half of `other`, excluding the diagonal, into `self`
-	#[inline]
-	#[track_caller]
-	pub fn copy_from_strict_triangular_lower<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		let other = other.as_mat_ref();
-
-		assert!(all(self.nrows() == other.nrows(), self.ncols() == other.ncols(),));
-		let (m, n) = self.shape();
-
-		make_guard!(M);
-		make_guard!(N);
-		let M = m.bind(M);
-		let N = n.bind(N);
-		let this = self.rb_mut().as_shape_mut(M, N).as_dyn_stride_mut();
-		let other = other.as_shape(M, N);
-		imp(this, other.canonical(), Conj::get::<RhsT>());
-
-		#[math]
-		pub fn imp<'M, 'N, T: ComplexField>(this: MatMut<'_, T, Dim<'M>, Dim<'N>>, other: MatRef<'_, T, Dim<'M>, Dim<'N>>, conj_: Conj) {
-			match conj_ {
-				Conj::No => {
-					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzip!(dst, src)| *dst = copy(&src));
-				},
-				Conj::Yes => {
-					zip!(this, other).for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzip!(dst, src)| *dst = conj(&src));
-				},
-			}
-		}
-	}
-
-	/// copies the upper triangular half of `other`, excluding the diagonal, into `self`
-	#[inline]
-	#[track_caller]
-	pub fn copy_from_strict_triangular_upper<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsMatRef<T = RhsT, Rows = Rows, Cols = Cols>)
-	where
-		T: ComplexField,
-	{
-		(*self)
-			.rb_mut()
-			.transpose_mut()
-			.copy_from_strict_triangular_lower(other.as_mat_ref().transpose())
-	}
-
-	/// fills all the elements of `self` with `value`
-	#[inline]
-	pub fn fill(&mut self, value: T)
-	where
-		T: Clone,
-	{
-		fn cloner<T: Clone>(value: T) -> impl for<'a> FnMut(Last<&'a mut T>) {
-			#[inline]
-			move |x| *x.0 = value.clone()
-		}
-		z!(self.rb_mut().as_dyn_mut()).for_each(cloner::<T>(value));
-	}
-
 	#[inline]
 	#[track_caller]
 	pub(crate) fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> T
@@ -1564,26 +1459,8 @@ impl<'a, T, Dim: Shape, RStride: Stride, CStride: Stride> MatMut<'a, T, Dim, Dim
 	}
 }
 
-impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> Index<(Idx<Rows>, Idx<Cols>)> for MatMut<'_, T, Rows, Cols, RStride, CStride> {
-	type Output = T;
-
-	#[inline]
-	#[track_caller]
-	fn index(&self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &Self::Output {
-		self.rb().at(row, col)
-	}
-}
-
-impl<T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> IndexMut<(Idx<Rows>, Idx<Cols>)> for MatMut<'_, T, Rows, Cols, RStride, CStride> {
-	#[inline]
-	#[track_caller]
-	fn index_mut(&mut self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &mut Self::Output {
-		self.rb_mut().at_mut(row, col)
-	}
-}
-
 impl<'a, T: core::fmt::Debug, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> core::fmt::Debug
-	for MatMut<'a, T, Rows, Cols, RStride, CStride>
+	for Mut<'a, T, Rows, Cols, RStride, CStride>
 {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.rb().fmt(f)

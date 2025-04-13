@@ -45,9 +45,206 @@ pub(crate) mod matmut;
 pub(crate) mod matown;
 pub(crate) mod matref;
 
-pub use matmut::MatMut;
-pub use matown::Mat;
-pub use matref::MatRef;
+pub use matmut::Mut;
+pub use matown::Own;
+pub use matref::Ref;
+
+/// heap allocated resizable matrix, similar to a 2d [`alloc::vec::Vec`]
+///
+/// # note
+///
+/// the memory layout of `Own` is guaranteed to be column-major, meaning that it has a row stride
+/// of `1`, and an unspecified column stride that can be queried with [`Mat::col_stride`]
+///
+/// this implies that while each individual column is stored contiguously in memory, the matrix as
+/// a whole may not necessarily be contiguous. the implementation may add padding at the end of
+/// each column when overaligning each column can provide a performance gain
+///
+/// let us consider a 3×4 matrix
+///
+/// ```notcode
+///  0 │ 3 │ 6 │  9
+/// ───┼───┼───┼───
+///  1 │ 4 │ 7 │ 10
+/// ───┼───┼───┼───
+///  2 │ 5 │ 8 │ 11
+/// ```
+/// the memory representation of the data held by such a matrix could look like the following:
+///
+/// ```notcode
+/// [0, 1, 2, x, 3, 4, 5, x, 6, 7, 8, x, 9, 10, 11, x]
+/// ```
+///
+/// where `x` represents padding elements
+pub type Mat<T, Rows = usize, Cols = usize> = generic::Mat<Own<T, Rows, Cols>>;
+
+/// immutable view over a matrix, similar to an immutable reference to a 2d strided [prim@slice]
+///
+/// # Note
+///
+/// unlike a slice, the data pointed to by `MatRef<'_, T>` is allowed to be partially or fully
+/// uninitialized under certain conditions. in this case, care must be taken to not perform any
+/// operations that read the uninitialized values, either directly or indirectly through any of the
+/// numerical library routines, unless it is explicitly permitted
+pub type MatRef<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> = generic::Mat<Ref<'a, T, Rows, Cols, RStride, CStride>>;
+
+/// mutable view over a matrix, similar to a mutable reference to a 2d strided [prim@slice]
+///
+/// # note
+///
+/// unlike a slice, the data pointed to by `MatMut<'_, T>` is allowed to be partially or fully
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, either directly or indirectly through any of the
+/// numerical library routines, unless it is explicitly permitted
+///
+/// # move semantics
+/// since `MatMut` mutably borrows data, it cannot be [`Copy`]. this means that if we pass a
+/// `MatMut` to a function that takes it by value, or use a method that consumes `self` like
+/// [`MatMut::transpose_mut`], this renders the original variable unusable
+///
+/// ```compile_fail
+/// use faer::{Mat, MatMut};
+///
+/// fn takes_matmut(view: MatMut<'_, f64>) {}
+///
+/// let mut matrix = Mat::new();
+/// let view = matrix.as_mut();
+///
+/// takes_matmut(view); // `view` is moved (passed by value)
+/// takes_matmut(view); // this fails to compile since `view` was moved
+/// ```
+/// the way to get around it is to use the [`reborrow::ReborrowMut`] trait, which allows us to
+/// mutably borrow a `MatMut` to obtain another `MatMut` for the lifetime of the borrow.
+/// it's also similarly possible to immutably borrow a `MatMut` to obtain a `MatRef` for the
+/// lifetime of the borrow, using [`reborrow::Reborrow`]
+/// ```
+/// use faer::{Mat, MatMut, MatRef};
+/// use reborrow::*;
+///
+/// fn takes_matmut(view: MatMut<'_, f64>) {}
+/// fn takes_matref(view: MatRef<'_, f64>) {}
+///
+/// let mut matrix = Mat::new();
+/// let mut view = matrix.as_mut();
+///
+/// takes_matmut(view.rb_mut());
+/// takes_matmut(view.rb_mut());
+/// takes_matref(view.rb());
+/// // view is still usable here
+/// ```
+pub type MatMut<'a, T, Rows = usize, Cols = usize, RStride = isize, CStride = isize> = generic::Mat<Mut<'a, T, Rows, Cols, RStride, CStride>>;
+
+/// generic `Mat` wrapper
+pub mod generic {
+	use crate::{Idx, Shape, Stride};
+	use core::fmt::Debug;
+	use core::ops::{Index, IndexMut};
+	use reborrow::*;
+
+	/// generic `Mat` wrapper
+	#[derive(Copy, Clone)]
+	#[repr(transparent)]
+	pub struct Mat<Inner>(pub Inner);
+
+	impl<Inner: Debug> Debug for Mat<Inner> {
+		#[inline(always)]
+		fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+			self.0.fmt(f)
+		}
+	}
+
+	impl<Inner> Mat<Inner> {
+		/// wrap by reference
+		#[inline(always)]
+		pub fn from_inner_ref(inner: &Inner) -> &Self {
+			unsafe { &*(inner as *const Inner as *const Self) }
+		}
+
+		/// wrap by mutable reference
+		#[inline(always)]
+		pub fn from_inner_mut(inner: &mut Inner) -> &mut Self {
+			unsafe { &mut *(inner as *mut Inner as *mut Self) }
+		}
+	}
+
+	impl<Inner> core::ops::Deref for Mat<Inner> {
+		type Target = Inner;
+
+		#[inline(always)]
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<Inner> core::ops::DerefMut for Mat<Inner> {
+		#[inline(always)]
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<'short, Inner: Reborrow<'short>> Reborrow<'short> for Mat<Inner> {
+		type Target = Mat<Inner::Target>;
+
+		#[inline(always)]
+		fn rb(&'short self) -> Self::Target {
+			Mat(self.0.rb())
+		}
+	}
+
+	impl<'short, Inner: ReborrowMut<'short>> ReborrowMut<'short> for Mat<Inner> {
+		type Target = Mat<Inner::Target>;
+
+		#[inline(always)]
+		fn rb_mut(&'short mut self) -> Self::Target {
+			Mat(self.0.rb_mut())
+		}
+	}
+
+	impl<Inner: IntoConst> IntoConst for Mat<Inner> {
+		type Target = Mat<Inner::Target>;
+
+		#[inline(always)]
+		fn into_const(self) -> Self::Target {
+			Mat(self.0.into_const())
+		}
+	}
+
+	impl<
+		T,
+		Rows: Shape,
+		Cols: Shape,
+		RStride: Stride,
+		CStride: Stride,
+		Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Rows, Cols, RStride, CStride>>,
+	> Index<(Idx<Rows>, Idx<Cols>)> for Mat<Inner>
+	{
+		type Output = T;
+
+		#[inline]
+		#[track_caller]
+		fn index(&self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &Self::Output {
+			self.rb().at(row, col)
+		}
+	}
+
+	impl<
+		T,
+		Rows: Shape,
+		Cols: Shape,
+		RStride: Stride,
+		CStride: Stride,
+		Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Rows, Cols, RStride, CStride>>
+			+ for<'short> ReborrowMut<'short, Target = super::Mut<'short, T, Rows, Cols, RStride, CStride>>,
+	> IndexMut<(Idx<Rows>, Idx<Cols>)> for Mat<Inner>
+	{
+		#[inline]
+		#[track_caller]
+		fn index_mut(&mut self, (row, col): (Idx<Rows>, Idx<Cols>)) -> &mut Self::Output {
+			self.rb_mut().at_mut(row, col)
+		}
+	}
+}
 
 /// trait for types that can be converted to a matrix view
 pub trait AsMatRef {

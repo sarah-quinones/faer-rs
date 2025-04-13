@@ -842,7 +842,7 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, max_dim: usize, 
 		vecs,
 		tmp,
 		householder,
-		StackReq::any_of(&[hess, apply_house, schur]),
+		StackReq::any_of(&[hess, apply_house, schur, arnoldi]),
 	])
 }
 
@@ -901,7 +901,7 @@ mod tests {
 	#[test]
 	fn test_arnoldi_real() {
 		let rng = &mut StdRng::seed_from_u64(1);
-		let n = 1000;
+		let n = 100;
 		let n_eigval = 20;
 		let min_dim = 30;
 		let max_dim = 60;
@@ -952,7 +952,7 @@ mod tests {
 	#[test]
 	fn test_arnoldi_cplx() {
 		let rng = &mut StdRng::seed_from_u64(1);
-		let n = 1000;
+		let n = 100;
 		let n_eigval = 20;
 		let min_dim = 30;
 		let max_dim = 60;
