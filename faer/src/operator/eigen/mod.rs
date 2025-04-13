@@ -842,7 +842,7 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, max_dim: usize, 
 		vecs,
 		tmp,
 		householder,
-		StackReq::any_of(&[hess, apply_house, schur]),
+		StackReq::any_of(&[hess, apply_house, schur, arnoldi]),
 	])
 }
 
