@@ -606,7 +606,7 @@ mod tests {
 	#[test]
 	fn test_from_iter() {
 		let row: Row<i32> = (0..10).collect();
-		assert_eq!(row.nrows(), 10);
+		assert_eq!(row.ncols(), 10);
 		assert_eq!(row[0], 0);
 		assert_eq!(row[9], 9);
 	}
