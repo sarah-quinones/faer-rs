@@ -47,6 +47,9 @@ pub use csr::{SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseRowM
 pub use csc::symbolic as csc_symbolic;
 pub use csr::symbolic as csr_symbolic;
 
+pub use csc::numeric as csc_numeric;
+pub use csr::numeric as csr_numeric;
+
 extern crate alloc;
 
 /// pair of indices with `C`-compatible layout

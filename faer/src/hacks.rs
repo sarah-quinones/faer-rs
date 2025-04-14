@@ -28,7 +28,7 @@ pub fn nonstatic_typeid<T: ?Sized>() -> core::any::TypeId {
 
 #[inline(always)]
 pub unsafe fn coerce<Src, Dst>(src: Src) -> Dst {
-	crate::debug_assert!(nonstatic_typeid::<Src>() == nonstatic_typeid::<Dst>());
+	crate::assert!(nonstatic_typeid::<Src>() == nonstatic_typeid::<Dst>());
 	transmute(src)
 }
 
