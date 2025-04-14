@@ -1,50 +1,8 @@
 use crate::internal_prelude::*;
-use crate::{Scale, get_global_parallelism};
+use crate::{Scale, assert, col, diag, get_global_parallelism, mat, perm, row};
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 extern crate alloc;
-
-macro_rules! impl_partial_eq {
-	($lhs: ty, $rhs: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> PartialEq<$rhs> for $lhs {
-			fn eq(&self, other: &$rhs) -> bool {
-				self.as_ref().eq(&other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_partial_eq {
-	($lhs: ty, $rhs: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<$rhs> for $lhs {
-			fn eq(&self, other: &$rhs) -> bool {
-				self.as_ref().eq(&other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_add_sub {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Add<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn add(self, other: $rhs) -> Self::Output {
-				self.as_ref().add(other.as_ref())
-			}
-		}
-
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Sub<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn sub(self, other: $rhs) -> Self::Output {
-				self.as_ref().sub(other.as_ref())
-			}
-		}
-	};
-}
 
 macro_rules! impl_add_sub_assign {
 	($lhs: ty, $rhs: ty) => {
@@ -64,41 +22,6 @@ macro_rules! impl_add_sub_assign {
 	};
 }
 
-macro_rules! impl_neg {
-	($mat: ty, $out: ty) => {
-		impl<T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Neg for $mat {
-			type Output = $out;
-
-			#[track_caller]
-			fn neg(self) -> Self::Output {
-				self.as_ref().neg()
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_add_sub {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn add(self, other: $rhs) -> Self::Output {
-				self.as_ref().add(other.as_ref())
-			}
-		}
-
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn sub(self, other: $rhs) -> Self::Output {
-				self.as_ref().sub(other.as_ref())
-			}
-		}
-	};
-}
-
 macro_rules! impl_1d_add_sub_assign {
 	($lhs: ty, $rhs: ty) => {
 		impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> AddAssign<$rhs> for $lhs {
@@ -112,19 +35,6 @@ macro_rules! impl_1d_add_sub_assign {
 			#[track_caller]
 			fn sub_assign(&mut self, other: $rhs) {
 				self.as_mut().sub_assign(other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_neg {
-	($mat: ty, $out: ty) => {
-		impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for $mat {
-			type Output = $out;
-
-			#[track_caller]
-			fn neg(self) -> Self::Output {
-				self.as_ref().neg()
 			}
 		}
 	};
@@ -573,189 +483,798 @@ macro_rules! impl_1d_div_assign_scalar {
 	};
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-	PartialEq<MatRef<'_, RhsT, Rows, Cols>> for MatRef<'_, LhsT, Rows, Cols>
+impl<
+	LT: PartialEq<RT>,
+	LRows: Shape,
+	LCols: Shape,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT,
+	RRows: Shape,
+	RCols: Shape,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, LRows, LCols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, RRows, RCols, RRStride, RCStride>>,
+> PartialEq<mat::generic::Mat<R>> for mat::generic::Mat<L>
 {
-	#[math]
-	fn eq(&self, other: &MatRef<'_, RhsT, Rows, Cols>) -> bool {
-		let lhs = *self;
-		let rhs = *other;
+	fn eq(&self, other: &mat::generic::Mat<R>) -> bool {
+		fn imp<LT: PartialEq<RT>, RT>(l: MatRef<'_, LT>, r: MatRef<'_, RT>) -> bool {
+			if l.nrows() != r.nrows() {
+				return false;
+			}
 
-		if (lhs.nrows().unbound(), lhs.ncols().unbound()) != (rhs.nrows().unbound(), rhs.ncols().unbound()) {
-			return false;
-		}
+			with_dim!(M, l.nrows());
+			with_dim!(N, l.ncols());
 
-		fn imp<'M, 'N, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
-			lhs: MatRef<'_, LhsT, Dim<'M>, Dim<'N>>,
-			rhs: MatRef<'_, RhsT, Dim<'M>, Dim<'N>>,
-		) -> bool {
-			let m = lhs.nrows();
-			let n = lhs.ncols();
-			for j in n.indices() {
-				for i in m.indices() {
-					if Conj::apply(lhs.at(i, j)) != Conj::apply(rhs.at(i, j)) {
+			let l = l.as_shape(M, N);
+			let r = r.as_shape(M, N);
+
+			for j in N.indices() {
+				for i in M.indices() {
+					if l[(i, j)] != r[(i, j)] {
 						return false;
 					}
 				}
 			}
-
 			true
 		}
-
-		with_dim!(M, lhs.nrows().unbound());
-		with_dim!(N, lhs.ncols().unbound());
-		imp(lhs.as_shape(M, N), rhs.as_shape(M, N))
+		imp(self.rb().as_dyn().as_dyn_stride(), other.rb().as_dyn().as_dyn_stride())
 	}
 }
 
-// impl_partial_eq!(MatRef<'_,  LhsT>, MatRef<'_,  RhsT>);
-impl_partial_eq!(MatRef<'_, LhsT, Rows, Cols>, MatMut<'_, RhsT, Rows, Cols>);
-impl_partial_eq!(MatRef<'_,  LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>);
-
-impl_partial_eq!(MatMut<'_, LhsT, Rows, Cols>, MatRef<'_, RhsT, Rows, Cols>);
-impl_partial_eq!(MatMut<'_, LhsT, Rows, Cols>, MatMut<'_, RhsT, Rows, Cols>);
-impl_partial_eq!(MatMut<'_,  LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols, >);
-
-impl_partial_eq!(Mat< LhsT, Rows, Cols,>, MatRef<'_,  RhsT, Rows, Cols>);
-impl_partial_eq!(Mat< LhsT, Rows, Cols,>, MatMut<'_,  RhsT, Rows, Cols>);
-impl_partial_eq!(Mat< LhsT, Rows, Cols,>, Mat< RhsT, Rows, Cols>);
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<ColRef<'_, RhsT, Len>>
-	for ColRef<'_, LhsT, Len>
+impl<
+	LT: PartialEq<RT>,
+	LRows: Shape,
+	LRStride: Stride,
+	RT,
+	RRows: Shape,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, LRows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, RRows, RRStride>>,
+> PartialEq<col::generic::Col<R>> for col::generic::Col<L>
 {
-	fn eq(&self, other: &ColRef<'_, RhsT, Len>) -> bool {
-		self.transpose() == other.transpose()
-	}
-}
+	fn eq(&self, other: &col::generic::Col<R>) -> bool {
+		fn imp<LT: PartialEq<RT>, RT>(l: ColRef<'_, LT>, r: ColRef<'_, RT>) -> bool {
+			if l.nrows() != r.nrows() {
+				return false;
+			}
 
-// impl_partial_eq!(ColRef<'_,  LhsT>, ColRef<'_,  RhsT>);
-impl_1d_partial_eq!(ColRef<'_, LhsT, Len>, ColMut<'_, RhsT, Len>);
-impl_1d_partial_eq!(ColRef<'_,  LhsT, Len>, Col< RhsT, Len>);
+			with_dim!(N, l.nrows());
 
-impl_1d_partial_eq!(ColMut<'_, LhsT, Len>, ColRef<'_, RhsT, Len>);
-impl_1d_partial_eq!(ColMut<'_, LhsT, Len>, ColMut<'_, RhsT, Len>);
-impl_1d_partial_eq!(ColMut<'_,  LhsT, Len>, Col< RhsT, Len>);
+			let l = l.as_row_shape(N);
+			let r = r.as_row_shape(N);
 
-impl_1d_partial_eq!(Col< LhsT, Len>, ColRef<'_,  RhsT, Len>);
-impl_1d_partial_eq!(Col< LhsT, Len>, ColMut<'_,  RhsT, Len>);
-impl_1d_partial_eq!(Col< LhsT, Len>, Col< RhsT, Len>);
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<RowRef<'_, RhsT, Len>>
-	for RowRef<'_, LhsT, Len>
-{
-	#[math]
-	fn eq(&self, other: &RowRef<'_, RhsT, Len>) -> bool {
-		let lhs = *self;
-		let rhs = *other;
-
-		if lhs.ncols() != rhs.ncols() {
-			return false;
-		}
-
-		fn imp<'N, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
-			lhs: RowRef<'_, LhsT, Dim<'N>>,
-			rhs: RowRef<'_, RhsT, Dim<'N>>,
-		) -> bool {
-			let n = lhs.ncols();
-			for j in n.indices() {
-				if Conj::apply(lhs.at(j)) != Conj::apply(rhs.at(j)) {
+			for i in N.indices() {
+				if l[i] != r[i] {
 					return false;
 				}
 			}
-
 			true
 		}
-		with_dim!(N, lhs.ncols().unbound());
-		imp(self.as_col_shape(N), other.as_col_shape(N))
+		imp(self.rb().as_dyn_rows().as_dyn_stride(), other.rb().as_dyn_rows().as_dyn_stride())
 	}
 }
 
-// impl_partial_eq!(RowRef<'_,  LhsT>, RowRef<'_,  RhsT>);
-impl_1d_partial_eq!(RowRef<'_, LhsT, Len>, RowMut<'_, RhsT, Len>);
-impl_1d_partial_eq!(RowRef<'_,  LhsT, Len>, Row< RhsT, Len>);
-
-impl_1d_partial_eq!(RowMut<'_, LhsT, Len>, RowRef<'_, RhsT, Len>);
-impl_1d_partial_eq!(RowMut<'_, LhsT, Len>, RowMut<'_, RhsT, Len>);
-impl_1d_partial_eq!(RowMut<'_,  LhsT, Len>, Row< RhsT, Len>);
-
-impl_1d_partial_eq!(Row< LhsT, Len>, RowRef<'_,  RhsT, Len>);
-impl_1d_partial_eq!(Row< LhsT, Len>, RowMut<'_,  RhsT, Len>);
-impl_1d_partial_eq!(Row< LhsT, Len>, Row< RhsT, Len>);
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> PartialEq<DiagRef<'_, RhsT, Len>>
-	for DiagRef<'_, LhsT, Len>
+impl<
+	LT: PartialEq<RT>,
+	LCols: Shape,
+	LCStride: Stride,
+	RT,
+	RCols: Shape,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, LCols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, RCols, RCStride>>,
+> PartialEq<row::generic::Row<R>> for row::generic::Row<L>
 {
-	fn eq(&self, other: &DiagRef<'_, RhsT, Len>) -> bool {
-		self.column_vector().eq(&other.column_vector())
+	fn eq(&self, other: &row::generic::Row<R>) -> bool {
+		self.rb().transpose() == other.rb().transpose()
 	}
 }
 
-// impl_partial_eq!(DiagRef<'_,  LhsT>, DiagRef<'_,  RhsT>);
-impl_1d_partial_eq!(DiagRef<'_, LhsT, Len>, DiagMut<'_, RhsT, Len>);
-impl_1d_partial_eq!(DiagRef<'_,  LhsT, Len>, Diag< RhsT, Len>);
-
-impl_1d_partial_eq!(DiagMut<'_, LhsT, Len>, DiagRef<'_, RhsT, Len>);
-impl_1d_partial_eq!(DiagMut<'_, LhsT, Len>, DiagMut<'_, RhsT, Len>);
-impl_1d_partial_eq!(DiagMut<'_,  LhsT, Len>, Diag< RhsT, Len>);
-
-impl_1d_partial_eq!(Diag< LhsT, Len>, DiagRef<'_,  RhsT, Len>);
-impl_1d_partial_eq!(Diag< LhsT, Len>, DiagMut<'_,  RhsT, Len>);
-impl_1d_partial_eq!(Diag< LhsT, Len>, Diag< RhsT, Len>);
-
-impl<I: Index> PartialEq<PermRef<'_, I>> for PermRef<'_, I> {
-	#[inline]
-	fn eq(&self, other: &PermRef<'_, I>) -> bool {
-		self.arrays().0 == other.arrays().0
-	}
-}
-impl<I: Index> PartialEq<PermRef<'_, I>> for Perm<I> {
-	#[inline]
-	fn eq(&self, other: &PermRef<'_, I>) -> bool {
-		self.as_ref() == other.as_ref()
-	}
-}
-impl<I: Index> PartialEq<Perm<I>> for PermRef<'_, I> {
-	#[inline]
-	fn eq(&self, other: &Perm<I>) -> bool {
-		self.as_ref() == other.as_ref()
-	}
-}
-impl<I: Index> PartialEq<Perm<I>> for Perm<I> {
-	#[inline]
-	fn eq(&self, other: &Perm<I>) -> bool {
-		self.as_ref() == other.as_ref()
-	}
-}
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Add<MatRef<'_, RhsT, Rows, Cols>>
-	for MatRef<'_, LhsT, Rows, Cols>
+impl<
+	LT: PartialEq<RT>,
+	LDim: Shape,
+	LStride: Stride,
+	RT,
+	RDim: Shape,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, LDim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, RDim, RStride>>,
+> PartialEq<diag::generic::Diag<R>> for diag::generic::Diag<L>
 {
-	type Output = Mat<T, Rows, Cols>;
-
-	#[math]
-	#[track_caller]
-	fn add(self, rhs: MatRef<'_, RhsT, Rows, Cols>) -> Self::Output {
-		let lhs = self;
-		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zip!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
+	fn eq(&self, other: &diag::generic::Diag<R>) -> bool {
+		self.rb().column_vector() == other.rb().column_vector()
 	}
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Sub<MatRef<'_, RhsT, Rows, Cols>>
-	for MatRef<'_, LhsT, Rows, Cols>
+impl<
+	LI: Index,
+	LN: Shape,
+	RI: Index,
+	RN: Shape,
+	L: for<'a> Reborrow<'a, Target = perm::Ref<'a, LI, LN>>,
+	R: for<'a> Reborrow<'a, Target = perm::Ref<'a, RI, RN>>,
+> PartialEq<perm::generic::Perm<R>> for perm::generic::Perm<L>
+where
+	LN::Idx<LI>: PartialEq<RN::Idx<RI>>,
+{
+	#[inline]
+	fn eq(&self, other: &perm::generic::Perm<R>) -> bool {
+		self.rb().arrays().0 == other.rb().arrays().0
+	}
+}
+
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Add<&mat::generic::Mat<R>> for &mat::generic::Mat<L>
 {
 	type Output = Mat<T, Rows, Cols>;
 
-	#[math]
 	#[track_caller]
-	fn sub(self, rhs: MatRef<'_, RhsT, Rows, Cols>) -> Self::Output {
-		let lhs = self;
-		let rhs = rhs;
-		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zip!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
+	fn add(self, rhs: &mat::generic::Mat<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: MatRef<'_, RT>) -> Mat<T> {
+			assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			zip!(lhs, rhs).map(add_fn::<LT, RT>())
+		}
+		let lhs = self.rb();
+		imp(lhs.as_dyn().as_dyn_stride(), rhs.rb().as_dyn().as_dyn_stride()).into_shape(lhs.nrows(), lhs.ncols())
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Add<mat::generic::Mat<R>> for &mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: mat::generic::Mat<R>) -> Self::Output {
+		self + &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Add<&mat::generic::Mat<R>> for mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: &mat::generic::Mat<R>) -> Self::Output {
+		&self + rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Add<mat::generic::Mat<R>> for mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: mat::generic::Mat<R>) -> Self::Output {
+		&self + &rhs
 	}
 }
 
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Add<&col::generic::Col<R>> for &col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn add(self, rhs: &col::generic::Col<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
+			assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			zip!(lhs, rhs).map(add_fn::<LT, RT>())
+		}
+		let lhs = self.rb();
+		imp(lhs.as_dyn_rows().as_dyn_stride(), rhs.rb().as_dyn_rows().as_dyn_stride()).into_row_shape(lhs.nrows())
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Add<col::generic::Col<R>> for &col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn add(self, rhs: col::generic::Col<R>) -> Self::Output {
+		self + &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Add<&col::generic::Col<R>> for col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn add(self, rhs: &col::generic::Col<R>) -> Self::Output {
+		&self + rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Add<col::generic::Col<R>> for col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn add(self, rhs: col::generic::Col<R>) -> Self::Output {
+		&self + &rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Add<&row::generic::Row<R>> for &row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: &row::generic::Row<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: RowRef<'_, RT>) -> Row<T> {
+			assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			(lhs.transpose() + rhs.transpose()).into_transpose()
+		}
+		let lhs = self.rb();
+		imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.rb().as_dyn_cols().as_dyn_stride()).into_col_shape(lhs.ncols())
+	}
+}
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Add<row::generic::Row<R>> for &row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: row::generic::Row<R>) -> Self::Output {
+		self + &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Add<&row::generic::Row<R>> for row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: &row::generic::Row<R>) -> Self::Output {
+		&self + rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Add<row::generic::Row<R>> for row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn add(self, rhs: row::generic::Row<R>) -> Self::Output {
+		&self + &rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Add<&diag::generic::Diag<R>> for &diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn add(self, rhs: &diag::generic::Diag<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
+			assert!(all(lhs.nrows() == rhs.nrows()));
+			lhs + rhs
+		}
+		let lhs = self.rb();
+		imp(
+			lhs.column_vector().as_dyn_rows().as_dyn_stride(),
+			rhs.rb().column_vector().as_dyn_rows().as_dyn_stride(),
+		)
+		.into_row_shape(lhs.dim())
+		.into_diagonal()
+	}
+}
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Add<diag::generic::Diag<R>> for &diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn add(self, rhs: diag::generic::Diag<R>) -> Self::Output {
+		self + &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Add<&diag::generic::Diag<R>> for diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn add(self, rhs: &diag::generic::Diag<R>) -> Self::Output {
+		&self + rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Add<diag::generic::Diag<R>> for diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn add(self, rhs: diag::generic::Diag<R>) -> Self::Output {
+		&self + &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Sub<&diag::generic::Diag<R>> for &diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn sub(self, rhs: &diag::generic::Diag<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
+			assert!(all(lhs.nrows() == rhs.nrows()));
+			lhs - rhs
+		}
+		let lhs = self.rb();
+		imp(
+			lhs.column_vector().as_dyn_rows().as_dyn_stride(),
+			rhs.rb().column_vector().as_dyn_rows().as_dyn_stride(),
+		)
+		.into_row_shape(lhs.dim())
+		.into_diagonal()
+	}
+}
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Sub<diag::generic::Diag<R>> for &diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn sub(self, rhs: diag::generic::Diag<R>) -> Self::Output {
+		self - &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Sub<&diag::generic::Diag<R>> for diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn sub(self, rhs: &diag::generic::Diag<R>) -> Self::Output {
+		&self - rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Dim: Shape,
+	LT: Conjugate<Canonical = T>,
+	LStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RStride: Stride,
+	L: for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>,
+	R: for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>,
+> Sub<diag::generic::Diag<R>> for diag::generic::Diag<L>
+{
+	type Output = Diag<T, Dim>;
+
+	#[track_caller]
+	fn sub(self, rhs: diag::generic::Diag<R>) -> Self::Output {
+		&self - &rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Sub<&mat::generic::Mat<R>> for &mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: &mat::generic::Mat<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: MatRef<'_, RT>) -> Mat<T> {
+			assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			zip!(lhs, rhs).map(sub_fn::<LT, RT>())
+		}
+		let lhs = self.rb();
+		imp(lhs.as_dyn().as_dyn_stride(), rhs.rb().as_dyn().as_dyn_stride()).into_shape(lhs.nrows(), lhs.ncols())
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Sub<mat::generic::Mat<R>> for &mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: mat::generic::Mat<R>) -> Self::Output {
+		self - &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Sub<&mat::generic::Mat<R>> for mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: &mat::generic::Mat<R>) -> Self::Output {
+		&self - rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>,
+> Sub<mat::generic::Mat<R>> for mat::generic::Mat<L>
+{
+	type Output = Mat<T, Rows, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: mat::generic::Mat<R>) -> Self::Output {
+		&self - &rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Sub<&col::generic::Col<R>> for &col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn sub(self, rhs: &col::generic::Col<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
+			assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			zip!(lhs, rhs).map(sub_fn::<LT, RT>())
+		}
+		let lhs = self.rb();
+		imp(lhs.as_dyn_rows().as_dyn_stride(), rhs.rb().as_dyn_rows().as_dyn_stride()).into_row_shape(lhs.nrows())
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Sub<col::generic::Col<R>> for &col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn sub(self, rhs: col::generic::Col<R>) -> Self::Output {
+		self - &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Sub<&col::generic::Col<R>> for col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn sub(self, rhs: &col::generic::Col<R>) -> Self::Output {
+		&self - rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Rows: Shape,
+	LT: Conjugate<Canonical = T>,
+	LRStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RRStride: Stride,
+	L: for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>,
+	R: for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>,
+> Sub<col::generic::Col<R>> for col::generic::Col<L>
+{
+	type Output = Col<T, Rows>;
+
+	#[track_caller]
+	fn sub(self, rhs: col::generic::Col<R>) -> Self::Output {
+		&self - &rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Sub<&row::generic::Row<R>> for &row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: &row::generic::Row<R>) -> Self::Output {
+		#[track_caller]
+		fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: RowRef<'_, RT>) -> Row<T> {
+			assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			(lhs.transpose() - rhs.transpose()).into_transpose()
+		}
+		let lhs = self.rb();
+		imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.rb().as_dyn_cols().as_dyn_stride()).into_col_shape(lhs.ncols())
+	}
+}
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Sub<row::generic::Row<R>> for &row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: row::generic::Row<R>) -> Self::Output {
+		self - &rhs
+	}
+}
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Sub<&row::generic::Row<R>> for row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: &row::generic::Row<R>) -> Self::Output {
+		&self - rhs
+	}
+}
+
+impl<
+	T: ComplexField,
+	Cols: Shape,
+	LT: Conjugate<Canonical = T>,
+	LCStride: Stride,
+	RT: Conjugate<Canonical = T>,
+	RCStride: Stride,
+	L: for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>,
+	R: for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>,
+> Sub<row::generic::Row<R>> for row::generic::Row<L>
+{
+	type Output = Row<T, Cols>;
+
+	#[track_caller]
+	fn sub(self, rhs: row::generic::Row<R>) -> Self::Output {
+		&self - &rhs
+	}
+}
 impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: Shape> AddAssign<MatRef<'_, RhsT, Rows, Cols>>
 	for MatMut<'_, LhsT, Rows, Cols>
 {
@@ -776,13 +1295,123 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Rows: Shape, Cols: S
 	}
 }
 
-impl<T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Neg for MatRef<'_, TT, Rows, Cols> {
-	type Output = Mat<T, Rows, Cols>;
+impl<
+	T: Conjugate,
+	Rows: Shape,
+	Cols: Shape,
+	RStride: Stride,
+	CStride: Stride,
+	Inner: for<'a> Reborrow<'a, Target = mat::Ref<'a, T, Rows, Cols, RStride, CStride>>,
+> Neg for &mat::generic::Mat<Inner>
+{
+	type Output = Mat<T::Canonical, Rows, Cols>;
 
-	#[math]
+	#[track_caller]
 	fn neg(self) -> Self::Output {
-		let this = self;
-		zip!(this).map(neg_fn::<_>())
+		#[track_caller]
+		fn imp<T: Conjugate>(A: MatRef<'_, T>) -> Mat<T::Canonical> {
+			zip!(A).map(neg_fn::<T>())
+		}
+		let A = self.rb();
+		imp(A.as_dyn().as_dyn_stride()).into_shape(A.nrows(), A.ncols())
+	}
+}
+
+impl<
+	T: Conjugate,
+	Rows: Shape,
+	Cols: Shape,
+	RStride: Stride,
+	CStride: Stride,
+	Inner: for<'a> Reborrow<'a, Target = mat::Ref<'a, T, Rows, Cols, RStride, CStride>>,
+> Neg for mat::generic::Mat<Inner>
+{
+	type Output = Mat<T::Canonical, Rows, Cols>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		-&self
+	}
+}
+
+impl<T: Conjugate, Rows: Shape, RStride: Stride, Inner: for<'a> Reborrow<'a, Target = col::Ref<'a, T, Rows, RStride>>> Neg
+	for &col::generic::Col<Inner>
+{
+	type Output = Col<T::Canonical, Rows>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		#[track_caller]
+		fn imp<T: Conjugate>(A: ColRef<'_, T>) -> Col<T::Canonical> {
+			zip!(A).map(neg_fn::<T>())
+		}
+		let A = self.rb();
+		imp(A.as_dyn_rows().as_dyn_stride()).into_row_shape(A.nrows())
+	}
+}
+
+impl<T: Conjugate, Rows: Shape, RStride: Stride, Inner: for<'a> Reborrow<'a, Target = col::Ref<'a, T, Rows, RStride>>> Neg
+	for col::generic::Col<Inner>
+{
+	type Output = Col<T::Canonical, Rows>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		-&self
+	}
+}
+
+impl<T: Conjugate, Cols: Shape, CStride: Stride, Inner: for<'a> Reborrow<'a, Target = row::Ref<'a, T, Cols, CStride>>> Neg
+	for &row::generic::Row<Inner>
+{
+	type Output = Row<T::Canonical, Cols>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		#[track_caller]
+		fn imp<T: Conjugate>(A: RowRef<'_, T>) -> Row<T::Canonical> {
+			(-A.transpose()).into_transpose()
+		}
+		let A = self.rb();
+		imp(A.as_dyn_cols().as_dyn_stride()).into_col_shape(A.ncols())
+	}
+}
+
+impl<T: Conjugate, Cols: Shape, CStride: Stride, Inner: for<'a> Reborrow<'a, Target = row::Ref<'a, T, Cols, CStride>>> Neg
+	for row::generic::Row<Inner>
+{
+	type Output = Row<T::Canonical, Cols>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		-&self
+	}
+}
+
+impl<T: Conjugate, Dim: Shape, Stride: crate::Stride, Inner: for<'a> Reborrow<'a, Target = diag::Ref<'a, T, Dim, Stride>>> Neg
+	for &diag::generic::Diag<Inner>
+{
+	type Output = Diag<T::Canonical, Dim>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		#[track_caller]
+		fn imp<T: Conjugate>(A: ColRef<'_, T>) -> Col<T::Canonical> {
+			-A
+		}
+		let A = self.rb().column_vector();
+		imp(A.as_dyn_rows().as_dyn_stride()).into_row_shape(A.nrows()).into_diagonal()
+	}
+}
+
+impl<T: Conjugate, Dim: Shape, Stride: crate::Stride, Inner: for<'a> Reborrow<'a, Target = diag::Ref<'a, T, Dim, Stride>>> Neg
+	for diag::generic::Diag<Inner>
+{
+	type Output = Diag<T::Canonical, Dim>;
+
+	#[track_caller]
+	fn neg(self) -> Self::Output {
+		-&self
 	}
 }
 
@@ -831,34 +1460,6 @@ fn sub_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>() -> imp
 	move |unzip!(a, b)| *a = Conj::apply(a) - Conj::apply(b)
 }
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<ColRef<'_, RhsT, Len>>
-	for ColRef<'_, LhsT, Len>
-{
-	type Output = Col<T, Len>;
-
-	#[math]
-	#[track_caller]
-	fn add(self, rhs: ColRef<'_, RhsT, Len>) -> Self::Output {
-		let lhs = self;
-		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zip!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
-	}
-}
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<ColRef<'_, RhsT, Len>>
-	for ColRef<'_, LhsT, Len>
-{
-	type Output = Col<T, Len>;
-
-	#[math]
-	#[track_caller]
-	fn sub(self, rhs: ColRef<'_, RhsT, Len>) -> Self::Output {
-		let lhs = self;
-		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zip!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
-	}
-}
-
 impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> AddAssign<ColRef<'_, RhsT, Len>> for ColMut<'_, LhsT, Len> {
 	#[math]
 	#[track_caller]
@@ -872,45 +1473,6 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> SubAssig
 	#[track_caller]
 	fn sub_assign(&mut self, rhs: ColRef<'_, RhsT, Len>) {
 		zip!(self.rb_mut(), rhs).for_each(sub_assign_fn::<_, _>())
-	}
-}
-
-impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for ColRef<'_, TT, Len> {
-	type Output = Col<T, Len>;
-
-	#[math]
-	fn neg(self) -> Self::Output {
-		let this = self;
-		zip!(this).map(neg_fn::<_>())
-	}
-}
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<RowRef<'_, RhsT, Len>>
-	for RowRef<'_, LhsT, Len>
-{
-	type Output = Row<T, Len>;
-
-	#[math]
-	#[track_caller]
-	fn add(self, rhs: RowRef<'_, RhsT, Len>) -> Self::Output {
-		let lhs = self;
-		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zip!(lhs, rhs).map(add_fn::<LhsT, RhsT>())
-	}
-}
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<RowRef<'_, RhsT, Len>>
-	for RowRef<'_, LhsT, Len>
-{
-	type Output = Row<T, Len>;
-
-	#[math]
-	#[track_caller]
-	fn sub(self, rhs: RowRef<'_, RhsT, Len>) -> Self::Output {
-		let lhs = self;
-		let rhs = rhs;
-		Assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-		zip!(lhs, rhs).map(sub_fn::<LhsT, RhsT>())
 	}
 }
 
@@ -930,37 +1492,6 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> SubAssig
 	}
 }
 
-impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for RowRef<'_, TT, Len> {
-	type Output = Row<T, Len>;
-
-	#[math]
-	fn neg(self) -> Self::Output {
-		let this = self;
-		zip!(this).map(neg_fn::<_>())
-	}
-}
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Add<DiagRef<'_, RhsT, Len>>
-	for DiagRef<'_, LhsT, Len>
-{
-	type Output = Diag<T, Len>;
-
-	#[track_caller]
-	fn add(self, rhs: DiagRef<'_, RhsT, Len>) -> Self::Output {
-		(self.column_vector() + rhs.column_vector()).into_diagonal()
-	}
-}
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Len: Shape> Sub<DiagRef<'_, RhsT, Len>>
-	for DiagRef<'_, LhsT, Len>
-{
-	type Output = Diag<T, Len>;
-
-	#[track_caller]
-	fn sub(self, rhs: DiagRef<'_, RhsT, Len>) -> Self::Output {
-		(self.column_vector() - rhs.column_vector()).into_diagonal()
-	}
-}
-
 impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> AddAssign<DiagRef<'_, RhsT, Len>> for DiagMut<'_, LhsT, Len> {
 	#[track_caller]
 	fn add_assign(&mut self, rhs: DiagRef<'_, RhsT, Len>) {
@@ -974,53 +1505,6 @@ impl<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>, Len: Shape> SubAssig
 		*&mut (self.rb_mut().column_vector_mut()) -= rhs.column_vector()
 	}
 }
-
-impl<T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Neg for DiagRef<'_, TT, Len> {
-	type Output = Diag<T, Len>;
-
-	fn neg(self) -> Self::Output {
-		(-self.column_vector()).into_diagonal()
-	}
-}
-
-// impl_add_sub!(MatRef<'_,  LhsT>, MatRef<'_,  RhsT>, Mat< T>);
-impl_add_sub!(MatRef<'_,  LhsT, Rows, Cols>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatRef<'_,  LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatRef<'_,  LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatRef<'_,  LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatRef<'_,  LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatRef<'_,  LhsT, Rows, Cols>, MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatRef<'_,  LhsT, Rows, Cols>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatRef<'_,  LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatRef<'_,  LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatRef<'_,  LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatRef<'_,  LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-
-impl_add_sub!(MatMut<'_,  LhsT, Rows, Cols>, MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatMut<'_,  LhsT, Rows, Cols>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatMut<'_,  LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatMut<'_,  LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatMut<'_,  LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(MatMut<'_,  LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatMut<'_,  LhsT, Rows, Cols>, MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatMut<'_,  LhsT, Rows, Cols>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatMut<'_,  LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatMut<'_,  LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatMut<'_,  LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&MatMut<'_,  LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-
-impl_add_sub!(Mat< LhsT, Rows, Cols>, MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(Mat< LhsT, Rows, Cols>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(Mat< LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(Mat< LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(Mat< LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(Mat< LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&Mat< LhsT, Rows, Cols>, MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&Mat< LhsT, Rows, Cols>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&Mat< LhsT, Rows, Cols>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&Mat< LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&Mat< LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_add_sub!(&Mat< LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
 
 // impl_add_sub_assign!(MatMut<'_,  LhsT>, MatRef<'_,  RhsT>);
 impl_add_sub_assign!(MatMut<'_, LhsT, Rows, Cols>, MatMut<'_, RhsT, Rows, Cols>);
@@ -1036,52 +1520,6 @@ impl_add_sub_assign!(Mat< LhsT, Rows, Cols>, &MatRef<'_,  RhsT, Rows, Cols>);
 impl_add_sub_assign!(Mat< LhsT, Rows, Cols>, &MatMut<'_,  RhsT, Rows, Cols>);
 impl_add_sub_assign!(Mat< LhsT, Rows, Cols>, &Mat< RhsT, Rows, Cols>);
 
-// impl_neg!(MatRef<'_,  TT>, Mat< T>);
-impl_neg!(MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_neg!(Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_neg!(&MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_neg!(&MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_neg!(&Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-
-// impl_add_sub!(ColRef<'_,  LhsT>, ColRef<'_,  RhsT>, Col< T>);
-impl_1d_add_sub!(ColRef<'_,  LhsT, Len>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColRef<'_,  LhsT, Len>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColRef<'_,  LhsT, Len>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColRef<'_,  LhsT, Len>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColRef<'_,  LhsT, Len>, &Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColRef<'_,  LhsT, Len>, ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColRef<'_,  LhsT, Len>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColRef<'_,  LhsT, Len>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColRef<'_,  LhsT, Len>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColRef<'_,  LhsT, Len>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColRef<'_,  LhsT, Len>, &Col< RhsT, Len>, Col< T, Len>);
-
-impl_1d_add_sub!(ColMut<'_,  LhsT, Len>, ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColMut<'_,  LhsT, Len>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColMut<'_,  LhsT, Len>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColMut<'_,  LhsT, Len>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColMut<'_,  LhsT, Len>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(ColMut<'_,  LhsT, Len>, &Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColMut<'_,  LhsT, Len>, ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColMut<'_,  LhsT, Len>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColMut<'_,  LhsT, Len>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColMut<'_,  LhsT, Len>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColMut<'_,  LhsT, Len>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&ColMut<'_,  LhsT, Len>, &Col< RhsT, Len>, Col< T, Len>);
-
-impl_1d_add_sub!(Col< LhsT, Len>, ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(Col< LhsT, Len>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(Col< LhsT, Len>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(Col< LhsT, Len>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(Col< LhsT, Len>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(Col< LhsT, Len>, &Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&Col< LhsT, Len>, ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&Col< LhsT, Len>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&Col< LhsT, Len>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&Col< LhsT, Len>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&Col< LhsT, Len>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_add_sub!(&Col< LhsT, Len>, &Col< RhsT, Len>, Col< T, Len>);
-
 // impl_add_sub_assign!(ColMut<'_,  LhsT>, ColRef<'_,  RhsT>);
 impl_1d_add_sub_assign!(ColMut<'_, LhsT, Len>, ColMut<'_, RhsT, Len>);
 impl_1d_add_sub_assign!(ColMut<'_,  LhsT, Len>, Col< RhsT, Len>);
@@ -1095,52 +1533,6 @@ impl_1d_add_sub_assign!(Col< LhsT, Len>, Col< RhsT, Len>);
 impl_1d_add_sub_assign!(Col< LhsT, Len>, &ColRef<'_,  RhsT, Len>);
 impl_1d_add_sub_assign!(Col< LhsT, Len>, &ColMut<'_,  RhsT, Len>);
 impl_1d_add_sub_assign!(Col< LhsT, Len>, &Col< RhsT, Len>);
-
-// impl_neg!(ColRef<'_,  TT>, Col< T>);
-impl_1d_neg!(ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_neg!(Col< TT, Len>, Col< T, Len>);
-impl_1d_neg!(&ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_neg!(&ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_neg!(&Col< TT, Len>, Col< T, Len>);
-
-// impl_add_sub!(RowRef<'_,  LhsT>, RowRef<'_,  RhsT>, Row< T>);
-impl_1d_add_sub!(RowRef<'_,  LhsT, Len>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowRef<'_,  LhsT, Len>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowRef<'_,  LhsT, Len>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowRef<'_,  LhsT, Len>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowRef<'_,  LhsT, Len>, &Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowRef<'_,  LhsT, Len>, RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowRef<'_,  LhsT, Len>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowRef<'_,  LhsT, Len>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowRef<'_,  LhsT, Len>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowRef<'_,  LhsT, Len>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowRef<'_,  LhsT, Len>, &Row< RhsT, Len>, Row< T, Len>);
-
-impl_1d_add_sub!(RowMut<'_,  LhsT, Len>, RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowMut<'_,  LhsT, Len>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowMut<'_,  LhsT, Len>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowMut<'_,  LhsT, Len>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowMut<'_,  LhsT, Len>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(RowMut<'_,  LhsT, Len>, &Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowMut<'_,  LhsT, Len>, RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowMut<'_,  LhsT, Len>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowMut<'_,  LhsT, Len>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowMut<'_,  LhsT, Len>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowMut<'_,  LhsT, Len>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&RowMut<'_,  LhsT, Len>, &Row< RhsT, Len>, Row< T, Len>);
-
-impl_1d_add_sub!(Row< LhsT, Len>, RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(Row< LhsT, Len>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(Row< LhsT, Len>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(Row< LhsT, Len>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(Row< LhsT, Len>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(Row< LhsT, Len>, &Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&Row< LhsT, Len>, RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&Row< LhsT, Len>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&Row< LhsT, Len>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&Row< LhsT, Len>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&Row< LhsT, Len>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_add_sub!(&Row< LhsT, Len>, &Row< RhsT, Len>, Row< T, Len>);
 
 // impl_1d_add_sub_assign!(RowMut<'_,  LhsT>, RowRef<'_,  RhsT>);
 impl_1d_add_sub_assign!(RowMut<'_, LhsT, Len>, RowMut<'_, RhsT, Len>);
@@ -1156,52 +1548,6 @@ impl_1d_add_sub_assign!(Row< LhsT, Len>, &RowRef<'_,  RhsT, Len>);
 impl_1d_add_sub_assign!(Row< LhsT, Len>, &RowMut<'_,  RhsT, Len>);
 impl_1d_add_sub_assign!(Row< LhsT, Len>, &Row< RhsT, Len>);
 
-// impl_1d_neg!(RowRef<'_,  TT>, Row< T>);
-impl_1d_neg!(RowMut<'_,  TT, Len>, Row< T, Len>);
-impl_1d_neg!(Row< TT, Len>, Row< T, Len>);
-impl_1d_neg!(&RowRef<'_,  TT, Len>, Row< T, Len>);
-impl_1d_neg!(&RowMut<'_,  TT, Len>, Row< T, Len>);
-impl_1d_neg!(&Row< TT, Len>, Row< T, Len>);
-
-// impl_1d_add_sub!(DiagRef<'_,  LhsT>, DiagRef<'_,  RhsT>, Diag< T>);
-impl_1d_add_sub!(DiagRef<'_,  LhsT, Len>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagRef<'_,  LhsT, Len>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagRef<'_,  LhsT, Len>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagRef<'_,  LhsT, Len>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagRef<'_,  LhsT, Len>, &Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagRef<'_,  LhsT, Len>, DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagRef<'_,  LhsT, Len>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagRef<'_,  LhsT, Len>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagRef<'_,  LhsT, Len>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagRef<'_,  LhsT, Len>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagRef<'_,  LhsT, Len>, &Diag< RhsT, Len>, Diag< T, Len>);
-
-impl_1d_add_sub!(DiagMut<'_,  LhsT, Len>, DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagMut<'_,  LhsT, Len>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagMut<'_,  LhsT, Len>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagMut<'_,  LhsT, Len>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagMut<'_,  LhsT, Len>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(DiagMut<'_,  LhsT, Len>, &Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagMut<'_,  LhsT, Len>, DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagMut<'_,  LhsT, Len>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagMut<'_,  LhsT, Len>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagMut<'_,  LhsT, Len>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagMut<'_,  LhsT, Len>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&DiagMut<'_,  LhsT, Len>, &Diag< RhsT, Len>, Diag< T, Len>);
-
-impl_1d_add_sub!(Diag< LhsT, Len>, DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(Diag< LhsT, Len>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(Diag< LhsT, Len>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(Diag< LhsT, Len>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(Diag< LhsT, Len>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(Diag< LhsT, Len>, &Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&Diag< LhsT, Len>, DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&Diag< LhsT, Len>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&Diag< LhsT, Len>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&Diag< LhsT, Len>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&Diag< LhsT, Len>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_add_sub!(&Diag< LhsT, Len>, &Diag< RhsT, Len>, Diag< T, Len>);
-
 // impl_add_sub_assign!(DiagMut<'_,  LhsT>, DiagRef<'_,  RhsT>);
 impl_1d_add_sub_assign!(DiagMut<'_, LhsT, Len>, DiagMut<'_, RhsT, Len>);
 impl_1d_add_sub_assign!(DiagMut<'_,  LhsT, Len>, Diag< RhsT, Len>);
@@ -1216,15 +1562,9 @@ impl_1d_add_sub_assign!(Diag< LhsT, Len>, &DiagRef<'_,  RhsT, Len>);
 impl_1d_add_sub_assign!(Diag< LhsT, Len>, &DiagMut<'_,  RhsT, Len>);
 impl_1d_add_sub_assign!(Diag< LhsT, Len>, &Diag< RhsT, Len>);
 
-// impl_neg!(DiagRef<'_,  TT>, Diag< T>);
-impl_1d_neg!(DiagMut<'_,  TT, Len>, Diag< T, Len>);
-impl_1d_neg!(Diag< TT, Len>, Diag< T, Len>);
-impl_1d_neg!(&DiagRef<'_,  TT, Len>, Diag< T, Len>);
-impl_1d_neg!(&DiagMut<'_,  TT, Len>, Diag< T, Len>);
-impl_1d_neg!(&Diag< TT, Len>, Diag< T, Len>);
-
 mod matmul {
 	use super::*;
+	use crate::assert;
 
 	impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape> Mul<MatRef<'_, RhsT, K, N>>
 		for MatRef<'_, LhsT, M, K>
@@ -1235,7 +1575,7 @@ mod matmul {
 		#[track_caller]
 		fn mul(self, rhs: MatRef<'_, RhsT, K, N>) -> Self::Output {
 			let lhs = self;
-			Assert!(lhs.ncols() == rhs.nrows());
+			assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
 
 			crate::linalg::matmul::matmul(out.as_mut(), Accum::Replace, lhs, rhs, T::one_impl(), get_global_parallelism());
@@ -1252,7 +1592,7 @@ mod matmul {
 		#[track_caller]
 		fn mul(self, rhs: ColRef<'_, RhsT, K>) -> Self::Output {
 			let lhs = self;
-			Assert!(lhs.ncols() == rhs.nrows());
+			assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Col::zeros(lhs.nrows());
 
 			crate::linalg::matmul::matmul(
@@ -1276,7 +1616,7 @@ mod matmul {
 		#[track_caller]
 		fn mul(self, rhs: MatRef<'_, RhsT, K, N>) -> Self::Output {
 			let lhs = self;
-			Assert!(lhs.ncols() == rhs.nrows());
+			assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Row::zeros(rhs.ncols());
 
 			crate::linalg::matmul::matmul(
@@ -1298,7 +1638,7 @@ mod matmul {
 		#[track_caller]
 		fn mul(self, rhs: ColRef<'_, RhsT, K>) -> Self::Output {
 			let lhs = self;
-			Assert!(lhs.ncols() == rhs.nrows());
+			assert!(lhs.ncols() == rhs.nrows());
 			let lhs = lhs.canonical();
 			let rhs = rhs.canonical();
 			with_dim!(K, lhs.ncols().unbound());
@@ -1315,7 +1655,7 @@ mod matmul {
 		#[track_caller]
 		fn mul(self, rhs: RowRef<'_, RhsT, N>) -> Self::Output {
 			let lhs = self;
-			Assert!(lhs.ncols() == rhs.nrows());
+			assert!(lhs.ncols() == rhs.nrows());
 			let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
 
 			crate::linalg::matmul::matmul(
@@ -1536,7 +1876,7 @@ mod matmul {
 			let lhs = self.column_vector();
 			let lhs_dim = lhs.nrows();
 			let rhs_nrows = rhs.nrows();
-			Assert!(lhs_dim == rhs_nrows);
+			assert!(lhs_dim == rhs_nrows);
 
 			Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| Conj::apply(lhs.at(i)) * Conj::apply(rhs.at(i, j)))
 		}
@@ -1590,7 +1930,7 @@ mod matmul {
 			let lhs = self.column_vector();
 			let lhs_dim = lhs.nrows();
 			let rhs_nrows = rhs.nrows();
-			Assert!(lhs_dim == rhs_nrows);
+			assert!(lhs_dim == rhs_nrows);
 
 			zip!(lhs, rhs).map(mul_fn::<_, _>())
 		}
@@ -1647,7 +1987,7 @@ mod matmul {
 			let rhs = rhs.column_vector();
 			let lhs_ncols = lhs.ncols();
 			let rhs_dim = rhs.nrows();
-			Assert!(lhs_ncols == rhs_dim);
+			assert!(lhs_ncols == rhs_dim);
 
 			Mat::from_fn(lhs.nrows(), lhs.ncols(), |i, j| {
 				(i, j);
@@ -1705,7 +2045,7 @@ mod matmul {
 			let rhs = rhs.column_vector().transpose();
 			let lhs_ncols = lhs.ncols();
 			let rhs_dim = rhs.ncols();
-			Assert!(lhs_ncols == rhs_dim);
+			assert!(lhs_ncols == rhs_dim);
 
 			zip!(lhs, rhs).map(mul_fn::<_, _>())
 		}
@@ -1758,7 +2098,7 @@ mod matmul {
 		fn mul(self, rhs: DiagRef<'_, RhsT, N>) -> Self::Output {
 			let lhs = self.column_vector();
 			let rhs = rhs.column_vector();
-			Assert!(lhs.nrows() == rhs.nrows());
+			assert!(lhs.nrows() == rhs.nrows());
 
 			zip!(lhs, rhs).map(mul_fn::<_, _>()).into_diagonal()
 		}
@@ -1810,7 +2150,7 @@ impl<I: Index> Mul<PermRef<'_, I>> for PermRef<'_, I> {
 	#[track_caller]
 	fn mul(self, rhs: PermRef<'_, I>) -> Self::Output {
 		let lhs = self;
-		Assert!(lhs.len() == rhs.len());
+		assert!(lhs.len() == rhs.len());
 		let truncate = <I::Signed as SignedIndex>::truncate;
 		let mut fwd = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
 		let mut inv = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
@@ -1852,7 +2192,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols:
 	fn mul(self, rhs: MatRef<'_, TT, Rows, Cols>) -> Self::Output {
 		let lhs = self;
 
-		Assert!(lhs.len() == rhs.nrows());
+		assert!(lhs.len() == rhs.nrows());
 		let mut out = Mat::zeros(rhs.nrows(), rhs.ncols());
 
 		fn imp<'ROWS, 'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
@@ -1914,7 +2254,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<Co
 	fn mul(self, rhs: ColRef<'_, TT, Len>) -> Self::Output {
 		let lhs = self;
 
-		Assert!(lhs.len() == rhs.nrows());
+		assert!(lhs.len() == rhs.nrows());
 		let mut out = Col::zeros(rhs.nrows());
 
 		fn imp<'ROWS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
@@ -1973,7 +2313,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols:
 	fn mul(self, rhs: PermRef<'_, I, Cols>) -> Self::Output {
 		let lhs = self;
 
-		Assert!(lhs.ncols() == rhs.len());
+		assert!(lhs.ncols() == rhs.len());
 		let mut out = Mat::zeros(lhs.nrows(), lhs.ncols());
 
 		fn imp<'ROWS, 'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
@@ -2036,7 +2376,7 @@ impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<Pe
 	fn mul(self, rhs: PermRef<'_, I, Len>) -> Self::Output {
 		let lhs = self;
 
-		Assert!(lhs.ncols() == rhs.len());
+		assert!(lhs.ncols() == rhs.len());
 		let mut out = Row::zeros(lhs.ncols());
 
 		fn imp<'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(

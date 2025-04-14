@@ -138,14 +138,12 @@
 //! Depending on the domain of the input matrix and whether it is self-adjoint, multiple methods
 //! are provided to compute the eigendecomposition:
 //! * [`Mat::self_adjoint_eigen`] can be used with either real or complex matrices,
-//! producing an eigendecomposition of the same type
-//! * [`Mat::eigen`] can be used with complex matrices
-//! * [`Mat::eigen_from_real`] can only be used with real matrices, and produces a complex
-//!   eigendecomposition
+//! producing an eigendecomposition of the same type,
+//! * [`Mat::eigen`] can be used with real or complex matrices, but always produces complex values.
 //!
 //! if only the eigenvalues (elements of $S$) are desired, they can be obtained using
-//! [`Mat::self_adjoint_eigenvalues`] (nondecreasing order), [`Mat::eigenvalues`], or
-//! [`Mat::eigenvalues_from_real`], with the same conditions described above
+//! [`Mat::self_adjoint_eigenvalues`] (nondecreasing order), [`Mat::eigenvalues`]
+//! with the same conditions described above.
 //!
 //! # crate features
 //!
@@ -1024,7 +1022,8 @@ pub(crate) mod internal_prelude_sp {
 	pub(crate) use crate::internal_prelude::*;
 	pub(crate) use crate::sparse::{
 		FaerError, NONE, Pair, SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
-		SymbolicSparseColMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef, Triplet, linalg as linalg_sp, try_collect, try_zeroed, windows2,
+		SymbolicSparseColMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef, Triplet, csc_numeric, csc_symbolic, csr_numeric, csr_symbolic,
+		linalg as linalg_sp, try_collect, try_zeroed, windows2,
 	};
 	pub(crate) use core::cell::Cell;
 	pub(crate) use core::iter;
