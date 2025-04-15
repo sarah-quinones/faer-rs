@@ -5,7 +5,6 @@ use crate::utils::thread::join_raw;
 use crate::{assert, debug_assert};
 use faer_macros::math;
 use faer_traits::{Conjugate, SimdArch};
-use generativity::make_guard;
 use reborrow::*;
 
 #[inline(always)]

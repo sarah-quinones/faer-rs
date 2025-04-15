@@ -241,4 +241,10 @@ impl<T, Cols: Shape> AsMat<T> for Row<T, Cols> {
 	{
 		Row::zeros(cols)
 	}
+
+	#[track_caller]
+	#[inline]
+	fn truncate(&mut self, _: One, cols: Self::Cols) {
+		self.truncate(cols)
+	}
 }

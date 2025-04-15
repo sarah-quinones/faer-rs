@@ -77,10 +77,7 @@ impl<'a, T> MatRef<'a, T> {
 
 	/// creates a `1×1` view over the given element
 	#[inline]
-	pub fn from_ref(value: &'a T) -> Self
-	where
-		T: Sized,
-	{
+	pub fn from_ref(value: &'a T) -> Self {
 		unsafe { MatRef::from_raw_parts(value as *const T, 1, 1, 0, 0) }
 	}
 }
@@ -88,10 +85,7 @@ impl<'a, T> MatRef<'a, T> {
 impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 	/// creates a `MatRef` from a view over a single element, repeated `nrows×ncols` times
 	#[inline]
-	pub fn from_repeated_ref(value: &'a T, nrows: Rows, ncols: Cols) -> Self
-	where
-		T: Sized,
-	{
+	pub fn from_repeated_ref(value: &'a T, nrows: Rows, ncols: Cols) -> Self {
 		unsafe { MatRef::from_raw_parts(value as *const T, nrows, ncols, 0, 0) }
 	}
 
@@ -116,10 +110,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 	/// ```
 	#[inline]
 	#[track_caller]
-	pub fn from_column_major_slice(slice: &'a [T], nrows: Rows, ncols: Cols) -> Self
-	where
-		T: Sized,
-	{
+	pub fn from_column_major_slice(slice: &'a [T], nrows: Rows, ncols: Cols) -> Self {
 		from_slice_assert(nrows.unbound(), ncols.unbound(), slice.len());
 
 		unsafe { MatRef::from_raw_parts(slice.as_ptr(), nrows, ncols, 1, nrows.unbound() as isize) }
@@ -130,10 +121,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 	/// columns are separated by `col_stride` elements
 	#[inline]
 	#[track_caller]
-	pub fn from_column_major_slice_with_stride(slice: &'a [T], nrows: Rows, ncols: Cols, col_stride: usize) -> Self
-	where
-		T: Sized,
-	{
+	pub fn from_column_major_slice_with_stride(slice: &'a [T], nrows: Rows, ncols: Cols, col_stride: usize) -> Self {
 		from_strided_column_major_slice_assert(nrows.unbound(), ncols.unbound(), col_stride, slice.len());
 
 		unsafe { MatRef::from_raw_parts(slice.as_ptr(), nrows, ncols, 1, col_stride as isize) }
@@ -160,10 +148,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 	/// ```
 	#[inline]
 	#[track_caller]
-	pub fn from_row_major_slice(slice: &'a [T], nrows: Rows, ncols: Cols) -> Self
-	where
-		T: Sized,
-	{
+	pub fn from_row_major_slice(slice: &'a [T], nrows: Rows, ncols: Cols) -> Self {
 		MatRef::from_column_major_slice(slice, ncols, nrows).transpose()
 	}
 
@@ -172,10 +157,7 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 	/// rows are separated by `row_stride` elements
 	#[inline]
 	#[track_caller]
-	pub fn from_row_major_slice_with_stride(slice: &'a [T], nrows: Rows, ncols: Cols, row_stride: usize) -> Self
-	where
-		T: Sized,
-	{
+	pub fn from_row_major_slice_with_stride(slice: &'a [T], nrows: Rows, ncols: Cols, row_stride: usize) -> Self {
 		MatRef::from_column_major_slice_with_stride(slice, ncols, nrows, row_stride).transpose()
 	}
 }
@@ -219,7 +201,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 	/// ```
 	#[inline]
 	#[track_caller]
-	pub unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, ncols: Cols, row_stride: RStride, col_stride: CStride) -> Self {
+	pub const unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, ncols: Cols, row_stride: RStride, col_stride: CStride) -> Self {
 		Self(Ref {
 			imp: MatView {
 				ptr: NonNull::new_unchecked(ptr as *mut T),
@@ -1225,6 +1207,113 @@ impl<
 	{
 		let det = linalg::reductions::determinant::determinant(self.rb().canonical().as_dyn_stride().as_dyn());
 		if const { T::IS_CANONICAL } { det } else { conj(det) }
+	}
+
+	/// kronecker product of two matrices
+	///
+	/// the kronecker product of two matrices $A$ and $B$ is a block matrix
+	/// $B$ with the following structure:
+	///
+	/// ```text
+	/// C = [ a[(0, 0)] * B    , a[(0, 1)] * B    , ... , a[(0, n-1)] * B    ]
+	///     [ a[(1, 0)] * B    , a[(1, 1)] * B    , ... , a[(1, n-1)] * B    ]
+	///     [ ...              , ...              , ... , ...              ]
+	///     [ a[(m-1, 0)] * B  , a[(m-1, 1)] * B  , ... , a[(m-1, n-1)] * B  ]
+	/// ```
+	///
+	/// # panics
+	///
+	/// panics if `dst` does not have the correct dimensions. the dimensions
+	/// of `dst` must be `A.nrows() * B.nrows()` by `A.ncols() * B.ncols()`.
+	///
+	/// # example
+	///
+	/// ```
+	/// use faer::linalg::kron::kron;
+	/// use faer::{Mat, mat};
+	///
+	/// let a = mat![[1.0, 2.0], [3.0, 4.0]];
+	/// let b = mat![[0.0, 5.0], [6.0, 7.0]];
+	/// let c = mat![
+	/// 	[0.0, 5.0, 0.0, 10.0],
+	/// 	[6.0, 7.0, 12.0, 14.0],
+	/// 	[0.0, 15.0, 0.0, 20.0],
+	/// 	[18.0, 21.0, 24.0, 28.0],
+	/// ];
+	/// let mut dst = Mat::zeros(4, 4);
+	/// kron(dst.as_mut(), a.as_ref(), b.as_ref());
+	/// assert_eq!(dst, c);
+	/// ```
+	#[inline]
+	pub fn kron(&self, rhs: impl AsMatRef<T: Conjugate<Canonical = T::Canonical>>) -> Mat<T::Canonical>
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(lhs: MatRef<'_, impl Conjugate<Canonical = T>>, rhs: MatRef<'_, impl Conjugate<Canonical = T>>) -> Mat<T> {
+			let mut out = Mat::zeros(lhs.nrows() * rhs.nrows(), lhs.ncols() * rhs.ncols());
+			linalg::kron::kron(out.rb_mut(), lhs, rhs);
+			out
+		}
+
+		imp(self.rb().as_dyn().as_dyn_stride(), rhs.as_mat_ref().as_dyn().as_dyn_stride())
+	}
+
+	/// returns `true` if all of the elements of `self` are finite.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn is_all_finite(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(A: MatRef<'_, T>) -> bool {
+			with_dim!({
+				let M = A.nrows();
+				let N = A.ncols();
+			});
+
+			let A = A.as_shape(M, N);
+
+			for j in N.indices() {
+				for i in M.indices() {
+					if !is_finite(&A[(i, j)]) {
+						return false;
+					}
+				}
+			}
+
+			true
+		}
+
+		imp(self.rb().as_dyn().as_dyn_stride().canonical())
+	}
+
+	/// returns `true` if any of the elements of `self` is `NaN`.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn has_nan(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(A: MatRef<'_, T>) -> bool {
+			with_dim!({
+				let M = A.nrows();
+				let N = A.ncols();
+			});
+
+			let A = A.as_shape(M, N);
+
+			for j in N.indices() {
+				for i in M.indices() {
+					if is_nan(&A[(i, j)]) {
+						return true;
+					}
+				}
+			}
+
+			false
+		}
+
+		imp(self.rb().as_dyn().as_dyn_stride().canonical())
 	}
 }
 

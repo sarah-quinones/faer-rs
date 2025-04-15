@@ -51,6 +51,12 @@ unsafe impl<T: Sync, Rows: Sync, RStride: Sync> Sync for Mut<'_, T, Rows, RStrid
 unsafe impl<T: Send, Rows: Send, RStride: Send> Send for Mut<'_, T, Rows, RStride> {}
 
 impl<'a, T> ColMut<'a, T> {
+	/// creates a column view over the given element
+	#[inline]
+	pub fn from_mut(value: &'a mut T) -> Self {
+		unsafe { ColMut::from_raw_parts_mut(value as *mut T, 1, 1) }
+	}
+
 	/// creates a `ColMut` from slice views over the column vector data, the result has the same
 	/// number of rows as the length of the input slice
 	#[inline]
@@ -68,7 +74,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 	/// [`MatMut::from_raw_parts(ptr, nrows, 1, row_stride, 0)`]
 	#[inline(always)]
 	#[track_caller]
-	pub unsafe fn from_raw_parts_mut(ptr: *mut T, nrows: Rows, row_stride: RStride) -> Self {
+	pub const unsafe fn from_raw_parts_mut(ptr: *mut T, nrows: Rows, row_stride: RStride) -> Self {
 		Self {
 			0: Mut {
 				imp: ColView {

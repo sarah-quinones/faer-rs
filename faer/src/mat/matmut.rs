@@ -4,7 +4,7 @@ use crate::utils::bound::{Dim, Partition};
 use crate::{Conj, ContiguousFwd, Idx, IdxInc, unzip, zip};
 use equator::assert;
 use faer_traits::ComplexField;
-use generativity::{Guard, make_guard};
+use generativity::Guard;
 use linalg::zip::Last;
 
 /// see [`super::MatMut`]
@@ -111,7 +111,7 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 	/// ```
 	#[inline]
 	#[track_caller]
-	pub unsafe fn from_raw_parts_mut(ptr: *mut T, nrows: Rows, ncols: Cols, row_stride: RStride, col_stride: CStride) -> Self {
+	pub const unsafe fn from_raw_parts_mut(ptr: *mut T, nrows: Rows, ncols: Cols, row_stride: RStride, col_stride: CStride) -> Self {
 		MatMut {
 			0: Mut {
 				imp: MatView {

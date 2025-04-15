@@ -44,7 +44,38 @@ impl<'a, T, Dim: Copy, Stride: Copy> IntoConst for Ref<'a, T, Dim, Stride> {
 	}
 }
 
+impl<'a, T> DiagRef<'a, T> {
+	/// creates a diagonal matrix view over the given element
+	#[inline]
+	pub fn from_ref(value: &'a T) -> Self {
+		unsafe { DiagRef::from_raw_parts(value as *const T, 1, 1) }
+	}
+
+	/// creates a `DiagRef` from slice views over the diagonal data, the result has the same
+	/// dimension as the length of the input slice
+	#[inline]
+	pub fn from_slice(slice: &'a [T]) -> Self {
+		let len = slice.len();
+		unsafe { Self::from_raw_parts(slice.as_ptr(), len, 1) }
+	}
+}
+
 impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
+	/// creates a `DiagRef` from pointers to the diagonal data, dimension, and stride
+	///
+	/// # safety
+	/// this function has the same safety requirements as
+	/// [`MatRef::from_raw_parts(ptr, dim, 1, stride, 0)`]
+	#[inline(always)]
+	#[track_caller]
+	pub const unsafe fn from_raw_parts(ptr: *const T, dim: Dim, stride: Stride) -> Self {
+		Self {
+			0: Ref {
+				inner: ColRef::from_raw_parts(ptr, dim, stride),
+			},
+		}
+	}
+
 	/// returns the diagonal as a column vector view.
 	#[inline(always)]
 	pub fn column_vector(self) -> ColRef<'a, T, Dim, Stride> {
@@ -119,5 +150,27 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 	#[inline]
 	pub fn dim(&self) -> Dim {
 		self.inner.nrows()
+	}
+}
+
+impl<T, Dim: Shape, Stride: crate::Stride, Inner: for<'short> Reborrow<'short, Target = Ref<'short, T, Dim, Stride>>> generic::Diag<Inner> {
+	/// returns `true` if all of the elements of `self` are finite.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn is_all_finite(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		self.rb().column_vector().is_all_finite()
+	}
+
+	/// returns `true` if any of the elements of `self` is `NaN`.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn has_nan(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		self.rb().column_vector().has_nan()
 	}
 }

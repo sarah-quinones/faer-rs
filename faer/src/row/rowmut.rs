@@ -35,6 +35,22 @@ impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for Mut<'a, T, Rows, RStride> {
 	}
 }
 
+impl<'a, T> RowMut<'a, T> {
+	/// creates a row view over the given element
+	#[inline]
+	pub fn from_mut(value: &'a mut T) -> Self {
+		unsafe { RowMut::from_raw_parts_mut(value as *mut T, 1, 1) }
+	}
+
+	/// creates a `RowMut` from slice views over the row vector data, the result has the same
+	/// number of columns as the length of the input slice
+	#[inline]
+	pub fn from_slice_mut(slice: &'a mut [T]) -> Self {
+		let len = slice.len();
+		unsafe { Self::from_raw_parts_mut(slice.as_mut_ptr(), len, 1) }
+	}
+}
+
 impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	/// creates a `RowMut` from pointers to the column vector data, number of rows, and row stride
 	///
@@ -43,7 +59,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	/// [`MatMut::from_raw_parts_mut(ptr, 1, ncols, 0, col_stride)`]
 	#[inline(always)]
 	#[track_caller]
-	pub unsafe fn from_raw_parts_mut(ptr: *mut T, ncols: Cols, col_stride: CStride) -> Self {
+	pub const unsafe fn from_raw_parts_mut(ptr: *mut T, ncols: Cols, col_stride: CStride) -> Self {
 		Self {
 			0: Mut {
 				trans: ColMut::from_raw_parts_mut(ptr, ncols, col_stride),

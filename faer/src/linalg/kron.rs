@@ -37,7 +37,7 @@ use crate::internal_prelude::*;
 /// ```
 #[track_caller]
 #[math]
-pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef<'_, T>) {
+pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, impl Conjugate<Canonical = T>>, rhs: MatRef<'_, impl Conjugate<Canonical = T>>) {
 	// pull the lever kron
 
 	let mut dst = dst;
@@ -54,7 +54,7 @@ pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef
 
 	for lhs_j in 0..lhs.ncols() {
 		for lhs_i in 0..lhs.nrows() {
-			let lhs_val = lhs.at(lhs_i, lhs_j);
+			let lhs_val = Conj::apply(lhs.at(lhs_i, lhs_j));
 			let mut dst = dst
 				.rb_mut()
 				.submatrix_mut(lhs_i * rhs.nrows(), lhs_j * rhs.ncols(), rhs.nrows(), rhs.ncols());
@@ -63,8 +63,8 @@ pub fn kron<T: ComplexField>(dst: MatMut<'_, T>, lhs: MatRef<'_, T>, rhs: MatRef
 				for rhs_i in 0..rhs.nrows() {
 					// SAFETY: Bounds have been checked.
 					unsafe {
-						let rhs_val = rhs.at_unchecked(rhs_i, rhs_j);
-						*dst.rb_mut().at_mut_unchecked(rhs_i, rhs_j) = *lhs_val * *rhs_val;
+						let rhs_val = Conj::apply(rhs.at_unchecked(rhs_i, rhs_j));
+						*dst.rb_mut().at_mut_unchecked(rhs_i, rhs_j) = lhs_val * rhs_val;
 					}
 				}
 			}

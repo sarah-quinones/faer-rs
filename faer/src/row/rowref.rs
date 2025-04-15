@@ -45,6 +45,22 @@ impl<'a, T, Rows: Copy, CStride: Copy> IntoConst for Ref<'a, T, Rows, CStride> {
 unsafe impl<T: Sync, Rows: Sync, CStride: Sync> Sync for Ref<'_, T, Rows, CStride> {}
 unsafe impl<T: Sync, Rows: Send, CStride: Send> Send for Ref<'_, T, Rows, CStride> {}
 
+impl<'a, T> RowRef<'a, T> {
+	/// creates a row view over the given element
+	#[inline]
+	pub fn from_ref(value: &'a T) -> Self {
+		unsafe { RowRef::from_raw_parts(value as *const T, 1, 1) }
+	}
+
+	/// creates a `RowRef` from slice views over the row vector data, the result has the same
+	/// number of columns as the length of the input slice
+	#[inline]
+	pub fn from_slice(slice: &'a [T]) -> Self {
+		let len = slice.len();
+		unsafe { Self::from_raw_parts(slice.as_ptr(), len, 1) }
+	}
+}
+
 impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	/// creates a `RowRef` from pointers to the column vector data, number of rows, and row stride
 	///
@@ -53,7 +69,7 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	/// [`MatRef::from_raw_parts(ptr, 1, ncols, 0, col_stride)`]
 	#[inline(always)]
 	#[track_caller]
-	pub unsafe fn from_raw_parts(ptr: *const T, ncols: Cols, col_stride: CStride) -> Self {
+	pub const unsafe fn from_raw_parts(ptr: *const T, ncols: Cols, col_stride: CStride) -> Self {
 		Self {
 			0: Ref {
 				trans: ColRef::from_raw_parts(ptr, ncols, col_stride),
@@ -395,6 +411,41 @@ impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> Reborrow<'short, Target
 		T: Conjugate,
 	{
 		self.rb().as_mat().sum()
+	}
+
+	/// see [`Mat::kron`]
+	#[inline]
+	pub fn kron(&self, rhs: impl AsMatRef<T: Conjugate<Canonical = T::Canonical>>) -> Mat<T::Canonical>
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(lhs: MatRef<impl Conjugate<Canonical = T>>, rhs: MatRef<impl Conjugate<Canonical = T>>) -> Mat<T> {
+			let mut out = Mat::zeros(lhs.nrows() * rhs.nrows(), lhs.ncols() * rhs.ncols());
+			linalg::kron::kron(out.rb_mut(), lhs, rhs);
+			out
+		}
+
+		imp(self.rb().as_mat().as_dyn().as_dyn_stride(), rhs.as_mat_ref().as_dyn().as_dyn_stride())
+	}
+
+	/// returns `true` if all of the elements of `self` are finite.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn is_all_finite(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		self.rb().transpose().is_all_finite()
+	}
+
+	/// returns `true` if any of the elements of `self` is `NaN`.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn has_nan(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		self.rb().transpose().has_nan()
 	}
 
 	/// returns a newly allocated row holding the cloned values of `self`

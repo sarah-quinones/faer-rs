@@ -166,6 +166,19 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+/// see: [`generativity::make_guard`]
+#[macro_export]
+macro_rules! make_guard {
+    ($($name:ident),* $(,)?) => {$(
+        #[allow(unused_unsafe)]
+        let $name = unsafe { extern crate generativity; ::generativity::Id::new() };
+        #[allow(unused, unused_unsafe)]
+        let lifetime_brand = unsafe { extern crate generativity; ::generativity::LifetimeBrand::new(&$name) };
+        #[allow(unused_unsafe)]
+        let $name = unsafe { extern crate generativity; ::generativity::Guard::new($name) };
+    )*};
+}
+
 macro_rules! repeat_n {
 	($e: expr, $n: expr) => {
 		iter::repeat_n($e, $n)
@@ -267,10 +280,16 @@ macro_rules! __perf_warn {
 #[macro_export]
 macro_rules! with_dim {
 	($name: ident, $value: expr $(,)?) => {
-		let __val = $value;
-		::generativity::make_guard!($name);
-		let $name = $crate::utils::bound::Dim::new(__val, $name);
+		let __val__ = $value;
+		$crate::make_guard!($name);
+		let $name = $crate::utils::bound::Dim::new(__val__, $name);
 	};
+
+	({$(let $name: ident = $value: expr;)*}) => {$(
+		let __val__ = $value;
+		$crate::make_guard!($name);
+		let $name = $crate::utils::bound::Dim::new(__val__, $name);
+	)*};
 }
 
 /// zips together matrix of the same size, so that coefficient-wise operations can be performed on
@@ -1011,9 +1030,9 @@ mod internal_prelude {
 
 	pub use {unzip as uz, zip as z};
 
+	pub use crate::make_guard;
 	pub use dyn_stack::{MemStack, StackReq};
 	pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
-	pub use generativity::make_guard;
 	pub use reborrow::*;
 }
 
@@ -1051,11 +1070,13 @@ pub mod prelude {
 #[repr(transparent)]
 pub struct Scale<T>(pub T);
 impl<T> Scale<T> {
+	/// create a reference to a scaling factor from a reference to a value.
 	#[inline(always)]
 	pub fn from_ref(value: &T) -> &Self {
 		unsafe { &*(value as *const T as *const Self) }
 	}
 
+	/// create a mutable reference to a scaling factor from a mutable reference to a value.
 	#[inline(always)]
 	pub fn from_mut(value: &mut T) -> &mut Self {
 		unsafe { &mut *(value as *mut T as *mut Self) }
