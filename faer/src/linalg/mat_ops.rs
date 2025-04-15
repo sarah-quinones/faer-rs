@@ -4,333 +4,6 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 extern crate alloc;
 
-macro_rules! impl_perm {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(other.as_ref())
-			}
-		}
-	};
-}
-macro_rules! impl_1d_perm {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_perm_perm {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<I: Index> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_scalar_mul {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.mul(other.as_ref())
-			}
-		}
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs> for &$lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.clone().mul(other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_mul_scalar {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(other)
-			}
-		}
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<&$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: &$rhs) -> Self::Output {
-				self.as_ref().mul(other.clone())
-			}
-		}
-	};
-}
-
-macro_rules! impl_div_scalar {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Div<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn div(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(Scale(recip(&other.0)))
-			}
-		}
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Div<&$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn div(self, other: &$rhs) -> Self::Output {
-				self.as_ref().mul(Scale(recip(&other.0)))
-			}
-		}
-	};
-}
-
-macro_rules! impl_mul_primitive {
-	($rhs: ty, $out: ty) => {
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs> for f64 {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				Scale(T::from_f64_impl(self)).mul(other)
-			}
-		}
-
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<f64> for $rhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: f64) -> Self::Output {
-				self.mul(Scale(T::from_f64_impl(other)))
-			}
-		}
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Div<f64> for $rhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn div(self, other: f64) -> Self::Output {
-				self.mul(Scale(T::from_f64_impl(f64::recip(other))))
-			}
-		}
-	};
-}
-
-macro_rules! impl_mul_assign_primitive {
-	($lhs: ty) => {
-		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<f64> for $lhs {
-			#[track_caller]
-			fn mul_assign(&mut self, other: f64) {
-				self.mul_assign(Scale(LhsT::from_f64_impl(other)))
-			}
-		}
-		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> DivAssign<f64> for $lhs {
-			#[track_caller]
-			fn div_assign(&mut self, other: f64) {
-				self.mul_assign(Scale(LhsT::from_f64_impl(f64::recip(other))))
-			}
-		}
-	};
-}
-
-macro_rules! impl_mul_assign_scalar {
-	($lhs: ty, $rhs: ty) => {
-		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<$rhs> for $lhs {
-			#[track_caller]
-			fn mul_assign(&mut self, other: $rhs) {
-				self.as_mut().mul_assign(other)
-			}
-		}
-
-		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<&$rhs> for $lhs {
-			#[track_caller]
-			fn mul_assign(&mut self, other: &$rhs) {
-				self.as_mut().mul_assign(other.clone())
-			}
-		}
-	};
-}
-
-macro_rules! impl_div_assign_scalar {
-	($lhs: ty, $rhs: ty) => {
-		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> DivAssign<$rhs> for $lhs {
-			#[track_caller]
-			fn div_assign(&mut self, other: $rhs) {
-				self.as_mut().mul_assign(Scale(recip(&other.0)))
-			}
-		}
-		impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> DivAssign<&$rhs> for $lhs {
-			#[track_caller]
-			fn div_assign(&mut self, other: &$rhs) {
-				self.as_mut().mul_assign(Scale(recip(&other.0)))
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_scalar_mul {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.mul(other.as_ref())
-			}
-		}
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<$rhs> for &$lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.clone().mul(other.as_ref())
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_mul_scalar {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(other)
-			}
-		}
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<&$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: &$rhs) -> Self::Output {
-				self.as_ref().mul(other.clone())
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_div_scalar {
-	($lhs: ty, $rhs: ty, $out: ty) => {
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Div<$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn div(self, other: $rhs) -> Self::Output {
-				self.as_ref().mul(Scale(recip(&other.0)))
-			}
-		}
-		impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Div<&$rhs> for $lhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn div(self, other: &$rhs) -> Self::Output {
-				self.as_ref().mul(Scale(recip(&other.0)))
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_mul_primitive {
-	($rhs: ty, $out: ty) => {
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<$rhs> for f64 {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: $rhs) -> Self::Output {
-				Scale(T::from_f64_impl(self)).mul(other)
-			}
-		}
-
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<f64> for $rhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn mul(self, other: f64) -> Self::Output {
-				self.mul(Scale(T::from_f64_impl(other)))
-			}
-		}
-		impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Div<f64> for $rhs {
-			type Output = $out;
-
-			#[track_caller]
-			fn div(self, other: f64) -> Self::Output {
-				self.mul(Scale(T::from_f64_impl(f64::recip(other))))
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_mul_assign_primitive {
-	($lhs: ty) => {
-		impl<LhsT: ComplexField, Len: Shape> MulAssign<f64> for $lhs {
-			#[track_caller]
-			fn mul_assign(&mut self, other: f64) {
-				self.mul_assign(Scale(LhsT::from_f64_impl(other)))
-			}
-		}
-		impl<LhsT: ComplexField, Len: Shape> DivAssign<f64> for $lhs {
-			#[track_caller]
-			fn div_assign(&mut self, other: f64) {
-				self.mul_assign(Scale(LhsT::from_f64_impl(f64::recip(other))))
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_mul_assign_scalar {
-	($lhs: ty, $rhs: ty) => {
-		impl<LhsT: ComplexField, Len: Shape> MulAssign<$rhs> for $lhs {
-			#[track_caller]
-			fn mul_assign(&mut self, other: $rhs) {
-				self.as_mut().mul_assign(other)
-			}
-		}
-		impl<LhsT: ComplexField, Len: Shape> MulAssign<&$rhs> for $lhs {
-			#[track_caller]
-			fn mul_assign(&mut self, other: &$rhs) {
-				self.as_mut().mul_assign(other.clone())
-			}
-		}
-	};
-}
-
-macro_rules! impl_1d_div_assign_scalar {
-	($lhs: ty, $rhs: ty) => {
-		impl<LhsT: ComplexField, Len: Shape> DivAssign<$rhs> for $lhs {
-			#[track_caller]
-			fn div_assign(&mut self, other: $rhs) {
-				self.as_mut().mul_assign(Scale(recip(&other.0)))
-			}
-		}
-		impl<LhsT: ComplexField, Len: Shape> DivAssign<&$rhs> for $lhs {
-			#[track_caller]
-			fn div_assign(&mut self, other: &$rhs) {
-				self.as_mut().mul_assign(Scale(recip(&other.0)))
-			}
-		}
-	};
-}
-
 macro_rules! impl_binop {
 	({$(
 		impl<$($ty_param: ident  $(: $bound: tt)?),* $(,)?>
@@ -1394,853 +1067,2518 @@ mod matmul {
 	});
 }
 
-impl<I: Index> Mul<PermRef<'_, I>> for PermRef<'_, I> {
-	type Output = Perm<I>;
+impl_binop!({
+	impl<I: Index, N: Shape, L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, N>>), R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, N>>)>
+		Mul<perm::generic::Perm<R>> for perm::generic::Perm<L>
+	{
+		type Output = Perm<I, N>;
 
-	#[track_caller]
-	fn mul(self, rhs: PermRef<'_, I>) -> Self::Output {
-		let lhs = self;
-		assert!(lhs.len() == rhs.len());
-		let truncate = <I::Signed as SignedIndex>::truncate;
-		let mut fwd = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
-		let mut inv = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<I: Index>(lhs: PermRef<'_, I>, rhs: PermRef<'_, I>) -> Perm<I> {
+				assert!(lhs.len() == rhs.len());
+				let truncate = <I::Signed as SignedIndex>::truncate;
+				let mut fwd = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+				let mut inv = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
 
-		for (fwd, rhs) in fwd.iter_mut().zip(rhs.arrays().0) {
-			*fwd = lhs.arrays().0[rhs.to_signed().zx()];
+				for (fwd, rhs) in fwd.iter_mut().zip(rhs.arrays().0) {
+					*fwd = lhs.arrays().0[rhs.to_signed().zx()];
+				}
+				for (i, fwd) in fwd.iter().enumerate() {
+					inv[fwd.to_signed().zx()] = I::from_signed(I::Signed::truncate(i));
+				}
+
+				Perm::new_checked(fwd, inv, lhs.len())
+			}
+
+			let lhs = self.rb();
+			let rhs = rhs.rb();
+			let N = lhs.len();
+			let n = N.unbound();
+			imp(lhs.as_shape(n), rhs.as_shape(n)).into_shape(N)
 		}
-		for (i, fwd) in fwd.iter().enumerate() {
-			inv[fwd.to_signed().zx()] = I::from_signed(I::Signed::truncate(i));
-		}
-
-		Perm::new_checked(fwd, inv, lhs.len())
 	}
-}
 
-// impl_perm_perm!(PermRef<'_, I>, PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(PermRef<'_, I>, Perm<I>, Perm<I>);
-impl_perm_perm!(PermRef<'_, I>, &PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(PermRef<'_, I>, &Perm<I>, Perm<I>);
-impl_perm_perm!(&PermRef<'_, I>, PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(&PermRef<'_, I>, Perm<I>, Perm<I>);
-impl_perm_perm!(&PermRef<'_, I>, &PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(&PermRef<'_, I>, &Perm<I>, Perm<I>);
+	impl<
+		I: Index,
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RRStride: Stride,
+		RCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Rows>>),
+		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+	> Mul<mat::generic::Mat<R>> for perm::generic::Perm<L>
+	{
+		type Output = Mat<T, Rows, Cols>;
 
-impl_perm_perm!(Perm<I>, PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(Perm<I>, Perm<I>, Perm<I>);
-impl_perm_perm!(Perm<I>, &PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(Perm<I>, &Perm<I>, Perm<I>);
-impl_perm_perm!(&Perm<I>, PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(&Perm<I>, Perm<I>, Perm<I>);
-impl_perm_perm!(&Perm<I>, &PermRef<'_, I>, Perm<I>);
-impl_perm_perm!(&Perm<I>, &Perm<I>, Perm<I>);
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: PermRef<'_, I>, rhs: MatRef<'_, RT>) -> Mat<T> {
+				with_dim!(M, rhs.nrows());
+				with_dim!(N, rhs.ncols());
+				let rhs = rhs.as_shape(M, N);
+				let lhs = lhs.as_shape(M);
 
-impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<MatRef<'_, TT, Rows, Cols>> for PermRef<'_, I, Rows> {
-	type Output = Mat<T, Rows, Cols>;
+				let mut out = Mat::zeros(rhs.nrows(), rhs.ncols());
 
-	#[track_caller]
-	#[math]
-	fn mul(self, rhs: MatRef<'_, TT, Rows, Cols>) -> Self::Output {
-		let lhs = self;
+				let fwd = lhs.bound_arrays().0;
 
-		assert!(lhs.len() == rhs.nrows());
-		let mut out = Mat::zeros(rhs.nrows(), rhs.ncols());
+				for j in rhs.ncols().indices() {
+					for i in rhs.nrows().indices() {
+						let fwd = fwd[i];
+						let rhs = rhs.at(fwd.zx(), j);
 
-		fn imp<'ROWS, 'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
-			mut out: MatMut<'_, T, Dim<'ROWS>, Dim<'COLS>>,
-			lhs: PermRef<'_, I, Dim<'ROWS>>,
-			rhs: MatRef<'_, TT, Dim<'ROWS>, Dim<'COLS>>,
-		) {
-			let fwd = lhs.bound_arrays().0;
+						out[(i, j)] = Conj::apply(rhs);
+					}
+				}
 
-			for j in rhs.ncols().indices() {
+				out.into_shape(*M, *N)
+			}
+
+			let lhs = self.rb();
+			let rhs = rhs.rb();
+			let m = rhs.nrows().unbound();
+			imp(lhs.as_shape(m), rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+		}
+	}
+
+	impl<
+		I: Index,
+		T: ComplexField,
+		Rows: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RRStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Rows>>),
+		R: (for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>),
+	> Mul<col::generic::Col<R>> for perm::generic::Perm<L>
+	{
+		type Output = Col<T, Rows>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: PermRef<'_, I>, rhs: ColRef<'_, RT>) -> Col<T> {
+				with_dim!(M, rhs.nrows());
+				let rhs = rhs.as_row_shape(M);
+				let lhs = lhs.as_shape(M);
+
+				let mut out = Col::zeros(rhs.nrows());
+
+				let fwd = lhs.bound_arrays().0;
+
 				for i in rhs.nrows().indices() {
 					let fwd = fwd[i];
-					let rhs = rhs.at(fwd.zx(), j);
+					let rhs = rhs.at(fwd.zx());
 
-					*out.as_mut().at_mut(i, j) = Conj::apply(rhs);
+					out[i] = Conj::apply(rhs);
 				}
+
+				out.into_row_shape(*M)
 			}
+
+			let lhs = self.rb();
+			let rhs = rhs.rb();
+			let m = rhs.nrows().unbound();
+			imp(lhs.as_shape(m), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
 		}
-
-		with_dim!(M, out.nrows().unbound());
-		with_dim!(N, out.ncols().unbound());
-		imp(out.as_mut().as_shape_mut(M, N), lhs.as_shape(M), rhs.as_shape(M, N));
-
-		out
 	}
-}
 
-// impl_perm!(PermRef<'_, I>, MatRef<'_,  TT>, Mat< T>);
-impl_perm!(PermRef<'_, I, Rows>, MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(PermRef<'_, I, Rows>, Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(PermRef<'_, I, Rows>, &MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(PermRef<'_, I, Rows>, &MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(PermRef<'_, I, Rows>, &Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&PermRef<'_, I, Rows>, MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&PermRef<'_, I, Rows>, MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&PermRef<'_, I, Rows>, Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&PermRef<'_, I, Rows>, &MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&PermRef<'_, I, Rows>, &MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&PermRef<'_, I, Rows>, &Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
+	impl<
+		I: Index,
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+		R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Cols>>),
+	> Mul<perm::generic::Perm<R>> for mat::generic::Mat<L>
+	{
+		type Output = Mat<T, Rows, Cols>;
 
-impl_perm!(Perm<I, Rows>, MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Perm<I, Rows>, MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Perm<I, Rows>, Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Perm<I, Rows>, &MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Perm<I, Rows>, &MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Perm<I, Rows>, &Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Perm<I, Rows>, MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Perm<I, Rows>, MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Perm<I, Rows>, Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Perm<I, Rows>, &MatRef<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Perm<I, Rows>, &MatMut<'_,  TT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Perm<I, Rows>, &Mat< TT, Rows, Cols>, Mat< T, Rows, Cols>);
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: PermRef<'_, I>) -> Mat<T> {
+				with_dim!(M, lhs.nrows());
+				with_dim!(N, lhs.ncols());
+				let lhs = lhs.as_shape(M, N);
+				let rhs = rhs.as_shape(N);
 
-impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<ColRef<'_, TT, Len>> for PermRef<'_, I, Len> {
-	type Output = Col<T, Len>;
+				let mut out = Mat::zeros(M, N);
 
-	#[track_caller]
-	#[math]
-	fn mul(self, rhs: ColRef<'_, TT, Len>) -> Self::Output {
-		let lhs = self;
+				let inv = rhs.bound_arrays().1;
 
-		assert!(lhs.len() == rhs.nrows());
-		let mut out = Col::zeros(rhs.nrows());
+				for j in N.indices() {
+					let inv = inv[j];
+					for i in M.indices() {
+						let lhs = lhs.at(i, inv.zx());
 
-		fn imp<'ROWS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
-			mut out: ColMut<'_, T, Dim<'ROWS>>,
-			lhs: PermRef<'_, I, Dim<'ROWS>>,
-			rhs: ColRef<'_, TT, Dim<'ROWS>>,
-		) {
-			let fwd = lhs.bound_arrays().0;
-
-			for i in rhs.nrows().indices() {
-				let fwd = fwd[i];
-				let rhs = rhs.at(fwd.zx());
-
-				*out.as_mut().at_mut(i) = Conj::apply(rhs);
-			}
-		}
-
-		with_dim!(M, out.nrows().unbound());
-		imp(out.as_mut().as_row_shape_mut(M), lhs.as_shape(M), rhs.as_row_shape(M));
-
-		out
-	}
-}
-
-// impl_perm!(PermRef<'_, I>, ColRef<'_,  TT>, Col< T>);
-impl_1d_perm!(PermRef<'_, I, Len>, ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(PermRef<'_, I, Len>, Col< TT, Len>, Col< T, Len>);
-impl_1d_perm!(PermRef<'_, I, Len>, &ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(PermRef<'_, I, Len>, &ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(PermRef<'_, I, Len>, &Col< TT, Len>, Col< T, Len>);
-impl_1d_perm!(&PermRef<'_, I, Len>, ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&PermRef<'_, I, Len>, ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&PermRef<'_, I, Len>, Col< TT, Len>, Col< T, Len>);
-impl_1d_perm!(&PermRef<'_, I, Len>, &ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&PermRef<'_, I, Len>, &ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&PermRef<'_, I, Len>, &Col< TT, Len>, Col< T, Len>);
-
-impl_1d_perm!(Perm<I, Len>, ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(Perm<I, Len>, ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(Perm<I, Len>, Col< TT, Len>, Col< T, Len>);
-impl_1d_perm!(Perm<I, Len>, &ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(Perm<I, Len>, &ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(Perm<I, Len>, &Col< TT, Len>, Col< T, Len>);
-impl_1d_perm!(&Perm<I, Len>, ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&Perm<I, Len>, ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&Perm<I, Len>, Col< TT, Len>, Col< T, Len>);
-impl_1d_perm!(&Perm<I, Len>, &ColRef<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&Perm<I, Len>, &ColMut<'_,  TT, Len>, Col< T, Len>);
-impl_1d_perm!(&Perm<I, Len>, &Col< TT, Len>, Col< T, Len>);
-
-impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<PermRef<'_, I, Cols>> for MatRef<'_, TT, Rows, Cols> {
-	type Output = Mat<T, Rows, Cols>;
-
-	#[track_caller]
-	#[math]
-	fn mul(self, rhs: PermRef<'_, I, Cols>) -> Self::Output {
-		let lhs = self;
-
-		assert!(lhs.ncols() == rhs.len());
-		let mut out = Mat::zeros(lhs.nrows(), lhs.ncols());
-
-		fn imp<'ROWS, 'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
-			mut out: MatMut<'_, T, Dim<'ROWS>, Dim<'COLS>>,
-			lhs: MatRef<'_, TT, Dim<'ROWS>, Dim<'COLS>>,
-			rhs: PermRef<'_, I, Dim<'COLS>>,
-		) {
-			let inv = rhs.bound_arrays().1;
-
-			for j in lhs.ncols().indices() {
-				let inv = inv[j];
-				for i in lhs.nrows().indices() {
-					let lhs = lhs.at(i, inv.zx());
-
-					*out.as_mut().at_mut(i, j) = Conj::apply(lhs);
+						out[(i, j)] = Conj::apply(lhs);
+					}
 				}
+
+				out.into_shape(*M, *N)
 			}
+
+			let lhs = self.rb();
+			let rhs = rhs.rb();
+			let n = lhs.ncols().unbound();
+			imp(lhs.as_dyn().as_dyn_stride(), rhs.as_shape(n)).into_shape(lhs.nrows(), lhs.ncols())
 		}
-
-		with_dim!(M, out.nrows().unbound());
-		with_dim!(N, out.ncols().unbound());
-		imp(out.as_shape_mut(M, N), lhs.as_shape(M, N), rhs.as_shape(N));
-
-		out
 	}
-}
 
-// impl_perm!(MatRef<'_,  TT>, PermRef<'_, I>, Mat< T>);
-impl_perm!(MatRef<'_,  TT, Rows, Cols>, Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(MatRef<'_,  TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(MatRef<'_,  TT, Rows, Cols>, &Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatRef<'_,  TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatRef<'_,  TT, Rows, Cols>, Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatRef<'_,  TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatRef<'_,  TT, Rows, Cols>, &Perm<I, Cols>, Mat< T, Rows, Cols>);
+	impl<
+		I: Index,
+		T: ComplexField,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>),
+		R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Cols>>),
+	> Mul<perm::generic::Perm<R>> for row::generic::Row<L>
+	{
+		type Output = Row<T, Cols>;
 
-impl_perm!(MatMut<'_,  TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(MatMut<'_,  TT, Rows, Cols>, Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(MatMut<'_,  TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(MatMut<'_,  TT, Rows, Cols>, &Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatMut<'_,  TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatMut<'_,  TT, Rows, Cols>, Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatMut<'_,  TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&MatMut<'_,  TT, Rows, Cols>, &Perm<I, Cols>, Mat< T, Rows, Cols>);
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: PermRef<'_, I>) -> Row<T> {
+				with_dim!(N, lhs.ncols());
+				let lhs = lhs.as_col_shape(N);
+				let rhs = rhs.as_shape(N);
 
-impl_perm!(Mat< TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Mat< TT, Rows, Cols>, Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Mat< TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(Mat< TT, Rows, Cols>, &Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Mat< TT, Rows, Cols>, PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Mat< TT, Rows, Cols>, Perm<I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Mat< TT, Rows, Cols>, &PermRef<'_, I, Cols>, Mat< T, Rows, Cols>);
-impl_perm!(&Mat< TT, Rows, Cols>, &Perm<I, Cols>, Mat< T, Rows, Cols>);
+				let mut out = Row::zeros(N);
 
-impl<I: Index, T: ComplexField, TT: Conjugate<Canonical = T>, Len: Shape> Mul<PermRef<'_, I, Len>> for RowRef<'_, TT, Len> {
-	type Output = Row<T, Len>;
+				let inv = rhs.bound_arrays().1;
 
-	#[track_caller]
-	#[math]
-	fn mul(self, rhs: PermRef<'_, I, Len>) -> Self::Output {
-		let lhs = self;
+				for j in N.indices() {
+					let inv = inv[j];
+					let lhs = lhs.at(inv.zx());
+					out[j] = Conj::apply(lhs);
+				}
 
-		assert!(lhs.ncols() == rhs.len());
-		let mut out = Row::zeros(lhs.ncols());
-
-		fn imp<'COLS, I: Index, T: ComplexField, TT: Conjugate<Canonical = T>>(
-			mut out: RowMut<'_, T, Dim<'COLS>>,
-			lhs: RowRef<'_, TT, Dim<'COLS>>,
-			rhs: PermRef<'_, I, Dim<'COLS>>,
-		) {
-			let inv = rhs.bound_arrays().1;
-
-			for j in lhs.ncols().indices() {
-				let inv = inv[j];
-				let lhs = lhs.at(inv.zx());
-
-				*out.as_mut().at_mut(j) = Conj::apply(lhs)
+				out.into_col_shape(*N)
 			}
+
+			let lhs = self.rb();
+			let rhs = rhs.rb();
+			let n = lhs.ncols().unbound();
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_shape(n)).into_col_shape(lhs.ncols())
 		}
-
-		with_dim!(N, out.ncols().unbound());
-		imp(out.as_col_shape_mut(N), lhs.as_col_shape(N), rhs.as_shape(N));
-		out
 	}
-}
+});
 
-// impl_perm!(RowRef<'_,  TT>, PermRef<'_, I>, Row< T>);
-impl_1d_perm!(RowRef<'_,  TT, Len>, Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(RowRef<'_,  TT, Len>, &PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(RowRef<'_,  TT, Len>, &Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowRef<'_,  TT, Len>, PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowRef<'_,  TT, Len>, Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowRef<'_,  TT, Len>, &PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowRef<'_,  TT, Len>, &Perm<I, Len>, Row< T, Len>);
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+	> Mul<Scale<T>> for mat::generic::Mat<L>
+	{
+		type Output = Mat<T, Rows, Cols>;
 
-impl_1d_perm!(RowMut<'_,  TT, Len>, PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(RowMut<'_,  TT, Len>, Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(RowMut<'_,  TT, Len>, &PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(RowMut<'_,  TT, Len>, &Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowMut<'_,  TT, Len>, PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowMut<'_,  TT, Len>, Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowMut<'_,  TT, Len>, &PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(&RowMut<'_,  TT, Len>, &Perm<I, Len>, Row< T, Len>);
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+				zip!(lhs).map(|unzip!(x)| Conj::apply(x) * rhs)
+			}
+			let lhs = self.rb();
+			let rhs = &rhs.0;
 
-impl_1d_perm!(Row< TT, Len>, PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(Row< TT, Len>, Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(Row< TT, Len>, &PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(Row< TT, Len>, &Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(&Row< TT, Len>, PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(&Row< TT, Len>, Perm<I, Len>, Row< T, Len>);
-impl_1d_perm!(&Row< TT, Len>, &PermRef<'_, I, Len>, Row< T, Len>);
-impl_1d_perm!(&Row< TT, Len>, &Perm<I, Len>, Row< T, Len>);
-
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<Scale<T>> for MatRef<'_, LhsT, Rows, Cols> {
-	type Output = Mat<T, Rows, Cols>;
-
-	#[math]
-	fn mul(self, rhs: Scale<T>) -> Self::Output {
-		let rhs = &rhs.0;
-		let lhs = self;
-		zip!(lhs).map(|unzip!(x)| Conj::apply(x) * rhs)
+			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+		}
 	}
-}
 
-impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<MatRef<'_, RhsT, Rows, Cols>> for Scale<T> {
-	type Output = Mat<T, Rows, Cols>;
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+	> Div<Scale<T>> for mat::generic::Mat<L>
+	{
+		type Output = Mat<T, Rows, Cols>;
 
-	#[math]
-	fn mul(self, rhs: MatRef<'_, RhsT, Rows, Cols>) -> Self::Output {
-		let lhs = &self.0;
-		zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+		}
 	}
-}
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<Scale<T>> for ColRef<'_, LhsT, Len> {
-	type Output = Col<T, Len>;
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RRStride: Stride,
+		RCStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+	> Mul<mat::generic::Mat<R>> for Scale<T>
+	{
+		type Output = Mat<T, Rows, Cols>;
 
-	#[math]
-	fn mul(self, rhs: Scale<T>) -> Self::Output {
-		let rhs = &rhs.0;
-		let lhs = self;
-		zip!(lhs).map(|unzip!(x)| Conj::apply(x) * *rhs)
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: MatRef<'_, RT>) -> Mat<T> {
+				zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
+			}
+			let lhs = &self.0;
+			let rhs = rhs.rb();
+
+			imp(lhs, rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+		}
 	}
-}
-impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<ColRef<'_, RhsT, Len>> for Scale<T> {
-	type Output = Col<T, Len>;
+});
 
-	#[math]
-	fn mul(self, rhs: ColRef<'_, RhsT, Len>) -> Self::Output {
-		let lhs = &self.0;
-		zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>),
+	> Mul<Scale<T>> for col::generic::Col<L>
+	{
+		type Output = Col<T, Rows>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				zip!(lhs).map(|unzip!(x)| Conj::apply(x) * rhs)
+			}
+			let lhs = self.rb();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+		}
 	}
-}
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<Scale<T>> for RowRef<'_, LhsT, Len> {
-	type Output = Row<T, Len>;
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>),
+	> Div<Scale<T>> for col::generic::Col<L>
+	{
+		type Output = Col<T, Rows>;
 
-	#[math]
-	fn mul(self, rhs: Scale<T>) -> Self::Output {
-		let rhs = &rhs.0;
-		let lhs = self;
-		zip!(lhs).map(|unzip!(x)| Conj::apply(x) * *rhs)
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+		}
 	}
-}
-impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<RowRef<'_, RhsT, Len>> for Scale<T> {
-	type Output = Row<T, Len>;
 
-	#[math]
-	fn mul(self, rhs: RowRef<'_, RhsT, Len>) -> Self::Output {
-		let lhs = &self.0;
-		zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RRStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>),
+	> Mul<col::generic::Col<R>> for Scale<T>
+	{
+		type Output = Col<T, Rows>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+				zip!(rhs).map(|unzip!(x)| *lhs * Conj::apply(x))
+			}
+			let lhs = &self.0;
+			let rhs = rhs.rb();
+
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
+		}
 	}
-}
+});
 
-impl<T: ComplexField, LhsT: Conjugate<Canonical = T>, Len: Shape> Mul<Scale<T>> for DiagRef<'_, LhsT, Len> {
-	type Output = Diag<T, Len>;
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>),
+	> Mul<Scale<T>> for row::generic::Row<L>
+	{
+		type Output = Row<T, Cols>;
 
-	fn mul(self, rhs: Scale<T>) -> Self::Output {
-		(self.column_vector() * rhs).into_diagonal()
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+				(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
+			}
+			let lhs = self.rb();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+		}
 	}
-}
-impl<T: ComplexField, RhsT: Conjugate<Canonical = T>, Len: Shape> Mul<DiagRef<'_, RhsT, Len>> for Scale<T> {
-	type Output = Diag<T, Len>;
 
-	fn mul(self, rhs: DiagRef<'_, RhsT, Len>) -> Self::Output {
-		(self * rhs.column_vector()).into_diagonal()
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>),
+	> Div<Scale<T>> for row::generic::Row<L>
+	{
+		type Output = Row<T, Cols>;
+
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+		}
 	}
-}
 
-impl_mul_scalar!(MatMut<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_mul_scalar!(Mat< LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_mul_scalar!(&MatRef<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_mul_scalar!(&MatMut<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_mul_scalar!(&Mat< LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RCStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>),
+	> Mul<row::generic::Row<R>> for Scale<T>
+	{
+		type Output = Row<T, Cols>;
 
-impl_div_scalar!(MatRef<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_div_scalar!(MatMut<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_div_scalar!(Mat< LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_div_scalar!(&MatRef<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_div_scalar!(&MatMut<'_,  LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
-impl_div_scalar!(&Mat< LhsT, Rows, Cols>, Scale<T>, Mat< T, Rows, Cols>);
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: RowRef<'_, RT>) -> Row<T> {
+				(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
+			}
+			let lhs = &self.0;
+			let rhs = rhs.rb();
 
-impl_scalar_mul!(Scale<T>, MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_scalar_mul!(Scale<T>, Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_scalar_mul!(Scale<T>, &MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_scalar_mul!(Scale<T>, &MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_scalar_mul!(Scale<T>, &Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-
-impl_mul_primitive!(MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_mul_primitive!(MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_mul_primitive!(Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_mul_primitive!(&MatRef<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_mul_primitive!(&MatMut<'_,  RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-impl_mul_primitive!(&Mat< RhsT, Rows, Cols>, Mat< T, Rows, Cols>);
-
-// impl_mul_scalar!(ColRef<'_,  LhsT>, Scale<T>, Col< T>);
-impl_1d_mul_scalar!(ColMut<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_mul_scalar!(Col< LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_mul_scalar!(&ColRef<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_mul_scalar!(&ColMut<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_mul_scalar!(&Col< LhsT, Len>, Scale<T>, Col< T, Len>);
-
-impl_1d_div_scalar!(ColRef<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_div_scalar!(ColMut<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_div_scalar!(Col< LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_div_scalar!(&ColRef<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_div_scalar!(&ColMut<'_,  LhsT, Len>, Scale<T>, Col< T, Len>);
-impl_1d_div_scalar!(&Col< LhsT, Len>, Scale<T>, Col< T, Len>);
-
-impl_1d_scalar_mul!(Scale<T>, ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, Col< RhsT, Len>, Col< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &Col< RhsT, Len>, Col< T, Len>);
-
-impl_1d_mul_primitive!(ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_mul_primitive!(ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_mul_primitive!(Col< RhsT, Len>, Col< T, Len>);
-impl_1d_mul_primitive!(&ColRef<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_mul_primitive!(&ColMut<'_,  RhsT, Len>, Col< T, Len>);
-impl_1d_mul_primitive!(&Col< RhsT, Len>, Col< T, Len>);
-
-impl_1d_mul_scalar!(RowMut<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_mul_scalar!(Row< LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_mul_scalar!(&RowRef<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_mul_scalar!(&RowMut<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_mul_scalar!(&Row< LhsT, Len>, Scale<T>, Row< T, Len>);
-
-impl_1d_div_scalar!(RowRef<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_div_scalar!(RowMut<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_div_scalar!(Row< LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_div_scalar!(&RowRef<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_div_scalar!(&RowMut<'_,  LhsT, Len>, Scale<T>, Row< T, Len>);
-impl_1d_div_scalar!(&Row< LhsT, Len>, Scale<T>, Row< T, Len>);
-
-impl_1d_scalar_mul!(Scale<T>, RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, Row< RhsT, Len>, Row< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &Row< RhsT, Len>, Row< T, Len>);
-
-impl_1d_mul_primitive!(RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_mul_primitive!(RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_mul_primitive!(Row< RhsT, Len>, Row< T, Len>);
-impl_1d_mul_primitive!(&RowRef<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_mul_primitive!(&RowMut<'_,  RhsT, Len>, Row< T, Len>);
-impl_1d_mul_primitive!(&Row< RhsT, Len>, Row< T, Len>);
-
-impl_1d_mul_scalar!(DiagMut<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_mul_scalar!(Diag< LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_mul_scalar!(&DiagRef<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_mul_scalar!(&DiagMut<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_mul_scalar!(&Diag< LhsT, Len>, Scale<T>, Diag< T, Len>);
-
-impl_1d_div_scalar!(DiagRef<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_div_scalar!(DiagMut<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_div_scalar!(Diag< LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_div_scalar!(&DiagRef<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_div_scalar!(&DiagMut<'_,  LhsT, Len>, Scale<T>, Diag< T, Len>);
-impl_1d_div_scalar!(&Diag< LhsT, Len>, Scale<T>, Diag< T, Len>);
-
-impl_1d_scalar_mul!(Scale<T>, DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_scalar_mul!(Scale<T>, &Diag< RhsT, Len>, Diag< T, Len>);
-
-impl_1d_mul_primitive!(DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_mul_primitive!(DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_mul_primitive!(Diag< RhsT, Len>, Diag< T, Len>);
-impl_1d_mul_primitive!(&DiagRef<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_mul_primitive!(&DiagMut<'_,  RhsT, Len>, Diag< T, Len>);
-impl_1d_mul_primitive!(&Diag< RhsT, Len>, Diag< T, Len>);
-
-impl<LhsT: ComplexField, Rows: Shape, Cols: Shape> MulAssign<Scale<LhsT>> for MatMut<'_, LhsT, Rows, Cols> {
-	#[math]
-	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
-		let rhs = &rhs.0;
-
-		zip!(self.rb_mut()).for_each(|unzip!(x)| *x = *x * *rhs)
+			imp(lhs, rhs.as_dyn_cols().as_dyn_stride()).into_col_shape(rhs.ncols())
+		}
 	}
-}
-impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for ColMut<'_, LhsT, Len> {
-	#[math]
-	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
-		let rhs = &rhs.0;
+});
 
-		zip!(self.rb_mut()).for_each(|unzip!(x)| *x = *x * *rhs)
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Dim: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
+	> Mul<Scale<T>> for diag::generic::Diag<L>
+	{
+		type Output = Diag<T, Dim>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale::from_ref(rhs)
+			}
+			let lhs = self.rb().column_vector();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+		}
 	}
-}
-impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for RowMut<'_, LhsT, Len> {
-	#[math]
-	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
-		let rhs = &rhs.0;
 
-		zip!(self.rb_mut()).for_each(|unzip!(x)| *x = *x * *rhs)
+	impl<
+		T: ComplexField,
+		Dim: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
+	> Div<Scale<T>> for diag::generic::Diag<L>
+	{
+		type Output = Diag<T, Dim>;
+
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb().column_vector();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+		}
 	}
-}
-impl<LhsT: ComplexField, Len: Shape> MulAssign<Scale<LhsT>> for DiagMut<'_, LhsT, Len> {
-	fn mul_assign(&mut self, rhs: Scale<LhsT>) {
-		let mut this = self.rb_mut().column_vector_mut();
-		this *= rhs;
+
+	impl<
+		T: ComplexField,
+		Dim: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>),
+	> Mul<diag::generic::Diag<R>> for Scale<T>
+	{
+		type Output = Diag<T, Dim>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+				Scale::from_ref(lhs) * rhs
+			}
+			let lhs = &self.0;
+			let rhs = rhs.rb().column_vector();
+
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows()).into_diagonal()
+		}
 	}
-}
+});
 
-impl_mul_assign_scalar!(Mat< LhsT, Rows, Cols>, Scale<LhsT>);
-impl_1d_mul_assign_scalar!(Col< LhsT, Len>, Scale<LhsT>);
-impl_1d_mul_assign_scalar!(Row< LhsT, Len>, Scale<LhsT>);
-impl_1d_mul_assign_scalar!(Diag< LhsT, Len>, Scale<LhsT>);
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+	> Mul<f64> for mat::generic::Mat<L>
+	{
+		type Output = Mat<T, Rows, Cols>;
 
-impl_div_assign_scalar!(MatMut<'_, LhsT, Rows, Cols>, Scale<LhsT>);
-impl_div_assign_scalar!(Mat< LhsT, Rows, Cols>, Scale<LhsT>);
-impl_1d_div_assign_scalar!(ColMut<'_, LhsT, Len>, Scale<LhsT>);
-impl_1d_div_assign_scalar!(Col< LhsT, Len>, Scale<LhsT>);
-impl_1d_div_assign_scalar!(RowMut<'_, LhsT, Len>, Scale<LhsT>);
-impl_1d_div_assign_scalar!(Row< LhsT, Len>, Scale<LhsT>);
-impl_1d_div_assign_scalar!(DiagMut<'_, LhsT, Len>, Scale<LhsT>);
-impl_1d_div_assign_scalar!(Diag< LhsT, Len>, Scale<LhsT>);
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+				lhs * Scale::from_ref(rhs)
+			}
+			let lhs = self.rb();
+			let rhs = &from_f64::<T>(*rhs);
 
-impl_mul_assign_primitive!(MatMut<'_, LhsT, Rows, Cols>);
-impl_mul_assign_primitive!(Mat< LhsT, Rows, Cols>);
-impl_1d_mul_assign_primitive!(ColMut<'_, LhsT, Len>);
-impl_1d_mul_assign_primitive!(Col< LhsT, Len>);
-impl_1d_mul_assign_primitive!(RowMut<'_, LhsT, Len>);
-impl_1d_mul_assign_primitive!(Row< LhsT, Len>);
-impl_1d_mul_assign_primitive!(DiagMut<'_, LhsT, Len>);
-impl_1d_mul_assign_primitive!(Diag< LhsT, Len>);
+			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+	> Div<f64> for mat::generic::Mat<L>
+	{
+		type Output = Mat<T, Rows, Cols>;
+
+		fn div(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+				lhs * Scale(recip(rhs))
+			}
+			let lhs = self.rb();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RRStride: Stride,
+		RCStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+	> Mul<mat::generic::Mat<R>> for f64
+	{
+		type Output = Mat<T, Rows, Cols>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: MatRef<'_, RT>) -> Mat<T> {
+				Scale::from_ref(lhs) * rhs
+			}
+			let lhs = &from_f64::<T>(*self);
+			let rhs = rhs.rb();
+
+			imp(lhs, rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+		}
+	}
+});
+
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>),
+	> Mul<f64> for col::generic::Col<L>
+	{
+		type Output = Col<T, Rows>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale::from_ref(rhs)
+			}
+			let lhs = self.rb();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LRStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = col::Ref<'a, LT, Rows, LRStride>>),
+	> Div<f64> for col::generic::Col<L>
+	{
+		type Output = Col<T, Rows>;
+
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RRStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Rows, RRStride>>),
+	> Mul<col::generic::Col<R>> for f64
+	{
+		type Output = Col<T, Rows>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+				Scale::from_ref(lhs) * rhs
+			}
+			let lhs = &from_f64::<T>(*self);
+			let rhs = rhs.rb();
+
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
+		}
+	}
+});
+
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>),
+	> Mul<f64> for row::generic::Row<L>
+	{
+		type Output = Row<T, Cols>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+				(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
+			}
+			let lhs = self.rb();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LCStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Cols, LCStride>>),
+	> Div<f64> for row::generic::Row<L>
+	{
+		type Output = Row<T, Cols>;
+
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RCStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = row::Ref<'a, RT, Cols, RCStride>>),
+	> Mul<row::generic::Row<R>> for f64
+	{
+		type Output = Row<T, Cols>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: RowRef<'_, RT>) -> Row<T> {
+				(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
+			}
+			let lhs = &from_f64::<T>(*self);
+			let rhs = rhs.rb();
+
+			imp(lhs, rhs.as_dyn_cols().as_dyn_stride()).into_col_shape(rhs.ncols())
+		}
+	}
+});
+
+impl_binop!({
+	impl<
+		T: ComplexField,
+		Dim: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
+	> Mul<f64> for diag::generic::Diag<L>
+	{
+		type Output = Diag<T, Dim>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale::from_ref(rhs)
+			}
+			let lhs = self.rb().column_vector();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Dim: Shape,
+		LT: (Conjugate<Canonical = T>),
+		LStride: Stride,
+		L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
+	> Div<f64> for diag::generic::Diag<L>
+	{
+		type Output = Diag<T, Dim>;
+
+		fn div(self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+				lhs * Scale(recip(*rhs))
+			}
+			let lhs = self.rb().column_vector();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Dim: Shape,
+		RT: (Conjugate<Canonical = T>),
+		RStride: Stride,
+		R: (for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>),
+	> Mul<diag::generic::Diag<R>> for f64
+	{
+		type Output = Diag<T, Dim>;
+
+		fn mul(self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+				Scale::from_ref(lhs) * rhs
+			}
+			let lhs = &from_f64::<T>(*self);
+			let rhs = rhs.rb().column_vector();
+
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows()).into_diagonal()
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+	> MulAssign<Scale<T>> for mat::generic::Mat<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(lhs: MatMut<'_, T>, rhs: &T) {
+				zip!(lhs).for_each(|unzip!(x)| *x = *x * *rhs)
+			}
+			let lhs = self.rb_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+	> DivAssign<Scale<T>> for mat::generic::Mat<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: MatMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> MulAssign<Scale<T>>
+		for col::generic::Col<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(lhs: ColMut<'_, T>, rhs: &T) {
+				zip!(lhs).for_each(|unzip!(x)| *x = *x * *rhs)
+			}
+			let lhs = self.rb_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> DivAssign<Scale<T>>
+		for col::generic::Col<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: ColMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> MulAssign<Scale<T>>
+		for row::generic::Row<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(lhs: RowMut<'_, T>, rhs: &T) {
+				let mut lhs = lhs.transpose_mut();
+				lhs *= Scale::from_ref(rhs);
+			}
+			let lhs = self.rb_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> DivAssign<Scale<T>>
+		for row::generic::Row<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: RowMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> MulAssign<Scale<T>>
+		for diag::generic::Diag<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(mut lhs: ColMut<'_, T>, rhs: &T) {
+				lhs *= Scale::from_ref(rhs);
+			}
+			let lhs = self.rb_mut().column_vector_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> DivAssign<Scale<T>>
+		for diag::generic::Diag<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: ColMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut().column_vector_mut();
+			let rhs = &rhs.0;
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+	> MulAssign<f64> for mat::generic::Mat<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(lhs: MatMut<'_, T>, rhs: &T) {
+				zip!(lhs).for_each(|unzip!(x)| *x = *x * *rhs)
+			}
+			let lhs = self.rb_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		Cols: Shape,
+		LRStride: Stride,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+	> DivAssign<f64> for mat::generic::Mat<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: MatMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> MulAssign<f64>
+		for col::generic::Col<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(lhs: ColMut<'_, T>, rhs: &T) {
+				zip!(lhs).for_each(|unzip!(x)| *x = *x * *rhs)
+			}
+			let lhs = self.rb_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> DivAssign<f64>
+		for col::generic::Col<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: ColMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> MulAssign<f64>
+		for row::generic::Row<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(lhs: RowMut<'_, T>, rhs: &T) {
+				let mut lhs = lhs.transpose_mut();
+				lhs *= Scale::from_ref(rhs);
+			}
+			let lhs = self.rb_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> DivAssign<f64>
+		for row::generic::Row<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: RowMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
+
+impl_op_assign!({
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> MulAssign<f64>
+		for diag::generic::Diag<L>
+	{
+		fn mul_assign(&mut self, rhs: _) {
+			#[track_caller]
+			#[math]
+			fn imp<T: ComplexField>(mut lhs: ColMut<'_, T>, rhs: &T) {
+				lhs *= Scale::from_ref(rhs);
+			}
+			let lhs = self.rb_mut().column_vector_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+
+	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> DivAssign<f64>
+		for diag::generic::Diag<L>
+	{
+		fn div_assign(&mut self, rhs: _) {
+			#[track_caller]
+			fn imp<T: ComplexField>(mut lhs: ColMut<'_, T>, rhs: &T) {
+				lhs *= Scale(recip(rhs));
+			}
+			let lhs = self.rb_mut().column_vector_mut();
+			let rhs = &from_f64::<T>(*rhs);
+
+			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
+		}
+	}
+});
 
 #[cfg(feature = "sparse")]
 mod sparse {
 	use super::*;
 	use crate::internal_prelude_sp::*;
+	use {csc_numeric as csc, csr_numeric as csr};
 
-	macro_rules! impl_scalar_mul_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
-				type Output = $out;
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Rows, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for Scale<T>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
 
+			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					self.mul(other.rb())
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseRowMatRef<'_, I, RT>) -> SparseRowMat<I, T> {
+					(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
 				}
+
+				let lhs = &self.0;
+				let rhs = rhs.rb();
+				imp(lhs, rhs.as_dyn()).into_shape(rhs.nrows(), rhs.ncols())
 			}
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for &$lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					self.clone().mul(other.rb())
-				}
-			}
-		};
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<SparseRowMatRef<'_, I, T, Rows, Cols>> for Scale<T::Canonical> {
-		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, T, Rows, Cols>) -> Self::Output {
-			self.mul(rhs.transpose()).into_transpose()
 		}
-	}
 
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<SparseColMatRef<'_, I, T, Rows, Cols>> for Scale<T::Canonical> {
-		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Rows, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for Scale<T>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
 
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, T, Rows, Cols>) -> Self::Output {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
-				lhs: Scale<T::Canonical>,
-				rhs: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
-			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = rhs.symbolic().to_owned().unwrap();
-				let mut val = alloc::vec::Vec::new();
-				val.resize(symbolic.row_idx().len(), zero());
-				let lhs = lhs.0;
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				#[math]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseColMatRef<'_, I, RT>) -> SparseColMat<I, T> {
+					with_dim!(M, rhs.nrows());
+					with_dim!(N, rhs.ncols());
 
-				for j in rhs.ncols().indices() {
-					for (val, rhs) in iter::zip(&mut val[symbolic.col_range(j)], rhs.val_of_col(j)) {
-						*val = lhs * Conj::apply(rhs);
+					let rhs = rhs.as_shape(M, N);
+
+					let symbolic = rhs.symbolic().to_owned().unwrap();
+					let mut val = alloc::vec::Vec::new();
+					val.resize(symbolic.row_idx().len(), zero());
+
+					for j in rhs.ncols().indices() {
+						for (val, rhs) in iter::zip(&mut val[symbolic.col_range(j)], rhs.val_of_col(j)) {
+							*val = *lhs * Conj::apply(rhs);
+						}
+					}
+
+					SparseColMat::new(symbolic, val).into_shape(*M, *N)
+				}
+
+				let lhs = &self.0;
+				let rhs = rhs.rb();
+				imp(lhs, rhs.as_dyn()).into_shape(rhs.nrows(), rhs.ncols())
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Cols>>),
+		> Mul<Scale<T>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+					(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
+				}
+
+				let rhs = &rhs.0;
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Cols>>),
+		> Mul<Scale<T>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				#[math]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+					with_dim!(M, lhs.nrows());
+					with_dim!(N, lhs.ncols());
+
+					let lhs = lhs.as_shape(M, N);
+
+					let symbolic = lhs.symbolic().to_owned().unwrap();
+					let mut val = alloc::vec::Vec::new();
+					val.resize(symbolic.row_idx().len(), zero());
+
+					for j in lhs.ncols().indices() {
+						for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], lhs.val_of_col(j)) {
+							*val = Conj::apply(lhs) * *rhs;
+						}
+					}
+
+					SparseColMat::new(symbolic, val).into_shape(*M, *N)
+				}
+
+				let rhs = &rhs.0;
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Cols>>),
+		> Div<Scale<T>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn div(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+					lhs * Scale(recip(rhs))
+				}
+
+				let rhs = &rhs.0;
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Cols>>),
+		> Div<Scale<T>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn div(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+					lhs * Scale(recip(rhs))
+				}
+
+				let rhs = &rhs.0;
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+	});
+
+	impl_op_assign!({
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
+			MulAssign<Scale<T>> for csr::generic::SparseRowMat<L>
+		{
+			fn mul_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+					let mut lhs = lhs.transpose_mut();
+					lhs *= Scale::from_ref(rhs);
+				}
+
+				let rhs = &rhs.0;
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
+			}
+		}
+
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
+			MulAssign<Scale<T>> for csc::generic::SparseColMat<L>
+		{
+			fn mul_assign(&mut self, rhs: _) {
+				#[track_caller]
+				#[math]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+					with_dim!(M, lhs.nrows());
+					with_dim!(N, lhs.ncols());
+
+					let mut lhs = lhs.as_shape_mut(M, N);
+
+					for j in lhs.ncols().indices() {
+						for val in lhs.rb_mut().val_of_col_mut(j) {
+							*val = *val * *rhs;
+						}
 					}
 				}
 
-				SparseColMat::new(symbolic, val)
+				let rhs = &rhs.0;
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
 			}
-
-			with_dim!(ROWS, rhs.nrows().unbound());
-			with_dim!(COLS, rhs.ncols().unbound());
-
-			imp(self, rhs.as_shape(ROWS, COLS)).into_shape(rhs.nrows(), rhs.ncols())
 		}
-	}
 
-	macro_rules! impl_mul_scalar_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
-				type Output = $out;
-
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
+			DivAssign<Scale<T>> for csr::generic::SparseRowMat<L>
+		{
+			fn div_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					self.rb().mul(other)
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+					let mut lhs = lhs.transpose_mut();
+					lhs /= Scale::from_ref(rhs);
 				}
+
+				let rhs = &rhs.0;
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
 			}
-
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn div(self, other: $rhs) -> Self::Output {
-					self.rb().div(other)
-				}
-			}
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<&$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, other: &$rhs) -> Self::Output {
-					self.rb().mul(other.clone())
-				}
-			}
-
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<&$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn div(self, other: &$rhs) -> Self::Output {
-					self.rb().div(other.clone())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_mul_assign_scalar_sparse {
-		($lhs: ty, $rhs: ty) => {
-			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> MulAssign<$rhs> for $lhs {
-				#[track_caller]
-				fn mul_assign(&mut self, other: $rhs) {
-					(*self).rb_mut().mul_assign(other)
-				}
-			}
-
-			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> DivAssign<$rhs> for $lhs {
-				#[track_caller]
-				fn div_assign(&mut self, other: $rhs) {
-					(*self).rb_mut().div_assign(other)
-				}
-			}
-			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> MulAssign<&$rhs> for $lhs {
-				#[track_caller]
-				fn mul_assign(&mut self, other: &$rhs) {
-					(*self).rb_mut().mul_assign(other.clone())
-				}
-			}
-
-			impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> DivAssign<&$rhs> for $lhs {
-				#[track_caller]
-				fn div_assign(&mut self, other: &$rhs) {
-					(*self).rb_mut().div_assign(other.clone())
-				}
-			}
-		};
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<Scale<T::Canonical>> for SparseRowMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: Scale<T::Canonical>) -> Self::Output {
-			self.transpose().mul(rhs).into_transpose()
 		}
-	}
 
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<Scale<T::Canonical>> for SparseRowMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
+			DivAssign<Scale<T>> for csc::generic::SparseColMat<L>
+		{
+			fn div_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+					let mut lhs = lhs.transpose_mut();
+					lhs *= Scale(recip(rhs));
+				}
 
-		#[track_caller]
-		fn div(self, rhs: Scale<T::Canonical>) -> Self::Output {
-			self.transpose().div(rhs).into_transpose()
+				let rhs = &rhs.0;
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
+			}
 		}
-	}
+	});
 
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<Scale<T::Canonical>> for SparseColMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Rows, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for f64
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
 
-		#[track_caller]
-		fn mul(self, rhs: Scale<T::Canonical>) -> Self::Output {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
-				lhs: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
-				rhs: Scale<T::Canonical>,
-			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = lhs.symbolic().to_owned().unwrap();
-				let mut val = alloc::vec::Vec::new();
-				val.resize(symbolic.row_idx().len(), zero());
-				let rhs = rhs.0;
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseRowMatRef<'_, I, RT>) -> SparseRowMat<I, T> {
+					(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
+				}
 
-				for j in lhs.ncols().indices() {
-					for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], lhs.val_of_col(j)) {
-						*val = Conj::apply(lhs) * rhs;
+				let lhs = &from_f64::<T>(*self);
+				let rhs = rhs.rb();
+				imp(lhs, rhs.as_dyn()).into_shape(rhs.nrows(), rhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Rows, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for f64
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseColMatRef<'_, I, RT>) -> SparseColMat<I, T> {
+					Scale::from_ref(lhs) * rhs
+				}
+
+				let lhs = &from_f64::<T>(*self);
+				let rhs = rhs.rb();
+				imp(lhs, rhs.as_dyn()).into_shape(rhs.nrows(), rhs.ncols())
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Cols>>),
+		> Mul<f64> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+					(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Cols>>),
+		> Mul<f64> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+					lhs * Scale::from_ref(rhs)
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Cols>>),
+		> Div<f64> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn div(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+					lhs * Scale(recip(rhs))
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Cols>>),
+		> Div<f64> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn div(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+					lhs * Scale(recip(rhs))
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb();
+				imp(rhs, lhs.as_dyn()).into_shape(lhs.nrows(), lhs.ncols())
+			}
+		}
+	});
+
+	impl_op_assign!({
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
+			MulAssign<f64> for csr::generic::SparseRowMat<L>
+		{
+			fn mul_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+					let mut lhs = lhs.transpose_mut();
+					lhs *= Scale::from_ref(rhs);
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
+			}
+		}
+
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
+			MulAssign<f64> for csc::generic::SparseColMat<L>
+		{
+			fn mul_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+					*&mut { lhs } *= Scale::from_ref(rhs)
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
+			}
+		}
+
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
+			DivAssign<f64> for csr::generic::SparseRowMat<L>
+		{
+			fn div_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+					let mut lhs = lhs.transpose_mut();
+					lhs /= Scale::from_ref(rhs);
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
+			}
+		}
+
+		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
+			DivAssign<f64> for csc::generic::SparseColMat<L>
+		{
+			fn div_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+					let mut lhs = lhs.transpose_mut();
+					lhs *= Scale(recip(rhs));
+				}
+
+				let rhs = &from_f64::<T>(*rhs);
+				let lhs = self.rb_mut();
+				imp(rhs, lhs.as_dyn_mut())
+			}
+		}
+	});
+
+	impl_op!({
+		impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape, Inner: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, T, Rows, Cols>>)> Neg
+			for csr::generic::SparseRowMat<Inner>
+		{
+			type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
+
+			fn neg(self) {
+				self.rb().transpose().neg().into_transpose()
+			}
+		}
+
+		impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape, Inner: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, T, Rows, Cols>>)> Neg
+			for csc::generic::SparseColMat<Inner>
+		{
+			type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+
+			fn neg(self) {
+				#[math]
+				#[track_caller]
+				fn imp<I: Index, T: Conjugate>(A: SparseColMatRef<'_, I, T>) -> SparseColMat<I, T::Canonical> {
+					with_dim!(M, A.nrows());
+					with_dim!(N, A.ncols());
+					let A = A.as_shape(M, N);
+
+					let symbolic = A.symbolic().to_owned().unwrap();
+					let mut val = alloc::vec::Vec::new();
+					val.resize(symbolic.row_idx().len(), zero());
+
+					for j in A.ncols().indices() {
+						for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], A.val_of_col(j)) {
+							*val = -Conj::apply(lhs);
+						}
 					}
+
+					SparseColMat::new(symbolic, val).into_shape(*M, *N)
 				}
 
-				SparseColMat::new(symbolic, val)
+				let A = self.rb();
+				imp(A.as_dyn()).into_shape(A.nrows(), A.ncols())
 			}
-
-			with_dim!(ROWS, self.nrows().unbound());
-			with_dim!(COLS, self.ncols().unbound());
-
-			imp(self.as_shape(ROWS, COLS), rhs).into_shape(self.nrows(), self.ncols())
 		}
-	}
+	});
 
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<Scale<T::Canonical>> for SparseColMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
+	impl_op_assign!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Rows, Cols>>),
+		> AddAssign<csc::generic::SparseColMat<R>> for csc::generic::SparseColMat<L>
+		{
+			fn add_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RT>) {
+					crate::sparse::ops::binary_op_assign_into(lhs, rhs, add_assign_fn::<T, RT>)
+				}
 
-		#[track_caller]
-		#[math]
-		fn div(self, rhs: Scale<T::Canonical>) -> Self::Output {
-			self.mul(Scale(recip(rhs.0)))
+				let lhs = self.rb_mut();
+				let rhs = rhs.rb();
+				imp(lhs.as_dyn_mut(), rhs.as_dyn())
+			}
 		}
-	}
 
-	impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> MulAssign<Scale<T>> for SparseColMatMut<'_, I, T, Rows, Cols> {
-		#[track_caller]
-		fn mul_assign(&mut self, rhs: Scale<T>) {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: ComplexField>(mut lhs: SparseColMatMut<'_, I, T, Dim<'ROWS>, Dim<'COLS>>, rhs: Scale<T>) {
-				let rhs = rhs.0;
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Rows, Cols>>),
+		> SubAssign<csc::generic::SparseColMat<R>> for csc::generic::SparseColMat<L>
+		{
+			fn sub_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RT>) {
+					crate::sparse::ops::binary_op_assign_into(lhs, rhs, sub_assign_fn::<T, RT>)
+				}
 
-				for j in lhs.ncols().indices() {
-					let v = lhs.rb_mut().val_of_col_mut(j);
+				let lhs = self.rb_mut();
+				let rhs = rhs.rb();
+				imp(lhs.as_dyn_mut(), rhs.as_dyn())
+			}
+		}
+	});
 
-					for val in v {
-						*val = *val * rhs;
+	impl_op_assign!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Rows, Cols>>),
+		> AddAssign<csr::generic::SparseRowMat<R>> for csr::generic::SparseRowMat<L>
+		{
+			fn add_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseRowMatMut<'_, I, T>, rhs: SparseRowMatRef<'_, I, RT>) {
+					crate::sparse::ops::binary_op_assign_into(lhs.transpose_mut(), rhs.transpose(), add_assign_fn::<T, RT>)
+				}
+
+				let lhs = self.rb_mut();
+				let rhs = rhs.rb();
+				imp(lhs.as_dyn_mut(), rhs.as_dyn())
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Rows, Cols>>),
+		> SubAssign<csr::generic::SparseRowMat<R>> for csr::generic::SparseRowMat<L>
+		{
+			fn sub_assign(&mut self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseRowMatMut<'_, I, T>, rhs: SparseRowMatRef<'_, I, RT>) {
+					crate::sparse::ops::binary_op_assign_into(lhs.transpose_mut(), rhs.transpose(), sub_assign_fn::<T, RT>)
+				}
+
+				let lhs = self.rb_mut();
+				let rhs = rhs.rb();
+				imp(lhs.as_dyn_mut(), rhs.as_dyn())
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Rows, Cols>>),
+		> Add<csc::generic::SparseColMat<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn add(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> SparseColMat<I, T> {
+					crate::sparse::ops::binary_op(lhs, rhs, add_fn::<T, LT, RT>).unwrap()
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Rows, Cols>>),
+		> Sub<csc::generic::SparseColMat<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn sub(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> SparseColMat<I, T> {
+					crate::sparse::ops::binary_op(lhs, rhs, sub_fn::<T, LT, RT>).unwrap()
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Rows, Cols>>),
+		> Add<csr::generic::SparseRowMat<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn add(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> SparseRowMat<I, T> {
+					crate::sparse::ops::binary_op(lhs.transpose(), rhs.transpose(), add_fn::<T, LT, RT>)
+						.unwrap()
+						.into_transpose()
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Cols>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Rows, Cols>>),
+		> Sub<csr::generic::SparseRowMat<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn sub(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> SparseRowMat<I, T> {
+					crate::sparse::ops::binary_op(lhs.transpose(), rhs.transpose(), sub_fn::<T, LT, RT>)
+						.unwrap()
+						.into_transpose()
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Depth>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Depth, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> SparseColMat<I, T> {
+					let nrows = lhs.nrows();
+					let ncols = rhs.ncols();
+					linalg_sp::matmul::sparse_sparse_matmul(lhs, rhs, one::<T>(), crate::get_global_parallelism())
+						.unwrap()
+						.into_shape(nrows, ncols)
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Depth>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Depth, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> SparseRowMat<I, T> {
+					(rhs.transpose() * lhs.transpose()).into_transpose()
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			RRStride: Stride,
+			RCStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Depth>>),
+			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>>),
+		> Mul<mat::generic::Mat<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = Mat<T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: MatRef<'_, RT>,
+				) -> Mat<T> {
+					let nrows = lhs.nrows();
+					let ncols = rhs.ncols();
+					let mut out = Mat::zeros(nrows, ncols);
+					linalg_sp::matmul::sparse_dense_matmul(out.rb_mut(), Accum::Add, lhs, rhs, T::one_impl(), crate::get_global_parallelism());
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn(), rhs.as_dyn().as_dyn_stride()).into_shape(nrows, ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			RRStride: Stride,
+			RCStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Depth>>),
+			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>>),
+		> Mul<mat::generic::Mat<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = Mat<T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: MatRef<'_, RT>,
+				) -> Mat<T> {
+					let nrows = lhs.nrows();
+					let ncols = rhs.ncols();
+					let mut out = Mat::zeros(nrows, ncols);
+					linalg_sp::matmul::dense_sparse_matmul(
+						out.rb_mut().transpose_mut(),
+						Accum::Add,
+						rhs.transpose(),
+						lhs.transpose(),
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn(), rhs.as_dyn().as_dyn_stride()).into_shape(nrows, ncols)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			RRStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Depth>>),
+			R: (for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Depth, RRStride>>),
+		> Mul<col::generic::Col<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = Col<T, Rows>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: ColRef<'_, RT>,
+				) -> Col<T> {
+					let nrows = lhs.nrows();
+					let mut out = Col::zeros(nrows);
+					linalg_sp::matmul::sparse_dense_matmul(
+						out.rb_mut().as_mat_mut(),
+						Accum::Add,
+						lhs,
+						rhs.as_mat(),
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(nrows)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			RRStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Depth>>),
+			R: (for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Depth, RRStride>>),
+		> Mul<col::generic::Col<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = Col<T, Rows>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: ColRef<'_, RT>,
+				) -> Col<T> {
+					let nrows = lhs.nrows();
+					let mut out = Col::zeros(nrows);
+					linalg_sp::matmul::dense_sparse_matmul(
+						out.rb_mut().transpose_mut().as_mat_mut(),
+						Accum::Add,
+						rhs.transpose().as_mat(),
+						lhs.transpose(),
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(nrows)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Dim: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			RStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Dim>>),
+			R: (for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>),
+		> Mul<diag::generic::Diag<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Dim>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				#[math]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: DiagRef<'_, RT>,
+				) -> SparseColMat<I, T> {
+					with_dim!(M, lhs.nrows());
+					with_dim!(N, lhs.ncols());
+
+					let lhs = lhs.as_shape(M, N);
+					let rhs = rhs.as_shape(N);
+
+					let symbolic = lhs.symbolic().to_owned().unwrap();
+					let mut out = alloc::vec::Vec::new();
+					out.resize(symbolic.row_idx().len(), T::zero_impl());
+
+					for j in lhs.ncols().indices() {
+						let rhs = Conj::apply(&rhs[j]);
+						for (out, lhs) in iter::zip(&mut out[symbolic.col_range(j)], lhs.val_of_col(j)) {
+							*out = Conj::apply(lhs) * rhs;
+						}
 					}
+
+					SparseColMat::new(symbolic, out).into_shape(*M, *N)
 				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb().column_vector();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride().as_diagonal()).into_shape(nrows, ncols)
 			}
-
-			let (nrows, ncols) = self.shape();
-			with_dim!(ROWS, nrows.unbound());
-			with_dim!(COLS, ncols.unbound());
-
-			imp(self.rb_mut().as_shape_mut(ROWS, COLS), rhs);
 		}
-	}
 
-	impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape> DivAssign<Scale<T>> for SparseColMatMut<'_, I, T, Rows, Cols> {
-		#[track_caller]
-		#[math]
-		fn div_assign(&mut self, rhs: Scale<T>) {
-			self.mul_assign(Scale(recip(rhs.0)))
-		}
-	}
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Dim: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			RStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Dim>>),
+			R: (for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>),
+		> Mul<diag::generic::Diag<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Dim>;
 
-	macro_rules! impl_mul_primitive_sparse {
-		($rhs: ty, $out: ty) => {
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for f64 {
-				type Output = $out;
-
+			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn mul(self, other: $rhs) -> Self::Output {
-					Scale(T::Canonical::from_f64_impl(self)).mul(other.rb())
-				}
-			}
+				#[math]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: DiagRef<'_, RT>,
+				) -> SparseRowMat<I, T> {
+					with_dim!(M, lhs.nrows());
+					with_dim!(N, lhs.ncols());
 
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<f64> for $rhs {
-				type Output = $out;
+					let lhs = lhs.as_shape(M, N);
+					let rhs = rhs.as_shape(N);
 
-				#[track_caller]
-				fn mul(self, other: f64) -> Self::Output {
-					self.rb().mul(Scale(T::Canonical::from_f64_impl(other)))
-				}
-			}
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Div<f64> for $rhs {
-				type Output = $out;
+					let symbolic = lhs.symbolic().to_owned().unwrap();
+					let mut out = alloc::vec::Vec::new();
+					out.resize(symbolic.col_idx().len(), T::zero_impl());
 
-				#[track_caller]
-				fn div(self, other: f64) -> Self::Output {
-					self.rb().mul(Scale(T::Canonical::from_f64_impl(f64::recip(other))))
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_neg_sparse {
-		($mat: ty, $out: ty) => {
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Neg for $mat {
-				type Output = $out;
-
-				fn neg(self) -> Self::Output {
-					self.rb().neg()
-				}
-			}
-		};
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Neg for SparseRowMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
-
-		#[math]
-		fn neg(self) -> Self::Output {
-			self.transpose().neg().into_transpose()
-		}
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Neg for SparseColMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
-
-		#[math]
-		fn neg(self) -> Self::Output {
-			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
-				mat: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
-			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = mat.symbolic().to_owned().unwrap();
-				let mut val = alloc::vec::Vec::new();
-				val.resize(symbolic.row_idx().len(), zero());
-
-				for j in mat.ncols().indices() {
-					for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], mat.val_of_col(j)) {
-						*val = -Conj::apply(lhs);
+					for i in lhs.nrows().indices() {
+						for ((j, out), lhs) in iter::zip(iter::zip(symbolic.col_idx_of_row(i), &mut out[symbolic.row_range(i)]), lhs.val_of_row(i)) {
+							*out = Conj::apply(lhs) * Conj::apply(&rhs[j]);
+						}
 					}
+
+					SparseRowMat::new(symbolic, out).into_shape(*M, *N)
 				}
 
-				SparseColMat::new(symbolic, val)
+				let lhs = self.rb();
+				let rhs = rhs.rb().column_vector();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride().as_diagonal()).into_shape(nrows, ncols)
 			}
-			with_dim!(ROWS, self.nrows().unbound());
-			with_dim!(COLS, self.ncols().unbound());
-			imp(self.as_shape(ROWS, COLS)).into_shape(self.nrows(), self.ncols())
 		}
-	}
+	});
 
-	macro_rules! impl_add_sub_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Add<$rhs>
-				for $lhs
-			{
-				type Output = $out;
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Dim: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Dim>>),
+			R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Dim>>),
+		> Mul<perm::generic::Perm<R>> for csc::generic::SparseColMat<L>
+		{
+			type Output = SparseColMat<I, T, Rows, Dim>;
 
+			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn add(self, rhs: $rhs) -> Self::Output {
-					self.rb().add(rhs.rb())
+				#[math]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(
+					lhs: SparseColMatRef<'_, I, LT>,
+					rhs: PermRef<'_, I>,
+				) -> SparseColMat<I, T> {
+					with_dim!(M, lhs.nrows());
+					with_dim!(N, lhs.ncols());
+
+					let lhs = lhs.as_shape(M, N);
+					let rhs = rhs.as_shape(N);
+
+					let symbolic = lhs.symbolic();
+
+					let mut out_col_ptr = alloc::vec::Vec::new();
+					let mut out_row_idx = alloc::vec::Vec::new();
+					let mut out = alloc::vec::Vec::new();
+
+					out_col_ptr.resize(symbolic.col_ptr().len(), I::truncate(0));
+					out_row_idx.resize(symbolic.col_ptr().len(), I::truncate(0));
+					out.resize(symbolic.row_idx().len(), T::Canonical::zero_impl());
+
+					let inv = rhs.bound_arrays().1;
+
+					let mut pos = 0usize;
+					for j in lhs.ncols().indices() {
+						let inv = inv[j].zx();
+						let row_idx = lhs.as_dyn().row_idx_of_col_raw(*inv);
+						let len = row_idx.len();
+						out_row_idx[pos..][..len].copy_from_slice(row_idx);
+
+						for (out, lhs) in iter::zip(&mut out[pos..][..len], lhs.val_of_col(inv)) {
+							*out = Conj::apply(lhs);
+						}
+
+						pos += row_idx.len();
+					}
+
+					out_row_idx.truncate(pos);
+					out.truncate(pos);
+
+					SparseColMat::new(
+						unsafe { SymbolicSparseColMat::new_unchecked(symbolic.nrows(), symbolic.ncols(), out_col_ptr, None, out_row_idx) },
+						out,
+					)
+					.into_shape(*M, *N)
 				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_shape(ncols.unbound())).into_shape(nrows, ncols)
 			}
+		}
 
-			impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Sub<$rhs>
-				for $lhs
-			{
-				type Output = $out;
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Dim: Shape,
+			LT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Dim>>),
+			R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Dim>>),
+		> Mul<perm::generic::Perm<R>> for csr::generic::SparseRowMat<L>
+		{
+			type Output = SparseRowMat<I, T, Rows, Dim>;
 
+			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn sub(self, rhs: $rhs) -> Self::Output {
-					self.rb().sub(rhs.rb())
+				#[math]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(
+					lhs: SparseRowMatRef<'_, I, LT>,
+					rhs: PermRef<'_, I>,
+				) -> SparseRowMat<I, T> {
+					with_dim!(M, lhs.nrows());
+					with_dim!(N, lhs.ncols());
+
+					let lhs = lhs.as_shape(M, N);
+					let rhs = rhs.as_shape(N);
+
+					let symbolic = lhs.symbolic();
+
+					let mut out_row_ptr = alloc::vec::Vec::new();
+					let mut out_col_idx = alloc::vec::Vec::new();
+					let mut out = alloc::vec::Vec::new();
+
+					out_row_ptr.resize(symbolic.row_ptr().len(), I::truncate(0));
+					out_col_idx.resize(symbolic.row_ptr().len(), I::truncate(0));
+					out.resize(symbolic.col_idx().len(), T::Canonical::zero_impl());
+
+					let inv = rhs.bound_arrays().0;
+
+					let mut pos = 0usize;
+					for i in lhs.nrows().indices() {
+						let col_idx = lhs.col_idx_of_row_raw(i);
+						let len = col_idx.len();
+
+						for ((out_j, out_v), (lhs_j, lhs_v)) in iter::zip(
+							iter::zip(&mut out_col_idx[pos..][..len], &mut out[pos..][..len]),
+							iter::zip(lhs.col_idx_of_row(i), lhs.val_of_row(i)),
+						) {
+							*out_j = *inv[lhs_j];
+							*out_v = Conj::apply(lhs_v);
+						}
+
+						pos += col_idx.len();
+					}
+
+					out_col_idx.truncate(pos);
+					out.truncate(pos);
+
+					SparseRowMat::new(
+						unsafe { SymbolicSparseRowMat::new_unchecked(symbolic.nrows(), symbolic.ncols(), out_row_ptr, None, out_col_idx) },
+						out,
+					)
+					.into_shape(*M, *N)
 				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = lhs.shape();
+				imp(lhs.as_dyn(), rhs.as_shape(ncols.unbound())).into_shape(nrows, ncols)
 			}
-		};
-	}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Cols: Shape,
+			Dim: Shape,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Dim>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Dim, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for perm::generic::Perm<L>
+		{
+			type Output = SparseColMat<I, T, Dim, Cols>;
+
+			fn mul(self, rhs: _) {
+				(rhs.rb().transpose() * self.rb().inverse()).into_transpose()
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Cols: Shape,
+			Dim: Shape,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Dim>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Dim, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for perm::generic::Perm<L>
+		{
+			type Output = SparseRowMat<I, T, Dim, Cols>;
+
+			fn mul(self, rhs: _) {
+				(rhs.rb().transpose() * self.rb().inverse()).into_transpose()
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Cols: Shape,
+			Dim: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			LStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Dim, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for diag::generic::Diag<L>
+		{
+			type Output = SparseColMat<I, T, Dim, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: DiagRef<'_, LT>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> SparseColMat<I, T> {
+					(rhs.transpose() * lhs).into_transpose()
+				}
+
+				let lhs = self.rb().column_vector();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = rhs.shape();
+				imp(lhs.as_dyn_rows().as_dyn_stride().as_diagonal(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Cols: Shape,
+			Dim: Shape,
+			LT: (Conjugate<Canonical = T>),
+			RT: (Conjugate<Canonical = T>),
+			LStride: Stride,
+			L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Dim, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for diag::generic::Diag<L>
+		{
+			type Output = SparseRowMat<I, T, Dim, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: DiagRef<'_, LT>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> SparseRowMat<I, T> {
+					(rhs.transpose() * lhs).into_transpose()
+				}
+
+				let lhs = self.rb().column_vector();
+				let rhs = rhs.rb();
+				let (nrows, ncols) = rhs.shape();
+				imp(lhs.as_dyn_rows().as_dyn_stride().as_diagonal(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			LRStride: Stride,
+			LCStride: Stride,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Depth, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for mat::generic::Mat<L>
+		{
+			type Output = Mat<T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: MatRef<'_, LT>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> Mat<T> {
+					let nrows = lhs.nrows();
+					let ncols = rhs.ncols();
+					let mut out = Mat::zeros(nrows, ncols);
+					linalg_sp::matmul::dense_sparse_matmul(out.rb_mut(), Accum::Add, lhs, rhs, T::one_impl(), crate::get_global_parallelism());
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			LRStride: Stride,
+			LCStride: Stride,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Depth, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for mat::generic::Mat<L>
+		{
+			type Output = Mat<T, Rows, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: MatRef<'_, LT>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> Mat<T> {
+					let nrows = lhs.nrows();
+					let ncols = rhs.ncols();
+					let mut out = Mat::zeros(nrows, ncols);
+					linalg_sp::matmul::sparse_dense_matmul(
+						out.rb_mut().transpose_mut(),
+						Accum::Add,
+						rhs.transpose(),
+						lhs.transpose(),
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let nrows = lhs.nrows();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn()).into_shape(nrows, ncols)
+			}
+		}
+	});
+
+	impl_binop!({
+		impl<
+			I: Index,
+			T: ComplexField,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			LCStride: Stride,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Depth, LCStride>>),
+			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Depth, Cols>>),
+		> Mul<csc::generic::SparseColMat<R>> for row::generic::Row<L>
+		{
+			type Output = Row<T, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: RowRef<'_, LT>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> Row<T> {
+					let ncols = rhs.ncols();
+					let mut out = Row::zeros(ncols);
+					linalg_sp::matmul::dense_sparse_matmul(
+						out.rb_mut().as_mat_mut(),
+						Accum::Add,
+						lhs.as_mat(),
+						rhs,
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn()).into_col_shape(ncols)
+			}
+		}
+
+		impl<
+			I: Index,
+			T: ComplexField,
+			Cols: Shape,
+			Depth: Shape,
+			LT: (Conjugate<Canonical = T>),
+			LCStride: Stride,
+			RT: (Conjugate<Canonical = T>),
+			L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Depth, LCStride>>),
+			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Depth, Cols>>),
+		> Mul<csr::generic::SparseRowMat<R>> for row::generic::Row<L>
+		{
+			type Output = Row<T, Cols>;
+
+			fn mul(self, rhs: _) {
+				#[track_caller]
+				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+					lhs: RowRef<'_, LT>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> Row<T> {
+					let ncols = rhs.ncols();
+					let mut out = Row::zeros(ncols);
+					linalg_sp::matmul::sparse_dense_matmul(
+						out.rb_mut().transpose_mut().as_mat_mut(),
+						Accum::Add,
+						rhs.transpose(),
+						lhs.transpose().as_mat(),
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
+					out
+				}
+
+				let lhs = self.rb();
+				let rhs = rhs.rb();
+				let ncols = rhs.ncols();
+				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn()).into_col_shape(ncols)
+			}
+		}
+	});
 
 	#[math]
 	fn add_fn<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: Option<&LhsT>, rhs: Option<&RhsT>) -> T {
@@ -2250,74 +3588,6 @@ mod sparse {
 	#[math]
 	fn sub_fn<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: Option<&LhsT>, rhs: Option<&RhsT>) -> T {
 		lhs.map(Conj::apply).unwrap_or_else(zero::<T>) - rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Add<SparseColMatRef<'_, I, RhsT, Rows, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = SparseColMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn add(self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			let (nrows, ncols) = self.shape();
-			crate::sparse::ops::binary_op(self.as_dyn(), rhs.as_dyn(), add_fn::<T, LhsT, RhsT>)
-				.unwrap()
-				.into_shape(nrows, ncols)
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Sub<SparseColMatRef<'_, I, RhsT, Rows, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = SparseColMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn sub(self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			let (nrows, ncols) = self.shape();
-			crate::sparse::ops::binary_op(self.as_dyn(), rhs.as_dyn(), sub_fn)
-				.unwrap()
-				.into_shape(nrows, ncols)
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Add<SparseRowMatRef<'_, I, RhsT, Rows, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = SparseRowMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn add(self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			self.transpose().add(rhs.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Sub<SparseRowMatRef<'_, I, RhsT, Rows, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = SparseRowMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn sub(self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			self.transpose().sub(rhs.transpose()).into_transpose()
-		}
-	}
-
-	macro_rules! impl_add_sub_assign_sparse {
-		($lhs: ty, $rhs: ty) => {
-			impl<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> AddAssign<$rhs> for $lhs {
-				#[track_caller]
-				fn add_assign(&mut self, rhs: $rhs) {
-					self.rb_mut().add_assign(rhs.rb())
-				}
-			}
-
-			impl<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> SubAssign<$rhs> for $lhs {
-				#[track_caller]
-				fn sub_assign(&mut self, rhs: $rhs) {
-					self.rb_mut().sub_assign(rhs.rb())
-				}
-			}
-		};
 	}
 
 	#[math]
@@ -2333,1179 +3603,6 @@ mod sparse {
 			*dst = *dst - Conj::apply(rhs);
 		}
 	}
-
-	impl<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> AddAssign<SparseColMatRef<'_, I, RhsT, Rows, Cols>>
-		for SparseColMatMut<'_, I, T, Rows, Cols>
-	{
-		#[track_caller]
-		fn add_assign(&mut self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) {
-			crate::sparse::ops::binary_op_assign_into(self.rb_mut().as_dyn_mut(), rhs.as_dyn(), add_assign_fn::<T, RhsT>);
-		}
-	}
-	impl<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> SubAssign<SparseColMatRef<'_, I, RhsT, Rows, Cols>>
-		for SparseColMatMut<'_, I, T, Rows, Cols>
-	{
-		#[track_caller]
-		fn sub_assign(&mut self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) {
-			crate::sparse::ops::binary_op_assign_into(self.rb_mut().as_dyn_mut(), rhs.as_dyn(), sub_assign_fn::<T, RhsT>);
-		}
-	}
-
-	impl<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> AddAssign<SparseRowMatRef<'_, I, RhsT, Rows, Cols>>
-		for SparseRowMatMut<'_, I, T, Rows, Cols>
-	{
-		#[track_caller]
-		fn add_assign(&mut self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) {
-			self.rb_mut().transpose_mut().add_assign(rhs.transpose())
-		}
-	}
-	impl<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> SubAssign<SparseRowMatRef<'_, I, RhsT, Rows, Cols>>
-		for SparseRowMatMut<'_, I, T, Rows, Cols>
-	{
-		#[track_caller]
-		fn sub_assign(&mut self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) {
-			self.rb_mut().transpose_mut().sub_assign(rhs.transpose())
-		}
-	}
-
-	macro_rules! impl_matmul_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-				Mul<$rhs> for $lhs
-			{
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, rhs: $rhs) -> Self::Output {
-					self.rb().mul(rhs.rb())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_matmul_1_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape> Mul<$rhs>
-				for $lhs
-			{
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, rhs: $rhs) -> Self::Output {
-					self.rb().mul(rhs.rb())
-				}
-			}
-		};
-	}
-
-	macro_rules! impl_matmul_perm_sparse {
-		($lhs: ty, $rhs: ty, $out: ty) => {
-			impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<$rhs> for $lhs {
-				type Output = $out;
-
-				#[track_caller]
-				fn mul(self, rhs: $rhs) -> Self::Output {
-					self.rb().mul(rhs.rb())
-				}
-			}
-		};
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-		Mul<SparseColMatRef<'_, I, RhsT, Depth, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Depth>
-	{
-		type Output = SparseColMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT, Depth, Cols>) -> Self::Output {
-			let nrows = self.nrows();
-			let ncols = rhs.ncols();
-			linalg_sp::matmul::sparse_sparse_matmul(self.as_dyn(), rhs.as_dyn(), T::one_impl(), crate::get_global_parallelism())
-				.unwrap()
-				.into_shape(nrows, ncols)
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-		Mul<MatRef<'_, RhsT, Depth, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Depth>
-	{
-		type Output = Mat<T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: MatRef<'_, RhsT, Depth, Cols>) -> Self::Output {
-			let nrows = self.nrows();
-			let ncols = rhs.ncols();
-			let mut out = Mat::zeros(nrows, ncols);
-			linalg_sp::matmul::sparse_dense_matmul(
-				out.as_dyn_mut(),
-				Accum::Add,
-				self.as_dyn(),
-				rhs.as_dyn(),
-				T::one_impl(),
-				crate::get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-		Mul<SparseColMatRef<'_, I, RhsT, Depth, Cols>> for MatRef<'_, LhsT, Rows, Depth>
-	{
-		type Output = Mat<T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT, Depth, Cols>) -> Self::Output {
-			let nrows = self.nrows();
-			let ncols = rhs.ncols();
-			let mut out = Mat::zeros(nrows, ncols);
-			linalg_sp::matmul::dense_sparse_matmul(
-				out.as_dyn_mut(),
-				Accum::Add,
-				self.as_dyn(),
-				rhs.as_dyn(),
-				T::one_impl(),
-				crate::get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<ColRef<'_, RhsT, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = Col<T, Rows>;
-
-		#[track_caller]
-		fn mul(self, rhs: ColRef<'_, RhsT, Cols>) -> Self::Output {
-			let (nrows, _) = self.shape();
-			let mut out = Col::zeros(nrows);
-			linalg_sp::matmul::sparse_dense_matmul(
-				out.as_mat_mut().as_dyn_mut(),
-				Accum::Add,
-				self.as_dyn(),
-				rhs.as_mat().as_dyn(),
-				T::one_impl(),
-				crate::get_global_parallelism(),
-			);
-
-			out
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<SparseColMatRef<'_, I, RhsT, Rows, Cols>> for RowRef<'_, LhsT, Rows>
-	{
-		type Output = Row<T, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			let (_, ncols) = rhs.shape();
-			let mut out = Row::zeros(ncols);
-			linalg_sp::matmul::dense_sparse_matmul(
-				out.as_mat_mut().as_dyn_mut(),
-				Accum::Add,
-				self.as_mat().as_dyn(),
-				rhs.as_dyn(),
-				T::one_impl(),
-				crate::get_global_parallelism(),
-			);
-			out
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<DiagRef<'_, RhsT, Cols>> for SparseColMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = SparseColMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: DiagRef<'_, RhsT, Cols>) -> Self::Output {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
-				lhs: SparseColMatRef<'_, I, LhsT, Dim<'ROWS>, Dim<'COLS>>,
-				rhs: DiagRef<'_, RhsT, Dim<'COLS>>,
-			) -> SparseColMat<I, T, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = lhs.symbolic().to_owned().unwrap();
-				let mut out = alloc::vec::Vec::new();
-				out.resize(symbolic.row_idx().len(), T::zero_impl());
-
-				for j in lhs.ncols().indices() {
-					let rhs = Conj::apply(&rhs[j]);
-					for (out, lhs) in iter::zip(&mut out[symbolic.col_range(j)], lhs.val_of_col(j)) {
-						*out = Conj::apply(lhs) * rhs;
-					}
-				}
-
-				SparseColMat::new(symbolic, out)
-			}
-			let lhs = self;
-			with_dim!(M, lhs.nrows().unbound());
-			with_dim!(N, lhs.ncols().unbound());
-			imp(lhs.as_shape(M, N), rhs.as_shape(N)).into_shape(lhs.nrows(), lhs.ncols())
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<SparseColMatRef<'_, I, RhsT, Rows, Cols>> for DiagRef<'_, LhsT, Rows>
-	{
-		type Output = SparseColMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
-				lhs: DiagRef<'_, RhsT, Dim<'ROWS>>,
-				rhs: SparseColMatRef<'_, I, LhsT, Dim<'ROWS>, Dim<'COLS>>,
-			) -> SparseColMat<I, T, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = rhs.symbolic().to_owned().unwrap();
-				let mut out = alloc::vec::Vec::new();
-				out.resize(symbolic.row_idx().len(), T::zero_impl());
-
-				for j in rhs.ncols().indices() {
-					for ((i, out), rhs) in iter::zip(iter::zip(symbolic.row_idx_of_col(j), &mut out[symbolic.col_range(j)]), rhs.val_of_col(j)) {
-						*out = Conj::apply(&lhs[i]) * Conj::apply(rhs);
-					}
-				}
-
-				SparseColMat::new(symbolic, out)
-			}
-			let lhs = self;
-			with_dim!(M, rhs.nrows().unbound());
-			with_dim!(N, rhs.ncols().unbound());
-			imp(lhs.as_shape(M), rhs.as_shape(M, N)).into_shape(rhs.nrows(), rhs.ncols())
-		}
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<PermRef<'_, I, Cols>> for SparseColMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: PermRef<'_, I, Cols>) -> Self::Output {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
-				lhs: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
-				rhs: PermRef<'_, I, Dim<'COLS>>,
-			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = lhs.symbolic();
-
-				let mut out_col_ptr = alloc::vec::Vec::new();
-				let mut out_row_idx = alloc::vec::Vec::new();
-				let mut out = alloc::vec::Vec::new();
-
-				out_col_ptr.resize(symbolic.col_ptr().len(), I::truncate(0));
-				out_row_idx.resize(symbolic.col_ptr().len(), I::truncate(0));
-				out.resize(symbolic.row_idx().len(), T::Canonical::zero_impl());
-
-				let inv = rhs.bound_arrays().1;
-
-				let mut pos = 0usize;
-				for j in lhs.ncols().indices() {
-					let inv = inv[j].zx();
-					let row_idx = lhs.as_dyn().row_idx_of_col_raw(*inv);
-					let len = row_idx.len();
-					out_row_idx[pos..][..len].copy_from_slice(row_idx);
-
-					for (out, lhs) in iter::zip(&mut out[pos..][..len], lhs.val_of_col(inv)) {
-						*out = Conj::apply(lhs);
-					}
-
-					pos += row_idx.len();
-				}
-
-				out_row_idx.truncate(pos);
-				out.truncate(pos);
-
-				SparseColMat::new(
-					unsafe { SymbolicSparseColMat::new_unchecked(symbolic.nrows(), symbolic.ncols(), out_col_ptr, None, out_row_idx) },
-					out,
-				)
-			}
-			let lhs = self;
-			with_dim!(M, lhs.nrows().unbound());
-			with_dim!(N, lhs.ncols().unbound());
-			imp(lhs.as_shape(M, N), rhs.as_shape(N)).into_shape(lhs.nrows(), lhs.ncols())
-		}
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<SparseColMatRef<'_, I, T, Rows, Cols>> for PermRef<'_, I, Rows> {
-		type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseColMatRef<'_, I, T, Rows, Cols>) -> Self::Output {
-			#[math]
-			fn imp<'ROWS, 'COLS, I: Index, T: Conjugate>(
-				lhs: PermRef<'_, I, Dim<'ROWS>>,
-				rhs: SparseColMatRef<'_, I, T, Dim<'ROWS>, Dim<'COLS>>,
-			) -> SparseColMat<I, T::Canonical, Dim<'ROWS>, Dim<'COLS>> {
-				let symbolic = rhs.symbolic();
-
-				let mut out_col_ptr = alloc::vec::Vec::new();
-				let mut out_row_idx = alloc::vec::Vec::new();
-				let mut out = alloc::vec::Vec::new();
-
-				out_col_ptr.resize(symbolic.col_ptr().len(), I::truncate(0));
-				out_row_idx.resize(symbolic.col_ptr().len(), I::truncate(0));
-				out.resize(symbolic.row_idx().len(), T::Canonical::zero_impl());
-
-				let inv = lhs.bound_arrays().0;
-
-				let mut pos = 0usize;
-				for j in rhs.ncols().indices() {
-					let row_idx = rhs.as_dyn().row_idx_of_col_raw(*j);
-					let len = row_idx.len();
-
-					for ((out_i, out_v), (rhs_i, rhs_v)) in iter::zip(
-						iter::zip(&mut out_row_idx[pos..][..len], &mut out[pos..][..len]),
-						iter::zip(rhs.row_idx_of_col(j), rhs.val_of_col(j)),
-					) {
-						*out_i = *inv[rhs_i];
-						*out_v = Conj::apply(rhs_v);
-					}
-
-					pos += row_idx.len();
-				}
-
-				out_row_idx.truncate(pos);
-				out.truncate(pos);
-
-				SparseColMat::new(
-					unsafe { SymbolicSparseColMat::new_unchecked(symbolic.nrows(), symbolic.ncols(), out_col_ptr, None, out_row_idx) },
-					out,
-				)
-			}
-			let lhs = self;
-			with_dim!(M, rhs.nrows().unbound());
-			with_dim!(N, rhs.ncols().unbound());
-			imp(lhs.as_shape(M), rhs.as_shape(M, N)).into_shape(rhs.nrows(), rhs.ncols())
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-		Mul<SparseRowMatRef<'_, I, RhsT, Depth, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Depth>
-	{
-		type Output = SparseRowMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT, Depth, Cols>) -> Self::Output {
-			rhs.transpose().mul(self.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-		Mul<MatRef<'_, RhsT, Depth, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Depth>
-	{
-		type Output = Mat<T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: MatRef<'_, RhsT, Depth, Cols>) -> Self::Output {
-			rhs.transpose().mul(self.transpose()).transpose().to_owned()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape, Depth: Shape>
-		Mul<SparseRowMatRef<'_, I, RhsT, Depth, Cols>> for MatRef<'_, LhsT, Rows, Depth>
-	{
-		type Output = Mat<T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT, Depth, Cols>) -> Self::Output {
-			rhs.transpose().mul(self.transpose()).transpose().to_owned()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<ColRef<'_, RhsT, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = Col<T, Rows>;
-
-		#[track_caller]
-		fn mul(self, rhs: ColRef<'_, RhsT, Cols>) -> Self::Output {
-			rhs.transpose().mul(self.transpose()).transpose().to_owned()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<SparseRowMatRef<'_, I, RhsT, Rows, Cols>> for RowRef<'_, LhsT, Rows>
-	{
-		type Output = Row<T, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			rhs.transpose().mul(self.transpose()).transpose().to_owned()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<DiagRef<'_, RhsT, Cols>> for SparseRowMatRef<'_, I, LhsT, Rows, Cols>
-	{
-		type Output = SparseRowMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: DiagRef<'_, RhsT, Cols>) -> Self::Output {
-			rhs.mul(self.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, Rows: Shape, Cols: Shape>
-		Mul<SparseRowMatRef<'_, I, RhsT, Rows, Cols>> for DiagRef<'_, LhsT, Rows>
-	{
-		type Output = SparseRowMat<I, T, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, RhsT, Rows, Cols>) -> Self::Output {
-			rhs.transpose().mul(self).into_transpose()
-		}
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<PermRef<'_, I, Cols>> for SparseRowMatRef<'_, I, T, Rows, Cols> {
-		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: PermRef<'_, I, Cols>) -> Self::Output {
-			rhs.inverse().mul(self.transpose()).into_transpose()
-		}
-	}
-
-	impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape> Mul<SparseRowMatRef<'_, I, T, Rows, Cols>> for PermRef<'_, I, Rows> {
-		type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
-
-		#[track_caller]
-		fn mul(self, rhs: SparseRowMatRef<'_, I, T, Rows, Cols>) -> Self::Output {
-			rhs.transpose().mul(self.inverse()).into_transpose()
-		}
-	}
-
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_scalar_mul_sparse!(Scale<T::Canonical>, &SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-
-	impl_mul_scalar_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(SparseColMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(&SparseColMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(SparseRowMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_scalar_sparse!(&SparseRowMat<I, T, Rows, Cols>, Scale<T::Canonical>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-
-	impl_mul_assign_scalar_sparse!(SparseColMat<I, T, Rows, Cols>, Scale<T::Canonical>);
-
-	impl_mul_primitive_sparse!(SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(&SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_mul_primitive_sparse!(&SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-
-	impl_neg_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(&SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_neg_sparse!(&SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-
-	impl_add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_add_sub_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMatRef<'_, I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMatMut<'_, I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseColMat<I, T, Rows, Cols>, SparseColMat<I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>);
-	impl_add_sub_assign_sparse!(SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, RhsT, Rows, Cols>);
-
-	// matmul
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, SparseColMat<I, T, Rows, Cols>);
-
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseColMat<I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseColMat<I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, &SparseColMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, &SparseColMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, &SparseColMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatRef<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMatMut<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseColMat<I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatRef<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMatMut<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseColMat<I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseColMat<I, T, Rows, Cols>);
-
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, &SparseColMatRef<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, &SparseColMatMut<'_, I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, &SparseColMat<I, RhsT, Rows, Cols>, SparseColMat<I, T, Rows, Cols>);
-
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, &SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, &SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, &SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, &SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, &SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, &SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, &SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, &SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, &SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, &SparseColMatRef<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, &SparseColMatMut<'_, I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, &SparseColMat<I, T, Rows, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-
-	impl_matmul_perm_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMat<I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMat<I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMatRef<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMat<I, T, Rows, Cols>, Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMat<I, T, Rows, Cols>, Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMatRef<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMat<I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMat<I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMatRef<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMatMut<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseColMat<I, T, Rows, Cols>, &Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatRef<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMatMut<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseColMat<I, T, Rows, Cols>, &Perm<I, Cols>, SparseColMat<I, T::Canonical, Rows, Cols>);
-
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, SparseRowMat<I, T, Rows, Cols>);
-
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(SparseRowMat<I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, &MatRef<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, &MatMut<'_, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&SparseRowMat<I, LhsT, Rows, Depth>, &Mat<RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatRef<'_, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(MatMut<'_, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(Mat<LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatRef<'_, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&MatMut<'_, LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, &SparseRowMatRef<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, &SparseRowMatMut<'_, I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-	impl_matmul_sparse!(&Mat<LhsT, Rows, Depth>, &SparseRowMat<I, RhsT, Depth, Cols>, Mat<T, Rows, Cols>);
-
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, Col<RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &ColRef<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &ColMut<'_, RhsT, Cols>, Col<T, Rows>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &Col<RhsT, Cols>, Col<T, Rows>);
-
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowRef<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(RowMut<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(Row<LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowRef<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&RowMut<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, Row<T, Cols>);
-	impl_matmul_1_sparse!(&Row<LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, Row<T, Cols>);
-
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(SparseRowMat<I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatRef<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMatMut<'_, I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &DiagRef<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &DiagMut<'_, RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&SparseRowMat<I, LhsT, Rows, Cols>, &Diag<RhsT, Cols>, SparseRowMat<I, T, Rows, Cols>);
-
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagRef<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(DiagMut<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(Diag<LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagRef<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&DiagMut<'_, LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, &SparseRowMatRef<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, &SparseRowMatMut<'_, I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-	impl_matmul_1_sparse!(&Diag<LhsT, Rows>, &SparseRowMat<I, RhsT, Rows, Cols>, SparseRowMat<I, T, Rows, Cols>);
-
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, &SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, &SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(PermRef<'_, I, Rows>, &SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, &SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, &SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(Perm<I, Rows>, &SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, &SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, &SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&PermRef<'_, I, Rows>, &SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, &SparseRowMatRef<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, &SparseRowMatMut<'_, I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&Perm<I, Rows>, &SparseRowMat<I, T, Rows, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-
-	impl_matmul_perm_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMat<I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMat<I, T, Rows, Cols>, PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMatRef<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMat<I, T, Rows, Cols>, Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMat<I, T, Rows, Cols>, Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMatRef<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMat<I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMat<I, T, Rows, Cols>, &PermRef<'_, I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMatRef<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMatMut<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(SparseRowMat<I, T, Rows, Cols>, &Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatRef<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMatMut<'_, I, T, Rows, Cols>, &Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
-	impl_matmul_perm_sparse!(&SparseRowMat<I, T, Rows, Cols>, &Perm<I, Cols>, SparseRowMat<I, T::Canonical, Rows, Cols>);
 }
 
 #[cfg(test)]

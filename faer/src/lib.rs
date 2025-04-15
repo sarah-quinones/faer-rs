@@ -1048,7 +1048,19 @@ pub mod prelude {
 
 /// scaling factor for multiplying matrices.
 #[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
 pub struct Scale<T>(pub T);
+impl<T> Scale<T> {
+	#[inline(always)]
+	pub fn from_ref(value: &T) -> &Self {
+		unsafe { &*(value as *const T as *const Self) }
+	}
+
+	#[inline(always)]
+	pub fn from_mut(value: &mut T) -> &mut Self {
+		unsafe { &mut *(value as *mut T as *mut Self) }
+	}
+}
 
 /// 0: disabled
 /// 1: `Seq`
