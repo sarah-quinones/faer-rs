@@ -1158,6 +1158,18 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatRef<'a, I, T, Rows, 
 
 		imp(this).into_shape(self.nrows(), self.ncols())
 	}
+
+	/// returns an iterator over the entries of the matrix.
+	pub fn triplet_iter(self) -> impl 'a + Iterator<Item = Triplet<Idx<Rows>, Idx<Cols>, &'a T>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
+		self.transpose().triplet_iter().map(
+			#[inline(always)]
+			|Triplet { row, col, val }| Triplet { row: col, col: row, val },
+		)
+	}
 }
 
 impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatMut<'a, I, T, Rows, Cols> {
@@ -1237,6 +1249,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatMut<'a, I, T, Rows, 
 				val: self.0.val,
 			},
 		}
+	}
+
+	/// see [`SparseRowMatRef::get`]
+	#[track_caller]
+	#[inline]
+	pub fn get(self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&'a T> {
+		self.into_const().get(row, col)
 	}
 
 	/// returns a reference to the value at the given index, or `None` if the symbolic structure
@@ -1404,6 +1423,16 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseRowMatMut<'a, I, T, Rows, 
 		T: Conjugate,
 	{
 		self.rb().to_dense()
+	}
+
+	/// see [`SparseRowMatRef::triplet_iter`]
+	#[inline]
+	pub fn triplet_iter(self) -> impl 'a + Iterator<Item = Triplet<Idx<Rows>, Idx<Cols>, &'a T>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
+		self.into_const().triplet_iter()
 	}
 }
 
@@ -1773,6 +1802,26 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseRowMat<I, T, Rows, Cols> {
 		)?;
 
 		Ok(SparseColMat::new_from_argsort_impl(symbolic, &argsort, |i| entries[i].val.clone(), entries.len())?.into_transpose())
+	}
+
+	/// see [`SparseRowMatRef::get`]
+	#[track_caller]
+	#[inline]
+	pub fn get(&self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&T> {
+		self.rb().get(row, col)
+	}
+
+	/// see [`SparseRowMatRef::get`]
+	#[track_caller]
+	#[inline]
+	pub fn get_mut(&mut self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&mut T> {
+		self.rb_mut().get_mut(row, col)
+	}
+
+	/// see [`SparseRowMatRef::triplet_iter`]
+	#[inline]
+	pub fn triplet_iter(&self) -> impl '_ + Iterator<Item = Triplet<Idx<Rows>, Idx<Cols>, &'_ T>> {
+		self.rb().triplet_iter()
 	}
 }
 

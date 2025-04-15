@@ -1345,6 +1345,35 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatRef<'a, I, T, Rows, 
 
 		imp(this).into_shape(self.nrows(), self.ncols())
 	}
+
+	/// returns an iterator over the entries of the matrix.
+	pub fn triplet_iter(self) -> impl 'a + Iterator<Item = Triplet<Idx<Rows>, Idx<Cols>, &'a T>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
+		(0..self.ncols.unbound()).flat_map(
+			#[inline(always)]
+			move |j| {
+				let j = unsafe { self.ncols.unchecked_idx(j) };
+				let range = self.col_range(j);
+				iter::zip(
+					iter::zip(
+						self.0.symbolic.row_idx[range.clone()].iter().map(
+							#[inline(always)]
+							move |i| unsafe { self.nrows.unchecked_idx(i.zx()) },
+						),
+						iter::repeat_n(j, range.len()),
+					),
+					&self.0.val[range],
+				)
+				.map(
+					#[inline(always)]
+					move |((i, j), v)| Triplet::new(i, j, v),
+				)
+			},
+		)
+	}
 }
 
 impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, Cols> {
@@ -1447,6 +1476,13 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 				val: self.0.val,
 			},
 		}
+	}
+
+	/// see [`SparseColMatRef::get`]
+	#[track_caller]
+	#[inline]
+	pub fn get(self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&'a T> {
+		self.into_const().get(row, col)
 	}
 
 	#[track_caller]
@@ -1593,6 +1629,16 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index, T> SparseColMatMut<'a, I, T, Rows, 
 		T: Conjugate,
 	{
 		self.rb().to_dense()
+	}
+
+	/// see [`SparseColMatRef::triplet_iter`]
+	#[inline]
+	pub fn triplet_iter(self) -> impl 'a + Iterator<Item = Triplet<Idx<Rows>, Idx<Cols>, &'a T>>
+	where
+		Rows: 'a,
+		Cols: 'a,
+	{
+		self.into_const().triplet_iter()
 	}
 }
 
@@ -2020,6 +2066,26 @@ impl<Rows: Shape, Cols: Shape, I: Index, T> SparseColMat<I, T, Rows, Cols> {
 			|i| entries[i].val.clone(),
 			entries.len(),
 		)?)
+	}
+
+	/// see [`SparseColMatRef::get`]
+	#[track_caller]
+	#[inline]
+	pub fn get(&self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&T> {
+		self.rb().get(row, col)
+	}
+
+	/// see [`SparseColMatRef::get`]
+	#[track_caller]
+	#[inline]
+	pub fn get_mut(&mut self, row: Idx<Rows>, col: Idx<Cols>) -> Option<&mut T> {
+		self.rb_mut().get_mut(row, col)
+	}
+
+	/// see [`SparseColMatRef::triplet_iter`]
+	#[inline]
+	pub fn triplet_iter(&self) -> impl '_ + Iterator<Item = Triplet<Idx<Rows>, Idx<Cols>, &'_ T>> {
+		self.rb().triplet_iter()
 	}
 }
 
