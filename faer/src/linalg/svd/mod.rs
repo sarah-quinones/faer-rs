@@ -604,7 +604,7 @@ pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usiz
 #[math]
 pub fn pseudoinverse_from_svd<T: ComplexField>(
 	pinv: MatMut<'_, T>,
-	s: ColRef<'_, T>,
+	s: DiagRef<'_, T>,
 	u: MatRef<'_, T>,
 	v: MatRef<'_, T>,
 	par: Par,
@@ -627,7 +627,7 @@ pub fn pseudoinverse_from_svd<T: ComplexField>(
 #[math]
 pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	pinv: MatMut<'_, T>,
-	s: ColRef<'_, T>,
+	s: DiagRef<'_, T>,
 	u: MatRef<'_, T>,
 	v: MatRef<'_, T>,
 	abs_tol: T::Real,
@@ -640,13 +640,10 @@ pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	let n = v.nrows();
 	let size = Ord::min(m, n);
 
-	assert!(all(
-		u.nrows() == m,
-		v.nrows() == n,
-		u.ncols() >= size,
-		v.ncols() >= size,
-		s.nrows() >= size,
-	));
+	assert!(all(u.nrows() == m, v.nrows() == n, u.ncols() >= size, v.ncols() >= size, s.dim() >= size));
+	let s = s.column_vector();
+	let u = u.get(.., ..size);
+	let v = v.get(.., ..size);
 
 	let smax = s.norm_max();
 	let tol = max(abs_tol, rel_tol * smax);

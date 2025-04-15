@@ -12,7 +12,38 @@ impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for Mut<'_, T,
 	}
 }
 
+impl<'a, T> DiagMut<'a, T> {
+	/// creates a diagonal matrix view over the given element
+	#[inline]
+	pub fn from_mut(value: &'a mut T) -> Self {
+		unsafe { DiagMut::from_raw_parts_mut(value as *mut T, 1, 1) }
+	}
+
+	/// creates a `DiagMut` from slice views over the diagonal data, the result has the same
+	/// dimension as the length of the input slice
+	#[inline]
+	pub fn from_slice_mut(slice: &'a mut [T]) -> Self {
+		let len = slice.len();
+		unsafe { Self::from_raw_parts_mut(slice.as_mut_ptr(), len, 1) }
+	}
+}
+
 impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
+	/// creates a `DiagMut` from pointers to the diagonal data, dimension, and stride
+	///
+	/// # safety
+	/// this function has the same safety requirements as
+	/// [`MatMut::from_raw_parts_mut(ptr, dim, 1, stride, 0)`]
+	#[inline(always)]
+	#[track_caller]
+	pub const unsafe fn from_raw_parts_mut(ptr: *mut T, dim: Dim, stride: Stride) -> Self {
+		Self {
+			0: Mut {
+				inner: ColMut::from_raw_parts_mut(ptr, dim, stride),
+			},
+		}
+	}
+
 	/// returns the diagonal as a column vector view
 	#[inline(always)]
 	pub fn column_vector(self) -> ColRef<'a, T, Dim, Stride> {

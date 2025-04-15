@@ -458,7 +458,44 @@ impl<T: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 }
 
 /// [`SolveLstsqCore`] extension trait
-pub trait SolveLstsq<T: ComplexField>: SolveLstsqCore<T> {}
+pub trait SolveLstsq<T: ComplexField>: SolveLstsqCore<T> {
+	#[track_caller]
+	#[inline]
+	/// solves $A x = b$ in the sense of least squares.
+	fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
+		self.solve_lstsq_in_place_with_conj(Conj::No, { rhs }.as_mat_mut().as_dyn_cols_mut());
+	}
+
+	#[track_caller]
+	#[inline]
+	/// solves $\bar A x = b$ in the sense of least squares.
+	fn solve_conjugate_lstsq_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
+		self.solve_lstsq_in_place_with_conj(Conj::Yes, { rhs }.as_mat_mut().as_dyn_cols_mut());
+	}
+
+	#[track_caller]
+	#[inline]
+	/// solves $A x = b$ in the sense of least squares.
+	fn solve_lstsq<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
+		let rhs = rhs.as_mat_ref();
+		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+		out.as_mat_mut().copy_from(rhs);
+		self.solve_lstsq_in_place(&mut out);
+		out.truncate(self.ncols(), rhs.ncols());
+		out
+	}
+	#[track_caller]
+	#[inline]
+	/// solves $\bar A x = b$ in the sense of least squares.
+	fn solve_conjugate_lstsq<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
+		let rhs = rhs.as_mat_ref();
+		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+		out.as_mat_mut().copy_from(rhs);
+		self.solve_conjugate_lstsq_in_place(&mut out);
+		out.truncate(self.ncols(), rhs.ncols());
+		out
+	}
+}
 /// [`DenseSolveCore`] extension trait
 pub trait DenseSolve<T: ComplexField>: DenseSolveCore<T> {}
 
@@ -1112,6 +1149,18 @@ impl<T: ComplexField> Svd<T> {
 	/// returns the factor $S$
 	pub fn S(&self) -> DiagRef<'_, T> {
 		self.S.as_ref()
+	}
+
+	/// returns the pseudoinverse of the original matrix $A$.
+	pub fn pseudoinverse(&self) -> Mat<T> {
+		let U = self.U();
+		let V = self.V();
+		let S = self.S();
+		let par = get_global_parallelism();
+		let stack = &mut MemBuffer::new(linalg::svd::pseudoinverse_from_svd_scratch::<T>(self.nrows(), self.ncols(), par));
+		let mut pinv = Mat::zeros(self.nrows(), self.ncols());
+		linalg::svd::pseudoinverse_from_svd(pinv.rb_mut(), S, U, V, par, MemStack::new(stack));
+		pinv
 	}
 }
 

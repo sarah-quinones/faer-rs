@@ -273,6 +273,9 @@ pub trait AsMat<T>: AsMatMut {
 	fn zeros(rows: Self::Rows, cols: Self::Cols) -> Self
 	where
 		T: ComplexField;
+
+	/// returns a matrix with dimensions `(rows, cols)` filled with zeros
+	fn truncate(&mut self, rows: Self::Rows, cols: Self::Cols);
 }
 
 impl<M: AsMatRef> AsMatRef for &M {
@@ -354,6 +357,12 @@ impl<T, Rows: Shape, Cols: Shape> AsMat<T> for Mat<T, Rows, Cols> {
 		T: ComplexField,
 	{
 		Mat::zeros(rows, cols)
+	}
+
+	#[track_caller]
+	#[inline]
+	fn truncate(&mut self, rows: Self::Rows, cols: Self::Cols) {
+		self.truncate(rows, cols)
 	}
 }
 

@@ -13,7 +13,6 @@ use dyn_stack::{MemBuffer, MemStack};
 use equator::assert;
 use faer_macros::math;
 use faer_traits::{ByRef, ComplexField, Conjugate};
-use generativity::make_guard;
 use pulp::Simd;
 use reborrow::*;
 

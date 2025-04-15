@@ -50,6 +50,12 @@ unsafe impl<T: Sync, Rows: Sync, RStride: Sync> Sync for Ref<'_, T, Rows, RStrid
 unsafe impl<T: Sync, Rows: Send, RStride: Send> Send for Ref<'_, T, Rows, RStride> {}
 
 impl<'a, T> ColRef<'a, T> {
+	/// creates a column view over the given element
+	#[inline]
+	pub fn from_ref(value: &'a T) -> Self {
+		unsafe { ColRef::from_raw_parts(value as *const T, 1, 1) }
+	}
+
 	/// creates a `ColRef` from slice views over the column vector data, the result has the same
 	/// number of rows as the length of the input slice
 	#[inline]
@@ -67,7 +73,7 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColRef<'a, T, Rows, RStride> {
 	/// [`MatRef::from_raw_parts(ptr, nrows, 1, row_stride, 0)`]
 	#[inline(always)]
 	#[track_caller]
-	pub unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, row_stride: RStride) -> Self {
+	pub const unsafe fn from_raw_parts(ptr: *const T, nrows: Rows, row_stride: RStride) -> Self {
 		Self {
 			0: Ref {
 				imp: ColView {
@@ -467,6 +473,73 @@ impl<T, Rows: Shape, RStride: Stride, Inner: for<'short> Reborrow<'short, Target
 	#[inline]
 	pub fn as_ref(&self) -> ColRef<'_, T, Rows, RStride> {
 		self.rb()
+	}
+
+	/// see [`Mat::kron`]
+	#[inline]
+	pub fn kron(&self, rhs: impl AsMatRef<T: Conjugate<Canonical = T::Canonical>>) -> Mat<T::Canonical>
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(lhs: MatRef<impl Conjugate<Canonical = T>>, rhs: MatRef<impl Conjugate<Canonical = T>>) -> Mat<T> {
+			let mut out = Mat::zeros(lhs.nrows() * rhs.nrows(), lhs.ncols() * rhs.ncols());
+			linalg::kron::kron(out.rb_mut(), lhs, rhs);
+			out
+		}
+
+		imp(self.rb().as_mat().as_dyn().as_dyn_stride(), rhs.as_mat_ref().as_dyn().as_dyn_stride())
+	}
+
+	/// returns `true` if all of the elements of `self` are finite.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn is_all_finite(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(A: ColRef<'_, T>) -> bool {
+			with_dim!({
+				let M = A.nrows();
+			});
+
+			let A = A.as_row_shape(M);
+
+			for i in M.indices() {
+				if !is_finite(&A[i]) {
+					return false;
+				}
+			}
+
+			true
+		}
+
+		imp(self.rb().as_dyn_rows().as_dyn_stride().canonical())
+	}
+
+	/// returns `true` if any of the elements of `self` is `NaN`.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn has_nan(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(A: ColRef<'_, T>) -> bool {
+			with_dim!({
+				let M = A.nrows();
+			});
+
+			let A = A.as_row_shape(M);
+
+			for i in M.indices() {
+				if is_nan(&A[i]) {
+					return true;
+				}
+			}
+
+			false
+		}
+
+		imp(self.rb().as_dyn_rows().as_dyn_stride().canonical())
 	}
 }
 
