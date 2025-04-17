@@ -952,10 +952,16 @@ impl Par {
 
 #[allow(non_camel_case_types)]
 /// `Complex<f32>`
-pub type c32 = num_complex::Complex32;
+pub type c32 = traits::c32;
 #[allow(non_camel_case_types)]
 /// `Complex<f64>`
-pub type c64 = num_complex::Complex64;
+pub type c64 = traits::c64;
+#[allow(non_camel_case_types)]
+/// `Complex<f64>`
+pub type cx128 = traits::cx128;
+#[allow(non_camel_case_types)]
+/// `Complex<f64>`
+pub type fx128 = traits::fx128;
 
 pub use col::{Col, ColMut, ColRef};
 pub use mat::{Mat, MatMut, MatRef};
@@ -1051,18 +1057,29 @@ pub(crate) mod internal_prelude_sp {
 
 /// useful imports for general usage of the library
 pub mod prelude {
-	use super::*;
-
-	pub use super::{Par, Scale, c32, c64, mat};
+	pub use super::{Par, Scale, c32, c64, col, mat, row, unzip, zip};
 	pub use col::{Col, ColMut, ColRef};
 	pub use mat::{Mat, MatMut, MatRef};
 	pub use row::{Row, RowMut, RowRef};
+
+	#[cfg(feature = "linalg")]
+	pub use super::linalg::solvers::{DenseSolve, Solve, SolveLstsq};
+
+	#[cfg(feature = "sparse")]
+	pub use super::prelude_sp::*;
 
 	/// see [`Default`]
 	#[inline]
 	pub fn default<T: Default>() -> T {
 		Default::default()
 	}
+}
+
+#[cfg(feature = "sparse")]
+mod prelude_sp {
+	use crate::sparse;
+
+	pub use sparse::{SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef};
 }
 
 /// scaling factor for multiplying matrices.
@@ -1265,4 +1282,6 @@ mod into_range {
 
 mod sort;
 
-pub use {dyn_stack, reborrow};
+pub extern crate dyn_stack;
+pub extern crate faer_traits as traits;
+pub extern crate reborrow;

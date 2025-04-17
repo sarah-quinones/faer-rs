@@ -746,6 +746,7 @@ dependencies = [
  "num-complex",
  "num-traits",
  "pulp",
+ "qd",
  "reborrow",
 ]
 
@@ -1895,6 +1896,18 @@ dependencies = [
  "num-traits",
  "pest",
  "pest_derive",
+]
+
+[[package]]
+name = "qd"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "314df6d6e12b2b97657a1178d220279556165689abf0d0aa7cc8053204cc3918"
+dependencies = [
+ "bytemuck",
+ "libm",
+ "num-traits",
+ "pulp",
 ]
 
 [[package]]

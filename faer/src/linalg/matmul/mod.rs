@@ -276,8 +276,8 @@ mod matmul_vertical {
 					}
 				};
 
-				let job_count = m.div_ceil(mr) * n.div_ceil(nr);
-				let d = n.div_ceil(nr);
+				let job_count = m.div_ceil(mr) * n_chunk.div_ceil(nr);
+				let d = n_chunk.div_ceil(nr);
 				match par {
 					Par::Seq => {
 						for job_idx in 0..job_count {
