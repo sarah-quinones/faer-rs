@@ -21,3 +21,15 @@ faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 num-complex = { version = "0.4.6", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }
+qd = { version = "0.7.3", default-features = false }
+
+[features]
+default = [
+  "std"
+]
+std = [
+  "pulp/std",
+  "qd/std",
+  "num-traits/std",
+  "num-complex/std",
+]

@@ -29,7 +29,7 @@ dyn-stack = { version = "0.13.0", default-features = false, features = ["core-er
 pulp = { version = "0.21.3", default-features = false, features = ["x86-v3"] }
 equator = { version = "0.4.2" }
 
-faer-traits = { path = "../faer-traits", version = "0.21.5" }
+faer-traits = { path = "../faer-traits", version = "0.21.5", default-features = false }
 faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 gemm = { version = "0.18.2", default-features = false }
@@ -47,6 +47,7 @@ default = [
   "npy",
 ]
 std = [
+  "faer-traits/std",
   "pulp/std",
   "gemm/std",
   "nano-gemm/std",

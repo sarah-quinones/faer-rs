@@ -1,9 +1,11 @@
 #![no_std]
+#![allow(non_camel_case_types)]
 
 use bytemuck::Pod;
 use core::fmt::Debug;
 use num_complex::Complex;
 use pulp::Simd;
+use qd::Quad;
 
 use math_utils::*;
 
@@ -3582,5 +3584,384 @@ impl ComplexField for Symbolic {
 
 	fn simd_index_less_than<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdMask<S> {
 		()
+	}
+}
+
+pub type c64 = Complex<f64>;
+pub type c32 = Complex<f32>;
+pub type fx128 = qd::Quad;
+pub type cx128 = Complex<fx128>;
+
+pub extern crate num_traits;
+pub extern crate pulp;
+
+impl ComplexField for fx128 {
+	type Arch = pulp::Arch;
+	type Index = usize;
+	type Real = Self;
+	type SimdCtx<S: Simd> = S;
+	type SimdIndex<S: Simd> = S::u64s;
+	type SimdMask<S: Simd> = S::m64s;
+	type SimdMemMask<S: Simd> = Quad<pulp::MemMask<S::m64s>>;
+	type SimdVec<S: Simd> = Quad<S::f64s>;
+	type Unit = f64;
+
+	const IS_REAL: bool = true;
+	const SIMD_CAPABILITIES: SimdCapabilities = SimdCapabilities::Simd;
+
+	#[inline(always)]
+	fn zero_impl() -> Self {
+		Self::ZERO
+	}
+
+	#[inline(always)]
+	fn one_impl() -> Self {
+		Quad(1.0, 0.0)
+	}
+
+	#[inline(always)]
+	fn nan_impl() -> Self {
+		Self::NAN
+	}
+
+	#[inline(always)]
+	fn infinity_impl() -> Self {
+		Self::INFINITY
+	}
+
+	#[inline(always)]
+	fn from_real_impl(real: &Self::Real) -> Self {
+		*real
+	}
+
+	#[inline(always)]
+	fn from_f64_impl(real: f64) -> Self {
+		real.into()
+	}
+
+	#[inline(always)]
+	fn real_part_impl(value: &Self) -> Self::Real {
+		*value
+	}
+
+	#[inline(always)]
+	fn imag_part_impl(_: &Self) -> Self::Real {
+		Self::ZERO
+	}
+
+	#[inline(always)]
+	fn copy_impl(value: &Self) -> Self {
+		*value
+	}
+
+	#[inline(always)]
+	fn conj_impl(value: &Self) -> Self {
+		*value
+	}
+
+	#[inline(always)]
+	fn recip_impl(value: &Self) -> Self {
+		Quad::from(1.0) / *value
+	}
+
+	#[inline(always)]
+	fn sqrt_impl(value: &Self) -> Self {
+		value.sqrt()
+	}
+
+	#[inline(always)]
+	fn abs_impl(value: &Self) -> Self::Real {
+		value.abs()
+	}
+
+	#[inline(always)]
+	fn abs1_impl(value: &Self) -> Self::Real {
+		value.abs()
+	}
+
+	#[inline(always)]
+	fn abs2_impl(value: &Self) -> Self::Real {
+		value * value
+	}
+
+	#[inline(always)]
+	fn mul_real_impl(lhs: &Self, rhs: &Self::Real) -> Self {
+		lhs * rhs
+	}
+
+	#[inline(always)]
+	fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self {
+		lhs * rhs
+	}
+
+	#[inline(always)]
+	fn is_finite_impl(value: &Self) -> bool {
+		value.0.is_finite() && value.1.is_finite()
+	}
+
+	#[inline(always)]
+	fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S> {
+		simd
+	}
+
+	#[inline(always)]
+	fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S {
+		*ctx
+	}
+
+	#[inline(always)]
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+		ctx.mask_between_m64s(start as u64, end as u64).mask()
+	}
+
+	#[inline(always)]
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+		let n = core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>();
+		let start = start * 2;
+		let end = end * 2;
+
+		let a = f64::simd_mem_mask_between(ctx, (start.min(n)) as u64, (end.min(n)) as u64);
+		let b = f64::simd_mem_mask_between(ctx, (start.max(n) - n) as u64, (end.max(n) - n) as u64);
+		Quad(a, b)
+	}
+
+	#[inline(always)]
+	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+		unsafe {
+			Quad(
+				f64::simd_mask_load_raw(ctx, mask.0, &raw const (*ptr).0),
+				f64::simd_mask_load_raw(ctx, mask.1, &raw const (*ptr).1),
+			)
+		}
+	}
+
+	#[inline(always)]
+	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
+		unsafe {
+			Quad(
+				f64::simd_mask_store_raw(ctx, mask.0, &raw mut (*ptr).0, values.0),
+				f64::simd_mask_store_raw(ctx, mask.1, &raw mut (*ptr).1, values.1),
+			);
+		}
+	}
+
+	#[inline(always)]
+	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+		Quad(ctx.splat_f64s(value.0), ctx.splat_f64s(value.1))
+	}
+
+	#[inline(always)]
+	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+		Quad(ctx.splat_f64s(value.0), ctx.splat_f64s(value.1))
+	}
+
+	#[inline(always)]
+	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::add_estimate(*ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::sub_estimate(*ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::neg(*ctx, value)
+	}
+
+	#[inline(always)]
+	fn simd_conj<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		value
+	}
+
+	#[inline(always)]
+	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::abs(*ctx, value)
+	}
+
+	#[inline(always)]
+	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::abs(*ctx, value)
+	}
+
+	#[inline(always)]
+	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::mul(*ctx, lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::mul(*ctx, lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::mul(*ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::mul(*ctx, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::add_estimate(*ctx, qd::simd::mul(*ctx, lhs, rhs), acc)
+	}
+
+	#[inline(always)]
+	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::add_estimate(*ctx, qd::simd::mul(*ctx, lhs, rhs), acc)
+	}
+
+	#[inline(always)]
+	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::mul(*ctx, value, value)
+	}
+
+	#[inline(always)]
+	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		qd::simd::add_estimate(*ctx, qd::simd::mul(*ctx, value, value), acc)
+	}
+
+	#[inline(always)]
+	fn simd_reduce_sum<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+		let a = value.0;
+		let b = value.1;
+		let a: &[f64] = bytemuck::cast_slice(core::slice::from_ref(&a));
+		let b: &[f64] = bytemuck::cast_slice(core::slice::from_ref(&b));
+		let mut acc = Quad::ZERO;
+
+		for (&a, &b) in core::iter::zip(a, b) {
+			acc += Quad(a, b);
+		}
+
+		acc
+	}
+
+	#[inline(always)]
+	fn simd_reduce_max<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+		let a = value.0;
+		let b = value.1;
+		let a: &[f64] = bytemuck::cast_slice(core::slice::from_ref(&a));
+		let b: &[f64] = bytemuck::cast_slice(core::slice::from_ref(&b));
+		let mut acc = Quad::NEG_INFINITY;
+
+		for (&a, &b) in core::iter::zip(a, b) {
+			let val = Quad(a, b);
+			if val > acc {
+				acc = val
+			}
+		}
+
+		acc
+	}
+
+	#[inline(always)]
+	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		qd::simd::eq(*ctx, real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		qd::simd::less_than(*ctx, real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		qd::simd::less_than_or_equal(*ctx, real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		qd::simd::greater_than(*ctx, real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+		qd::simd::greater_than_or_equal(*ctx, real_lhs, real_rhs)
+	}
+
+	#[inline(always)]
+	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+		Quad(ctx.select_f64s_m64s(mask, lhs.0, rhs.0), ctx.select_f64s_m64s(mask, lhs.1, rhs.1))
+	}
+
+	#[inline(always)]
+	fn simd_index_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
+		ctx.select_u64s_m64s(mask, lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+		ctx.splat_u64s(value as u64)
+	}
+
+	#[inline(always)]
+	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+		ctx.add_u64s(lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+		ctx.less_than_u64s(lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		ctx.and_m64s(lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		ctx.or_m64s(lhs, rhs)
+	}
+
+	#[inline(always)]
+	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+		ctx.not_m64s(mask)
+	}
+
+	#[inline(always)]
+	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+		ctx.first_true_m64s(value)
+	}
+}
+
+impl RealField for fx128 {
+	#[inline(always)]
+	fn epsilon_impl() -> Self {
+		Quad::EPSILON
+	}
+
+	#[inline(always)]
+	fn nbits_impl() -> usize {
+		100
+	}
+
+	#[inline(always)]
+	fn min_positive_impl() -> Self {
+		Quad::MIN_POSITIVE
+	}
+
+	#[inline(always)]
+	fn max_positive_impl() -> Self {
+		Quad::MIN_POSITIVE.recip()
+	}
+
+	#[inline(always)]
+	fn sqrt_min_positive_impl() -> Self {
+		Quad::MIN_POSITIVE.sqrt()
+	}
+
+	#[inline(always)]
+	fn sqrt_max_positive_impl() -> Self {
+		Quad::MIN_POSITIVE.recip().sqrt()
 	}
 }
