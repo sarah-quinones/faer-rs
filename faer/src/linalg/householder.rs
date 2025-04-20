@@ -56,8 +56,8 @@ pub struct HouseholderInfo<T: ComplexField> {
 /// $x$ is determined by $x_0$, contained in `head`, and $|x_{1\dots}|$, contained in `tail_norm`.
 /// the vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided)
 #[math]
-#[inline]
-pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_, T>) -> HouseholderInfo<T> {
+fn make_householder_imp<T: ComplexField>(head: &mut T, out: ColMut<'_, T>, input: Option<ColRef<'_, T>>) -> HouseholderInfo<T> {
+	let tail = input.unwrap_or(out.rb());
 	let tail_norm = tail.norm_l2();
 
 	let mut head_norm = abs(*head);
@@ -84,9 +84,14 @@ pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_,
 	let head_with_beta = *head + signed_norm;
 	let head_with_beta_inv = recip(head_with_beta);
 
-	zip!(tail).for_each(|unzip!(e)| {
-		*e = *e * head_with_beta_inv;
-	});
+	match input {
+		None => zip!(out).for_each(|unzip!(e)| {
+			*e = *e * head_with_beta_inv;
+		}),
+		Some(input) => zip!(out, input).for_each(|unzip!(o, e)| {
+			*o = *e * head_with_beta_inv;
+		}),
+	}
 
 	*head = -signed_norm;
 
@@ -96,6 +101,22 @@ pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_,
 		head_with_beta_inv,
 		norm,
 	}
+}
+
+/// computes the householder reflection $I - \frac{v v^H}{\tau}$ such that when multiplied by $x$
+/// from the left, the result is $\beta e_0$. $\tau$ and $(\text{head} - \beta)^{-1}$ are returned
+/// and $\tau$ is real-valued. $\beta$ is stored in `head`
+///
+/// $x$ is determined by $x_0$, contained in `head`, and $|x_{1\dots}|$, contained in `tail_norm`.
+/// the vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided)
+#[inline]
+pub fn make_householder_in_place<T: ComplexField>(head: &mut T, tail: ColMut<'_, T>) -> HouseholderInfo<T> {
+	make_householder_imp(head, tail, None)
+}
+
+#[inline]
+pub(crate) fn make_householder_out_of_place<T: ComplexField>(head: &mut T, out: ColMut<'_, T>, tail: ColRef<'_, T>) -> HouseholderInfo<T> {
+	make_householder_imp(head, out, Some(tail))
 }
 
 #[doc(hidden)]

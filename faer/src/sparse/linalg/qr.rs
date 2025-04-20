@@ -700,7 +700,7 @@ pub mod supernodal {
 		///
 		/// `work` is a temporary workspace with the same dimensions as `rhs`
 		#[math]
-		pub fn apply_qt_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>, stack: &mut MemStack)
+		pub fn apply_Q_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>, par: Par, work: MatMut<'_, T>, stack: &mut MemStack)
 		where
 			T: ComplexField,
 		{
@@ -739,7 +739,7 @@ pub mod supernodal {
 					for j in 0..k {
 						for idx in 0..s_h_row_full_end - s_h_row_begin {
 							let i = s_row_idx_in_panel[idx].zx();
-							tmp.write(idx, j, x.read(i, j));
+							tmp[(idx, j)] = copy(x[(i, j)]);
 						}
 					}
 
@@ -767,7 +767,7 @@ pub mod supernodal {
 						linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 							b_H.rb(),
 							b_tau.rb(),
-							Conj::Yes.compose(conj),
+							conj,
 							tmp.rb_mut().subrows_mut(start, nrows),
 							par,
 							stack.rb_mut(),
@@ -784,7 +784,7 @@ pub mod supernodal {
 					for j in 0..k {
 						for idx in 0..s_h_row_full_end - s_h_row_begin {
 							let i = s_row_idx_in_panel[idx].zx();
-							x.write(i, j, tmp.read(idx, j));
+							x[(i, j)] = copy(tmp[(idx, j)]);
 						}
 					}
 				}
@@ -807,7 +807,7 @@ pub mod supernodal {
 		{
 			let mut work = work;
 			let mut rhs = rhs;
-			self.apply_qt_in_place_with_conj(conj, rhs.rb_mut(), par, work.rb_mut(), stack);
+			self.apply_Q_transpose_in_place_with_conj(conj.compose(Conj::Yes), rhs.rb_mut(), par, work.rb_mut(), stack);
 
 			let L_symbolic = self.symbolic().R_adjoint();
 			let n_supernodes = L_symbolic.n_supernodes();
@@ -830,7 +830,7 @@ pub mod supernodal {
 					for j in 0..k {
 						for (idx, i) in s.pattern().iter().enumerate() {
 							let i = i.zx();
-							tmp.write(idx, j, x.read(i, j));
+							tmp[(idx, j)] = copy(x[(i, j)]);
 						}
 					}
 
@@ -1125,7 +1125,7 @@ pub mod supernodal {
 						let pj = col_perm.map(|perm| perm.arrays().1[j].zx()).unwrap_or(j);
 						let ix = idx;
 						let iy = col_global_to_local[pj].zx();
-						s_H.write(ix, iy, s_H[(ix, iy)] + *value);
+						s_H[(ix, iy)] = s_H[(ix, iy)] + *value;
 					}
 				}
 			}
@@ -1172,7 +1172,7 @@ pub mod supernodal {
 					for (j_idx_in_c, j) in c_pattern.iter().enumerate() {
 						let j_idx_in_c = j_idx_in_c + c_ncols;
 						if j.zx() >= c_min_col {
-							s_H.write(s_idx, col_global_to_local[j.zx()].zx(), c_H.read(c_idx, j_idx_in_c));
+							s_H[(s_idx, col_global_to_local[j.zx()].zx())] = copy(c_H[(c_idx, j_idx_in_c)]);
 						}
 					}
 				}
@@ -1922,7 +1922,7 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 
 		for j in 0..k {
 			for (i, p) in inv.iter().enumerate() {
-				rhs.write(i, j, x.read(p.zx(), j));
+				rhs[(i, j)] = copy(&x[(p.zx(), j)]);
 			}
 		}
 	}

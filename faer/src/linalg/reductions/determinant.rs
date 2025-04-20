@@ -28,7 +28,7 @@ pub fn determinant<T: ComplexField>(mat: MatRef<'_, T>) -> T::Canonical {
 
 	let mut det = one();
 	for i in 0..factors.nrows() {
-		det = mul(det, factors.as_mat_ref().read(i, i));
+		det = mul(det, factors[(i, i)]);
 	}
 	if count % 2 == 0 { det } else { neg(det) }
 }

@@ -1834,7 +1834,7 @@ pub mod supernodal {
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
 						let i = i.zx();
-						x.write(i, j, x.read(i, j) - tmp.read(idx, j))
+						x[(i, j)] = x[(i, j)] - tmp[(idx, j)]
 					}
 				}
 			}
@@ -1844,9 +1844,9 @@ pub mod supernodal {
 				let Ds = s.matrix.diagonal().column_vector();
 				for j in 0..k {
 					for idx in 0..size {
-						let d_inv = recip(real(Ds.read(idx)));
+						let d_inv = recip(real(Ds[idx]));
 						let i = idx + s.start();
-						x.write(i, j, mul_real(x.read(i, j), d_inv))
+						x[(i, j)] = mul_real(x[(i, j)], d_inv)
 					}
 				}
 			}
@@ -1861,7 +1861,7 @@ pub mod supernodal {
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
 						let i = i.zx();
-						tmp.write(idx, j, x.read(i, j));
+						tmp[(idx, j)] = copy(x[(i, j)]);
 					}
 				}
 
@@ -1968,7 +1968,7 @@ pub mod supernodal {
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
 						let i = i.zx();
-						x.write(i, j, x.read(i, j) - tmp.read(idx, j))
+						x[(i, j)] = x[(i, j)] - tmp[(idx, j)]
 					}
 				}
 			}
@@ -2002,7 +2002,7 @@ pub mod supernodal {
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
 						let i = i.zx();
-						tmp.write(idx, j, x.read(i, j));
+						tmp[(idx, j)] = copy(x[(i, j)]);
 					}
 				}
 
@@ -2043,7 +2043,7 @@ pub mod supernodal {
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
 						let i = i.zx();
-						x.write(i, j, x.read(i, j) - tmp.read(idx, j))
+						x[(i, j)] = x[(i, j)] - tmp[(idx, j)]
 					}
 				}
 			}
@@ -2058,7 +2058,7 @@ pub mod supernodal {
 				for j in 0..k {
 					for (idx, i) in s.pattern().iter().enumerate() {
 						let i = i.zx();
-						tmp.write(idx, j, x.read(i, j));
+						tmp[(idx, j)] = copy(x[(i, j)]);
 					}
 				}
 
@@ -3139,7 +3139,7 @@ pub mod supernodal {
 					} else {
 						(i - s_start, j_shifted)
 					};
-					Ls.write(ix, iy, Ls.read(ix, iy) + *val);
+					Ls[(ix, iy)] = Ls[(ix, iy)] + *val;
 				}
 			}
 
@@ -3215,9 +3215,9 @@ pub mod supernodal {
 			z!(Ls_top.rb_mut()).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero::<T>());
 			linalg::triangular_solve::solve_unit_lower_triangular_in_place(Ls_top.rb().conjugate(), Ls_bot.rb_mut().transpose_mut(), par);
 			for j in 0..s_ncols {
-				let d = recip(real(Ls_top.read(j, j)));
+				let d = recip(real(Ls_top[(j, j)]));
 				for i in 0..s_pattern.len() {
-					Ls_bot.write(i, j, mul_real(Ls_bot.read(i, j), d));
+					Ls_bot[(i, j)] = mul_real(Ls_bot[(i, j)], d);
 				}
 			}
 
@@ -3308,7 +3308,7 @@ pub mod supernodal {
 					} else {
 						(i - s_start, j_shifted)
 					};
-					Ls.write(ix, iy, Ls.read(ix, iy) + *val);
+					Ls[(ix, iy)] = Ls[(ix, iy)] + *val;
 				}
 			}
 
@@ -3343,22 +3343,22 @@ pub mod supernodal {
 				while j < d_ncols {
 					let subdiag = copy(d_subdiag[j]);
 					if subdiag == zero::<T>() {
-						let d = real(Ld_top.read(j, j));
+						let d = real(Ld_top[(j, j)]);
 						for i in 0..d_pattern_mid_len {
-							Ld_mid_x_D.write(i, j, mul_real(Ld_mid.read(i, j), d));
+							Ld_mid_x_D[(i, j)] = mul_real(Ld_mid[(i, j)], d);
 						}
 						j += 1;
 					} else {
 						let akp1k = subdiag;
-						let ak = real(Ld_top.read(j, j));
-						let akp1 = real(Ld_top.read(j + 1, j + 1));
+						let ak = real(Ld_top[(j, j)]);
+						let akp1 = real(Ld_top[(j + 1, j + 1)]);
 
 						for i in 0..d_pattern_mid_len {
-							let xk = Ld_mid.read(i, j);
-							let xkp1 = Ld_mid.read(i, j + 1);
+							let xk = copy(Ld_mid[(i, j)]);
+							let xkp1 = copy(Ld_mid[(i, j + 1)]);
 
-							Ld_mid_x_D.write(i, j, mul_real(xk, ak) + xkp1 * akp1k);
-							Ld_mid_x_D.write(i, j + 1, mul_real(xkp1, akp1) + xk * conj(akp1k));
+							Ld_mid_x_D[(i, j)] = mul_real(xk, ak) + xkp1 * akp1k;
+							Ld_mid_x_D[(i, j + 1)] = mul_real(xkp1, akp1) + xk * conj(akp1k);
 						}
 						j += 2;
 					}
@@ -3391,7 +3391,7 @@ pub mod supernodal {
 						let i_s = i - s_start;
 
 						debug_assert!(i_s >= j_s);
-						Ls.write(i_s, j_s, Ls.read(i_s, j_s) - tmp_top.read(i_idx, j_idx));
+						Ls[(i_s, j_s)] = Ls[(i_s, j_s)] - tmp_top[(i_idx, j_idx)];
 					}
 				}
 
@@ -3401,7 +3401,7 @@ pub mod supernodal {
 					for (i_idx, i) in d_pattern[d_pattern_mid..].iter().enumerate() {
 						let i = i.zx();
 						let i_s = global_to_local[i].zx();
-						Ls.write(i_s, j_s, Ls.read(i_s, j_s) - tmp_bot.read(i_idx, j_idx));
+						Ls[(i_s, j_s)] = Ls[(i_s, j_s)] - tmp_bot[(i_idx, j_idx)];
 					}
 				}
 			}
@@ -3435,24 +3435,24 @@ pub mod supernodal {
 			let mut j = 0;
 			while j < s_ncols {
 				if s_subdiag[j] == zero::<T>() {
-					let d = recip(real(Ls_top.read(j, j)));
+					let d = recip(real(Ls_top[(j, j)]));
 					for i in 0..s_pattern.len() {
-						Ls_bot.write(i, j, mul_real(Ls_bot.read(i, j), d));
+						Ls_bot[(i, j)] = mul_real(Ls_bot[(i, j)], d);
 					}
 					j += 1;
 				} else {
 					let akp1k = recip(conj(s_subdiag[j]));
-					let ak = mul_real(conj(akp1k), real(Ls_top.read(j, j)));
-					let akp1 = mul_real(akp1k, real(Ls_top.read(j + 1, j + 1)));
+					let ak = mul_real(conj(akp1k), real(Ls_top[(j, j)]));
+					let akp1 = mul_real(akp1k, real(Ls_top[(j + 1, j + 1)]));
 
 					let denom = recip(ak * akp1 - one::<T>());
 
 					for i in 0..s_pattern.len() {
-						let xk = Ls_bot.read(i, j) * conj(akp1k);
-						let xkp1 = Ls_bot.read(i, j + 1) * akp1k;
+						let xk = Ls_bot[(i, j)] * conj(akp1k);
+						let xkp1 = Ls_bot[(i, j + 1)] * akp1k;
 
-						Ls_bot.write(i, j, (akp1 * xk - xkp1) * denom);
-						Ls_bot.write(i, j + 1, (ak * xkp1 - xk) * denom);
+						Ls_bot[(i, j)] = (akp1 * xk - xkp1) * denom;
+						Ls_bot[(i, j + 1)] = (ak * xkp1 - xk) * denom;
 					}
 					j += 2;
 				}
@@ -4006,7 +4006,7 @@ impl<'a, I: Index, T> IntranodeLbltRef<'a, I, T> {
 				if let Some(perm) = self.symbolic.perm() {
 					for j in 0..k {
 						for (i, fwd) in perm.arrays().0.iter().enumerate() {
-							x.write(i, j, rhs.read(fwd.zx(), j));
+							x[(i, j)] = copy(&rhs[(fwd.zx(), j)]);
 						}
 					}
 				}
@@ -4014,7 +4014,7 @@ impl<'a, I: Index, T> IntranodeLbltRef<'a, I, T> {
 				if let Some(perm) = self.symbolic.perm() {
 					for j in 0..k {
 						for (i, inv) in perm.arrays().1.iter().enumerate() {
-							rhs.write(i, j, x.read(inv.zx(), j));
+							rhs[(i, j)] = copy(&x[(inv.zx(), j)]);
 						}
 					}
 				}
@@ -4032,13 +4032,13 @@ impl<'a, I: Index, T> IntranodeLbltRef<'a, I, T> {
 				if let Some(fwd) = fwd {
 					for j in 0..k {
 						for (i, dyn_fwd) in dyn_fwd.iter().enumerate() {
-							x.write(i, j, rhs.read(fwd[dyn_fwd.zx()].zx(), j));
+							x[(i, j)] = copy(&rhs[(fwd[dyn_fwd.zx()].zx(), j)]);
 						}
 					}
 				} else {
 					for j in 0..k {
 						for (i, dyn_fwd) in dyn_fwd.iter().enumerate() {
-							x.write(i, j, rhs.read(dyn_fwd.zx(), j));
+							x[(i, j)] = copy(&rhs[(dyn_fwd.zx(), j)]);
 						}
 					}
 				}
@@ -4049,13 +4049,13 @@ impl<'a, I: Index, T> IntranodeLbltRef<'a, I, T> {
 				if let Some(inv) = inv {
 					for j in 0..k {
 						for (i, inv) in inv.iter().enumerate() {
-							rhs.write(i, j, x.read(dyn_inv[inv.zx()].zx(), j));
+							rhs[(i, j)] = copy(&x[(dyn_inv[inv.zx()].zx(), j)]);
 						}
 					}
 				} else {
 					for j in 0..k {
 						for (i, dyn_inv) in dyn_inv.iter().enumerate() {
-							rhs.write(i, j, x.read(dyn_inv.zx(), j));
+							rhs[(i, j)] = copy(&x[(dyn_inv.zx(), j)]);
 						}
 					}
 				}
@@ -4102,7 +4102,7 @@ impl<'a, I: Index, T> LltRef<'a, I, T> {
 		if let Some(perm) = self.symbolic.perm() {
 			for j in 0..k {
 				for (i, fwd) in perm.arrays().0.iter().enumerate() {
-					x.write(i, j, rhs.read(fwd.zx(), j));
+					x[(i, j)] = copy(&rhs[(fwd.zx(), j)]);
 				}
 			}
 		}
@@ -4121,7 +4121,7 @@ impl<'a, I: Index, T> LltRef<'a, I, T> {
 		if let Some(perm) = self.symbolic.perm() {
 			for j in 0..k {
 				for (i, inv) in perm.arrays().1.iter().enumerate() {
-					rhs.write(i, j, x.read(inv.zx(), j));
+					rhs[(i, j)] = copy(&x[(inv.zx(), j)]);
 				}
 			}
 		}
@@ -4166,7 +4166,7 @@ impl<'a, I: Index, T> LdltRef<'a, I, T> {
 		if let Some(perm) = self.symbolic.perm() {
 			for j in 0..k {
 				for (i, fwd) in perm.arrays().0.iter().enumerate() {
-					x.write(i, j, rhs.read(fwd.zx(), j));
+					x[(i, j)] = copy(&rhs[(fwd.zx(), j)]);
 				}
 			}
 		}
@@ -4185,7 +4185,7 @@ impl<'a, I: Index, T> LdltRef<'a, I, T> {
 		if let Some(perm) = self.symbolic.perm() {
 			for j in 0..k {
 				for (i, inv) in perm.arrays().1.iter().enumerate() {
-					rhs.write(i, j, x.read(inv.zx(), j));
+					rhs[(i, j)] = copy(&x[(inv.zx(), j)]);
 				}
 			}
 		}
