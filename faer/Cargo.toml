@@ -1,6 +1,6 @@
 [package]
 name = "faer"
-version = "0.21.9"
+version = "0.22.0"
 edition = "2021"
 authors = ["sarah quiñones <sarah@veganb.tw>"]
 description = "linear algebra library"
@@ -29,7 +29,7 @@ dyn-stack = { version = "0.13.0", default-features = false, features = ["core-er
 pulp = { version = "0.21.3", default-features = false, features = ["x86-v3"] }
 equator = { version = "0.4.2" }
 
-faer-traits = { path = "../faer-traits", version = "0.21.5", default-features = false }
+faer-traits = { path = "../faer-traits", version = "0.22.0", default-features = false }
 faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 gemm = { version = "0.18.2", default-features = false }
