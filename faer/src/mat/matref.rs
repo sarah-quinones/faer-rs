@@ -472,15 +472,6 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatRef<'
 
 	#[inline]
 	#[track_caller]
-	pub(crate) fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> T
-	where
-		T: Clone,
-	{
-		self.at(row, col).clone()
-	}
-
-	#[inline]
-	#[track_caller]
 	pub(crate) unsafe fn at_unchecked(self, row: Idx<Rows>, col: Idx<Cols>) -> &'a T {
 		&*self.ptr_inbounds_at(row, col)
 	}

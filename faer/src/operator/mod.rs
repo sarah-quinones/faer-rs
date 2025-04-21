@@ -2,13 +2,14 @@
 
 use crate::internal_prelude_sp::*;
 
-/// biconjugate gradient stabilized method
+/// biconjugate gradient stabilized method.
 pub mod bicgstab;
-/// conjugate gradient method
+/// conjugate gradient method.
 pub mod conjugate_gradient;
-/// least squares minimal residual
+/// least squares minimal residual.
 pub mod lsmr;
 
+/// krylov-schur eigensolvers.
 pub mod eigen;
 
 mod operator_impl;

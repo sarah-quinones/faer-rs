@@ -624,7 +624,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_lsmr_breakdown() {
+	fn test_breakdown() {
 		let ref mut rng = StdRng::seed_from_u64(0);
 		let m = 100;
 		let n = 80;

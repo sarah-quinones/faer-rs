@@ -3,6 +3,41 @@ use crate::assert;
 use crate::linalg::matmul::matmul;
 use linalg::evd::schur;
 
+/// partial eigendecomposition tuning parameters.
+#[derive(Debug, Copy, Clone)]
+pub struct PartialEigenParams {
+	/// minimum projection subspace dimension.
+	pub min_dim: usize,
+	/// maximum projection subspace dimension.
+	pub max_dim: usize,
+	/// maximum number of algorithm restarts.
+	pub max_restarts: usize,
+
+	#[doc(hidden)]
+	pub non_exhaustive: NonExhaustive,
+}
+
+/// partial eigendecomposition tuning parameters.
+#[derive(Debug, Copy, Clone)]
+pub struct PartialEigenInfo {
+	/// number of converged eigenvalues and eigenvectors.
+	pub n_converged_eigen: usize,
+
+	#[doc(hidden)]
+	pub non_exhaustive: NonExhaustive,
+}
+
+impl Default for PartialEigenParams {
+	fn default() -> Self {
+		Self {
+			min_dim: 0,
+			max_dim: 0,
+			max_restarts: 1000,
+			non_exhaustive: NonExhaustive(()),
+		}
+	}
+}
+
 #[math]
 fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMut<'_, T>, start: usize, end: usize, par: Par, stack: &mut MemStack) {
 	let mut V = V;
@@ -807,13 +842,15 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 	n
 }
 
-pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, max_dim: usize, n_eigval: usize, par: Par) -> StackReq {
+/// computes the size and alignment of required workspace for computing the `n_eigval` eigenvalues
+/// (and corresponding eigenvectors) of $A$ with the largest magnitude.
+pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize, par: Par, params: PartialEigenParams) -> StackReq {
 	let n = A.nrows();
 	assert!(A.ncols() == n);
 
 	let n_eigval = Ord::min(n_eigval, n);
 
-	let max_dim = Ord::min(Ord::max(max_dim, Ord::max(20, 2 * n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(20, 2 * n_eigval)), n);
 
 	let w = temp_mat_scratch::<T>(max_dim, if T::IS_REAL { 2 } else { 1 });
 	let residual = temp_mat_scratch::<T::Real>(max_dim, 1);
@@ -846,19 +883,19 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, max_dim: usize, 
 	])
 }
 
+/// computes an estimate of the eigenvalues (and corresponding eigenvectors) of $A$ with the largest
+/// magnitude until the provided outputs are full or the maximum number of algorithm restarts is
+/// reached.
 pub fn partial_eigen<T: ComplexField>(
 	eigvecs: MatMut<'_, Complex<T::Real>>,
 	eigvals: &mut [Complex<T::Real>],
-
 	A: &dyn LinOp<T>,
 	v0: ColRef<'_, T>,
-	min_dim: usize,
-	max_dim: usize,
-	tol: T::Real,
-	restarts: usize,
+	tolerance: T::Real,
 	par: Par,
 	stack: &mut MemStack,
-) -> usize {
+	params: PartialEigenParams,
+) -> PartialEigenInfo {
 	let n = v0.nrows();
 	assert!(all(
 		eigvals.len() == eigvecs.ncols(),
@@ -869,10 +906,10 @@ pub fn partial_eigen<T: ComplexField>(
 	let n_eigval = eigvals.len();
 	let n_eigval = Ord::min(n_eigval, n);
 
-	let min_dim = Ord::min(Ord::max(min_dim, Ord::max(10, n_eigval)), n);
-	let max_dim = Ord::min(Ord::max(max_dim, Ord::max(20, 2 * n_eigval)), n);
+	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(10, n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(20, 2 * n_eigval)), n);
 
-	if const { T::IS_REAL } {
+	let n_eigval = if const { T::IS_REAL } {
 		partial_schur_real_imp::<T::Real>(
 			eigvecs,
 			eigvals,
@@ -881,13 +918,30 @@ pub fn partial_eigen<T: ComplexField>(
 			min_dim,
 			max_dim,
 			n_eigval,
-			tol,
-			restarts,
+			tolerance,
+			params.max_restarts,
 			par,
 			stack,
 		)
 	} else {
-		partial_schur_cplx_imp(eigvecs, eigvals, A, v0, min_dim, max_dim, n_eigval, tol, restarts, par, stack)
+		partial_schur_cplx_imp(
+			eigvecs,
+			eigvals,
+			A,
+			v0,
+			min_dim,
+			max_dim,
+			n_eigval,
+			tolerance,
+			params.max_restarts,
+			par,
+			stack,
+		)
+	};
+
+	PartialEigenInfo {
+		n_converged_eigen: n_eigval,
+		non_exhaustive: NonExhaustive(()),
 	}
 }
 
@@ -917,7 +971,6 @@ mod tests {
 			dist: StandardNormal,
 		};
 		let A: Mat<f64> = mat.sample(rng);
-		// let A = &A + A.adjoint();
 
 		let mut v0: Col<f64> = col.sample(rng);
 		v0 /= v0.norm_l2();
@@ -925,26 +978,38 @@ mod tests {
 		let v0 = v0.as_ref();
 
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, max_dim, n_eigval, par));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(
+			&A,
+			n_eigval,
+			par,
+			PartialEigenParams {
+				min_dim,
+				max_dim,
+				max_restarts: restarts,
+				..Default::default()
+			},
+		));
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
 
-		let n_eigval = partial_eigen(
+		let info = partial_eigen(
 			V.rb_mut(),
 			&mut w,
 			&A,
 			v0,
-			min_dim,
-			max_dim,
 			f64::EPSILON * 128.0,
-			// f64::EPSILON.sqrt(),
-			restarts,
 			par,
 			MemStack::new(mem),
+			PartialEigenParams {
+				min_dim,
+				max_dim,
+				max_restarts: restarts,
+				..Default::default()
+			},
 		);
 
 		let A = &zip!(A).map(|unzip!(x)| Complex::from(*x));
-		for j in 0..n_eigval {
+		for j in 0..info.n_converged_eigen {
 			assert!((A * V.col(j) - Scale(w[j]) * V.col(j)).norm_l2() < 1e-10);
 		}
 	}
@@ -968,7 +1033,6 @@ mod tests {
 			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 		};
 		let A: Mat<c64> = mat.sample(rng);
-		// let A = &A + A.adjoint();
 
 		let mut v0: Col<c64> = col.sample(rng);
 		v0 /= v0.norm_l2();
@@ -976,26 +1040,38 @@ mod tests {
 		let v0 = v0.as_ref();
 
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, max_dim, n_eigval, par));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(
+			&A,
+			n_eigval,
+			par,
+			PartialEigenParams {
+				min_dim,
+				max_dim,
+				max_restarts: restarts,
+				..Default::default()
+			},
+		));
 
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
 
-		let n_eigval = partial_eigen(
+		let info = partial_eigen(
 			V.rb_mut(),
 			&mut w,
 			&A,
 			v0,
-			min_dim,
-			max_dim,
 			f64::EPSILON * 128.0,
-			// f64::EPSILON.sqrt(),
-			restarts,
 			par,
 			MemStack::new(mem),
+			PartialEigenParams {
+				min_dim,
+				max_dim,
+				max_restarts: restarts,
+				..Default::default()
+			},
 		);
 
-		for j in 0..n_eigval {
+		for j in 0..info.n_converged_eigen {
 			assert!((A * V.col(j) - Scale(w[j]) * V.col(j)).norm_l2() < 1e-10);
 		}
 	}
@@ -1029,15 +1105,39 @@ mod tests {
 		let n_eigval = 5;
 		let min_dim = 7;
 		let max_dim = 9;
-		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, max_dim, n_eigval, par));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(
+			&A,
+			n_eigval,
+			par,
+			PartialEigenParams {
+				min_dim,
+				max_dim,
+				max_restarts: 20,
+				..Default::default()
+			},
+		));
 
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
 
-		let n_eigval = partial_eigen(V.rb_mut(), &mut w, &A, v0, min_dim, max_dim, 0.000001, 20, par, MemStack::new(mem));
+		let info = partial_eigen(
+			V.rb_mut(),
+			&mut w,
+			&A,
+			v0,
+			0.000001,
+			par,
+			MemStack::new(mem),
+			PartialEigenParams {
+				min_dim,
+				max_dim,
+				max_restarts: 20,
+				..Default::default()
+			},
+		);
 
 		let A = &zip!(A).map(|unzip!(x)| Complex::from(*x));
-		for j in 0..n_eigval {
+		for j in 0..info.n_converged_eigen {
 			assert!((A * V.col(j) - Scale(w[j]) * V.col(j)).norm_l2() < 1e-10);
 		}
 	}

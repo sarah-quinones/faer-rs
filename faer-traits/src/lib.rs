@@ -692,8 +692,11 @@ impl SimdCapabilities {
 
 mod seal {
 	pub trait Seal {}
+	impl Seal for u8 {}
+	impl Seal for u16 {}
 	impl Seal for u32 {}
 	impl Seal for u64 {}
+	impl Seal for u128 {}
 	impl Seal for usize {}
 	impl Seal for i32 {}
 	impl Seal for i64 {}
@@ -813,7 +816,7 @@ impl SignedIndex for isize {
 	}
 }
 
-pub trait Index:
+pub trait IndexCore:
 	Seal
 	+ core::fmt::Debug
 	+ core::ops::Not<Output = Self>
@@ -831,26 +834,24 @@ pub trait Index:
 	+ Sync
 	+ Ord
 {
+	const MAX: Self;
+
+	/// Truncate `value` to type [`Self`].
+	#[must_use]
+	fn truncate(value: usize) -> Self;
+
+	/// Zero extend `self`.
+	#[must_use]
+	fn zx(self) -> usize;
+}
+
+pub trait Index: IndexCore {
 	/// Equally-sized index type with a fixed size (no `usize`).
 	type FixedWidth: Index;
 	/// Equally-sized signed index type.
 	type Signed: SignedIndex;
 
 	const BITS: u32 = core::mem::size_of::<Self>() as u32 * 8;
-
-	/// Truncate `value` to type [`Self`].
-	#[must_use]
-	#[inline(always)]
-	fn truncate(value: usize) -> Self {
-		Self::from_signed(<Self::Signed as SignedIndex>::truncate(value))
-	}
-
-	/// Zero extend `self`.
-	#[must_use]
-	#[inline(always)]
-	fn zx(self) -> usize {
-		self.to_signed().zx()
-	}
 
 	/// Convert a reference to a slice of [`Self`] to fixed width types.
 	#[inline(always)]
@@ -880,6 +881,88 @@ pub trait Index:
 	#[inline]
 	fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
 		Self::Signed::sum_nonnegative(bytemuck::cast_slice(slice)).map(Self::from_signed)
+	}
+}
+
+impl IndexCore for u8 {
+	const MAX: Self = Self::MAX;
+
+	#[inline(always)]
+	fn truncate(value: usize) -> Self {
+		value as _
+	}
+
+	#[inline(always)]
+	fn zx(self) -> usize {
+		self as _
+	}
+}
+impl IndexCore for u16 {
+	const MAX: Self = Self::MAX;
+
+	#[inline(always)]
+	fn truncate(value: usize) -> Self {
+		value as _
+	}
+
+	#[inline(always)]
+	fn zx(self) -> usize {
+		self as _
+	}
+}
+impl IndexCore for u32 {
+	const MAX: Self = Self::MAX;
+
+	#[inline(always)]
+	fn truncate(value: usize) -> Self {
+		value as _
+	}
+
+	#[inline(always)]
+	fn zx(self) -> usize {
+		self as _
+	}
+}
+
+impl IndexCore for u64 {
+	const MAX: Self = Self::MAX;
+
+	#[inline(always)]
+	fn truncate(value: usize) -> Self {
+		value as _
+	}
+
+	#[inline(always)]
+	fn zx(self) -> usize {
+		self as _
+	}
+}
+
+impl IndexCore for u128 {
+	const MAX: Self = Self::MAX;
+
+	#[inline(always)]
+	fn truncate(value: usize) -> Self {
+		value as _
+	}
+
+	#[inline(always)]
+	fn zx(self) -> usize {
+		self as _
+	}
+}
+
+impl IndexCore for usize {
+	const MAX: Self = Self::MAX;
+
+	#[inline(always)]
+	fn truncate(value: usize) -> Self {
+		value
+	}
+
+	#[inline(always)]
+	fn zx(self) -> usize {
+		self
 	}
 }
 
@@ -956,7 +1039,7 @@ pub trait ComplexField:
 	type Unit: ComplexField;
 
 	type SimdCtx<S: Simd>: Copy;
-	type Index: Index;
+	type Index: IndexCore;
 
 	type Real: RealField;
 
@@ -1399,7 +1482,7 @@ impl ComplexField for f32 {
 
 	#[inline(always)]
 	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
-		ctx.splat_u32s(value)
+		ctx.splat_u32s(value as _)
 	}
 
 	#[inline(always)]
@@ -1443,13 +1526,13 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMemMask<S> {
-		ctx.mask_between_m32s(start, end)
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+		ctx.mask_between_m32s(start as _, end as _)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMask<S> {
-		ctx.mask_between_m32s(start, end).mask()
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+		ctx.mask_between_m32s(start as _, end as _).mask()
 	}
 
 	#[inline(always)]
@@ -1497,9 +1580,6 @@ impl RealField for f32 {
 
 impl ComplexField for f64 {
 	type Arch = pulp::Arch;
-	#[cfg(target_pointer_width = "32")]
-	type Index = u32;
-	#[cfg(target_pointer_width = "64")]
 	type Index = u64;
 	type Real = Self;
 	type SimdCtx<S: Simd> = S;
@@ -1735,7 +1815,7 @@ impl ComplexField for f64 {
 
 	#[inline(always)]
 	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
-		ctx.splat_u64s(value.into())
+		ctx.splat_u64s(value as _)
 	}
 
 	#[inline(always)]
@@ -1785,12 +1865,12 @@ impl ComplexField for f64 {
 
 	#[inline(always)]
 	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		ctx.mask_between_m64s(start.into(), end.into())
+		ctx.mask_between_m64s(start as _, end as _)
 	}
 
 	#[inline(always)]
 	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
-		ctx.mask_between_m64s(start.into(), end.into()).mask()
+		ctx.mask_between_m64s(start as _, end as _).mask()
 	}
 
 	#[inline(always)]
@@ -2740,13 +2820,13 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMemMask<S> {
-		ctx.mask_between_m32s(2 * start, 2 * end)
+	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+		ctx.mask_between_m32s((2 * start) as _, (2 * end) as _)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: u32, end: u32) -> Self::SimdMask<S> {
-		ctx.mask_between_m32s(2 * start, 2 * end).mask()
+	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+		ctx.mask_between_m32s((2 * start) as _, (2 * end) as _).mask()
 	}
 
 	#[inline(always)]
@@ -2762,9 +2842,6 @@ impl ComplexField for ComplexImpl<f32> {
 
 impl ComplexField for ComplexImpl<f64> {
 	type Arch = pulp::Arch;
-	#[cfg(target_pointer_width = "32")]
-	type Index = u32;
-	#[cfg(target_pointer_width = "64")]
 	type Index = u64;
 	type Real = f64;
 	type SimdCtx<S: Simd> = S;
@@ -3183,12 +3260,12 @@ impl ComplexField for ComplexImpl<f64> {
 
 	#[inline(always)]
 	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		ctx.mask_between_m64s((2 * start).into(), (2 * end).into())
+		ctx.mask_between_m64s((2 * start) as _, (2 * end) as _)
 	}
 
 	#[inline(always)]
 	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
-		ctx.mask_between_m64s((2 * start).into(), (2 * end).into()).mask()
+		ctx.mask_between_m64s((2 * start) as _, (2 * end) as _).mask()
 	}
 
 	#[inline(always)]
@@ -3597,7 +3674,7 @@ pub extern crate pulp;
 
 impl ComplexField for fx128 {
 	type Arch = pulp::Arch;
-	type Index = usize;
+	type Index = u64;
 	type Real = Self;
 	type SimdCtx<S: Simd> = S;
 	type SimdIndex<S: Simd> = S::u64s;
@@ -3711,17 +3788,17 @@ impl ComplexField for fx128 {
 
 	#[inline(always)]
 	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
-		ctx.mask_between_m64s(start as u64, end as u64).mask()
+		ctx.mask_between_m64s(start as _, end as _).mask()
 	}
 
 	#[inline(always)]
 	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		let n = core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>();
+		let n = (core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>()) as u64;
 		let start = start * 2;
 		let end = end * 2;
 
-		let a = f64::simd_mem_mask_between(ctx, (start.min(n)) as u64, (end.min(n)) as u64);
-		let b = f64::simd_mem_mask_between(ctx, (start.max(n) - n) as u64, (end.max(n) - n) as u64);
+		let a = f64::simd_mem_mask_between(ctx, start.min(n), end.min(n));
+		let b = f64::simd_mem_mask_between(ctx, start.max(n) - n, end.max(n) - n);
 		Quad(a, b)
 	}
 

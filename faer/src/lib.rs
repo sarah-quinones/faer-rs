@@ -603,7 +603,7 @@ pub mod io;
 mod serde;
 
 /// native unsigned integer type
-pub trait Index: faer_traits::Index + seal::Seal {}
+pub trait Index: traits::IndexCore + traits::Index + seal::Seal {}
 impl<T: faer_traits::Index<Signed: seal::Seal> + seal::Seal> Index for T {}
 
 mod seal {
@@ -1025,7 +1025,7 @@ mod internal_prelude {
 
 	pub use faer_macros::math;
 	pub use faer_traits::math_utils::*;
-	pub use faer_traits::{ComplexField, Conjugate, Index, Real, RealField, SignedIndex, SimdArch};
+	pub use faer_traits::{ComplexField, Conjugate, Index, IndexCore, Real, RealField, SignedIndex, SimdArch};
 
 	#[inline]
 	pub fn simd_align(i: usize) -> usize {

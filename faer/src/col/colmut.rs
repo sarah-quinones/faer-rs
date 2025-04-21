@@ -539,20 +539,6 @@ impl<'a, T, Rows: Shape, RStride: Stride> ColMut<'a, T, Rows, RStride> {
 		}
 	}
 
-	#[inline(always)]
-	#[track_caller]
-	pub(crate) fn read(&self, row: Idx<Rows>) -> T
-	where
-		T: Clone,
-	{
-		self.rb().read(row)
-	}
-
-	#[inline]
-	pub(crate) fn write(&mut self, i: Idx<Rows>, value: T) {
-		*self.rb_mut().at_mut(i) = value;
-	}
-
 	#[inline]
 	#[track_caller]
 	pub(crate) fn __at_mut(self, i: Idx<Rows>) -> &'a mut T {
