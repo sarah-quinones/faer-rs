@@ -1230,15 +1230,6 @@ impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatMut<'
 
 	#[inline]
 	#[track_caller]
-	pub(crate) fn read(&self, row: Idx<Rows>, col: Idx<Cols>) -> T
-	where
-		T: Clone,
-	{
-		self.rb().read(row, col)
-	}
-
-	#[inline]
-	#[track_caller]
 	pub(crate) fn write(&mut self, i: Idx<Rows>, j: Idx<Cols>, value: T) {
 		*self.rb_mut().at_mut(i, j) = value;
 	}
