@@ -1,5 +1,14 @@
 # 0.22
-- sped up column pivoted qr factorization
+- accelerated matrix multiply backend on `x86_64` targets.
+- accelerated column pivoted qr factorization
+- accelerated matrix multiply for non primitive (and `Complex<Primitive>`) types.
+- implemented an extended precision simd floating point type (exported as `fx128`, complex number as `cxf128`).
+- make dense unpivoted qr rank revealing
+- removed lblt regularization
+- implemented `FromIterator` for `Col` and `Row`.
+- stabilized matrix-free solvers.
+- implemented matrix-free krylov-schur eigensolver.
+- renamed bunch-kaufman to lblt.
 - implemented pivoting strategies for the LBLT factorization
 - implemented pivoted LLT/LDLT
 
