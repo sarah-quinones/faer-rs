@@ -56,6 +56,14 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 	let nrows = A.nrows();
 	let ncols = B.ncols();
 	let depth = A.ncols();
+	if nrows == 0 || ncols == 0 {
+		return;
+	}
+	let par = if (nrows * ncols).saturating_mul(depth) > 32usize * 32usize * 32usize {
+		par
+	} else {
+		Par::Seq
+	};
 
 	if let Some(row_idx) = row_idx {
 		for &i in row_idx {
