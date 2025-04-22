@@ -94,6 +94,12 @@ serde_json = "1.0.140"
 serde_test = "1.0.177"
 spindle = "0.2.1"
 toml = "0.8.20"
+curl = "0.4.47"
+flate2 = "1.1.1"
+tar = "0.4.44"
+
+[target.'cfg(suitesparse)'.dev-dependencies]
+suitesparse_sys = { version = "0.1.4", features = ["amd", "spqr", "umfpack", "colamd", "cholmod", "camd", "ccolamd", "openmp"] }
 
 [target.'cfg(any(openblas, mkl, blis))'.dev-dependencies]
 lapack-sys = "0.15.0"
@@ -118,4 +124,11 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 
 
 [lints.rust]
-unexpected_cfgs =  { level = "warn", check-cfg = ['cfg(openblas)', 'cfg(mkl)', 'cfg(blis)', 'cfg(faer)', 'cfg(nalgebra)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(openblas)',
+    'cfg(mkl)',
+    'cfg(blis)',
+    'cfg(faer)',
+    'cfg(nalgebra)',
+    'cfg(suitesparse)',
+  ] }
