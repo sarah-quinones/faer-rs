@@ -12,7 +12,7 @@ the aim is to provide a fully featured library for linear algebra with focus on 
 
 see the [official website](https://faer.veganb.tw) and the [docs.rs](https://docs.rs/faer/latest/faer) documentation for code examples and usage instructions.
 
-questions about using the library, contributing, and future directions can be discussed in the [discord server](https://discord.gg/ak5jdsafvz).
+questions about using the library, contributing, and future directions can be discussed in the [discord server](https://discord.gg/Ak5jDsAFVZ).
 
 # contributing
 
