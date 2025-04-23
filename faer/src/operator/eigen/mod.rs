@@ -53,14 +53,41 @@ fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMu
 		let mut Vnext = Vnext.col_mut(0);
 		A.apply(Vnext.rb_mut().as_mat_mut(), V.col(j - 1).as_mat(), par, stack);
 
-		let mut h = H.rb_mut().get_mut(..j);
-		matmul(h.rb_mut(), Accum::Replace, V.adjoint(), Vnext.rb(), one(), par);
+		let (mut converged, _) = stack.collect(core::iter::repeat_n(false, j));
 
-		matmul(Vnext.rb_mut(), Accum::Add, V.rb(), h.rb(), -one::<T>(), par);
+		let mut h = H.rb_mut().get_mut(..j);
+
+		for i in 0..j {
+			let r = V.col(i).adjoint() * Vnext.rb();
+			zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x)| *y = *y - r * *x);
+			h[i] = r;
+		}
+
+		let f = from_f64::<T::Real>(Ord::max(j, 8) as f64) * eps::<T::Real>();
+
+		loop {
+			let mut all_true = true;
+			for i in 0..j {
+				if !converged[i] {
+					all_true = false;
+
+					let r = V.col(i).adjoint() * Vnext.rb();
+					zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x)| *y = *y - r * *x);
+					h[i] = h[i] + r;
+
+					converged[i] = abs(r) < f * Vnext.norm_l2();
+				}
+			}
+			if all_true {
+				break;
+			}
+		}
 
 		let norm = Vnext.norm_l2();
-		let norm_inv = recip(norm);
-		zip!(&mut Vnext).for_each(|unzip!(v)| *v = mul_real(*v, norm_inv));
+		if norm > zero() {
+			let norm_inv = recip(norm);
+			zip!(&mut Vnext).for_each(|unzip!(v)| *v = mul_real(*v, norm_inv));
+		}
 		H[j] = from_real(norm);
 	}
 }
@@ -323,7 +350,7 @@ fn partial_schur_real_imp<T: RealField>(
 
 			iterate_arnoldi(A, H.as_mut(), V.as_mut(), k + 1, max_dim, par, stack);
 
-			let Hmm = copy(H[(max_dim, max_dim - 1)]);
+			let Hmm = abs(H[(max_dim, max_dim - 1)]);
 
 			let n = max_dim - active;
 			let (mut w_re, mut w_im) = w.rb_mut().get_mut(active..max_dim, ..).two_cols_mut(0, 1);
@@ -420,15 +447,16 @@ fn partial_schur_real_imp<T: RealField>(
 			// Ax = AV y = (VH + f e*) y = k V y + f e* y = kx + f * y[-1]
 			let mut j = 0usize;
 			while j < n {
-				let re = copy(vecs[(max_dim - active - 1, j)]);
+				let re = &vecs[(max_dim - active - 1, j)];
 				if w_im[j] != zero::<T>() {
-					let im = copy(vecs[(max_dim - active - 1, j + 1)]);
-					let res = hypot(Hmm * re, Hmm * im);
+					let im = &vecs[(max_dim - active - 1, j + 1)];
+					let res = Hmm * hypot(*re, *im);
+
 					residual[active + j] = copy(res);
 					residual[active + j + 1] = res;
 					j += 2;
 				} else {
-					residual[active + j] = abs(Hmm * re);
+					residual[active + j] = Hmm * abs(*re);
 					j += 1;
 				}
 			}
@@ -879,16 +907,9 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 				}
 			}
 
-			let mut V_tmp = tmp.rb_mut().get_mut(.., purge..k);
-			matmul(
-				V_tmp.rb_mut(),
-				Accum::Replace,
-				V.rb().get(.., purge..max_dim),
-				Q.rb().get(purge..max_dim, purge..k),
-				one(),
-				par,
-			);
-			V.rb_mut().get_mut(.., purge..k).copy_from(&V_tmp);
+			let mut V_tmp = tmp.rb_mut().get_mut(.., ..max_dim);
+			matmul(V_tmp.rb_mut(), Accum::Replace, V.rb().get(.., ..max_dim), Q.rb(), one(), par);
+			V.rb_mut().get_mut(.., ..max_dim).copy_from(&V_tmp);
 
 			let mut b_tmp = tmp.rb_mut().get_mut(0, ..);
 			matmul(b_tmp.rb_mut(), Accum::Replace, H.rb().get(max_dim, ..), Q.rb(), one(), par);
@@ -950,6 +971,7 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 
 	let mut vecs = tmp.rb_mut().get_mut(.., ..n);
 	matmul(vecs.rb_mut(), Accum::Replace, V, X.rb(), one(), par);
+
 	let V = vecs.rb();
 
 	let (mut norms, stack) = stack.make_with(n, |j| abs(H[(j, j)]));
@@ -994,7 +1016,7 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize,
 
 	let n_eigval = Ord::min(n_eigval, n);
 
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(20, 2 * n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(5, 2 * n_eigval)), n);
 
 	let w = temp_mat_scratch::<T>(max_dim, if T::IS_REAL { 2 } else { 1 });
 	let residual = temp_mat_scratch::<T::Real>(max_dim, 1);
@@ -1007,7 +1029,7 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize,
 
 	let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(max_dim, max_dim);
 	let householder = temp_mat_scratch::<T>(blocksize, max_dim);
-	let arnoldi = A.apply_scratch(1, par);
+	let arnoldi = A.apply_scratch(1, par).or(StackReq::new::<bool>(max_dim));
 
 	let hess = linalg::evd::hessenberg::hessenberg_in_place_scratch::<T>(max_dim, blocksize, par, default());
 	let apply_house = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(max_dim - 1, blocksize, max_dim - 1);
@@ -1057,8 +1079,8 @@ pub fn partial_eigen<T: ComplexField>(
 		};
 	}
 
-	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(10, n_eigval)), n);
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(20, 2 * n_eigval)), n);
+	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(2, n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(5, 2 * n_eigval)), n);
 
 	let n_eigval = if const { T::IS_REAL } {
 		partial_schur_real_imp::<T::Real>(

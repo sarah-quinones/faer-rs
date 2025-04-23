@@ -252,7 +252,7 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
 /// computes the size and alignment of the workspace required to compute the column counts
 /// of the cholesky factor of the matrix $A A^\top$, where $A$ has dimensions `(nrows, ncols)`
 #[inline]
-pub fn column_counts_aat_scrach<I: Index>(nrows: usize, ncols: usize) -> StackReq {
+pub fn column_counts_aat_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	StackReq::all_of(&[StackReq::new::<I>(nrows).array(5), StackReq::new::<I>(ncols)])
 }
 
