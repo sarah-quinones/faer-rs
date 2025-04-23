@@ -3,6 +3,8 @@ use crate::assert;
 use crate::linalg::matmul::matmul;
 use linalg::evd::schur;
 
+const MIN_DIM: usize = 32;
+
 /// partial eigendecomposition tuning parameters.
 #[derive(Debug, Copy, Clone)]
 pub struct PartialEigenParams {
@@ -907,9 +909,16 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 				}
 			}
 
-			let mut V_tmp = tmp.rb_mut().get_mut(.., ..max_dim);
-			matmul(V_tmp.rb_mut(), Accum::Replace, V.rb().get(.., ..max_dim), Q.rb(), one(), par);
-			V.rb_mut().get_mut(.., ..max_dim).copy_from(&V_tmp);
+			let mut V_tmp = tmp.rb_mut().get_mut(.., purge..k);
+			matmul(
+				V_tmp.rb_mut(),
+				Accum::Replace,
+				V.rb().get(.., purge..max_dim),
+				Q.rb().get(purge..max_dim, purge..k),
+				one(),
+				par,
+			);
+			V.rb_mut().get_mut(.., purge..k).copy_from(&V_tmp);
 
 			let mut b_tmp = tmp.rb_mut().get_mut(0, ..);
 			matmul(b_tmp.rb_mut(), Accum::Replace, H.rb().get(max_dim, ..), Q.rb(), one(), par);
@@ -1016,7 +1025,7 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize,
 
 	let n_eigval = Ord::min(n_eigval, n);
 
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(5, 2 * n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
 
 	let w = temp_mat_scratch::<T>(max_dim, if T::IS_REAL { 2 } else { 1 });
 	let residual = temp_mat_scratch::<T::Real>(max_dim, 1);
@@ -1079,8 +1088,8 @@ pub fn partial_eigen<T: ComplexField>(
 		};
 	}
 
-	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(2, n_eigval)), n);
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(5, 2 * n_eigval)), n);
+	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
 
 	let n_eigval = if const { T::IS_REAL } {
 		partial_schur_real_imp::<T::Real>(

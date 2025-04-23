@@ -1057,6 +1057,8 @@ pub(crate) mod internal_prelude_sp {
 
 /// useful imports for general usage of the library
 pub mod prelude {
+	pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
+
 	pub use super::{Par, Scale, c32, c64, col, mat, row, unzip, zip};
 	pub use col::{Col, ColMut, ColRef};
 	pub use mat::{Mat, MatMut, MatRef};
