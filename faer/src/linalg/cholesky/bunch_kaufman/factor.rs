@@ -986,17 +986,17 @@ pub fn rank2_update<'a, T: ComplexField>(
 	d10: T,
 	d11: T::Real,
 ) {
-	// if const {T::SIMD_CAPABILITIES.is_simd()} {
-	// 	if let (Some(A), Some(L0), Some(L1)) = 
-	// 	(A.rb_mut().try_as_col_major_mut(), L0.rb_mut().try_as_col_major_mut(), L1.rb_mut().try_as_col_major_mut()) {
-	// 		rank2_update_simd(A, L0, L1, d, d00, d10, d11);
-	// 	} else {
-	// 		rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
-	// 	}
-	// } else {
-	// 	rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
-	// }
-	rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
+	if const {T::SIMD_CAPABILITIES.is_simd()} {
+		if let (Some(A), Some(L0), Some(L1)) = 
+		(A.rb_mut().try_as_col_major_mut(), L0.rb_mut().try_as_col_major_mut(), L1.rb_mut().try_as_col_major_mut()) {
+			rank2_update_simd(A, L0, L1, d, d00, d10, d11);
+		} else {
+			rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
+		}
+	} else {
+		rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
+	}
+	// rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
 }
 #[math]
 pub fn rank2_update_simd<'a, T: ComplexField>(
@@ -1042,15 +1042,17 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 
 					let w0_conj = conj(w0);
 					let w1_conj = conj(w1);
-					let w0_splat = simd.splat(&w0_conj);
-					let w1_splat = simd.splat(&w1_conj);
+					let w0_conj_neg = -w0_conj;
+					let w1_conj_neg = -w1_conj;
+					let w0_splat = simd.splat(&w0_conj_neg);
+					let w1_splat = simd.splat(&w1_conj_neg);
 
 					if let Some(i) = head {
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
-						acc = simd.sub(acc, simd.mul(l0_val, w0_splat));
-						acc = simd.sub(acc, simd.mul(l1_val, w1_splat));
+						acc = simd.add(acc, simd.mul(l0_val, w0_splat));
+						acc = simd.add(acc, simd.mul(l1_val, w1_splat));
 						simd.write(A.rb_mut(), i, acc);
 					}
 
@@ -1058,8 +1060,8 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
-						acc = simd.sub(acc, simd.mul(l0_val, w0_splat));
-						acc = simd.sub(acc, simd.mul(l1_val, w1_splat));
+						acc = simd.add(acc, simd.mul(l0_val, w0_splat));
+						acc = simd.add(acc, simd.mul(l1_val, w1_splat));
 						simd.write(A.rb_mut(), i, acc);
 					}
 
@@ -1067,8 +1069,8 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
-						acc = simd.sub(acc, simd.mul(l0_val, w0_splat));
-						acc = simd.sub(acc, simd.mul(l1_val, w1_splat));
+						acc = simd.add(acc, simd.mul(l0_val, w0_splat));
+						acc = simd.add(acc, simd.mul(l1_val, w1_splat));
 						simd.write(A.rb_mut(), i, acc);
 					}
 				}
