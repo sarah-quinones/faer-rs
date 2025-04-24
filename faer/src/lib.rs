@@ -166,16 +166,19 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[doc(hidden)]
+pub extern crate generativity;
+
 /// see: [`generativity::make_guard`]
 #[macro_export]
 macro_rules! make_guard {
     ($($name:ident),* $(,)?) => {$(
         #[allow(unused_unsafe)]
-        let $name = unsafe { extern crate generativity; ::generativity::Id::new() };
+        let $name = unsafe { $crate::generativity::Id::new() };
         #[allow(unused, unused_unsafe)]
-        let lifetime_brand = unsafe { extern crate generativity; ::generativity::LifetimeBrand::new(&$name) };
+        let lifetime_brand = unsafe {  $crate::generativity::LifetimeBrand::new(&$name) };
         #[allow(unused_unsafe)]
-        let $name = unsafe { extern crate generativity; ::generativity::Guard::new($name) };
+        let $name = unsafe {  $crate::generativity::Guard::new($name) };
     )*};
 }
 

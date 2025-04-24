@@ -2394,6 +2394,46 @@ impl<T: RealField> core::ops::Mul<&ComplexImpl<T>> for &ComplexImpl<T> {
 	}
 }
 
+impl<T: RealField> core::ops::Neg for ComplexImpl<T> {
+	type Output = ComplexImpl<T>;
+
+	#[inline]
+	fn neg(self) -> Self::Output {
+		use math_utils::*;
+
+		ComplexImpl(neg(&self.0))
+	}
+}
+impl<T: RealField> core::ops::Add<ComplexImpl<T>> for ComplexImpl<T> {
+	type Output = ComplexImpl<T>;
+
+	#[inline]
+	fn add(self, rhs: ComplexImpl<T>) -> Self::Output {
+		use math_utils::*;
+
+		ComplexImpl(add(&self.0, &rhs.0))
+	}
+}
+impl<T: RealField> core::ops::Sub<ComplexImpl<T>> for ComplexImpl<T> {
+	type Output = ComplexImpl<T>;
+
+	#[inline]
+	fn sub(self, rhs: ComplexImpl<T>) -> Self::Output {
+		use math_utils::*;
+
+		ComplexImpl(sub(&self.0, &rhs.0))
+	}
+}
+impl<T: RealField> core::ops::Mul<ComplexImpl<T>> for ComplexImpl<T> {
+	type Output = ComplexImpl<T>;
+
+	#[inline]
+	fn mul(self, rhs: ComplexImpl<T>) -> Self::Output {
+		use math_utils::*;
+
+		ComplexImpl(mul(&self.0, &rhs.0))
+	}
+}
 impl<T> From<Complex<T>> for ComplexImpl<T> {
 	#[inline]
 	fn from(value: Complex<T>) -> Self {

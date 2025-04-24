@@ -1298,3 +1298,441 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 
 	(LbltInfo { transposition_count }, unsafe { PermRef::new_unchecked(perm, perm_inv, n) })
 }
+
+#[math]
+fn lblt_simd<T: ComplexField>(A: MatMut<'_, T>, subdiag: DiagMut<'_, T>, pivots: &mut [usize], diagonal: bool, rook: bool) {
+	struct Impl<'a, T: ComplexField> {
+		A: MatMut<'a, T>,
+		subdiag: DiagMut<'a, T>,
+		pivots: &'a mut [usize],
+		diagonal: bool,
+		rook: bool,
+	}
+	impl<T: ComplexField> pulp::WithSimd for Impl<'_, T> {
+		type Output = ();
+
+		#[inline(always)]
+		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+			let Self {
+				A,
+				subdiag,
+				pivots,
+				diagonal,
+				rook,
+			} = self;
+			with_dim!({
+				let M = A.nrows();
+				let N = A.nrows();
+			});
+
+			let alpha = (one::<T::Real>() + sqrt(from_f64::<T::Real>(17.0))) * from_f64::<T::Real>(0.125);
+			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), M);
+			let (head, body, tail) = simd.indices();
+			assert!(head.is_none());
+			assert!(tail.is_none());
+
+			// let mut A = A.try_as_col_major_mut().unwrap().as_shape_mut(N, N);
+			let mut A = A.try_as_col_major_mut().unwrap();
+			let mut subdiag = subdiag.as_shape_mut(N);
+
+			let mut k_ = 0usize;
+			while let Some(k) = N.try_check(k_) {
+				let mut i0;
+				let mut i1;
+
+				{
+					let mut A = A.rb_mut().submatrix_mut(0, 0, N, N);
+
+					let mut gamma_i = zero::<T::Real>();
+					let mut r = N.idx(0);
+
+					for i in k.next().to(N.into()) {
+						let val = abs(A[(i, k)]);
+						if val > gamma_i {
+							gamma_i = val;
+							r = i;
+						}
+					}
+
+					i0 = if diagonal {
+						N.idx(*k + l1_argmax(A.rb().diagonal().column_vector().get(k.into()..).as_dyn_stride()).0.unwrap())
+					} else {
+						k
+					};
+					i1 = None;
+
+					if abs(real(A[(k, k)])) >= alpha * gamma_i {
+					} else {
+						i1 = Some(r);
+						if rook {
+							loop {
+								let mut s = k;
+								let mut gamma_r = zero::<T::Real>();
+
+								for i in k.to_incl().to(N.into()) {
+									if i != r {
+										let val = if i > r { abs(A[(i, r)]) } else { abs(A[(r, i)]) };
+
+										if val > gamma_r {
+											s = i;
+											gamma_r = val;
+										}
+									}
+								}
+
+								if abs1(A[(r, r)]) >= alpha * gamma_r {
+									i0 = r;
+									i1 = None;
+									break;
+								} else if gamma_i == gamma_r {
+									break;
+								} else {
+									i0 = r;
+									i1 = Some(s);
+									gamma_i = gamma_r;
+								}
+							}
+						} else {
+							let mut gamma_r = zero::<T::Real>();
+
+							for i in k.to_incl().to(N.into()) {
+								if i != r {
+									let val = if i > r { abs(A[(i, r)]) } else { abs(A[(r, i)]) };
+
+									if val > gamma_r {
+										gamma_r = val;
+									}
+								}
+							}
+
+							if abs(real(A[(i0, i0)])) >= (alpha * gamma_r) * (gamma_r / gamma_i) {
+								i1 = None;
+							} else if abs(real(A[(r, r)])) >= alpha * gamma_r {
+								i0 = r;
+								i1 = None;
+							}
+						}
+					}
+
+					if let Some(i1) = &mut i1 {
+						if i0 > *i1 {
+							(i0, *i1) = (*i1, i0);
+						}
+					}
+
+					if let Some(i1) = i1 {
+						pivots[*k] = !*i0;
+						pivots[*k + 1] = !*i1;
+					} else {
+						pivots[*k] = *i0;
+					}
+
+					for (ii, kk) in [(Some(i0), Some(k)), (i1, N.try_check(*k + 1))] {
+						if let (Some(ii), Some(kk)) = (ii, kk) {
+							if ii != kk {
+								let mut A = A.rb_mut().as_dyn_mut().as_dyn_stride_mut();
+
+								let ii = *ii;
+								let kk = *kk;
+								perm::swap_rows_idx(A.rb_mut().get_mut(kk.., ..kk), 0, ii - kk);
+								swap_self_adjoint(A.rb_mut().get_mut(kk.., kk..), 0, ii - kk);
+							}
+						}
+					}
+
+					i0 = k;
+					if let Some(i1) = &mut i1 {
+						*i1 = N.idx(*k + 1);
+					}
+				}
+				let mut A_full = A.rb_mut().submatrix_mut(0, 0, M, N);
+				let mut A = A_full.rb_mut().submatrix_mut(M.idx(0).into(), N.idx(0).into(), N, N);
+
+				match i1 {
+					Some(i1) => {
+						let a00 = real(A[(i0, i0)]);
+						let a11 = real(A[(i1, i1)]);
+						let a10 = copy(A[(i1, i0)]);
+
+						subdiag[i0] = copy(a10);
+						subdiag[i1] = zero();
+						A[(i1, i0)] = zero();
+
+						if i1.next() < N {
+							let d10 = abs(a10);
+							let d10_inv = recip(d10);
+							let d00 = a00 * d10_inv;
+							let d11 = a11 * d10_inv;
+
+							// t = (d00/|d10| * d11/|d10| - i1.i0)
+							let t = recip((d00 * d11 - one()));
+							let d10 = mul_real(a10, d10_inv);
+							let d = t * d10_inv;
+
+							let reg_len = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+
+							let mut body = body.clone();
+							let start = *i1.next() / reg_len;
+							if start > 0 {
+								body.nth(start - 1);
+							}
+
+							if body.len() <= Ord::min(8, S::REGISTER_COUNT / 4) {
+								macro_rules! rank2_update {
+									($D: expr$(,)?) => {
+										rank2_update_small(
+											simd,
+											core::array::from_fn::<_, $D, _>(|_| body.next().unwrap()),
+											A_full.rb_mut(),
+											i0,
+											i1,
+											d00,
+											d11,
+											d10,
+											d,
+										)
+									};
+								}
+
+								match body.len() {
+									1 => rank2_update!(1),
+									2 => rank2_update!(2),
+									3 => rank2_update!(3),
+									4 => rank2_update!(4),
+									5 => rank2_update!(5),
+									6 => rank2_update!(6),
+									7 => rank2_update!(7),
+									8 => rank2_update!(8),
+									_ => unreachable!(),
+								}
+							} else {
+								let mut body = body;
+								let mut iter = i1.next().to(N.into());
+
+								for _ in 0..body.len() {
+									for j in iter.by_ref().take(reg_len) {
+										let jrow = M.idx(*j);
+
+										let x0 = copy(A_full[(jrow, i0)]);
+										let x1 = copy(A_full[(jrow, i1)]);
+										let w0 = mul_real((mul_real(x0, d11) - x1 * d10), d);
+										let w1 = mul_real((mul_real(x1, d00) - x0 * conj(d10)), d);
+
+										{
+											let w0_conj = conj(w0);
+											let w1_conj = conj(w1);
+											let w0_conj_neg = -w0_conj;
+											let w1_conj_neg = -w1_conj;
+											let w0_splat = simd.splat(&w0_conj_neg);
+											let w1_splat = simd.splat(&w1_conj_neg);
+
+											for i in body.clone() {
+												let mut acc = simd.read(A_full.rb().col(j), i);
+												let l0_val = simd.read(A_full.rb().col(i0), i);
+												let l1_val = simd.read(A_full.rb().col(i1), i);
+												acc = simd.mul_add(l0_val, w0_splat, acc);
+												acc = simd.mul_add(l1_val, w1_splat, acc);
+												simd.write(A_full.rb_mut().col_mut(j), i, acc);
+											}
+										}
+
+										A_full[(jrow, j)] = from_real(real(A_full[(jrow, j)]));
+
+										A_full[(jrow, i0)] = w0;
+										A_full[(jrow, i1)] = w1;
+									}
+									_ = body.next();
+								}
+							}
+						}
+
+						k_ += 2;
+					},
+					None => {
+						let diag = real(A[(i0, i0)]);
+						let d = recip(diag);
+						subdiag[i0] = zero();
+						if i0.next() < N {
+							let reg_len = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+
+							let mut body = body.clone();
+							let start = *i0.next() / reg_len;
+							if start > 0 {
+								body.nth(start - 1);
+							}
+
+							if body.len() <= Ord::min(8, S::REGISTER_COUNT / 2) {
+								macro_rules! rank1_update {
+									($D: expr$(,)?) => {
+										rank1_update_small(
+											simd,
+											core::array::from_fn::<_, $D, _>(|_| body.next().unwrap()),
+											A_full.rb_mut(),
+											i0,
+											d,
+										)
+									};
+								}
+
+								match body.len() {
+									1 => rank1_update!(1),
+									2 => rank1_update!(2),
+									3 => rank1_update!(3),
+									4 => rank1_update!(4),
+									5 => rank1_update!(5),
+									6 => rank1_update!(6),
+									7 => rank1_update!(7),
+									8 => rank1_update!(8),
+									_ => unreachable!(),
+								}
+							} else {
+								let mut body = body;
+								let mut iter = i0.next().to(N.into());
+
+								for _ in 0..body.len() {
+									for j in iter.by_ref().take(reg_len) {
+										let jrow = M.idx(*j);
+										let x0 = copy(A_full[(jrow, i0)]);
+										let w0 = mul_real(x0, d);
+
+										let w0_conj = conj(w0);
+										let w0_conj_neg = -w0_conj;
+										let w0_splat = simd.splat(&w0_conj_neg);
+
+										for i in body.clone() {
+											let mut acc = simd.read(A_full.rb().col(j), i);
+											let l0_val = simd.read(A_full.rb().col(i0), i);
+											acc = simd.mul_add(l0_val, w0_splat, acc);
+											simd.write(A_full.rb_mut().col_mut(j), i, acc);
+										}
+
+										A_full[(jrow, j)] = from_real(real(A_full[(jrow, j)]));
+										A_full[(jrow, i0)] = w0;
+									}
+									_ = body.next();
+								}
+							}
+						}
+
+						k_ += 1;
+					},
+				}
+			}
+		}
+	}
+
+	dispatch!(
+		Impl {
+			A,
+			subdiag,
+			pivots,
+			diagonal,
+			rook
+		},
+		Impl,
+		T
+	)
+}
+
+#[inline(always)]
+#[math]
+fn rank2_update_small<'M, 'N, const D: usize, T: ComplexField, S: pulp::Simd>(
+	simd: SimdCtx<'M, T, S>,
+	body: [crate::utils::simd::SimdBody<'M, T, S>; D],
+	A: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+	i0: crate::utils::bound::Idx<'N>,
+	i1: crate::utils::bound::Idx<'N>,
+	d00: T::Real,
+	d11: T::Real,
+	d10: T,
+	d: T::Real,
+) {
+	let mut A = A;
+	let (M, N) = A.shape();
+
+	let reg_len = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+	let mut iter = i1.next().to(N.into());
+	for start in 0..D {
+		let body = &body[start..];
+
+		let mut L0 = [simd.zero(); D];
+		let mut L1 = [simd.zero(); D];
+		for (&i, (l0, l1)) in core::iter::zip(body, core::iter::zip(&mut L0, &mut L1)) {
+			*l0 = simd.read(A.rb().col(i0), i);
+			*l1 = simd.read(A.rb().col(i1), i);
+		}
+
+		for j in iter.by_ref().take(reg_len) {
+			let jrow = M.idx(*j);
+
+			let x0 = copy(A[(jrow, i0)]);
+			let x1 = copy(A[(jrow, i1)]);
+			let w0 = mul_real((mul_real(x0, d11) - x1 * d10), d);
+			let w1 = mul_real((mul_real(x1, d00) - x0 * conj(d10)), d);
+
+			{
+				let w0_conj = conj(w0);
+				let w1_conj = conj(w1);
+				let w0_conj_neg = -w0_conj;
+				let w1_conj_neg = -w1_conj;
+				let w0_splat = simd.splat(&w0_conj_neg);
+				let w1_splat = simd.splat(&w1_conj_neg);
+
+				for ((&i, &l0_val), &l1_val) in body.iter().zip(&L0).zip(&L1) {
+					let mut acc = simd.read(A.rb().col(j), i);
+					acc = simd.mul_add(l0_val, w0_splat, acc);
+					acc = simd.mul_add(l1_val, w1_splat, acc);
+					simd.write(A.rb_mut().col_mut(j), i, acc);
+				}
+			}
+
+			A[(jrow, j)] = from_real(real(A[(jrow, j)]));
+
+			A[(jrow, i0)] = w0;
+			A[(jrow, i1)] = w1;
+		}
+	}
+}
+
+#[inline(always)]
+#[math]
+fn rank1_update_small<'M, 'N, const D: usize, T: ComplexField, S: pulp::Simd>(
+	simd: SimdCtx<'M, T, S>,
+	body: [crate::utils::simd::SimdBody<'M, T, S>; D],
+	A: MatMut<'_, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
+	i0: crate::utils::bound::Idx<'N>,
+	d: T::Real,
+) {
+	let mut A = A;
+	let (M, N) = A.shape();
+
+	let reg_len = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+	let mut iter = i0.next().to(N.into());
+	for start in 0..D {
+		let body = &body[start..];
+
+		let mut L0 = [simd.zero(); D];
+		for (&i, l0) in core::iter::zip(body, &mut L0) {
+			*l0 = simd.read(A.rb().col(i0), i);
+		}
+
+		for j in iter.by_ref().take(reg_len) {
+			let jrow = M.idx(*j);
+
+			let x0 = copy(A[(jrow, i0)]);
+			let w0 = mul_real(x0, d);
+
+			let w0_conj = conj(w0);
+			let w0_conj_neg = -w0_conj;
+			let w0_splat = simd.splat(&w0_conj_neg);
+			for (&i, &l0_val) in body.iter().zip(&L0) {
+				let mut acc = simd.read(A.rb().col(j), i);
+				acc = simd.mul_add(l0_val, w0_splat, acc);
+				simd.write(A.rb_mut().col_mut(j), i, acc);
+			}
+
+			A[(jrow, j)] = from_real(real(A[(jrow, j)]));
+			A[(jrow, i0)] = w0;
+		}
+	}
+}
