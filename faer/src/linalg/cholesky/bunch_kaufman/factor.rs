@@ -810,6 +810,7 @@ fn lblt_unblocked<T: ComplexField>(
 	diagonal: bool,
 	par: Par,
 ) {
+	let _ = par;
 	let mut A = A;
 	let mut A_left = A_left;
 	let mut subdiag = subdiag;
@@ -905,28 +906,9 @@ fn lblt_unblocked<T: ComplexField>(
 				let diag_inv = recip(diag);
 				subdiag[0] = zero();
 
-				let (_, _, L, mut A) = A.rb_mut().split_at_mut(1, 1);
-				let n = A.nrows();
-
-				let mut L = L.col_mut(0);
-				zip!(L.rb_mut()).for_each(|unzip!(x)| *x = mul_real(*x, diag_inv));
-				let L = L.rb();
-
-				linalg::matmul::triangular::matmul(
-					A.rb_mut(),
-					BlockStructure::TriangularLower,
-					Accum::Add,
-					L,
-					BlockStructure::Rectangular,
-					L.adjoint(),
-					BlockStructure::Rectangular,
-					from_real(-diag),
-					par,
-				);
-
-				for j in 0..n {
-					A[(j, j)] = from_real(real(A[(j, j)]));
-				}
+				let (_, _, L, A) = A.rb_mut().split_at_mut(1, 1);
+				let L = L.col_mut(0);
+				rank1_update(A, L, diag_inv);
 			} else {
 				let a00 = real(A[(0, 0)]);
 				let a11 = real(A[(1, 1)]);
@@ -948,10 +930,9 @@ fn lblt_unblocked<T: ComplexField>(
 
 				//         [ a00  a01 ]
 				// L_new * [ a10  a11 ] = L
-				let (_, _, L, mut A) = A.rb_mut().split_at_mut(2, 2);
-				let (mut L0, mut L1) = L.two_cols_mut(0, 1);
-				// this is now simdified
-				rank2_update(A, L0, L1, d, d00, d10, d11); 
+				let (_, _, L, A) = A.rb_mut().split_at_mut(2, 2);
+				let (L0, L1) = L.two_cols_mut(0, 1);
+				rank2_update(A, L0, L1, d, d00, d10, d11);
 			}
 		}
 
@@ -986,9 +967,12 @@ pub fn rank2_update<'a, T: ComplexField>(
 	d10: T,
 	d11: T::Real,
 ) {
-	if const {T::SIMD_CAPABILITIES.is_simd()} {
-		if let (Some(A), Some(L0), Some(L1)) = 
-		(A.rb_mut().try_as_col_major_mut(), L0.rb_mut().try_as_col_major_mut(), L1.rb_mut().try_as_col_major_mut()) {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
+		if let (Some(A), Some(L0), Some(L1)) = (
+			A.rb_mut().try_as_col_major_mut(),
+			L0.rb_mut().try_as_col_major_mut(),
+			L1.rb_mut().try_as_col_major_mut(),
+		) {
 			rank2_update_simd(A, L0, L1, d, d00, d10, d11);
 		} else {
 			rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
@@ -996,13 +980,13 @@ pub fn rank2_update<'a, T: ComplexField>(
 	} else {
 		rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
 	}
-	// rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
 }
+
 #[math]
 pub fn rank2_update_simd<'a, T: ComplexField>(
-	mut A: MatMut<'a, T, usize, usize, ContiguousFwd>,
-	mut L0: ColMut<'a, T, usize, ContiguousFwd>,
-	mut L1: ColMut<'a, T, usize, ContiguousFwd>,
+	A: MatMut<'a, T, usize, usize, ContiguousFwd>,
+	L0: ColMut<'a, T, usize, ContiguousFwd>,
+	L1: ColMut<'a, T, usize, ContiguousFwd>,
 	d: T::Real,
 	d00: T::Real,
 	d10: T,
@@ -1020,9 +1004,18 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 
 	impl<T: ComplexField> pulp::WithSimd for Impl<'_, T> {
 		type Output = ();
+
 		#[inline(always)]
 		fn with_simd<S: pulp::Simd>(self, simd: S) {
-			let Self { mut A, mut L0, mut L1, d, d00, d10, d11 } = self;
+			let Self {
+				mut A,
+				mut L0,
+				mut L1,
+				d,
+				d00,
+				d10,
+				d11,
+			} = self;
 			let n = A.nrows();
 			for j in 0..n {
 				let x0 = copy(L0[j]);
@@ -1051,8 +1044,8 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
-						acc = simd.add(acc, simd.mul(l0_val, w0_splat));
-						acc = simd.add(acc, simd.mul(l1_val, w1_splat));
+						acc = simd.mul_add(l0_val, w0_splat, acc);
+						acc = simd.mul_add(l1_val, w1_splat, acc);
 						simd.write(A.rb_mut(), i, acc);
 					}
 
@@ -1060,8 +1053,8 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
-						acc = simd.add(acc, simd.mul(l0_val, w0_splat));
-						acc = simd.add(acc, simd.mul(l1_val, w1_splat));
+						acc = simd.mul_add(l0_val, w0_splat, acc);
+						acc = simd.mul_add(l1_val, w1_splat, acc);
 						simd.write(A.rb_mut(), i, acc);
 					}
 
@@ -1069,8 +1062,8 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
-						acc = simd.add(acc, simd.mul(l0_val, w0_splat));
-						acc = simd.add(acc, simd.mul(l1_val, w1_splat));
+						acc = simd.mul_add(l0_val, w0_splat, acc);
+						acc = simd.mul_add(l1_val, w1_splat, acc);
 						simd.write(A.rb_mut(), i, acc);
 					}
 				}
@@ -1081,11 +1074,7 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 			}
 		}
 	}
-	dispatch!(
-		Impl{
-			A, L0, L1, d, d00, d10, d11,
-		}, Impl, T
-	)
+	dispatch!(Impl { A, L0, L1, d, d00, d10, d11 }, Impl, T)
 }
 
 #[math]
@@ -1098,24 +1087,113 @@ pub fn rank2_update_fallback<'a, T: ComplexField>(
 	d10: T,
 	d11: T::Real,
 ) {
-					let n = A.nrows();
-				for j in 0..n {
-					let x0 = copy(L0[j]);
-					let x1 = copy(L1[j]);
+	let n = A.nrows();
+	for j in 0..n {
+		let x0 = copy(L0[j]);
+		let x1 = copy(L1[j]);
 
-					let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
-					let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+		let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+		let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
 
-					for i in j..n {
-						A[(i, j)] = A[(i, j)] - L0[i] * conj(w0) - L1[i] * conj(w1);
-					}
-					A[(j, j)] = from_real(real(A[(j, j)]));
+		for i in j..n {
+			A[(i, j)] = A[(i, j)] - L0[i] * conj(w0) - L1[i] * conj(w1);
+		}
+		A[(j, j)] = from_real(real(A[(j, j)]));
 
-					L0[j] = w0;
-					L1[j] = w1;
-				}
+		L0[j] = w0;
+		L1[j] = w1;
+	}
 }
 
+pub fn rank1_update<'a, T: ComplexField>(mut A: MatMut<'a, T>, mut L0: ColMut<'a, T>, d: T::Real) {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
+		if let (Some(A), Some(L0)) = (A.rb_mut().try_as_col_major_mut(), L0.rb_mut().try_as_col_major_mut()) {
+			rank1_update_simd(A, L0, d);
+		} else {
+			rank1_update_fallback(A, L0, d);
+		}
+	} else {
+		rank1_update_fallback(A, L0, d);
+	}
+}
+
+#[math]
+pub fn rank1_update_simd<'a, T: ComplexField>(A: MatMut<'a, T, usize, usize, ContiguousFwd>, L0: ColMut<'a, T, usize, ContiguousFwd>, d: T::Real) {
+	struct Impl<'a, T: ComplexField> {
+		A: MatMut<'a, T, usize, usize, ContiguousFwd>,
+		L0: ColMut<'a, T, usize, ContiguousFwd>,
+		d: T::Real,
+	}
+
+	impl<T: ComplexField> pulp::WithSimd for Impl<'_, T> {
+		type Output = ();
+
+		#[inline(always)]
+		fn with_simd<S: pulp::Simd>(self, simd: S) {
+			let Self { mut A, mut L0, d } = self;
+
+			let n = A.nrows();
+			for j in 0..n {
+				let x0 = copy(L0[j]);
+				let w0 = mul_real(x0, d);
+
+				with_dim!({
+					let subrange_len = n - j;
+				});
+				{
+					let mut A = A.rb_mut().get_mut(j.., j).as_row_shape_mut(subrange_len);
+					let L0 = L0.rb().get(j..).as_row_shape(subrange_len);
+					let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), subrange_len);
+					let (head, body, tail) = simd.indices();
+
+					let w0_conj = conj(w0);
+					let w0_conj_neg = -w0_conj;
+					let w0_splat = simd.splat(&w0_conj_neg);
+
+					if let Some(i) = head {
+						let mut acc = simd.read(A.rb(), i);
+						let l0_val = simd.read(L0, i);
+						acc = simd.mul_add(l0_val, w0_splat, acc);
+						simd.write(A.rb_mut(), i, acc);
+					}
+
+					for i in body.clone() {
+						let mut acc = simd.read(A.rb(), i);
+						let l0_val = simd.read(L0, i);
+						acc = simd.mul_add(l0_val, w0_splat, acc);
+						simd.write(A.rb_mut(), i, acc);
+					}
+
+					if let Some(i) = tail {
+						let mut acc = simd.read(A.rb(), i);
+						let l0_val = simd.read(L0, i);
+						acc = simd.mul_add(l0_val, w0_splat, acc);
+						simd.write(A.rb_mut(), i, acc);
+					}
+				}
+				A[(j, j)] = from_real(real(A[(j, j)]));
+
+				L0[j] = w0;
+			}
+		}
+	}
+	dispatch!(Impl { A, L0, d }, Impl, T)
+}
+
+#[math]
+pub fn rank1_update_fallback<'a, T: ComplexField>(mut A: MatMut<'a, T>, mut L0: ColMut<'a, T>, d: T::Real) {
+	let n = A.nrows();
+	for j in 0..n {
+		let x0 = copy(L0[j]);
+		let w0 = mul_real(x0, d);
+
+		for i in j..n {
+			A[(i, j)] = A[(i, j)] - L0[i] * conj(w0);
+		}
+		A[(j, j)] = from_real(real(A[(j, j)]));
+		L0[j] = w0;
+	}
+}
 /// computes the size and alignment of required workspace for performing an $LBL^\top$
 /// decomposition
 pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<LbltParams, T>) -> StackReq {
