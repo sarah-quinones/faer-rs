@@ -242,7 +242,7 @@ macro_rules! __dbg {
     ($val:expr $(,)?) => {
         match $val {
             tmp => {
-                std::eprintln!("[{}:{}:{}] {} = {:12.9?}",
+                std::eprintln!("[{}:{}:{}] {} = {:16.12?}",
                     std::file!(), std::line!(), std::column!(), std::stringify!($val), &tmp);
                 tmp
             }
@@ -1057,6 +1057,8 @@ pub(crate) mod internal_prelude_sp {
 
 /// useful imports for general usage of the library
 pub mod prelude {
+	pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
+
 	pub use super::{Par, Scale, c32, c64, col, mat, row, unzip, zip};
 	pub use col::{Col, ColMut, ColRef};
 	pub use mat::{Mat, MatMut, MatRef};
