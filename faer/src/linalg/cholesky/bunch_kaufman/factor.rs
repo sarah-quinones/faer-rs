@@ -950,23 +950,8 @@ fn lblt_unblocked<T: ComplexField>(
 				// L_new * [ a10  a11 ] = L
 				let (_, _, L, mut A) = A.rb_mut().split_at_mut(2, 2);
 				let (mut L0, mut L1) = L.two_cols_mut(0, 1);
-
-				let n = A.nrows();
-				for j in 0..n {
-					let x0 = copy(L0[j]);
-					let x1 = copy(L1[j]);
-
-					let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
-					let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
-
-					for i in j..n {
-						A[(i, j)] = A[(i, j)] - L0[i] * conj(w0) - L1[i] * conj(w1);
-					}
-					A[(j, j)] = from_real(real(A[(j, j)]));
-
-					L0[j] = w0;
-					L1[j] = w1;
-				}
+				// this is now simdified
+				rank2_update(A, L0, L1, d, d00, d10, d11); 
 			}
 		}
 
@@ -990,6 +975,143 @@ impl<T: ComplexField> Auto<T> for LbltParams {
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
+}
+
+pub fn rank2_update<'a, T: ComplexField>(
+	mut A: MatMut<'a, T>,
+	mut L0: ColMut<'a, T>,
+	mut L1: ColMut<'a, T>,
+	d: T::Real,
+	d00: T::Real,
+	d10: T,
+	d11: T::Real,
+) {
+	// if const {T::SIMD_CAPABILITIES.is_simd()} {
+	// 	if let (Some(A), Some(L0), Some(L1)) = 
+	// 	(A.rb_mut().try_as_col_major_mut(), L0.rb_mut().try_as_col_major_mut(), L1.rb_mut().try_as_col_major_mut()) {
+	// 		rank2_update_simd(A, L0, L1, d, d00, d10, d11);
+	// 	} else {
+	// 		rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
+	// 	}
+	// } else {
+	// 	rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
+	// }
+	rank2_update_fallback(A, L0, L1, d, d00, d10, d11);
+}
+#[math]
+pub fn rank2_update_simd<'a, T: ComplexField>(
+	mut A: MatMut<'a, T, usize, usize, ContiguousFwd>,
+	mut L0: ColMut<'a, T, usize, ContiguousFwd>,
+	mut L1: ColMut<'a, T, usize, ContiguousFwd>,
+	d: T::Real,
+	d00: T::Real,
+	d10: T,
+	d11: T::Real,
+) {
+	struct Impl<'a, T: ComplexField> {
+		A: MatMut<'a, T, usize, usize, ContiguousFwd>,
+		L0: ColMut<'a, T, usize, ContiguousFwd>,
+		L1: ColMut<'a, T, usize, ContiguousFwd>,
+		d: T::Real,
+		d00: T::Real,
+		d10: T,
+		d11: T::Real,
+	}
+
+	impl<T: ComplexField> pulp::WithSimd for Impl<'_, T> {
+		type Output = ();
+		#[inline(always)]
+		fn with_simd<S: pulp::Simd>(self, simd: S) {
+			let Self { mut A, mut L0, mut L1, d, d00, d10, d11 } = self;
+			let n = A.nrows();
+			for j in 0..n {
+				let x0 = copy(L0[j]);
+				let x1 = copy(L1[j]);
+				let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+				let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+
+				with_dim!({
+					let subrange_len = n - j;
+				});
+				{
+					let mut A = A.rb_mut().get_mut(j.., j).as_row_shape_mut(subrange_len);
+					let L0 = L0.rb().get(j..).as_row_shape(subrange_len);
+					let L1 = L1.rb().get(j..).as_row_shape(subrange_len);
+					let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), subrange_len);
+					let (head, body, tail) = simd.indices();
+
+					let w0_conj = conj(w0);
+					let w1_conj = conj(w1);
+					let w0_splat = simd.splat(&w0_conj);
+					let w1_splat = simd.splat(&w1_conj);
+
+					if let Some(i) = head {
+						let mut acc = simd.read(A.rb(), i);
+						let l0_val = simd.read(L0, i);
+						let l1_val = simd.read(L1, i);
+						acc = simd.sub(acc, simd.mul(l0_val, w0_splat));
+						acc = simd.sub(acc, simd.mul(l1_val, w1_splat));
+						simd.write(A.rb_mut(), i, acc);
+					}
+
+					for i in body.clone() {
+						let mut acc = simd.read(A.rb(), i);
+						let l0_val = simd.read(L0, i);
+						let l1_val = simd.read(L1, i);
+						acc = simd.sub(acc, simd.mul(l0_val, w0_splat));
+						acc = simd.sub(acc, simd.mul(l1_val, w1_splat));
+						simd.write(A.rb_mut(), i, acc);
+					}
+
+					if let Some(i) = tail {
+						let mut acc = simd.read(A.rb(), i);
+						let l0_val = simd.read(L0, i);
+						let l1_val = simd.read(L1, i);
+						acc = simd.sub(acc, simd.mul(l0_val, w0_splat));
+						acc = simd.sub(acc, simd.mul(l1_val, w1_splat));
+						simd.write(A.rb_mut(), i, acc);
+					}
+				}
+				A[(j, j)] = from_real(real(A[(j, j)]));
+
+				L0[j] = w0;
+				L1[j] = w1;
+			}
+		}
+	}
+	dispatch!(
+		Impl{
+			A, L0, L1, d, d00, d10, d11,
+		}, Impl, T
+	)
+}
+
+#[math]
+pub fn rank2_update_fallback<'a, T: ComplexField>(
+	mut A: MatMut<'a, T>,
+	mut L0: ColMut<'a, T>,
+	mut L1: ColMut<'a, T>,
+	d: T::Real,
+	d00: T::Real,
+	d10: T,
+	d11: T::Real,
+) {
+					let n = A.nrows();
+				for j in 0..n {
+					let x0 = copy(L0[j]);
+					let x1 = copy(L1[j]);
+
+					let w0 = mul_real(mul_real(x0, d11) - x1 * d10, d);
+					let w1 = mul_real(mul_real(x1, d00) - x0 * conj(d10), d);
+
+					for i in j..n {
+						A[(i, j)] = A[(i, j)] - L0[i] * conj(w0) - L1[i] * conj(w1);
+					}
+					A[(j, j)] = from_real(real(A[(j, j)]));
+
+					L0[j] = w0;
+					L1[j] = w1;
+				}
 }
 
 /// computes the size and alignment of required workspace for performing an $LBL^\top$

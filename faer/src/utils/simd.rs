@@ -105,7 +105,7 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
 }
 
 impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
-	#[inline]
+	#[inline(always)]
 	pub fn new(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
 		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
@@ -139,7 +139,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		}
 	}
 
-	#[inline]
+	#[inline(always)]
 	pub fn new_align(simd: T::SimdCtx<S>, len: Dim<'N>, align_offset: usize) -> Self {
 		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
@@ -214,7 +214,7 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		self.offset
 	}
 
-	#[inline]
+	#[inline(always)]
 	pub fn new_force_mask(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
 		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
 
