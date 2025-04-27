@@ -671,6 +671,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "eigen-bench-setup"
+version = "0.1.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -760,12 +767,14 @@ version = "0.22.4"
 dependencies = [
  "aligned-vec",
  "amd",
+ "approx",
  "assert_approx_eq",
  "blis-src",
  "bytemuck",
  "curl",
  "diol",
  "dyn-stack",
+ "eigen-bench-setup",
  "equator 0.4.2",
  "faer-macros",
  "faer-traits",
@@ -796,6 +805,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_test",
+ "simba",
  "spindle",
  "suitesparse_sys",
  "tar",
