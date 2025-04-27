@@ -6,6 +6,7 @@ members = [
 ]
 exclude = [
   "faer-no-std-test",
+  "eigen-bench-setup"
 ]
 
 resolver = "2"

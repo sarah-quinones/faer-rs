@@ -97,6 +97,11 @@ toml = "0.8.20"
 curl = "0.4.47"
 flate2 = "1.1.1"
 tar = "0.4.44"
+simba = "0.9.0"
+approx = "0.5.1"
+
+[target.'cfg(eigen)'.dev-dependencies]
+eigen-bench-setup = { path = "../eigen-bench-setup" }
 
 [target.'cfg(suitesparse)'.dev-dependencies]
 suitesparse_sys = { version = "0.1.4", features = ["amd", "spqr", "umfpack", "colamd", "cholmod", "camd", "ccolamd", "openmp"] }
@@ -125,6 +130,7 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(eigen)',
     'cfg(openblas)',
     'cfg(mkl)',
     'cfg(blis)',
