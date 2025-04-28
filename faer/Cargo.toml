@@ -14,7 +14,7 @@ rust-version = "1.84.0"
 bytemuck = "1.18.0"
 generativity = "1.1.0"
 reborrow = "0.5.5"
-libm = "0.2.8"
+libm = { version = "0.2.13", default-features = false }
 
 rayon = { version = "1.10.0", optional = true }
 log = { version = "0.4.22", optional = true }
@@ -26,7 +26,7 @@ npyz = { version = "0.8.3", default-features = false, optional = true }
 num-complex = { version = "0.4.6", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }
 dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
-pulp = { version = "0.21.3", default-features = false, features = ["x86-v3"] }
+pulp = { version = "0.21.5", default-features = false, features = ["x86-v3"] }
 equator = { version = "0.4.2" }
 
 faer-traits = { path = "../faer-traits", version = "0.22.0", default-features = false }
@@ -51,6 +51,7 @@ std = [
   "pulp/std",
   "gemm/std",
   "nano-gemm/std",
+  "libm/arch",
   "dep:private-gemm-x86",
 ]
 nightly = [

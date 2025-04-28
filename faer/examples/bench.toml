@@ -26,6 +26,7 @@ shapes = [
 
 [block_decomp]
 shapes = [
+  2,
   4,
   8,
   16,

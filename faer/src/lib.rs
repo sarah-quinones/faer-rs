@@ -157,7 +157,7 @@
 //! data layout
 //! - `nightly`: requires the nightly compiler. enables experimental simd features such as avx512
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 #![warn(missing_docs)]
 #![warn(rustdoc::broken_intra_doc_links)]

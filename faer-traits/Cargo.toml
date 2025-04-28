@@ -13,10 +13,10 @@ keywords = ["math", "linear-algebra"]
 bytemuck = "1.18.0"
 reborrow = "0.5.5"
 generativity = "1.1.0"
-libm = "0.2.8"
+libm = { version = "0.2.13", default-features = false }
 
 dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
-pulp = { version = "0.21.3", default-features = false }
+pulp = { version = "0.21.5", default-features = false }
 faer-macros = { path = "../faer-macros", version = "0.21.0" }
 
 num-complex = { version = "0.4.6", default-features = false }
@@ -32,4 +32,5 @@ std = [
   "qd/std",
   "num-traits/std",
   "num-complex/std",
+  "libm/arch",
 ]

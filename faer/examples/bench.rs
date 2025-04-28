@@ -1165,7 +1165,7 @@ fn lapack_set_num_threads(parallel: Par) {
 	};
 }
 
-trait Scalar: faer_traits::ComplexField + na::ComplexField {
+trait Scalar: Copy + faer_traits::ComplexField + na::ComplexField {
 	const IS_NATIVE: bool = Self::IS_NATIVE_F32 || Self::IS_NATIVE_C32 || Self::IS_NATIVE_F64 || Self::IS_NATIVE_C64;
 
 	fn random(rng: &mut dyn RngCore, nrows: usize, ncols: usize) -> Mat<Self>;
@@ -1314,6 +1314,7 @@ fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
+
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, parallel, params));
@@ -3120,73 +3121,74 @@ fn main() -> eyre::Result<()> {
 							Par::Seq => seq_name,
 							Par::Rayon(_) => par_name,
 						};
+						if bench_config.group_filter.as_ref().is_none_or(|regex| regex.is_match(name)) {
+							let timings_path = format!("{}{}/timings {name}.json", env!("CARGO_MANIFEST_DIR"), "/../target");
+							let timings = serde_json::de::from_str::<BenchResult>(&*std::fs::read_to_string(&timings_path).unwrap_or(String::new()))
+								.unwrap_or(BenchResult { groups: HashMap::new() });
 
-						let timings_path = format!("{}{}/timings {name}.json", env!("CARGO_MANIFEST_DIR"), "/../target");
-						let mut timings = serde_json::de::from_str::<BenchResult>(&*std::fs::read_to_string(&timings_path).unwrap_or(String::new()))
-							.unwrap_or(BenchResult { groups: HashMap::new() });
+							let bench = Bench::new(&bench_config);
 
-						let bench = Bench::new(&bench_config);
+							match parallel {
+								Par::Seq => bench.register_many(
+									seq_name,
+									{
+										let list = diol::variadics::Nil;
+										#[cfg(any(openblas, mkl))]
+										let list = diol::variadics::Cons {
+											head: $name::<T, self::lapack, self::seq>
+												.with_name(core::any::type_name::<self::lapack>().trim_start_matches("bench::")),
+											tail: list,
+										};
+										#[cfg(nalgebra)]
+										let list = diol::variadics::Cons {
+											head: $name::<T, self::nalgebra, self::seq>
+												.with_name(core::any::type_name::<self::nalgebra>().trim_start_matches("bench::")),
+											tail: list,
+										};
+										#[cfg(eigen)]
+										let list = diol::variadics::Cons {
+											head: $name::<T, self::eigen, self::seq>
+												.with_name(core::any::type_name::<self::eigen>().trim_start_matches("bench::")),
+											tail: list,
+										};
+										#[cfg(faer)]
+										let list = diol::variadics::Cons {
+											head: $name::<T, self::faer, self::seq>
+												.with_name(core::any::type_name::<self::faer>().trim_start_matches("bench::")),
+											tail: list,
+										};
 
-						match parallel {
-							Par::Seq => bench.register_many(
-								seq_name,
-								{
-									let list = diol::variadics::Nil;
-									#[cfg(any(openblas, mkl, blis))]
-									let list = diol::variadics::Cons {
-										head: $name::<T, self::lapack, self::seq>
-											.with_name(core::any::type_name::<self::lapack>().trim_start_matches("bench::")),
-										tail: list,
-									};
-									#[cfg(nalgebra)]
-									let list = diol::variadics::Cons {
-										head: $name::<T, self::nalgebra, self::seq>
-											.with_name(core::any::type_name::<self::nalgebra>().trim_start_matches("bench::")),
-										tail: list,
-									};
-									#[cfg(eigen)]
-									let list = diol::variadics::Cons {
-										head: $name::<T, self::eigen, self::seq>
-											.with_name(core::any::type_name::<self::eigen>().trim_start_matches("bench::")),
-										tail: list,
-									};
-									#[cfg(faer)]
-									let list = diol::variadics::Cons {
-										head: $name::<T, self::faer, self::seq>
-											.with_name(core::any::type_name::<self::faer>().trim_start_matches("bench::")),
-										tail: list,
-									};
+										list
+									},
+									shapes($config),
+								),
 
-									list
-								},
-								shapes($config),
-							),
+								Par::Rayon(_) => bench.register_many(
+									par_name,
+									{
+										let list = diol::variadics::Nil;
+										#[cfg(any(openblas, mkl, blis))]
+										let list = diol::variadics::Cons {
+											head: $name::<T, self::lapack, self::par>
+												.with_name(core::any::type_name::<self::lapack>().trim_start_matches("bench::")),
+											tail: list,
+										};
+										#[cfg(faer)]
+										let list = diol::variadics::Cons {
+											head: $name::<T, self::faer, self::par>
+												.with_name(core::any::type_name::<self::faer>().trim_start_matches("bench::")),
+											tail: list,
+										};
 
-							Par::Rayon(_) => bench.register_many(
-								par_name,
-								{
-									let list = diol::variadics::Nil;
-									#[cfg(any(openblas, mkl, blis))]
-									let list = diol::variadics::Cons {
-										head: $name::<T, self::lapack, self::par>
-											.with_name(core::any::type_name::<self::lapack>().trim_start_matches("bench::")),
-										tail: list,
-									};
-									#[cfg(faer)]
-									let list = diol::variadics::Cons {
-										head: $name::<T, self::faer, self::par>
-											.with_name(core::any::type_name::<self::faer>().trim_start_matches("bench::")),
-										tail: list,
-									};
-
-									list
-								},
-								shapes($config),
-							),
+										list
+									},
+									shapes($config),
+								),
+							}
+							let timings = bench.run()?.combine(&timings);
+							timings.plot(&bench_config, bench_config.plot_dir.0.as_ref().unwrap())?;
+							std::fs::write(timings_path, serde_json::to_string(&timings).unwrap())?;
 						}
-						let result = bench.run()?;
-						timings = timings.combine(&result);
-						std::fs::write(timings_path, serde_json::to_string(&timings).unwrap())?;
 					};
 				}
 
