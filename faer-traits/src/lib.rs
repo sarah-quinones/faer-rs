@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_camel_case_types)]
 
 use bytemuck::Pod;
@@ -1170,9 +1170,9 @@ pub trait ComplexField:
 	fn simd_store<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &mut Self::SimdVec<S>, value: Self::SimdVec<S>) {
 		let simd = Self::ctx_from_simd(ctx);
 		if try_const! { Self::Unit::IS_NATIVE_F32 } {
-			*ptr = simd.deinterleave_shfl_f32s(value)
+			*ptr = simd.interleave_shfl_f32s(value)
 		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
-			*ptr = simd.deinterleave_shfl_f64s(value)
+			*ptr = simd.interleave_shfl_f64s(value)
 		} else {
 			panic!();
 		}
@@ -1195,9 +1195,9 @@ pub trait ComplexField:
 	unsafe fn simd_mask_store<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, value: Self::SimdVec<S>) {
 		let simd = Self::ctx_from_simd(ctx);
 		if try_const! { Self::Unit::IS_NATIVE_F32 } {
-			Self::simd_mask_store_raw(ctx, mask, ptr, simd.deinterleave_shfl_f32s(value))
+			Self::simd_mask_store_raw(ctx, mask, ptr, simd.interleave_shfl_f32s(value))
 		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
-			Self::simd_mask_store_raw(ctx, mask, ptr, simd.deinterleave_shfl_f64s(value))
+			Self::simd_mask_store_raw(ctx, mask, ptr, simd.interleave_shfl_f64s(value))
 		} else {
 			panic!();
 		}
@@ -2293,8 +2293,22 @@ impl<T: RealField> ComplexField for Complex<T> {
 		let start = start.zx() * 2;
 		let end = end.zx() * 2;
 
-		let re = T::simd_mem_mask_between(ctx, Self::Index::truncate(start.min(n)), Self::Index::truncate(end.min(n)));
-		let im = T::simd_mem_mask_between(ctx, Self::Index::truncate(start.max(n) - n), Self::Index::truncate(end.max(n) - n));
+		let mut sa = start.min(n);
+		let mut ea = end.min(n);
+		let mut sb = start.max(n) - n;
+		let mut eb = end.max(n) - n;
+
+		if sa == ea {
+			sa = 0;
+			ea = 0;
+		}
+		if sb == eb {
+			sb = 0;
+			eb = 0;
+		}
+
+		let re = T::simd_mem_mask_between(ctx, T::Index::truncate(sa), T::Index::truncate(ea));
+		let im = T::simd_mem_mask_between(ctx, T::Index::truncate(sb), T::Index::truncate(eb));
 		Complex { re, im }
 	}
 
@@ -3738,7 +3752,11 @@ impl ComplexField for fx128 {
 
 	#[inline(always)]
 	fn recip_impl(value: &Self) -> Self {
-		Quad::from(1.0) / *value
+		if value.0.abs() == f64::INFINITY {
+			Quad::ZERO
+		} else {
+			Quad::from(1.0) / *value
+		}
 	}
 
 	#[inline(always)]
@@ -3797,8 +3815,22 @@ impl ComplexField for fx128 {
 		let start = start * 2;
 		let end = end * 2;
 
-		let a = f64::simd_mem_mask_between(ctx, start.min(n), end.min(n));
-		let b = f64::simd_mem_mask_between(ctx, start.max(n) - n, end.max(n) - n);
+		let mut sa = start.min(n);
+		let mut ea = end.min(n);
+		let mut sb = start.max(n) - n;
+		let mut eb = end.max(n) - n;
+
+		if sa == ea {
+			sa = 0;
+			ea = 0;
+		}
+		if sb == eb {
+			sb = 0;
+			eb = 0;
+		}
+
+		let a = f64::simd_mem_mask_between(ctx, sa, ea);
+		let b = f64::simd_mem_mask_between(ctx, sb, eb);
 		Quad(a, b)
 	}
 
@@ -4014,7 +4046,10 @@ impl ComplexField for fx128 {
 impl RealField for fx128 {
 	#[inline(always)]
 	fn epsilon_impl() -> Self {
-		Quad::EPSILON
+		let mut x = Quad::EPSILON;
+		x.0 *= 8.0;
+		x.1 *= 8.0;
+		x
 	}
 
 	#[inline(always)]
