@@ -5,6 +5,7 @@ use std::ffi::*;
 use std::ptr::*;
 
 use aligned_vec::avec;
+use diol::config::PlotMetric;
 use diol::prelude::*;
 use diol::result::BenchResult;
 use dyn_stack::{MemBuffer, MemStack};
@@ -1299,7 +1300,10 @@ fn bench_eigen<T: Scalar>(bencher: Bencher, decomp: usize, A: MatRef<'_, T>) {
 
 fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1381,7 +1385,10 @@ fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 
 fn ldlt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1417,7 +1424,10 @@ fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 		return bencher.skip();
 	}
 
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1572,7 +1582,10 @@ fn lblt_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 		return bencher.skip();
 	}
 
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1611,7 +1624,10 @@ fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 		return bencher.skip();
 	}
 
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1765,7 +1781,10 @@ fn lblt_rook_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 		return bencher.skip();
 	}
 
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1804,7 +1823,10 @@ fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 		return bencher.skip();
 	}
 
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -1839,7 +1861,7 @@ fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 
 fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) || (!T::IS_NATIVE && Ord::max(m, n) > 1024)
 		// parallel mkl sometimes segfaults here ¯\_(ツ)_/¯
 		|| (Lib::LAPACK && Thd::PAR && cfg!(mkl))
 	{
@@ -2002,7 +2024,10 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 
 fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -2181,7 +2206,10 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 
 fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -2272,7 +2300,10 @@ fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 
 fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -2363,7 +2394,10 @@ fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, P
 
 fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -2583,7 +2617,7 @@ fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 
 fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) || (!T::IS_NATIVE && Ord::max(m, n) > 1024)
 		// parallel mkl sometimes segfaults here ¯\_(ツ)_/¯
 		|| (Lib::LAPACK && Thd::PAR && cfg!(mkl))
 	{
@@ -2793,7 +2827,10 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bench
 
 fn evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) {
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
+		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
+	{
 		bencher.skip();
 		return;
 	}
@@ -3044,10 +3081,6 @@ fn main() -> eyre::Result<()> {
 		.parse::<Table>()
 		.unwrap();
 
-	let timings_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/timings.json");
-	let mut timings = serde_json::de::from_str::<BenchResult>(&*std::fs::read_to_string(timings_path).unwrap_or(String::new()))
-		.unwrap_or(BenchResult { groups: HashMap::new() });
-
 	let mut parallel = vec![];
 
 	if config["par"]["seq"].as_bool().unwrap() {
@@ -3065,20 +3098,38 @@ fn main() -> eyre::Result<()> {
 			.map(|i| PlotArg(i.as_integer().unwrap() as usize))
 			.collect::<Vec<_>>()
 	};
-	let bench_config = Config::from_args()?;
+	let mut bench_config = Config::from_args()?;
+	bench_config.plot_metric = PlotMetric::new(FlopsMetric);
 
 	macro_rules! register {
 		($T: ident) => {{
 			type T = $T;
 
 			for &parallel in &parallel {
-				let bench = Bench::new(&bench_config);
-
 				macro_rules! register_one {
-					($name: ident, $config: expr) => {
+					($title: expr, $name: ident, $config: expr) => {
+						let par_name = &format!(
+							"{} parallel ({} threads) {}",
+							stringify!($T),
+							rayon::current_num_threads(),
+							$title
+						);
+						let seq_name = &format!("{}{}{}", stringify!($T), " sequential ", $title);
+
+						let name = match parallel {
+							Par::Seq => seq_name,
+							Par::Rayon(_) => par_name,
+						};
+
+						let timings_path = format!("{}{}/timings {name}.json", env!("CARGO_MANIFEST_DIR"), "/../target");
+						let mut timings = serde_json::de::from_str::<BenchResult>(&*std::fs::read_to_string(&timings_path).unwrap_or(String::new()))
+							.unwrap_or(BenchResult { groups: HashMap::new() });
+
+						let bench = Bench::new(&bench_config);
+
 						match parallel {
 							Par::Seq => bench.register_many(
-								concat!(stringify!($T), " sequential ", stringify!($name)),
+								seq_name,
 								{
 									let list = diol::variadics::Nil;
 									#[cfg(any(openblas, mkl, blis))]
@@ -3112,12 +3163,7 @@ fn main() -> eyre::Result<()> {
 							),
 
 							Par::Rayon(_) => bench.register_many(
-								&format!(
-									"{} parallel ({} threads) {}",
-									stringify!($T),
-									rayon::current_num_threads(),
-									stringify!($name)
-								),
+								par_name,
 								{
 									let list = diol::variadics::Nil;
 									#[cfg(any(openblas, mkl, blis))]
@@ -3138,42 +3184,29 @@ fn main() -> eyre::Result<()> {
 								shapes($config),
 							),
 						}
+						let result = bench.run()?;
+						timings = timings.combine(&result);
+						std::fs::write(timings_path, serde_json::to_string(&timings).unwrap())?;
 					};
 				}
 
-				register_one!(llt, "block_decomp");
-				register_one!(ldlt, "block_decomp");
-				register_one!(lblt, "block_decomp");
-				register_one!(lblt_diag, "block_decomp");
-				register_one!(lblt_rook, "block_decomp");
-				register_one!(lblt_rook_diag, "block_decomp");
-				register_one!(lblt_full, "decomp");
+				register_one!("LLT", llt, "block_decomp");
+				register_one!("LDLT", ldlt, "block_decomp");
+				register_one!("LBLT", lblt, "block_decomp");
+				register_one!("LBLT diagonal pivoting", lblt_diag, "block_decomp");
+				register_one!("LBLT rook pivoting", lblt_rook, "block_decomp");
+				register_one!("LBLT diagonal + rook pivoting", lblt_rook_diag, "block_decomp");
+				register_one!("LBLT full pivoting", lblt_full, "decomp");
 
-				register_one!(partial_piv_lu, "block_decomp");
-				register_one!(full_piv_lu, "decomp");
+				register_one!("LU partial pivoting", partial_piv_lu, "block_decomp");
+				register_one!("LU full pivoting", full_piv_lu, "decomp");
 
-				register_one!(qr, "block_decomp");
-				register_one!(col_piv_qr, "decomp");
+				register_one!("QR", qr, "block_decomp");
+				register_one!("QR column pivoting", col_piv_qr, "decomp");
 
-				register_one!(svd, "svd");
-				register_one!(self_adjoint_evd, "svd");
-				register_one!(evd, "evd");
-
-				let result = bench.run()?;
-
-				fn get_data(f: &str) -> (&str, &str, &str, &str) {
-					let open = f.find('<').unwrap();
-					let close = f.rfind('>').unwrap();
-					let name = &f[..open];
-					let args = &f[open + 1..close];
-					let mut args = args.split(',');
-					let ty = args.next().unwrap().trim();
-					let backend = args.next().unwrap().trim();
-					let thd = args.next().unwrap().trim();
-					(name, ty, backend, thd)
-				}
-
-				timings = timings.combine(&result);
+				register_one!("SVD", svd, "svd");
+				register_one!("self adjoint EVD", self_adjoint_evd, "svd");
+				register_one!("EVD", evd, "evd");
 			}
 		}};
 	}
@@ -3187,8 +3220,6 @@ fn main() -> eyre::Result<()> {
 		register!(cx128);
 		Ok(())
 	})?;
-
-	std::fs::write(timings_path, serde_json::to_string(&timings).unwrap())?;
 
 	Ok(())
 }
