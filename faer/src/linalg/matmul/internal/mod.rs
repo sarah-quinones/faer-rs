@@ -1,4 +1,5 @@
 use crate::internal_prelude::*;
+use crate::linalg::matmul::triangular::DiagonalKind;
 use crate::{MatRef, assert};
 use linalg::matmul::triangular::BlockStructure;
 
@@ -201,40 +202,91 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 	};
 
 	{
-		let C = if row_idx.is_some() || col_idx.is_some() {
+		let mut C = if row_idx.is_some() || col_idx.is_some() {
 			out.rb_mut()
 		} else {
 			C.rb_mut()
 		};
 
-		linalg::matmul::triangular::matmul_with_conj(
-			C,
-			C_block,
-			if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
-			A,
-			BlockStructure::Rectangular,
-			conj_A,
-			B,
-			BlockStructure::Rectangular,
-			conj_B,
-			alpha,
-			par,
-		);
+		let size = Ord::min(nrows, ncols);
+
+		if C_block.is_dense() {
+			linalg::matmul::triangular::matmul_with_conj(
+				C,
+				C_block,
+				if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+				A,
+				BlockStructure::Rectangular,
+				conj_A,
+				B,
+				BlockStructure::Rectangular,
+				conj_B,
+				alpha,
+				par,
+			);
+		} else {
+			linalg::matmul::triangular::matmul_with_conj(
+				C.rb_mut().get_mut(..size, ..size),
+				C_block,
+				if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+				A,
+				BlockStructure::Rectangular,
+				conj_A,
+				B,
+				BlockStructure::Rectangular,
+				conj_B,
+				copy(alpha),
+				par,
+			);
+
+			if C_block.is_lower() && nrows > ncols {
+				linalg::matmul::matmul_with_conj(
+					C.rb_mut().get_mut(size.., ..size),
+					if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+					A,
+					conj_A,
+					B,
+					conj_B,
+					alpha,
+					par,
+				);
+			} else if ncols > nrows {
+				linalg::matmul::matmul_with_conj(
+					C.rb_mut().get_mut(..size, size..),
+					if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+					A,
+					conj_A,
+					B,
+					conj_B,
+					alpha,
+					par,
+				);
+			}
+		}
 	}
+
+	let lower = C_block.is_lower();
+	let upper = C_block.is_upper();
+
+	let diag = matches!(C_block.diag_kind(), DiagonalKind::Generic) as usize;
 
 	match (row_idx, col_idx) {
 		(Some(row_idx), Some(col_idx)) => match beta {
 			Accum::Replace => {
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for (i, &ii) in row_idx.iter().enumerate() {
-						C[(ii.zx(), jj.zx())] = copy(out[(i, j)]);
+						if (lower && j < i + diag) || (upper && i < j + diag) {
+							C[(ii.zx(), jj.zx())] = copy(out[(i, j)]);
+						}
 					}
 				}
 			},
 			Accum::Add => {
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for (i, &ii) in row_idx.iter().enumerate() {
-						C[(ii.zx(), jj.zx())] = C[(ii.zx(), jj.zx())] + out[(i, j)];
+						if (lower && j < i + diag) || (upper && i < j + diag) {
+							C[(ii.zx(), jj.zx())] = C[(ii.zx(), jj.zx())] + out[(i, j)];
+						}
 					}
 				}
 			},
@@ -243,14 +295,18 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			Accum::Replace => {
 				for j in 0..ncols {
 					for (i, &ii) in row_idx.iter().enumerate() {
-						C[(ii.zx(), j)] = copy(out[(i, j)]);
+						if (lower && j < i + diag) || (upper && i < j + diag) {
+							C[(ii.zx(), j)] = copy(out[(i, j)]);
+						}
 					}
 				}
 			},
 			Accum::Add => {
 				for j in 0..ncols {
 					for (i, &ii) in row_idx.iter().enumerate() {
-						C[(ii.zx(), j)] = C[(ii.zx(), j)] + out[(i, j)];
+						if (lower && j < i + diag) || (upper && i < j + diag) {
+							C[(ii.zx(), j)] = C[(ii.zx(), j)] + out[(i, j)];
+						}
 					}
 				}
 			},
@@ -259,14 +315,18 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			Accum::Replace => {
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for i in 0..nrows {
-						C[(i, jj.zx())] = copy(out[(i, j)]);
+						if (lower && j < i + diag) || (upper && i < j + diag) {
+							C[(i, jj.zx())] = copy(out[(i, j)]);
+						}
 					}
 				}
 			},
 			Accum::Add => {
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for i in 0..nrows {
-						C[(i, jj.zx())] = C[(i, jj.zx())] + out[(i, j)];
+						if (lower && j < i + diag) || (upper && i < j + diag) {
+							C[(i, jj.zx())] = C[(i, jj.zx())] + out[(i, j)];
+						}
 					}
 				}
 			},
