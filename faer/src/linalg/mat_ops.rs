@@ -576,7 +576,7 @@ impl_binop!({
 			#[track_caller]
 			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: RowRef<'_, RT>) -> Row<T> {
 				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
-				(lhs.transpose() + rhs.transpose()).into_transpose()
+				(lhs.transpose() - rhs.transpose()).into_transpose()
 			}
 			let lhs = self.rb();
 			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.rb().as_dyn_cols().as_dyn_stride()).into_col_shape(lhs.ncols())
@@ -3623,6 +3623,14 @@ mod test {
 		(A, B)
 	}
 
+	fn rows() -> (Row<f64>, Row<f64>) {
+		(row![2.8, -3.3], row![-7.9, 8.3])
+	}
+
+	fn cols() -> (Col<f64>, Col<f64>) {
+		(col![2.8, -3.3], col![-7.9, 8.3])
+	}
+
 	#[test]
 	#[should_panic]
 	fn test_adding_matrices_of_different_sizes_should_panic() {
@@ -3640,7 +3648,7 @@ mod test {
 	}
 
 	#[test]
-	fn test_add() {
+	fn test_matrix_add() {
 		let (A, B) = matrices();
 
 		let expected = mat![[-5.1, 5.0], [3.0, 2.0], [8.4, -13.5],];
@@ -3657,7 +3665,39 @@ mod test {
 	}
 
 	#[test]
-	fn test_sub() {
+	fn test_row_add() {
+		let (A, B) = rows();
+		let expected = row![-5.1, 5.0];
+
+		assert_row_approx_eq(A.as_ref() + B.as_ref(), &expected);
+		assert_row_approx_eq(&A + &B, &expected);
+		assert_row_approx_eq(A.as_ref() + &B, &expected);
+		assert_row_approx_eq(&A + B.as_ref(), &expected);
+		assert_row_approx_eq(A.as_ref() + B.clone(), &expected);
+		assert_row_approx_eq(A.clone() + B.as_ref(), &expected);
+		assert_row_approx_eq(&A + B.clone(), &expected);
+		assert_row_approx_eq(A.clone() + &B, &expected);
+		assert_row_approx_eq(A + B, &expected);
+	}
+
+	#[test]
+	fn test_col_add() {
+		let (A, B) = cols();
+		let expected = col![-5.1, 5.0];
+
+		assert_col_approx_eq(A.as_ref() + B.as_ref(), &expected);
+		assert_col_approx_eq(&A + &B, &expected);
+		assert_col_approx_eq(A.as_ref() + &B, &expected);
+		assert_col_approx_eq(&A + B.as_ref(), &expected);
+		assert_col_approx_eq(A.as_ref() + B.clone(), &expected);
+		assert_col_approx_eq(A.clone() + B.as_ref(), &expected);
+		assert_col_approx_eq(&A + B.clone(), &expected);
+		assert_col_approx_eq(A.clone() + &B, &expected);
+		assert_col_approx_eq(A + B, &expected);
+	}
+
+	#[test]
+	fn test_matrix_sub() {
 		let (A, B) = matrices();
 
 		let expected = mat![[10.7, -11.6], [-6.4, 8.4], [0.8, -3.1],];
@@ -3671,6 +3711,38 @@ mod test {
 		assert_matrix_approx_eq(A.clone() - B.as_ref(), &expected);
 		assert_matrix_approx_eq(A.clone() - &B, &expected);
 		assert_matrix_approx_eq(A - B, &expected);
+	}
+
+	#[test]
+	fn test_row_sub() {
+		let (A, B) = rows();
+		let expected = row![10.7, -11.6];
+
+		assert_row_approx_eq(A.as_ref() - B.as_ref(), &expected);
+		assert_row_approx_eq(&A - &B, &expected);
+		assert_row_approx_eq(A.as_ref() - &B, &expected);
+		assert_row_approx_eq(&A - B.as_ref(), &expected);
+		assert_row_approx_eq(A.as_ref() - B.clone(), &expected);
+		assert_row_approx_eq(A.clone() - B.as_ref(), &expected);
+		assert_row_approx_eq(&A - B.clone(), &expected);
+		assert_row_approx_eq(A.clone() - &B, &expected);
+		assert_row_approx_eq(A - B, &expected);
+	}
+
+	#[test]
+	fn test_col_sub() {
+		let (A, B) = cols();
+		let expected = col![10.7, -11.6];
+
+		assert_col_approx_eq(A.as_ref() - B.as_ref(), &expected);
+		assert_col_approx_eq(&A - &B, &expected);
+		assert_col_approx_eq(A.as_ref() - &B, &expected);
+		assert_col_approx_eq(&A - B.as_ref(), &expected);
+		assert_col_approx_eq(A.as_ref() - B.clone(), &expected);
+		assert_col_approx_eq(A.clone() - B.as_ref(), &expected);
+		assert_col_approx_eq(&A - B.clone(), &expected);
+		assert_col_approx_eq(A.clone() - &B, &expected);
+		assert_col_approx_eq(A - B, &expected);
 	}
 
 	#[test]
@@ -3762,6 +3834,20 @@ mod test {
 		assert!(&A * &B == A.as_mat() * B.as_mat());
 		// inner product
 		assert!(&B * &A == (B.as_mat() * A.as_mat())[(0, 0)],);
+	}
+
+	fn assert_row_approx_eq(given: Row<f64>, expected: &Row<f64>) {
+		assert_eq!(given.nrows(), expected.nrows());
+		for i in 0..given.nrows() {
+			assert_approx_eq!(given.as_ref()[i], expected.as_ref()[i]);
+		}
+	}
+
+	fn assert_col_approx_eq(given: Col<f64>, expected: &Col<f64>) {
+		assert_eq!(given.ncols(), expected.ncols());
+		for i in 0..given.ncols() {
+			assert_approx_eq!(given.as_ref()[i], expected.as_ref()[i]);
+		}
 	}
 
 	fn assert_matrix_approx_eq(given: Mat<f64>, expected: &Mat<f64>) {
