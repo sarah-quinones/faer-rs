@@ -1158,7 +1158,7 @@ impl<T: ComplexField> Svd<T> {
 		let S = self.S();
 		let par = get_global_parallelism();
 		let stack = &mut MemBuffer::new(linalg::svd::pseudoinverse_from_svd_scratch::<T>(self.nrows(), self.ncols(), par));
-		let mut pinv = Mat::zeros(self.nrows(), self.ncols());
+		let mut pinv = Mat::zeros(self.ncols(), self.nrows());
 		linalg::svd::pseudoinverse_from_svd(pinv.rb_mut(), S, U, V, par, MemStack::new(stack));
 		pinv
 	}

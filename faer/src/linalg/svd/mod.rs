@@ -666,7 +666,10 @@ pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 		}
 	}
 
-	linalg::matmul::matmul(pinv.rb_mut(), Accum::Replace, vp_trunc.rb(), u_trunc.rb().adjoint(), one(), par);
+	let u_trunc = u_trunc.get(.., ..len);
+	let vp_trunc = vp_trunc.get(.., ..len);
+
+	linalg::matmul::matmul(pinv.rb_mut(), Accum::Replace, vp_trunc, u_trunc.adjoint(), one(), par);
 }
 
 #[cfg(test)]

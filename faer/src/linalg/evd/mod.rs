@@ -24,7 +24,7 @@ use crate::assert;
 use crate::internal_prelude::*;
 use hessenberg::HessenbergParams;
 use linalg::matmul::triangular::BlockStructure;
-use schur::SchurParams;
+pub use schur::SchurParams;
 use tridiag::TridiagParams;
 
 /// eigendecomposition error
@@ -142,6 +142,104 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 			linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(n - 1, bs, n),
 		]),
 	])
+}
+
+/// computes the matrix $A$'s eigendecomposition, assuming it is tridiagonal and self-adjoint
+///
+/// the eigenvalues are stored in $S$, and the eigenvectors in $U$ such that the eigenvalues are
+/// sorted in nondecreasing order
+#[math]
+pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
+	diag: DiagRef<'_, T>,
+	subdiag: DiagRef<'_, T>,
+	s: DiagMut<'_, T>,
+	u: Option<MatMut<'_, T>>,
+	par: Par,
+	stack: &mut MemStack,
+	params: Spec<SelfAdjointEvdParams, T>,
+) -> Result<(), EvdError> {
+	let n = diag.dim();
+	let (mut real_diag, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+	let (mut real_offdiag, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+
+	let mut real_diag = real_diag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+	let mut real_offdiag = real_offdiag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+
+	for i in 0..n {
+		real_diag[i] = real(diag[i]);
+
+		if i + 1 < n {
+			if try_const! { T::IS_REAL } {
+				real_offdiag[i] = real(subdiag[i]);
+			} else {
+				real_offdiag[i] = abs(subdiag[i]);
+			}
+		} else {
+			real_offdiag[i] = zero();
+		}
+	}
+
+	let mut s = s;
+	let mut u = match u {
+		Some(u) => u,
+		None => {
+			tridiag_evd::qr_algorithm(real_diag.rb_mut(), real_offdiag.rb_mut(), None)?;
+			for i in 0..n {
+				s[i] = from_real(real_diag[i]);
+			}
+
+			return Ok(());
+		},
+	};
+
+	let (mut u_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, if T::IS_REAL { 0 } else { n }, stack) };
+	let mut u_real = u_real.as_mat_mut();
+	let mut u_evd = if try_const! { T::IS_REAL } {
+		unsafe { core::mem::transmute(u.rb_mut()) }
+	} else {
+		u_real.rb_mut()
+	};
+
+	if n < params.recursion_threshold {
+		tridiag_evd::qr_algorithm(real_diag.rb_mut(), real_offdiag.rb_mut(), Some(u_evd.rb_mut()))?;
+	} else {
+		tridiag_evd::divide_and_conquer::<T::Real>(
+			real_diag.rb_mut(),
+			real_offdiag.rb_mut(),
+			u_evd.rb_mut(),
+			par,
+			stack,
+			params.recursion_threshold,
+		)?;
+	}
+
+	if try_const! { !T::IS_REAL } {
+		let normalized = |x: T| {
+			if x == zero() { one() } else { mul_real(x, recip(abs(x))) }
+		};
+
+		let (mut scale, _) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
+		let mut scale = scale.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+
+		let mut x = one::<T>();
+		scale[0] = one();
+
+		for i in 1..n {
+			x = normalized(subdiag[i - 1] * x);
+			scale[i] = copy(x);
+		}
+		for j in 0..n {
+			z!(u.rb_mut().col_mut(j), u_real.rb().col(j), scale.rb()).for_each(|uz!(u, real, scale)| {
+				*u = mul_real(*scale, *real);
+			});
+		}
+	}
+
+	for i in 0..n {
+		s[i] = from_real(real_diag[i]);
+	}
+
+	Ok(())
 }
 
 /// computes the matrix $A$'s eigendecomposition, assuming it is self-adjoint

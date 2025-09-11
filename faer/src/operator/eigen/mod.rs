@@ -821,7 +821,7 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 				let i = idx;
 				if i != j {
 					reorder_schur(H_slice.rb_mut(), Some(Q_slice.rb_mut()), i, j);
-					w.rb_mut().try_as_col_major_mut().unwrap().as_slice_mut().rotate_right(1);
+					w.rb_mut().try_as_col_major_mut().unwrap().as_slice_mut()[j..i + 1].rotate_right(1);
 				}
 			}
 

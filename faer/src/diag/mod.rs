@@ -121,7 +121,7 @@ pub mod generic {
 /// trait for types that can be converted to a diagonal matrix view.
 pub trait AsDiagMut: AsDiagRef {
 	/// returns a view over `self`
-	fn as_diag_mut(&mut self) -> DiagMut<Self::T, Self::Dim>;
+	fn as_diag_mut(&mut self) -> DiagMut<'_, Self::T, Self::Dim>;
 }
 /// trait for types that can be converted to a diagonal matrix view.
 pub trait AsDiagRef {
@@ -131,7 +131,7 @@ pub trait AsDiagRef {
 	type Dim: Shape;
 
 	/// returns a view over `self`
-	fn as_diag_ref(&self) -> DiagRef<Self::T, Self::Dim>;
+	fn as_diag_ref(&self) -> DiagRef<'_, Self::T, Self::Dim>;
 }
 
 impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef for DiagRef<'_, T, Dim, Stride> {
@@ -139,7 +139,7 @@ impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef for DiagRef<'_, T, Dim, Str
 	type T = T;
 
 	#[inline]
-	fn as_diag_ref(&self) -> DiagRef<Self::T, Self::Dim> {
+	fn as_diag_ref(&self) -> DiagRef<'_, Self::T, Self::Dim> {
 		self.as_dyn_stride()
 	}
 }

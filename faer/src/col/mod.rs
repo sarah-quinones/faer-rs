@@ -204,7 +204,7 @@ impl<T, Rows: Shape, Rs: Stride> AsMatRef for ColRef<'_, T, Rows, Rs> {
 	type T = T;
 
 	#[inline]
-	fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+	fn as_mat_ref(&self) -> MatRef<'_, Self::T, Self::Rows, Self::Cols> {
 		self.as_dyn_stride().as_mat().as_col_shape(One)
 	}
 }
@@ -216,7 +216,7 @@ impl<T, Rows: Shape, Rs: Stride> AsMatRef for ColMut<'_, T, Rows, Rs> {
 	type T = T;
 
 	#[inline]
-	fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+	fn as_mat_ref(&self) -> MatRef<'_, Self::T, Self::Rows, Self::Cols> {
 		self.rb().as_dyn_stride().as_mat().as_col_shape(One)
 	}
 }
@@ -228,21 +228,21 @@ impl<T, Rows: Shape> AsMatRef for Col<T, Rows> {
 	type T = T;
 
 	#[inline]
-	fn as_mat_ref(&self) -> MatRef<Self::T, Self::Rows, Self::Cols> {
+	fn as_mat_ref(&self) -> MatRef<'_, Self::T, Self::Rows, Self::Cols> {
 		self.as_dyn_stride().as_mat().as_col_shape(One)
 	}
 }
 
 impl<T, Rows: Shape, Rs: Stride> AsMatMut for ColMut<'_, T, Rows, Rs> {
 	#[inline]
-	fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols> {
+	fn as_mat_mut(&mut self) -> MatMut<'_, Self::T, Self::Rows, Self::Cols> {
 		self.rb_mut().as_dyn_stride_mut().as_mat_mut().as_col_shape_mut(One)
 	}
 }
 
 impl<T, Rows: Shape> AsMatMut for Col<T, Rows> {
 	#[inline]
-	fn as_mat_mut(&mut self) -> MatMut<Self::T, Self::Rows, Self::Cols> {
+	fn as_mat_mut(&mut self) -> MatMut<'_, Self::T, Self::Rows, Self::Cols> {
 		self.as_dyn_stride_mut().as_mat_mut().as_col_shape_mut(One)
 	}
 }
