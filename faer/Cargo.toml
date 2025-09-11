@@ -138,4 +138,5 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(faer)',
     'cfg(nalgebra)',
     'cfg(suitesparse)',
+    'cfg(docs_rs)',
   ] }

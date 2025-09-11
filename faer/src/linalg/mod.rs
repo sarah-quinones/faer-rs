@@ -67,13 +67,13 @@ impl<'a, T: ComplexField, Rows: Shape, Cols: Shape> AsMatRef for DynMat<'a, T, R
 	type Rows = Rows;
 	type T = T;
 
-	fn as_mat_ref(&self) -> crate::mat::MatRef<T, Rows, Cols> {
+	fn as_mat_ref(&self) -> crate::mat::MatRef<'_, T, Rows, Cols> {
 		unsafe { MatRef::from_raw_parts(self.ptr as *const T, self.nrows, self.ncols, 1, self.col_stride as isize) }
 	}
 }
 
 impl<'a, T: ComplexField, Rows: Shape, Cols: Shape> AsMatMut for DynMat<'a, T, Rows, Cols> {
-	fn as_mat_mut(&mut self) -> crate::mat::MatMut<T, Rows, Cols> {
+	fn as_mat_mut(&mut self) -> crate::mat::MatMut<'_, T, Rows, Cols> {
 		unsafe { MatMut::from_raw_parts_mut(self.ptr, self.nrows, self.ncols, 1, self.col_stride as isize) }
 	}
 }

@@ -182,19 +182,19 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 		let mut x0 = simd.read(data.rb(), i0);
 		let l0 = simd.read(lhs, i0);
 		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, simd.read(data.rb(), i0), idx0);
+		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, x0, idx0);
 		simd.write(data.rb_mut(), i0, x0);
 
 		let mut x1 = simd.read(data.rb(), i1);
 		let l1 = simd.read(lhs, i1);
 		x1 = simd.mul_add(l1, rhs, x1);
-		(best_val1, best_idx1) = best_value(&simd, best_val1, best_idx1, simd.read(data.rb(), i1), idx1);
+		(best_val1, best_idx1) = best_value(&simd, best_val1, best_idx1, x1, idx1);
 		simd.write(data.rb_mut(), i1, x1);
 
 		let mut x2 = simd.read(data.rb(), i2);
 		let l2 = simd.read(lhs, i2);
 		x2 = simd.mul_add(l2, rhs, x2);
-		(best_val2, best_idx2) = best_value(&simd, best_val2, best_idx2, simd.read(data.rb(), i2), idx2);
+		(best_val2, best_idx2) = best_value(&simd, best_val2, best_idx2, x2, idx2);
 		simd.write(data.rb_mut(), i2, x2);
 
 		idx0 = simd.iadd(idx0, inc3);

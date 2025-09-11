@@ -8,8 +8,6 @@ pub unsafe trait Ptr: Sized + Copy {
 
 	fn get_ptr(ptr: *mut Self::Item) -> Self;
 
-	fn null() -> Self;
-
 	unsafe fn offset_from(self, origin: Self) -> isize;
 
 	unsafe fn add(self, offset: usize) -> Self;
@@ -40,11 +38,6 @@ unsafe impl<T> Ptr for *mut T {
 	#[inline]
 	fn get_ptr(ptr: *mut Self::Item) -> Self {
 		ptr as *mut T
-	}
-
-	#[inline]
-	fn null() -> Self {
-		core::ptr::null_mut()
 	}
 
 	#[inline]
@@ -94,11 +87,6 @@ unsafe impl<P: Ptr, Q: Ptr> Ptr for (P, Q) {
 				Q::get_ptr(core::ptr::addr_of_mut!((*ptr).1)),
 			)
 		}
-	}
-
-	#[inline]
-	fn null() -> Self {
-		(P::null(), Q::null())
 	}
 
 	#[inline]

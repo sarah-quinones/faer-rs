@@ -330,6 +330,17 @@ macro_rules! zip {
     };
 }
 
+#[macro_export]
+macro_rules! Zip {
+    ($head: ty $(,)?) => {
+        $crate::linalg::zip::Last::<$head>
+    };
+
+    ($head: ty, $($tail: ty),* $(,)?) => {
+        $crate::linalg::zip::Zip::<$head, $crate::Zip!($($tail,)*)>
+    };
+}
+
 /// used to undo the zipping by the [`zip!`] macro.
 ///
 /// # example
@@ -1286,4 +1297,9 @@ mod sort;
 
 pub extern crate dyn_stack;
 pub extern crate faer_traits as traits;
+pub extern crate num_complex as complex;
 pub extern crate reborrow;
+
+#[cfg(feature = "rand")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "rand")))]
+pub extern crate rand;
