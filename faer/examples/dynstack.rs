@@ -4,7 +4,6 @@ use dyn_stack::{MemBuffer, MemStack, StackReq};
 use faer::mat::AsMatMut;
 use faer::prelude::*;
 use faer::{Accum, dyn_stack};
-use reborrow::*;
 
 fn foo_scratch(n: usize) -> StackReq {
 	let tmp = faer::linalg::temp_mat_scratch::<f64>(n, n);

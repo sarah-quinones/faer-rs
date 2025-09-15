@@ -1219,6 +1219,17 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 	pub fn S(&self) -> DiagRef<'_, T> {
 		self.S.as_ref()
 	}
+
+	/// returns the pseudoinverse of the original matrix $A$.
+	pub fn pseudoinverse(&self) -> Mat<T> {
+		let U = self.U();
+		let S = self.S();
+		let par = get_global_parallelism();
+		let stack = &mut MemBuffer::new(linalg::evd::pseudoinverse_from_self_adjoint_evd_scratch::<T>(self.nrows(), par));
+		let mut pinv = Mat::zeros(self.ncols(), self.nrows());
+		linalg::evd::pseudoinverse_from_self_adjoint_evd(pinv.rb_mut(), S, U, par, MemStack::new(stack));
+		pinv
+	}
 }
 
 impl<T: RealField> Eigen<T> {
