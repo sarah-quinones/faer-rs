@@ -1,6 +1,6 @@
 use super::*;
 use crate::internal_prelude::*;
-use crate::{Idx, IdxInc, TryReserveError};
+use crate::{Idx, IdxInc, TryReserveError, assert};
 use core::alloc::Layout;
 use dyn_stack::StackReq;
 use faer_traits::ComplexField;
@@ -514,7 +514,9 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 	}
 
 	/// see [`MatRef::as_shape`]
+	#[track_caller]
 	pub fn into_shape<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> Mat<T, V, H> {
+		assert!(all(self.nrows().unbound() == nrows.unbound(), self.ncols().unbound() == ncols.unbound()));
 		let this = core::mem::ManuallyDrop::new(self);
 
 		Mat {

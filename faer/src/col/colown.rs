@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Idx, IdxInc, TryReserveError};
+use crate::{Idx, IdxInc, TryReserveError, assert};
 
 /// see [`super::Col`]
 #[derive(Clone)]
@@ -94,6 +94,7 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	/// see [`ColRef::as_row_shape`]
 	#[inline]
 	pub fn into_row_shape<V: Shape>(self, nrows: V) -> Col<T, V> {
+		assert!(all(self.nrows().unbound() == nrows.unbound()));
 		Col {
 			0: Own {
 				column: self.0.column.into_shape(nrows, 1),
