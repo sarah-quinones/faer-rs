@@ -303,7 +303,7 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 	QrInfo { rank }
 }
 
-/// computes the size and alignment of required workspace for performing a qr
+/// computes the layout of required workspace for performing a qr
 /// decomposition with no pivoting
 #[inline]
 pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<QrParams, T>) -> StackReq {

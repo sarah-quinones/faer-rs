@@ -23,7 +23,7 @@ impl<T: ComplexField> Auto<T> for TridiagParams {
 	}
 }
 
-/// computes the size and alignment of the workspace required to compute a self-adjoint matrix's
+/// computes the layout of the workspace required to compute a self-adjoint matrix's
 /// tridiagonalization
 pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<TridiagParams, T>) -> StackReq {
 	_ = par;

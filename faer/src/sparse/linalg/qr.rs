@@ -55,7 +55,7 @@ pub(crate) fn ghost_col_etree<'n, I: Index>(
 	}
 }
 
-/// computes the size and alignment of the workspace required to compute the column elimination tree
+/// computes the layout of the workspace required to compute the column elimination tree
 /// of a matrix $A$ with dimensions `(nrows, ncols)`
 #[inline]
 pub fn col_etree_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
@@ -249,7 +249,7 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
 	}
 }
 
-/// computes the size and alignment of the workspace required to compute the column counts
+/// computes the layout of the workspace required to compute the column counts
 /// of the cholesky factor of the matrix $A A^\top$, where $A$ has dimensions `(nrows, ncols)`
 #[inline]
 pub fn column_counts_aat_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
@@ -290,7 +290,7 @@ pub fn column_counts_ata<'m, 'n, I: Index>(
 	)
 }
 
-/// computes the size and alignment of the workspace required to compute the postordering of an
+/// computes the layout of the workspace required to compute the postordering of an
 /// elimination tree of size `n`
 #[inline]
 pub fn postorder_scratch<I: Index>(n: usize) -> StackReq {
@@ -406,7 +406,7 @@ pub mod supernodal {
 			&self.H
 		}
 
-		/// computes the size and alignment of the workspace required to solve the linear system
+		/// computes the layout of the workspace required to solve the linear system
 		/// $A x = \text{rhs}$ in the sense of least squares
 		pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 			let _ = par;
@@ -433,7 +433,7 @@ pub mod supernodal {
 		}
 	}
 
-	/// computes the size and alignment of the workspace required to compute the symbolic $QR$
+	/// computes the layout of the workspace required to compute the symbolic $QR$
 	/// factorization of a matrix with dimensions `(nrows, ncols)`
 	pub fn factorize_supernodal_symbolic_qr_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 		let _ = nrows;
@@ -856,7 +856,7 @@ pub mod supernodal {
 		}
 	}
 
-	/// computes the size and alignment of the workspace required to compute the numerical $QR$
+	/// computes the layout of the workspace required to compute the numerical $QR$
 	/// factorization of the matrix whose structure was used to produce the symbolic structure
 	#[track_caller]
 	pub fn factorize_supernodal_numeric_qr_scratch<I: Index, T: ComplexField>(
@@ -1557,7 +1557,7 @@ pub mod simplicial {
 		}
 	}
 
-	/// computes the size and alignment of the workspace required to compute the symbolic $QR$
+	/// computes the layout of the workspace required to compute the symbolic $QR$
 	/// factorization of a matrix with dimensions `(nrows, ncols)`
 	pub fn factorize_simplicial_symbolic_qr_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 		let _ = nrows;
@@ -1620,7 +1620,7 @@ pub mod simplicial {
 		})
 	}
 
-	/// computes the size and alignment of the workspace required to compute the numerical $QR$
+	/// computes the layout of the workspace required to compute the numerical $QR$
 	/// factorization of the matrix whose structure was used to produce the symbolic structure
 	pub fn factorize_simplicial_numeric_qr_scratch<I: Index, T: ComplexField>(symbolic: &SymbolicSimplicialQr<I>) -> StackReq {
 		let m = symbolic.nrows;
@@ -1975,7 +1975,7 @@ impl<I: Index> SymbolicQr<I> {
 		}
 	}
 
-	/// returns the size and alignment of the workspace required to solve the system $A x =
+	/// returns the layout of the workspace required to solve the system $A x =
 	/// \text{rhs}$ in the sense of least squares
 	pub fn solve_in_place_scratch<T>(&self, rhs_ncols: usize, par: Par) -> StackReq
 	where
@@ -1987,7 +1987,7 @@ impl<I: Index> SymbolicQr<I> {
 		})
 	}
 
-	/// computes the required workspace size and alignment for a numerical $QR$ factorization
+	/// computes the required workspace layout for a numerical $QR$ factorization
 	pub fn factorize_numeric_qr_scratch<T>(&self, par: Par, params: Spec<QrParams, T>) -> StackReq
 	where
 		T: ComplexField,

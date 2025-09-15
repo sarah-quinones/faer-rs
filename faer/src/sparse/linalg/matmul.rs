@@ -60,7 +60,7 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
 	}
 }
 
-/// computes the size and alignment of the workspace required to perform the numeric matrix
+/// computes the layout of the workspace required to perform the numeric matrix
 /// multiplication into `dst`.
 pub fn sparse_sparse_matmul_numeric_scratch<I: Index, T: ComplexField>(dst: SymbolicSparseColMatRef<'_, I>, par: Par) -> StackReq {
 	temp_mat_scratch::<T>(dst.nrows(), par.degree())

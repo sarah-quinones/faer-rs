@@ -395,7 +395,7 @@ pub mod supernodal {
 		}
 	}
 
-	/// computes the size and alignment of the workspace required to compute the symbolic
+	/// computes the layout of the workspace required to compute the symbolic
 	/// $LU$ factorization of a square matrix with size `n`.
 	pub fn factorize_supernodal_symbolic_lu_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 		let _ = nrows;
@@ -505,7 +505,7 @@ pub mod supernodal {
 		f()
 	}
 
-	/// computes the size and alignment of the workspace required to perform a numeric $LU$
+	/// computes the layout of the workspace required to perform a numeric $LU$
 	/// factorization
 	pub fn factorize_supernodal_numeric_lu_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalLu<I>,
@@ -1319,7 +1319,7 @@ pub mod simplicial {
 		tail_start
 	}
 
-	/// computes the size and alignment of the workspace required to perform a numeric $LU$
+	/// computes the layout of the workspace required to perform a numeric $LU$
 	/// factorization
 	pub fn factorize_simplicial_numeric_lu_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 		let idx = StackReq::new::<I>(nrows);
@@ -1655,7 +1655,7 @@ impl<I: Index> SymbolicLu<I> {
 		unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv, self.ncols()) }
 	}
 
-	/// computes the size and alignment of the workspace required to compute the numerical $LU$
+	/// computes the layout of the workspace required to compute the numerical $LU$
 	/// factorization
 	pub fn factorize_numeric_lu_scratch<T>(&self, par: Par, params: Spec<PartialPivLuParams, T>) -> StackReq
 	where
@@ -1674,7 +1674,7 @@ impl<I: Index> SymbolicLu<I> {
 		}
 	}
 
-	/// computes the size and alignment of the workspace required to solve the equation $A x = b$
+	/// computes the layout of the workspace required to solve the equation $A x = b$
 	pub fn solve_in_place_scratch<T>(&self, rhs_ncols: usize, par: Par) -> StackReq
 	where
 		T: ComplexField,
@@ -1683,7 +1683,7 @@ impl<I: Index> SymbolicLu<I> {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols)
 	}
 
-	/// computes the size and alignment of the workspace required to solve the equation
+	/// computes the layout of the workspace required to solve the equation
 	/// $A^\top x = b$
 	pub fn solve_transpose_in_place_scratch<T>(&self, rhs_ncols: usize, par: Par) -> StackReq
 	where

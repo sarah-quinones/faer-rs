@@ -22,7 +22,7 @@
 //! ([`dyn_stack::StackReq::any_of`]) of multiple scratch requirements, in order to optimally
 //! combine them into a single allocation
 //!
-//! after computing a [`dyn_stack::StackReq`], one can query its size and alignment to allocate the
+//! after computing a [`dyn_stack::StackReq`], one can query its layout to allocate the
 //! required memory. the simplest way to do so is through [`dyn_stack::MemBuffer::new`]
 
 use crate::internal_prelude::*;
@@ -196,6 +196,7 @@ pub mod lu;
 pub mod qr;
 
 pub mod evd;
+pub mod gevd;
 pub mod svd;
 
 mod mat_ops;

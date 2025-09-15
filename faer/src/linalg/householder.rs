@@ -229,7 +229,7 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 	}
 }
 
-/// computes the size and alignment of required workspace for applying a block householder
+/// computes the layout of required workspace for applying a block householder
 /// transformation to a right-hand-side matrix in place
 pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -240,7 +240,7 @@ pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// computes the size and alignment of required workspace for applying the transpose of a block
+/// computes the layout of required workspace for applying the transpose of a block
 /// householder transformation to a right-hand-side matrix in place
 pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -251,7 +251,7 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: Complex
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// computes the size and alignment of required workspace for applying a block householder
+/// computes the layout of required workspace for applying a block householder
 /// transformation to a left-hand-side matrix in place
 pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -262,7 +262,7 @@ pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
-/// computes the size and alignment of required workspace for applying the transpose of a block
+/// computes the layout of required workspace for applying the transpose of a block
 /// householder transformation to a left-hand-side matrix in place
 pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -273,7 +273,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: Comple
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
-/// computes the size and alignment of required workspace for applying the transpose of a sequence
+/// computes the layout of required workspace for applying the transpose of a sequence
 /// of block householder transformations to a right-hand-side matrix in place
 pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -284,7 +284,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// computes the size and alignment of required workspace for applying a sequence of block
+/// computes the layout of required workspace for applying a sequence of block
 /// householder transformations to a right-hand-side matrix in place
 pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -295,7 +295,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexF
 	temp_mat_scratch::<T>(blocksize, rhs_ncols)
 }
 
-/// computes the size and alignment of required workspace for applying the transpose of a sequence
+/// computes the layout of required workspace for applying the transpose of a sequence
 /// of block householder transformations to a left-hand-side matrix in place
 pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
@@ -306,7 +306,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<
 	temp_mat_scratch::<T>(blocksize, lhs_nrows)
 }
 
-/// computes the size and alignment of required workspace for applying a sequence of block
+/// computes the layout of required workspace for applying a sequence of block
 /// householder transformations to a left-hand-side matrix in place
 pub fn apply_block_householder_sequence_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,

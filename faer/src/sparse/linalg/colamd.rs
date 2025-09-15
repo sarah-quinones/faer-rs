@@ -81,7 +81,7 @@ fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I
 	}
 }
 
-/// computes the size and alignment of required workspace for computing the colamd ordering of a
+/// computes the layout of required workspace for computing the colamd ordering of a
 /// matrix
 pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> StackReq {
 	let m = nrows;

@@ -308,13 +308,13 @@ pub fn permute_rows<I: Index, T: ComplexField>(dst: MatMut<'_, T>, src: MatRef<'
 	implementation(dst, src, perm_indices.canonicalized())
 }
 
-/// computes the size and alignment of required workspace for applying a row permutation to a
+/// computes the layout of required workspace for applying a row permutation to a
 /// matrix in place
 pub fn permute_rows_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	temp_mat_scratch::<T>(nrows, ncols)
 }
 
-/// computes the size and alignment of required workspace for applying a column permutation to a
+/// computes the layout of required workspace for applying a column permutation to a
 /// matrix in place
 pub fn permute_cols_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	temp_mat_scratch::<T>(nrows, ncols)

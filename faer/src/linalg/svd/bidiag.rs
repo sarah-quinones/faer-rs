@@ -3,7 +3,7 @@ use crate::internal_prelude::*;
 use linalg::householder::*;
 use linalg::matmul::{dot, matmul};
 
-/// computes the size and alignment of the workspace required to compute a matrix's
+/// computes the layout of the workspace required to compute a matrix's
 /// bidiagonalization
 pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<BidiagParams, T>) -> StackReq {
 	_ = par;

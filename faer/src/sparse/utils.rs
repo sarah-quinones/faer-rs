@@ -46,13 +46,13 @@ pub fn sort_dedup_indices<I: Index, T: ComplexField>(col_ptr: &[I], col_nnz: &mu
 	}
 }
 
-/// computes the workspace size and alignment required to apply a two sided permutation to a
+/// computes the workspace layout required to apply a two sided permutation to a
 /// self-adjoint sparse matrix
 pub fn permute_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
 	StackReq::new::<I>(dim)
 }
 
-/// computes the workspace size and alignment required to apply a two sided permutation to a
+/// computes the workspace layout required to apply a two sided permutation to a
 /// self-adjoint sparse matrix and deduplicate its elements
 pub fn permute_dedup_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
 	StackReq::new::<I>(dim)
@@ -359,13 +359,13 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, N, new_col_ptr, None, new_row_idx), new_val) }
 }
 
-/// computes the workspace size and alignment required to transpose a matrix
+/// computes the workspace layout required to transpose a matrix
 pub fn transpose_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
 	StackReq::new::<usize>(nrows)
 }
 
-/// computes the workspace size and alignment required to transpose a matrix and deduplicate the
+/// computes the workspace layout required to transpose a matrix and deduplicate the
 /// output elements
 pub fn transpose_dedup_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
