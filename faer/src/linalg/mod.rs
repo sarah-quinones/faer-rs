@@ -196,6 +196,7 @@ pub mod lu;
 pub mod qr;
 
 pub mod evd;
+pub mod gevd;
 pub mod svd;
 
 mod mat_ops;
