@@ -389,7 +389,13 @@ pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(dim: usize, 
 /// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition factors $S$ and $U$
 #[math]
 #[track_caller]
-pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(pinv: MatMut<'_, T>, s: ColRef<'_, T>, u: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(
+	pinv: MatMut<'_, T>,
+	s: DiagRef<'_, T>,
+	u: MatRef<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+) {
 	pseudoinverse_from_self_adjoint_evd_with_tolerance(pinv, s, u, zero(), eps::<T::Real>() * from_f64::<T::Real>(u.ncols() as f64), par, stack);
 }
 
@@ -399,13 +405,14 @@ pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(pinv: MatMut<'_, T>,
 #[track_caller]
 pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 	pinv: MatMut<'_, T>,
-	s: ColRef<'_, T>,
+	s: DiagRef<'_, T>,
 	u: MatRef<'_, T>,
 	abs_tol: T::Real,
 	rel_tol: T::Real,
 	par: Par,
 	stack: &mut MemStack,
 ) {
+	let s = s.column_vector();
 	let mut pinv = pinv;
 	let n = u.ncols();
 
@@ -431,6 +438,9 @@ pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 			len += 1;
 		}
 	}
+
+	let u_trunc = u_trunc.get(.., ..len);
+	let up_trunc = up_trunc.get(.., ..len);
 
 	linalg::matmul::triangular::matmul(
 		pinv.rb_mut(),
@@ -1411,5 +1421,25 @@ mod self_adjoint_tests {
 			test_self_adjoint_evd(Mat::<f64>::identity(n, n).as_ref());
 			test_self_adjoint_evd(Mat::<c64>::identity(n, n).as_ref());
 		}
+	}
+
+	#[test]
+	fn test_pinv() {
+		let rng = &mut StdRng::seed_from_u64(0);
+
+		let n = 36;
+
+		let mat = CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: StandardNormal,
+		}
+		.rand::<Mat<f64>>(rng);
+
+		let mat = &mat + mat.adjoint();
+
+		let pinv = mat.self_adjoint_eigen(Side::Lower).unwrap().pseudoinverse();
+		let err = &mat * &pinv - Mat::<f64>::identity(n, n);
+		assert!(err.norm_max() < 1e-10);
 	}
 }

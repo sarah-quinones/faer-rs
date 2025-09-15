@@ -649,7 +649,7 @@ impl<'a, Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMatRef<'a, I, Rows
 		let start = self.col_ptr.get_unchecked(j).zx();
 		let end = self
 			.col_nnz
-			.map(|col_nnz| (col_nnz.get_unchecked(j).zx() + start))
+			.map(|col_nnz| col_nnz.get_unchecked(j).zx() + start)
 			.unwrap_or(self.col_ptr.get_unchecked(j + 1).zx());
 
 		start..end

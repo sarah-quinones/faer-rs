@@ -655,7 +655,7 @@ pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	let mut vp_trunc = vp_trunc.as_mat_mut();
 	let mut len = 0;
 
-	for j in 0..n {
+	for j in 0..size {
 		let x = absmax(s[j]);
 		if x > tol {
 			let p = recip(real(s[j]));
@@ -978,5 +978,43 @@ mod tests {
 		.unwrap();
 
 		assert!(d[n - 1] != 0.0);
+	}
+
+	#[test]
+	fn test_pinv() {
+		let rng = &mut StdRng::seed_from_u64(0);
+
+		let m = 6;
+		let n = 36;
+
+		let mat = CwiseMatDistribution {
+			nrows: m,
+			ncols: n,
+			dist: StandardNormal,
+		}
+		.rand::<Mat<f64>>(rng);
+
+		let pinv = mat.svd().unwrap().pseudoinverse();
+		let err = &mat * &pinv - Mat::<f64>::identity(m, m);
+		assert!(err.norm_max() < 1e-10);
+	}
+
+	#[test]
+	fn test_pinv2() {
+		let rng = &mut StdRng::seed_from_u64(0);
+
+		let m = 36;
+		let n = 6;
+
+		let mat = CwiseMatDistribution {
+			nrows: m,
+			ncols: n,
+			dist: StandardNormal,
+		}
+		.rand::<Mat<f64>>(rng);
+
+		let pinv = mat.svd().unwrap().pseudoinverse();
+		let err = &pinv * &mat - Mat::<f64>::identity(n, n);
+		assert!(err.norm_max() < 1e-10);
 	}
 }
