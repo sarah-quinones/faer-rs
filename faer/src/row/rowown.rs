@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ContiguousFwd, Idx, IdxInc, TryReserveError};
+use crate::{ContiguousFwd, Idx, IdxInc, TryReserveError, assert};
 
 /// see [`super::Row`]
 #[derive(Clone)]
@@ -8,17 +8,17 @@ pub struct Own<T, Cols: Shape = usize> {
 }
 
 impl<T, Cols: Shape> Row<T, Cols> {
-	/// returns a new row with dimension `nrows`, filled with the provided function
+	/// returns a new row with dimension `ncols`, filled with the provided function
 	#[inline]
-	pub fn from_fn(nrows: Cols, f: impl FnMut(Idx<Cols>) -> T) -> Self {
+	pub fn from_fn(ncols: Cols, f: impl FnMut(Idx<Cols>) -> T) -> Self {
 		Self {
 			0: Own {
-				trans: Col::from_fn(nrows, f),
+				trans: Col::from_fn(ncols, f),
 			},
 		}
 	}
 
-	/// returns a new row with dimension `nrows`, filled with zeros
+	/// returns a new row with dimension `ncols`, filled with zeros
 	#[inline]
 	pub fn zeros(ncols: Cols) -> Self
 	where
@@ -29,7 +29,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 		}
 	}
 
-	/// returns a new row with dimension `nrows`, filled with ones
+	/// returns a new row with dimension `ncols`, filled with ones
 	#[inline]
 	pub fn ones(ncols: Cols) -> Self
 	where
@@ -40,7 +40,7 @@ impl<T, Cols: Shape> Row<T, Cols> {
 		}
 	}
 
-	/// returns a new row with dimension `nrows`, filled with `value`
+	/// returns a new row with dimension `ncols`, filled with `value`
 	#[inline]
 	pub fn full(ncols: Cols, value: T) -> Self
 	where
@@ -71,8 +71,8 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	/// new elements are created with the given function `f`, so that elements at index `j`
 	/// are created by calling `f(j)`
 	#[inline]
-	pub fn resize_with(&mut self, new_nrows: Cols, f: impl FnMut(Idx<Cols>) -> T) {
-		self.0.trans.resize_with(new_nrows, f);
+	pub fn resize_with(&mut self, new_ncols: Cols, f: impl FnMut(Idx<Cols>) -> T) {
+		self.0.trans.resize_with(new_ncols, f);
 	}
 
 	/// truncates the row so that its new dimensions are `new_ncols`.  
@@ -82,16 +82,17 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	/// the function panics if any of the following conditions are violated:
 	/// - `new_ncols > self.ncols()`
 	#[inline]
-	pub fn truncate(&mut self, new_nrows: Cols) {
-		self.0.trans.truncate(new_nrows);
+	pub fn truncate(&mut self, new_ncols: Cols) {
+		self.0.trans.truncate(new_ncols);
 	}
 
 	/// see [`RowRef::as_col_shape`]
 	#[inline]
-	pub fn into_col_shape<V: Shape>(self, nrows: V) -> Row<T, V> {
+	pub fn into_col_shape<V: Shape>(self, ncols: V) -> Row<T, V> {
+		assert!(all(self.ncols().unbound() == ncols.unbound()));
 		Row {
 			0: Own {
-				trans: self.0.trans.into_row_shape(nrows),
+				trans: self.0.trans.into_row_shape(ncols),
 			},
 		}
 	}
