@@ -1422,9 +1422,6 @@ pub mod simplicial {
 			}
 
 			let x_piv = copy(x[pivot_idx]);
-			if x_piv == zero::<T>() {
-				panic!();
-			}
 			let x_piv_inv = recip(x_piv);
 
 			row_perm_inv[pivot_idx] = I(j);
