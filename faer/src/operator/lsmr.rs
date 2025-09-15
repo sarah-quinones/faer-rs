@@ -59,7 +59,7 @@ pub enum LsmrError<T> {
 	},
 }
 
-/// computes the size and alignment of required workspace for executing the lsmr
+/// computes the layout of required workspace for executing the lsmr
 /// algorithm
 pub fn lsmr_scratch<T: ComplexField>(right_precond: impl BiPrecond<T>, mat: impl BiLinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {
 	fn implementation<T: ComplexField>(M: &dyn BiPrecond<T>, A: &dyn BiLinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {

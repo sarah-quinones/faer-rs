@@ -421,7 +421,7 @@ fn compute_squareish_svd<T: ComplexField>(
 	}
 }
 
-/// computes the size and alignment of the workspace required to compute a matrix's svd
+/// computes the layout of the workspace required to compute a matrix's svd
 pub fn svd_scratch<T: ComplexField>(
 	nrows: usize,
 	ncols: usize,
@@ -592,7 +592,7 @@ pub fn svd<T: ComplexField>(
 	Ok(())
 }
 
-/// computes the size and alignment of the workspace required to compute a matrix's
+/// computes the layout of the workspace required to compute a matrix's
 /// pseudoinverse, given the svd
 pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> StackReq {
 	_ = par;

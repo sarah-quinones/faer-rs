@@ -10,7 +10,7 @@ use linalg::triangular_solve;
 pub struct HessenbergParams {
 	/// threshold at which parallelism should be disabled
 	pub par_threshold: usize,
-	/// threshold at which parallelism should be disabled
+	/// threshold at which blocking should be disabled
 	pub blocking_threshold: usize,
 
 	#[doc(hidden)]
@@ -27,7 +27,7 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 	}
 }
 
-/// computes the size and alignment of the workspace required to compute a matrix's hessenberg
+/// computes the layout of the workspace required to compute a matrix's hessenberg
 /// decomposition
 pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
 	let params = params.config;
@@ -338,8 +338,8 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 				let u2 = A20.rb().col(p);
 
 				*A11 = *A11 - y1 - z1;
-				z!(&mut A12, &y2, u2.rb().transpose()).for_each(|uz!(a, y, u)| *a = *a - *y - z1 * conj(*u));
-				z!(&mut A21, &u2, &z2).for_each(|uz!(a, u, z)| *a = *a - *u * y1 - *z);
+				z!(&mut A12, &y2, u2.rb().transpose()).for_each(|uz!(a, y, u): Zip!(&mut T, &T, &T)| *a = *a - *y - z1 * conj(*u));
+				z!(&mut A21, &u2, &z2).for_each(|uz!(a, u, z): Zip!(&mut T, &T, &T)| *a = *a - *u * y1 - *z);
 			}
 
 			{
@@ -397,11 +397,11 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 				mul_pow2(dot::inner_prod(u2.rb().transpose(), Conj::Yes, z2.rb(), Conj::No), from_f64(0.5)),
 				tau_inv,
 			);
-			z!(&mut y2, u2.transpose()).for_each(|uz!(y, u)| *y = mul_real(*y - b * conj(*u), tau_inv));
-			z!(&mut z2, u2).for_each(|uz!(z, u)| *z = mul_real(*z - b * *u, tau_inv));
+			z!(&mut y2, u2.transpose()).for_each(|uz!(y, u): Zip!(&mut T, &T)| *y = mul_real(*y - b * conj(*u), tau_inv));
+			z!(&mut z2, u2).for_each(|uz!(z, u): Zip!(&mut T, &T)| *z = mul_real(*z - b * *u, tau_inv));
 
 			let dot = mul_real(dot::inner_prod(A12.rb(), Conj::No, u2.rb(), Conj::No), tau_inv);
-			z!(&mut A12, u2.transpose()).for_each(|uz!(a, u)| *a = *a - dot * conj(u));
+			z!(&mut A12, u2.transpose()).for_each(|uz!(a, u): Zip!(&mut T, &T)| *a = *a - dot * conj(u));
 
 			matmul(w0.rb_mut().col_mut(0).as_mat_mut(), Accum::Replace, A02.rb(), u2.as_mat(), one(), par);
 			matmul(
@@ -500,7 +500,7 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 				one(),
 				par,
 			);
-			z!(x0.rb_mut(), U10.transpose()).for_each(|uz!(x, u)| *x = *x + *A11 * conj(*u));
+			z!(x0.rb_mut(), U10.transpose()).for_each(|uz!(x, u): Zip!(&mut T, &T)| *x = *x + *A11 * conj(*u));
 			matmul::matmul(x0.rb_mut().as_mat_mut(), Accum::Add, U20.adjoint(), A21.rb().as_mat(), one(), par);
 		}
 		{

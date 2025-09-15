@@ -2,7 +2,7 @@ use crate::internal_prelude::*;
 use equator::assert;
 use linalg::matmul::matmul;
 
-use super::GevdParams;
+use super::GeneralizedSchurParams;
 use super::gen_hessenberg::{make_givens, rot};
 
 #[math]
@@ -1555,13 +1555,15 @@ fn single_shift_sweep<T: RealField>(
 	}
 }
 
+/// computes the layout of the workspace required to compute a real matrix pair's QZ
+/// decomposition, assuming the pair is already in generalized hessenberg form.
 #[math]
-pub fn hessenberg_to_qz_scratch<T: ComplexField>(n: usize, par: Par, params: GevdParams) -> StackReq {
+pub fn hessenberg_to_qz_scratch<T: RealField>(n: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	hessenberg_to_qz_blocked_scratch::<T>(n, par, params)
 }
 
 #[math]
-fn hessenberg_to_qz_blocked_scratch<T: ComplexField>(n: usize, par: Par, params: GevdParams) -> StackReq {
+fn hessenberg_to_qz_blocked_scratch<T: RealField>(n: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	let nmin = Ord::max(15, params.blocking_threshold);
 	if n < nmin {
 		return StackReq::empty();
@@ -1584,11 +1586,11 @@ fn hessenberg_to_qz_blocked_scratch<T: ComplexField>(n: usize, par: Par, params:
 	])
 }
 #[math]
-fn multishift_sweep_scratch<T: ComplexField>(n: usize, ns: usize) -> StackReq {
+fn multishift_sweep_scratch<T: RealField>(n: usize, ns: usize) -> StackReq {
 	linalg::temp_mat_scratch::<T>(n, 2 * ns)
 }
 #[math]
-fn aed_scratch<T: ComplexField>(n: usize, nw: usize, par: Par, params: GevdParams) -> StackReq {
+fn aed_scratch<T: RealField>(n: usize, nw: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	StackReq::any_of(&[
 		hessenberg_to_qz_blocked_scratch::<T>(nw, par, params),
 		StackReq::all_of(&[
@@ -1607,24 +1609,38 @@ fn aed_scratch<T: ComplexField>(n: usize, nw: usize, par: Par, params: GevdParam
 	])
 }
 
+/// computes a real matrix pair's QZ decomposition, assuming the pair is already in generalized
+/// hessenberg form.  
+/// the unitary transformations $Q$ and $Z$ resulting from the QZ decomposition are postmultiplied
+/// into the input-output parameters `Q_inout` and `Z_inout`.
+///
+/// if both the generalized eigenvalues and eigenvectors are desired, then `eigenvectors` may be set
+/// to `ComputeEigenvectors::Yes`. in this case the input matrices $A$ and $B$ are overwritten by
+/// their QZ form $(S, T)$ such that $S$ is upper quasi-triangular and $T$ is upper triangular.
+///
+/// if only the generalized eigenvalues are desired, then `eigenvectors` may be set to
+/// `ComputeEigenvectors::No`. note that in this case, the input matrices $A$ and $B$ are still
+/// clobbered, and contain unspecified values on output.
 #[track_caller]
 #[math]
 pub fn hessenberg_to_qz<T: RealField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
-	Q: Option<MatMut<'_, T>>,
-	Z: Option<MatMut<'_, T>>,
+	Q_inout: Option<MatMut<'_, T>>,
+	Z_inout: Option<MatMut<'_, T>>,
 	alphar: ColMut<'_, T>,
 	alphai: ColMut<'_, T>,
 	beta: ColMut<'_, T>,
-	eigvals_only: bool,
+	eigenvectors: linalg::evd::ComputeEigenvectors,
 	par: Par,
-	params: GevdParams,
+	params: GeneralizedSchurParams,
 	stack: &mut MemStack,
 ) {
+	let eigvals_only = eigenvectors == linalg::evd::ComputeEigenvectors::No;
+
 	let n = A.nrows();
-	let (Q_nrows, Q_ncols) = Q.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
-	let (Z_nrows, Z_ncols) = Z.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
+	let (Q_nrows, Q_ncols) = Q_inout.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
+	let (Z_nrows, Z_ncols) = Z_inout.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
 	assert!(all(
 		A.nrows() == n,
 		A.ncols() == n,
@@ -1639,7 +1655,7 @@ pub fn hessenberg_to_qz<T: RealField>(
 	if n == 0 {
 		return;
 	}
-	hessenberg_to_qz_blocked(0, n - 1, A, B, Q, Z, alphar, alphai, beta, eigvals_only, par, params, stack)
+	hessenberg_to_qz_blocked(0, n - 1, A, B, Q_inout, Z_inout, alphar, alphai, beta, eigvals_only, par, params, stack)
 }
 
 #[math]
@@ -1655,7 +1671,7 @@ fn hessenberg_to_qz_blocked<T: RealField>(
 	mut beta: ColMut<'_, T>,
 	eigvals_only: bool,
 	par: Par,
-	params: GevdParams,
+	params: GeneralizedSchurParams,
 	stack: &mut MemStack,
 ) {
 	let n = A.nrows();
@@ -2161,7 +2177,7 @@ fn aggressive_early_deflation<T: RealField>(
 	mut QC: MatMut<'_, T>,
 	mut ZC: MatMut<'_, T>,
 	par: Par,
-	params: GevdParams,
+	params: GeneralizedSchurParams,
 	stack: &mut MemStack,
 ) -> (usize, usize) {
 	let n = A.nrows();
@@ -3468,8 +3484,6 @@ mod tests {
 				B_clone.as_mut(),
 				Some(Q.as_mut()),
 				Some(Z.as_mut()),
-				true,
-				true,
 				Par::Seq,
 				MemStack::new(&mut mem),
 				GeneralizedHessenbergParams {
@@ -3563,8 +3577,6 @@ mod tests {
 					B_clone.as_mut(),
 					Some(Q.as_mut()),
 					Some(Z.as_mut()),
-					true,
-					true,
 					Par::Seq,
 					MemStack::new(&mut mem),
 					GeneralizedHessenbergParams {

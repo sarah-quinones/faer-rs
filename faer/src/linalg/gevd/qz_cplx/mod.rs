@@ -2,7 +2,7 @@ use crate::internal_prelude::*;
 use equator::assert;
 use linalg::matmul::matmul;
 
-use super::GevdParams;
+use super::GeneralizedSchurParams;
 use super::gen_hessenberg::{make_givens, rot, trot};
 
 #[math]
@@ -905,7 +905,7 @@ fn aggressive_early_deflation<T: ComplexField>(
 	mut QC: MatMut<'_, T>,
 	mut ZC: MatMut<'_, T>,
 	par: Par,
-	params: GevdParams,
+	params: GeneralizedSchurParams,
 	stack: &mut MemStack,
 ) -> (usize, usize) {
 	let n = A.nrows();
@@ -1016,7 +1016,7 @@ fn aggressive_early_deflation<T: ComplexField>(
 		// * Reflect spike back, this will create optimally packed bulges
 		let scale = copy(A[(kwtop, kwtop - 1)]);
 		zip!(A.rb_mut().get_mut(kwtop..kwbot + 1, kwtop - 1), qc.rb().get(0, ..jw - nd).transpose())
-			.for_each(|unzip!(dst, src)| *dst = conj(*src) * scale);
+			.for_each(|unzip!(dst, src): Zip!(&mut T, &T)| *dst = conj(*src) * scale);
 
 		for k in (kwtop..kwbot).rev() {
 			let (c1, s1, temp) = make_givens(copy(A[(k, kwtop - 1)]), copy(A[(k + 1, kwtop - 1)]));
@@ -1107,7 +1107,9 @@ fn aggressive_early_deflation<T: ComplexField>(
 	(ns, nd)
 }
 
-pub fn hessenberg_to_qz_scratch<T: ComplexField>(n: usize, par: Par, params: GevdParams) -> StackReq {
+/// computes the layout of the workspace required to compute a complex matrix pair's QZ
+/// decomposition, assuming the pair is already in generalized hessenberg form.
+pub fn hessenberg_to_qz_scratch<T: ComplexField>(n: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	let nmin = Ord::max(15, params.blocking_threshold);
 	if n < nmin {
 		return StackReq::EMPTY;
@@ -1133,7 +1135,7 @@ pub fn hessenberg_to_qz_scratch<T: ComplexField>(n: usize, par: Par, params: Gev
 fn multishift_sweep_scratch<T: ComplexField>(n: usize, ns: usize) -> StackReq {
 	linalg::temp_mat_scratch::<T>(n, 2 * ns)
 }
-fn aed_scratch<T: ComplexField>(n: usize, nw: usize, par: Par, params: GevdParams) -> StackReq {
+fn aed_scratch<T: ComplexField>(n: usize, nw: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	StackReq::any_of(&[
 		hessenberg_to_qz_scratch::<T>(nw, par, params),
 		linalg::temp_mat_scratch::<T>(nw, n),
@@ -1141,6 +1143,18 @@ fn aed_scratch<T: ComplexField>(n: usize, nw: usize, par: Par, params: GevdParam
 	])
 }
 
+/// computes a complex matrix pair's QZ decomposition, assuming the pair is already in generalized
+/// hessenberg form.  
+/// the unitary transformations $Q$ and $Z$ resulting from the QZ decomposition are postmultiplied
+/// into the input-output parameters `Q_inout` and `Z_inout`.
+///
+/// if both the generalized eigenvalues and eigenvectors are desired, then `eigenvectors` may be set
+/// to `ComputeEigenvectors::Yes`. in this case the input matrices $A$ and $B$ are overwritten by
+/// their QZ form $(S, T)$ such that $S$ and $T$ are upper triangular.
+///
+/// if only the generalized eigenvalues are desired, then `eigenvectors` may be set to
+/// `ComputeEigenvectors::No`. note that in this case, the input matrices $A$ and $B$ are still
+/// clobbered, and contain unspecified values on output.
 #[track_caller]
 pub fn hessenberg_to_qz<T: ComplexField>(
 	A: MatMut<'_, T>,
@@ -1149,11 +1163,13 @@ pub fn hessenberg_to_qz<T: ComplexField>(
 	Z: Option<MatMut<'_, T>>,
 	alpha: ColMut<'_, T>,
 	beta: ColMut<'_, T>,
-	eigvals_only: bool,
+	eigenvectors: linalg::evd::ComputeEigenvectors,
 	par: Par,
-	params: GevdParams,
+	params: GeneralizedSchurParams,
 	stack: &mut MemStack,
 ) {
+	let eigvals_only = eigenvectors == linalg::evd::ComputeEigenvectors::No;
+
 	let n = A.nrows();
 	let (Q_nrows, Q_ncols) = Q.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
 	let (Z_nrows, Z_ncols) = Z.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
@@ -1187,7 +1203,7 @@ fn hessenberg_to_qz_blocked<T: ComplexField>(
 	beta: ColMut<'_, T>,
 	eigvals_only: bool,
 	par: Par,
-	params: GevdParams,
+	params: GeneralizedSchurParams,
 	stack: &mut MemStack,
 ) {
 	let mut A = A;
@@ -1518,8 +1534,6 @@ mod tests {
 				B_clone.as_mut(),
 				Some(Q.as_mut()),
 				Some(Z.as_mut()),
-				true,
-				true,
 				Par::Seq,
 				MemStack::new(&mut mem),
 				GeneralizedHessenbergParams {
@@ -1594,8 +1608,6 @@ mod tests {
 					B_clone.as_mut(),
 					Some(Q.as_mut()),
 					Some(Z.as_mut()),
-					true,
-					true,
 					Par::Seq,
 					MemStack::new(&mut mem),
 					GeneralizedHessenbergParams {

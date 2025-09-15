@@ -107,7 +107,7 @@ pub enum ComputeEigenvectors {
 	Yes,
 }
 
-/// computes the size and alignment of the workspace required to compute a self-adjoint matrix's
+/// computes the layout of the workspace required to compute a self-adjoint matrix's
 /// eigendecomposition
 #[math]
 pub fn self_adjoint_evd_scratch<T: ComplexField>(
@@ -379,7 +379,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	Ok(())
 }
 
-/// computes the size and alignment of the workspace required to compute a self-adjoint matrix's
+/// computes the layout of the workspace required to compute a self-adjoint matrix's
 /// pseudoinverse, given the eigendecomposition
 pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
@@ -914,7 +914,7 @@ fn solve_shifted_upper_triangular_system<T: ComplexField>(
 	}
 }
 
-/// computes the size and alignment of the workspace required to compute a matrix's
+/// computes the layout of the workspace required to compute a matrix's
 /// eigendecomposition
 pub fn evd_scratch<T: ComplexField>(
 	dim: usize,

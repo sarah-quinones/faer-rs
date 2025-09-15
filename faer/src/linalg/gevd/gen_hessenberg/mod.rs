@@ -3,6 +3,8 @@ use crate::utils;
 use equator::assert;
 use linalg::matmul::{matmul, triangular as tr};
 
+/// computes the layout of the workspace required to compute a matrix pair's generalized
+/// hessenberg decomposition
 pub fn generalized_hessenberg_scratch<T: ComplexField>(n: usize, params: GeneralizedHessenbergParams) -> StackReq {
 	if params.block_size <= 1 || n <= params.block_size {
 		StackReq::EMPTY
@@ -50,9 +52,14 @@ pub(crate) fn rot<T: ComplexField>(c: T::Real, s: T, x: RowMut<'_, T>, y: RowMut
 	});
 }
 
+/// generalized hessenberg factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
 pub struct GeneralizedHessenbergParams {
+	/// algorithm blocking parameter
 	pub block_size: usize,
+
+	/// threshold at which blocking should be disabled
+	pub blocking_threshold: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -62,13 +69,14 @@ impl<T: ComplexField> Auto<T> for GeneralizedHessenbergParams {
 	fn auto() -> Self {
 		Self {
 			block_size: 32,
+			blocking_threshold: 256 * 256,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
 }
 
 #[math]
-pub fn trot<T: ComplexField>(c: T::Real, s: T, x: ColMut<'_, T>, y: ColMut<'_, T>) {
+pub(crate) fn trot<T: ComplexField>(c: T::Real, s: T, x: ColMut<'_, T>, y: ColMut<'_, T>) {
 	rot(c, -conj(s), x.transpose_mut(), y.transpose_mut());
 }
 
@@ -200,21 +208,38 @@ fn apply_U_from_the_right<T: ComplexField>(M: MatMut<'_, T>, U: MatRef<'_, T>, p
 	M.copy_from(tmp);
 }
 
+/// computes a matrix pair $(A, B)$'s generalized hessenberg decomposition such that
+/// - B is an upper triangular matrix
+/// - $A = Q H Z^H, A = Q T Z^H$,
+/// - $H$ is a hessenberg matrix stored in the upper triangular half of $A$ (plus the subdiagonal),
+/// - $T$ is an upper triangular matrix,
+/// - $Q$ and $Z$ are unitary matrices.
+///
+/// # warning
+/// $B$ is assumed to be upper triangular on input.
+///
+/// $Q$ and $Z$ are postmultiplied into the input-output parameters `Q` and `Z`.
+///
+/// i.e.: $Q_{\text{out}} = Q_{\text{in}} * Q$ and $Z_{\text{out}} = Z_{\text{in}} * Z$.
+///
+/// if this behavior is not desired then $Q$ and $Z$ should be overwritten by the identity matrix
+/// before calling this function.
 #[math]
 pub fn generalized_hessenberg<T: ComplexField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
-	Q: Option<MatMut<'_, T>>,
-	Z: Option<MatMut<'_, T>>,
-	Q_is_I: bool,
-	Z_is_I: bool,
+	Q_inout: Option<MatMut<'_, T>>,
+	Z_inout: Option<MatMut<'_, T>>,
 	par: Par,
 	stack: &mut MemStack,
 	params: GeneralizedHessenbergParams,
 ) {
 	let n = A.nrows();
-	let (Q_nrows, Q_ncols) = Q.rb().map(|Q| (Q.nrows(), Q.ncols())).unwrap_or((n, n));
-	let (Z_nrows, Z_ncols) = Z.rb().map(|Z| (Z.nrows(), Z.ncols())).unwrap_or((n, n));
+	let (Q_nrows, Q_ncols) = Q_inout.rb().map(|Q| (Q.nrows(), Q.ncols())).unwrap_or((n, n));
+	let (Z_nrows, Z_ncols) = Z_inout.rb().map(|Z| (Z.nrows(), Z.ncols())).unwrap_or((n, n));
+
+	let Q_is_I = Q_inout.rb().is_some_and(|Q| Q.is_identity());
+	let Z_is_I = Z_inout.rb().is_some_and(|Z| Z.is_identity());
 
 	assert!(all(
 		A.nrows() == n,
@@ -232,13 +257,13 @@ pub fn generalized_hessenberg<T: ComplexField>(
 	}
 
 	if params.block_size <= 1 || A.nrows() <= params.block_size {
-		return generalized_hessenberg_unblocked(A, B, Q, Z, Q_is_I, Z_is_I, par, stack, params);
+		return generalized_hessenberg_unblocked(A, B, Q_inout, Z_inout, Q_is_I, Z_is_I, par, stack, params);
 	}
 
 	let mut A = A;
 	let mut B = B;
-	let mut Q = Q;
-	let mut Z = Z;
+	let mut Q = Q_inout;
+	let mut Z = Z_inout;
 
 	let mut jcol = 0;
 	while jcol < n - 2 {
@@ -815,10 +840,34 @@ mod tests {
 				},
 			));
 
-			for gen_hessenberg in [generalized_hessenberg, generalized_hessenberg_unblocked] {
+			for gen_hessenberg in [
+				|A: MatMut<'_, _>, B: MatMut<'_, _>, Q: Option<MatMut<'_, _>>, Z: Option<MatMut<'_, _>>, _, _, par, stack: &mut MemStack, params| {
+					generalized_hessenberg(A, B, Q, Z, par, stack, params)
+				},
+				generalized_hessenberg_unblocked,
+			] {
 				for (Q_is_I, Z_is_I) in [(false, false), (true, true), (true, false), (false, true)] {
-					let mut Q = Mat::identity(n, n);
-					let mut Z = Mat::identity(n, n);
+					let Q0 = &if Q_is_I {
+						Mat::identity(n, n)
+					} else {
+						UnitaryMat {
+							dim: n,
+							standard_normal: ComplexDistribution::new(StandardNormal, StandardNormal),
+						}
+						.rand::<Mat<c64>>(rng)
+					};
+					let Z0 = &if Z_is_I {
+						Mat::identity(n, n)
+					} else {
+						UnitaryMat {
+							dim: n,
+							standard_normal: ComplexDistribution::new(StandardNormal, StandardNormal),
+						}
+						.rand::<Mat<c64>>(rng)
+					};
+
+					let mut Q = Q0.to_owned();
+					let mut Z = Z0.to_owned();
 
 					let mut H = A.clone();
 					let mut T = B.clone();
@@ -837,6 +886,9 @@ mod tests {
 							..auto!(c64)
 						},
 					);
+
+					Q = Q0.adjoint() * &Q;
+					Z = Z0.adjoint() * &Z;
 
 					assert!((&Q * &H * Z.adjoint() - &A).norm_max() < 1e-13);
 					assert!((&Q * &T * Z.adjoint() - &B).norm_max() < 1e-13);

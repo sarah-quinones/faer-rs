@@ -462,7 +462,7 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 	)
 }
 
-/// computes the size and alignment of required workspace for performing a qr decomposition
+/// computes the layout of required workspace for performing a qr decomposition
 /// with column pivoting
 pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
 	nrows: usize,

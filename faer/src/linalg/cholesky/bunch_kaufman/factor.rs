@@ -1194,7 +1194,7 @@ pub fn rank1_update_fallback<'a, T: ComplexField>(mut A: MatMut<'a, T>, mut L0: 
 		L0[j] = w0;
 	}
 }
-/// computes the size and alignment of required workspace for performing an $LBL^\top$
+/// computes the layout of required workspace for performing an $LBL^\top$
 /// decomposition
 pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<LbltParams, T>) -> StackReq {
 	let params = params.config;

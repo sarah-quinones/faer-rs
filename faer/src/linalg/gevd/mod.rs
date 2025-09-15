@@ -1,11 +1,30 @@
+//! low level implementation of the generalized eigenvalue decomposition of a square matrix pair.
+//!
+//! the generalized eigenvalue decomposition of a matrix pair $(A, B)$ of shape $(n, n)$ is a
+//! decomposition into components $S$, $U$ such that:
+//!
+//! - $U$ has shape $(n, n)$ and is invertible
+//! - $S$ has shape $(n, n)$ and is a diagonal matrix
+//! - and finally:
+//!
+//! $$A = B U S U^{-1}$$
+//!
+//! if $A$ is self-adjoint and $B$ is positive definite, then $U$ can be made unitary ($U^{-1} =
+//! U^H$), and $S$ is real valued.
+//!
+//! the implementation can choose to compute the left and/or right generalized eigenvectors
+//! separately, and the generalized eigenvalues (diagonal of $S$) are represented as a ratio $\alpha
+//! / \beta$ to improve numerical stability.
+
 use crate::internal_prelude::*;
 use complex::Complex;
 use equator::assert;
 
 pub use linalg::evd::ComputeEigenvectors;
 
+/// generalized schur decomposition parameters
 #[derive(Clone, Copy, Debug)]
-pub struct GevdParams {
+pub struct GeneralizedSchurParams {
 	/// An estimate of the relative cost of flops within the near-the-diagonal shift chase compared
 	/// to flops within the matmul calls of a QZ sweep.
 	pub relative_cost_estimate_of_shift_chase_to_matmul: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
@@ -23,12 +42,33 @@ pub struct GevdParams {
 	pub non_exhaustive: NonExhaustive,
 }
 
+/// schur to eigendecomposition conversion parameters
+#[derive(Clone, Copy, Debug)]
+pub struct GevdFromSchurParams {
+	#[doc(hidden)]
+	pub non_exhaustive: NonExhaustive,
+}
+
+/// eigendecomposition tuning parameters
+#[derive(Clone, Copy, Debug)]
+pub struct GevdParams {
+	/// hessenberg parameters
+	pub hessenberg: gen_hessenberg::GeneralizedHessenbergParams,
+	/// schur from hessenberg conversion parameters
+	pub schur: GeneralizedSchurParams,
+	/// eigendecomposition from schur conversion parameters
+	pub evd_from_schur: GevdFromSchurParams,
+
+	#[doc(hidden)]
+	pub non_exhaustive: NonExhaustive,
+}
+
 fn default_relative_cost_estimate_of_shift_chase_to_matmul(n: usize, nh: usize) -> usize {
 	_ = (n, nh);
 	10
 }
 
-impl<T: ComplexField> Auto<T> for GevdParams {
+impl<T: ComplexField> Auto<T> for GeneralizedSchurParams {
 	fn auto() -> Self {
 		let schur: linalg::evd::SchurParams = auto!(T);
 
@@ -43,8 +83,31 @@ impl<T: ComplexField> Auto<T> for GevdParams {
 	}
 }
 
+impl<T: ComplexField> Auto<T> for GevdParams {
+	fn auto() -> Self {
+		Self {
+			hessenberg: auto!(T),
+			schur: auto!(T),
+			evd_from_schur: auto!(T),
+			non_exhaustive: NonExhaustive(()),
+		}
+	}
+}
+
+impl<T: ComplexField> Auto<T> for GevdFromSchurParams {
+	fn auto() -> Self {
+		Self {
+			non_exhaustive: NonExhaustive(()),
+		}
+	}
+}
+
+/// hessenberg decomposition
 pub mod gen_hessenberg;
+
+/// $QZ$ decomposition for complex matrices
 pub mod qz_cplx;
+/// $QZ$ decomposition for real matrices
 pub mod qz_real;
 
 #[track_caller]
@@ -69,9 +132,9 @@ fn compute_gevd_generic<T: ComplexField>(
 		alphar: ColMut<'_, T>,
 		alphai: ColMut<'_, T>,
 		beta: ColMut<'_, T>,
-		eigvals_only: bool,
+		eigenvectors: ComputeEigenvectors,
 		par: Par,
-		params: GevdParams,
+		params: GeneralizedSchurParams,
 		stack: &mut MemStack,
 	),
 	qz_to_gevd: fn(A: MatRef<'_, T>, B: MatRef<'_, T>, Q: Option<MatMut<'_, T>>, Z: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack),
@@ -83,7 +146,7 @@ fn compute_gevd_generic<T: ComplexField>(
 		B.nrows() == n,
 		B.ncols() == n,
 		alpha_re.nrows() == n,
-		alpha_im.nrows() == n,
+		if const { T::IS_REAL } { alpha_im.nrows() } else { n } == n,
 		beta.nrows() == n,
 	));
 	if let Some(u_left) = u_left.rb() {
@@ -177,17 +240,7 @@ fn compute_gevd_generic<T: ComplexField>(
 		zip!(B.rb_mut()).for_each_triangular_lower(linalg::zip::Diag::Skip, |unzip!(x)| *x = zero());
 	}
 
-	gen_hessenberg::generalized_hessenberg(
-		A.rb_mut(),
-		B.rb_mut(),
-		u_left.rb_mut(),
-		u_right.rb_mut(),
-		false,
-		true,
-		par,
-		stack,
-		auto!(T),
-	);
+	gen_hessenberg::generalized_hessenberg(A.rb_mut(), B.rb_mut(), u_left.rb_mut(), u_right.rb_mut(), par, stack, params.hessenberg);
 
 	hessenberg_to_qz(
 		A.rb_mut(),
@@ -197,13 +250,33 @@ fn compute_gevd_generic<T: ComplexField>(
 		alpha_re.rb_mut(),
 		alpha_im.rb_mut(),
 		beta.rb_mut(),
-		!need_qz,
+		if need_qz { ComputeEigenvectors::Yes } else { ComputeEigenvectors::No },
 		par,
-		params,
+		params.schur,
 		stack,
 	);
 
 	qz_to_gevd(A.rb(), B.rb(), u_left.rb_mut(), u_right.rb_mut(), par, stack);
+}
+
+#[math]
+fn solve_shifted_1x1<T: ComplexField>(smin: T::Real, ca: T::Real, A: T, d0: T, B: &mut T, w: T) {
+	let safmin = min_positive::<T::Real>();
+	let smlnum = safmin + safmin;
+	let smin = max(smin, smlnum);
+
+	let CR = mul_real(A, ca) - w * d0;
+
+	let cmax = abs(CR);
+	if cmax < smin {
+		// use smin * I
+		let smin_inv = recip(smin);
+		*B = mul_real(*B, smin_inv);
+	}
+
+	// w is real
+	let C = recip(CR);
+	*B = *B * C;
 }
 
 #[math]
@@ -853,6 +926,289 @@ fn qz_to_gevd_real<T: RealField>(
 	}
 }
 
+#[math]
+fn qz_to_gevd_cplx<T: ComplexField>(
+	A: MatRef<'_, T>,
+	B: MatRef<'_, T>,
+	Q: Option<MatMut<'_, T>>,
+	Z: Option<MatMut<'_, T>>,
+	par: Par,
+	stack: &mut MemStack,
+) {
+	let n = A.nrows();
+	if n == 0 {
+		return;
+	}
+
+	let one = one::<T::Real>;
+
+	let ulp = eps::<T::Real>();
+	let safmin = min_positive::<T::Real>();
+	let smallnum = safmin * from_f64(n as f64);
+	let small = smallnum * recip(ulp);
+	let bignum = recip(smallnum);
+	let big = recip(small);
+
+	let (mut acolnorm, stack) = linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
+	let acolnorm = acolnorm.as_mat_mut();
+	let (mut bcolnorm, stack) = linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
+	let bcolnorm = bcolnorm.as_mat_mut();
+
+	let mut acolnorm = acolnorm.col_mut(0);
+	let mut bcolnorm = bcolnorm.col_mut(0);
+	let mut anorm = zero::<T::Real>();
+	let mut bnorm = zero::<T::Real>();
+
+	let mut j = 0;
+	while j < n {
+		let a = A.rb().col(j).get(..j).norm_l1();
+		acolnorm[j] = copy(a);
+		anorm = max(anorm, a + abs(A[(j, j)]));
+
+		j += 1;
+	}
+	for j in 0..n {
+		let b = B.rb().col(j).get(..j).norm_l1();
+		bcolnorm[j] = copy(b);
+		bnorm = max(bnorm, b + abs(B[(j, j)]));
+	}
+	let ascale = recip(max(anorm, safmin));
+	let bscale = recip(max(bnorm, safmin));
+
+	// left eigenvectors
+	if let Some(mut u) = Q {
+		let mut je = 0usize;
+		while je < n {
+			if max(abs(A[(je, je)]), abs(B[(je, je)])) < safmin {
+				u.rb_mut().col_mut(je).fill(zero());
+				u[(je, je)] = from_real(one());
+
+				je += 1;
+				continue;
+			}
+
+			let mut acoef;
+			let acoefa;
+			let bcoefa;
+			let mut bcoef;
+			let mut xmax;
+
+			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+			let mut rhs = rhs.as_mat_mut().col_mut(0);
+
+			{
+				// real eigenvalue
+				let temp = max(max(abs(A[(je, je)]) * ascale, abs(B[(je, je)]) * bscale), safmin);
+				let salfar = mul_real(mul_real(A[(je, je)], temp), ascale);
+				let sbeta = real(B[(je, je)]) * temp * bscale;
+
+				acoef = sbeta * ascale;
+				bcoef = mul_real(salfar, bscale);
+
+				// scale to avoid underflow
+				let mut scale = one();
+				let lsa = abs(sbeta) >= safmin && abs(acoef) < small;
+				let lsb = abs(salfar) >= safmin && abs(bcoef) < small;
+
+				if lsa {
+					scale = (small / abs(sbeta)) * min(anorm, big);
+				}
+				if lsb {
+					scale = max(scale, (small / abs(salfar)) * min(bnorm, big));
+				}
+				if lsa || lsb {
+					scale = min(scale, one() / (safmin * max(one(), max(abs(acoef), abs(bcoef)))));
+					if lsa {
+						acoef = sbeta * scale * ascale
+					} else {
+						acoef = acoef * scale
+					}
+					if lsb {
+						bcoef = mul_real(mul_real(salfar, scale), bscale)
+					} else {
+						bcoef = mul_real(bcoef, scale)
+					}
+				}
+				acoefa = abs(acoef);
+				bcoefa = abs(bcoef);
+				rhs[je] = from_real(one());
+				xmax = one();
+			}
+
+			let dmin = max(max(ulp * acoefa * anorm, ulp * bcoefa * bnorm), safmin);
+			let mut j = je + 1;
+			while j < n {
+				let xscale = recip(xmax);
+
+				let temp = max(max(acolnorm[j], bcolnorm[j]), acoefa * acolnorm[j] + bcoefa * bcolnorm[j]);
+
+				let b0 = copy(B[(j, j)]);
+
+				if temp > bignum * xscale {
+					for jr in je..j {
+						rhs[jr] = mul_real(rhs[jr], xscale);
+					}
+					xmax = xmax * xscale;
+				}
+
+				// Compute dot products
+				//
+				//       j-1
+				// SUM = sum  conjg( a*S(k,j) - b*P(k,j) )*x(k)
+				//       k=je
+				//
+				// To reduce the op count, this is done as
+				//
+				// _        j-1                  _        j-1
+				// a*conjg( sum  S(k,j)*x(k) ) - b*conjg( sum  P(k,j)*x(k) )
+				//          k=je                          k=je
+				//
+				// which may cause underflow problems if A or B are close
+				// to underflow.  (T.g., less than SMALL.)
+
+				let mut sums = zero::<T>();
+				let mut sump = zero::<T>();
+
+				for jr in je..j {
+					sums = sums + conj(A[(jr, j)]) * rhs[jr];
+					sump = sump + conj(B[(jr, j)]) * rhs[jr];
+				}
+
+				rhs[j] = conj(bcoef) * sump - mul_real(sums, acoef);
+				// Solve  ( a A - b B ).T  y = SUM(,)
+				// with scaling and perturbation of the denominator
+
+				solve_shifted_1x1(copy(dmin), copy(acoef), conj(A[(j, j)]), conj(b0), &mut rhs[j], conj(bcoef));
+
+				j += 1;
+			}
+
+			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+			let mut tmp = tmp.as_mat_mut().col_mut(0);
+			linalg::matmul::matmul(
+				tmp.rb_mut(),
+				Accum::Replace,
+				u.rb().get(.., je..),
+				rhs.rb().get(je..),
+				from_real(one()),
+				par,
+			);
+
+			let mut u = u.rb_mut().col_mut(je);
+			u.copy_from(&tmp);
+			let scale = recip(u.norm_l2());
+			zip!(u).for_each(|unzip!(u)| {
+				*u = mul_real(*u, scale);
+			});
+
+			je += 1;
+		}
+	}
+	// right eigenvectors
+	if let Some(mut u) = Z {
+		let mut je = n;
+		while je > 0 {
+			je -= 1;
+
+			if max(abs(A[(je, je)]), abs(B[(je, je)])) < safmin {
+				u.rb_mut().col_mut(je).fill(zero());
+				u[(je, je)] = from_real(one());
+
+				continue;
+			}
+
+			let mut acoef;
+			let acoefa;
+			let bcoefa;
+			let mut bcoefr;
+
+			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+			let mut rhs = rhs.as_mat_mut().col_mut(0);
+
+			{
+				// real eigenvalue
+				let temp = max(max(abs(A[(je, je)]) * ascale, abs(B[(je, je)]) * bscale), safmin);
+				let salfar = mul_real(mul_real(A[(je, je)], temp), ascale);
+				let sbeta = real(B[(je, je)]) * temp * bscale;
+
+				acoef = sbeta * ascale;
+				bcoefr = mul_real(salfar, bscale);
+
+				// scale to avoid underflow
+				let mut scale = one();
+				let lsa = abs(sbeta) >= safmin && abs(acoef) < small;
+				let lsb = abs(salfar) >= safmin && abs(bcoefr) < small;
+
+				if lsa {
+					scale = (small / abs(sbeta)) * min(anorm, big);
+				}
+				if lsb {
+					scale = max(scale, (small / abs(salfar)) * min(bnorm, big));
+				}
+				if lsa || lsb {
+					scale = min(scale, one() / (safmin * max(one(), max(abs(acoef), abs(bcoefr)))));
+					if lsa {
+						acoef = sbeta * scale * ascale
+					} else {
+						acoef = acoef * scale
+					}
+					if lsb {
+						bcoefr = mul_real(mul_real(salfar, scale), bscale)
+					} else {
+						bcoefr = mul_real(bcoefr, scale)
+					}
+				}
+				acoefa = abs(acoef);
+				bcoefa = abs(bcoefr);
+				rhs[je] = from_real(one());
+
+				for jr in 0..je {
+					rhs[jr] = bcoefr * B[(jr, je)] - mul_real(A[(jr, je)], acoef);
+				}
+			}
+			let dmin = max(max(ulp * acoefa * anorm, ulp * bcoefa * bnorm), safmin);
+			let mut j = je;
+			while j > 0 {
+				j -= 1;
+
+				let b0 = copy(B[(j, j)]);
+
+				solve_shifted_1x1(copy(dmin), copy(acoef), copy(A[(j, j)]), b0, &mut rhs[j], copy(bcoefr));
+
+				// Compute the contributions of the off-diagonals of
+				// column j (and j+1, if 2-by-2 block) of A and B to the
+				// sums.
+
+				let creala = mul_real(rhs[j], acoef);
+				let crealb = bcoefr * rhs[j];
+
+				for jr in 0..j {
+					rhs[jr] = rhs[jr] - creala * A[(jr, j)] + crealb * B[(jr, j)];
+				}
+			}
+			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+			let mut tmp = tmp.as_mat_mut().col_mut(0);
+			linalg::matmul::matmul(
+				tmp.rb_mut(),
+				Accum::Replace,
+				u.rb().get(.., ..je + 1),
+				rhs.rb().get(..je + 1),
+				from_real(one()),
+				par,
+			);
+
+			let mut u = u.rb_mut().col_mut(je);
+			u.copy_from(&tmp);
+			let scale = recip(u.norm_l2());
+			zip!(u).for_each(|unzip!(u)| {
+				*u = mul_real(*u, scale);
+			});
+		}
+	}
+}
+
+/// computes the layout of the workspace required to compute a matrix pair's
+/// generalized eigendecomposition
 pub fn gevd_scratch<T: ComplexField>(dim: usize, left: ComputeEigenvectors, right: ComputeEigenvectors, par: Par, params: GevdParams) -> StackReq {
 	let _ = (left, right);
 
@@ -866,22 +1222,26 @@ pub fn gevd_scratch<T: ComplexField>(dim: usize, left: ComputeEigenvectors, righ
 		),
 		gen_hessenberg::generalized_hessenberg_scratch::<T>(n, auto!(T)),
 		if const { T::IS_REAL } {
-			qz_real::hessenberg_to_qz_scratch::<T>(n, par, params)
+			qz_real::hessenberg_to_qz_scratch::<T::Real>(n, par, params.schur)
 		} else {
-			qz_cplx::hessenberg_to_qz_scratch::<T>(n, par, params)
+			qz_cplx::hessenberg_to_qz_scratch::<T>(n, par, params.schur)
 		},
 	])
 }
 
+/// computes the real matrix pair $(A, B)$'s eigendecomposition
+///
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
+/// $U_R$
 #[track_caller]
 pub fn gevd_real<T: RealField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
-	alpha_re: ColMut<'_, T>,
-	alpha_im: ColMut<'_, T>,
+	S_re: ColMut<'_, T>,
+	S_im: ColMut<'_, T>,
 	beta: ColMut<'_, T>,
-	u_left: Option<MatMut<'_, T>>,
-	u_right: Option<MatMut<'_, T>>,
+	U_left: Option<MatMut<'_, T>>,
+	U_right: Option<MatMut<'_, T>>,
 	par: Par,
 	stack: &mut MemStack,
 	params: GevdParams,
@@ -889,11 +1249,11 @@ pub fn gevd_real<T: RealField>(
 	compute_gevd_generic(
 		A,
 		B,
-		alpha_re,
-		alpha_im,
+		S_re,
+		S_im,
 		beta,
-		u_left,
-		u_right,
+		U_left,
+		U_right,
 		par,
 		stack,
 		params,
@@ -902,9 +1262,52 @@ pub fn gevd_real<T: RealField>(
 	)
 }
 
+/// computes the complex matrix pair $(A, B)$'s eigendecomposition
+///
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
+/// $U_R$
+#[track_caller]
+pub fn gevd_cplx<T: ComplexField>(
+	A: MatMut<'_, T>,
+	B: MatMut<'_, T>,
+	S: ColMut<'_, T>,
+	beta: ColMut<'_, T>,
+	U_left: Option<MatMut<'_, T>>,
+	U_right: Option<MatMut<'_, T>>,
+	par: Par,
+	stack: &mut MemStack,
+	params: GevdParams,
+) {
+	compute_gevd_generic(
+		A,
+		B,
+		S,
+		ColMut::from_slice_mut(&mut []),
+		beta,
+		U_left,
+		U_right,
+		par,
+		stack,
+		params,
+		|A: MatMut<'_, T>,
+		 B: MatMut<'_, T>,
+		 Q: Option<MatMut<'_, T>>,
+		 Z: Option<MatMut<'_, T>>,
+		 alphar: ColMut<'_, T>,
+		 _: ColMut<'_, T>,
+		 beta: ColMut<'_, T>,
+		 eigenvectors: ComputeEigenvectors,
+		 par: Par,
+		 params: GeneralizedSchurParams,
+		 stack: &mut MemStack| qz_cplx::hessenberg_to_qz(A, B, Q, Z, alphar, beta, eigenvectors, par, params, stack),
+		qz_to_gevd_cplx,
+	)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::stats::prelude::*;
 	use crate::utils;
 	use dyn_stack::MemBuffer;
 	use equator::assert;
@@ -1049,6 +1452,81 @@ mod tests {
 
 						i += 2;
 					}
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn test_cplx() {
+		let rng = &mut StdRng::seed_from_u64(1);
+		let approx_eq = utils::approx::CwiseMat(utils::approx::ApproxEq::<f64>::eps() * 128.0);
+		let n = 20;
+
+		let A = &CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+		}
+		.rand::<Mat<c64>>(rng);
+
+		let B = &CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+		}
+		.rand::<Mat<c64>>(rng);
+
+		{
+			let mut H = A.to_owned();
+			let mut T = B.to_owned();
+			let mut alpha_re = Col::<c64>::zeros(n);
+			let mut beta = Col::<c64>::zeros(n);
+
+			let mut UL = Mat::<c64>::identity(n, n);
+			let mut UR = Mat::<c64>::identity(n, n);
+
+			gevd_cplx(
+				H.as_mut(),
+				T.as_mut(),
+				alpha_re.rb_mut(),
+				beta.rb_mut(),
+				Some(UL.as_mut()),
+				Some(UR.as_mut()),
+				Par::Seq,
+				MemStack::new(&mut MemBuffer::new(gevd_scratch::<c64>(
+					n,
+					ComputeEigenvectors::Yes,
+					ComputeEigenvectors::Yes,
+					Par::Seq,
+					auto!(c64),
+				))),
+				auto!(c64),
+			);
+
+			{
+				let mut i = 0;
+				while i < n {
+					let u = UR.col(i);
+					let a = alpha_re[i];
+					let b = beta[i];
+
+					assert!(Scale(b / a) * A * u ~ B * u);
+
+					i += 1;
+				}
+			}
+
+			{
+				let mut i = 0;
+				while i < n {
+					let u = UL.col(i);
+					let a = alpha_re[i];
+					let b = beta[i];
+
+					assert!(Scale(b / a) * u.adjoint() * A ~ u.adjoint() * B);
+
+					i += 1;
 				}
 			}
 		}
