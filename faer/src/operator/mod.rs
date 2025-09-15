@@ -33,7 +33,7 @@ pub struct IdentityPrecond {
 
 /// linear operator from a finite-dimensional vector space
 pub trait LinOp<T: ComplexField>: Sync + core::fmt::Debug {
-	/// computes the workspace size and alignment required to apply `self` or the conjugate o
+	/// computes the workspace layout required to apply `self` or the conjugate o
 	/// `self` to a matrix with `rhs_ncols` columns
 	fn apply_scratch(&self, rhs_ncols: usize, par: Par) -> StackReq;
 
@@ -117,7 +117,7 @@ impl<T: ComplexField> BiPrecond<T> for IdentityPrecond {
 
 /// linear operator that can be applied from either the right or the left side
 pub trait BiLinOp<T: ComplexField>: LinOp<T> {
-	/// computes the workspace size and alignment required to apply the transpose or adjoint o
+	/// computes the workspace layout required to apply the transpose or adjoint o
 	/// `self` to a matrix with `rhs_ncols` columns
 	fn transpose_apply_scratch(&self, rhs_ncols: usize, par: Par) -> StackReq;
 
@@ -132,7 +132,7 @@ pub trait BiLinOp<T: ComplexField>: LinOp<T> {
 ///
 /// same as [`LinOp`] except that it can be applied in place
 pub trait Precond<T: ComplexField>: LinOp<T> {
-	/// computes the workspace size and alignment required to apply `self` or the conjugate of
+	/// computes the workspace layout required to apply `self` or the conjugate of
 	/// `self` to a matrix with `rhs_ncols` columns in place
 	fn apply_in_place_scratch(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(self.apply_scratch(rhs_ncols, par))
@@ -162,7 +162,7 @@ pub trait Precond<T: ComplexField>: LinOp<T> {
 ///
 /// same as [`BiLinOp`] except that it can be applied in place.
 pub trait BiPrecond<T: ComplexField>: Precond<T> + BiLinOp<T> {
-	/// computes the workspace size and alignment required to apply the transpose or adjoint of
+	/// computes the workspace layout required to apply the transpose or adjoint of
 	/// `self` to a matrix with `rhs_ncols` columns in place
 	fn transpose_apply_in_place_scratch(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(self.transpose_apply_scratch(rhs_ncols, par))

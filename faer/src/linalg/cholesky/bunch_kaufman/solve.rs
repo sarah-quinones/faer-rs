@@ -3,7 +3,7 @@ use crate::internal_prelude::*;
 use crate::perm::permute_rows;
 use linalg::triangular_solve::{solve_unit_lower_triangular_in_place_with_conj, solve_unit_upper_triangular_in_place_with_conj};
 
-/// computes the size and alignment of required workspace for solving a linear system defined by
+/// computes the layout of required workspace for solving a linear system defined by
 /// a matrix in place, given its bunch-kaufman decomposition
 #[track_caller]
 pub fn solve_in_place_scratch<I: Index, T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> StackReq {

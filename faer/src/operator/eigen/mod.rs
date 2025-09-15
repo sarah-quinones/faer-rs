@@ -1014,7 +1014,7 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 	limit
 }
 
-/// computes the size and alignment of required workspace for computing the `n_eigval` eigenvalues
+/// computes the layout of required workspace for computing the `n_eigval` eigenvalues
 /// (and corresponding eigenvectors) of $A$ with the largest magnitude.
 pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize, par: Par, params: PartialEigenParams) -> StackReq {
 	let n = A.nrows();

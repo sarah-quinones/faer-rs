@@ -63,7 +63,7 @@ impl<T: RealField> Default for CgParams<T> {
 	}
 }
 
-/// computes the size and alignment of required workspace for executing the conjugate gradient
+/// computes the layout of required workspace for executing the conjugate gradient
 /// algorithm
 pub fn conjugate_gradient_scratch<T: ComplexField>(precond: impl Precond<T>, mat: impl LinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {
 	fn implementation<T: ComplexField>(M: &dyn Precond<T>, A: &dyn LinOp<T>, rhs_ncols: usize, par: Par) -> StackReq {

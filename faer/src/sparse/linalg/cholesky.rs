@@ -569,7 +569,7 @@ pub mod simplicial {
 		}
 	}
 
-	/// computes the size and alignment of the workspace required to compute the elimination tree
+	/// computes the layout of the workspace required to compute the elimination tree
 	/// and column counts of a matrix of size `n` with `nnz` non-zero entries
 	pub fn prefactorize_symbolic_cholesky_scratch<I: Index>(n: usize, nnz: usize) -> StackReq {
 		_ = nnz;
@@ -688,7 +688,7 @@ pub mod simplicial {
 		unsafe { Idx::from_slice_ref_unchecked(stack) }
 	}
 
-	/// computes the size and alignment of the workspace required to compute the symbolic
+	/// computes the layout of the workspace required to compute the symbolic
 	/// cholesky factorization of a square matrix with size `n`
 	pub fn factorize_simplicial_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
 		let n_scratch = StackReq::new::<I>(n);
@@ -1313,7 +1313,7 @@ pub mod simplicial {
 			unsafe { SymbolicSparseColMatRef::new_unchecked(self.dimension, self.dimension, &self.col_ptr, None, &self.row_idx) }
 		}
 
-		/// returns the size and alignment of the workspace required to solve the system
+		/// returns the layout of the workspace required to solve the system
 		/// $A x = rhs$
 		pub fn solve_in_place_scratch<T>(&self, rhs_ncols: usize) -> StackReq {
 			let _ = rhs_ncols;
@@ -1321,14 +1321,14 @@ pub mod simplicial {
 		}
 	}
 
-	/// returns the size and alignment of the workspace required to compute the numeric
+	/// returns the layout of the workspace required to compute the numeric
 	/// cholesky $LDL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_simplicial_numeric_ldlt_scratch<I: Index, T: ComplexField>(n: usize) -> StackReq {
 		let n_scratch = StackReq::new::<I>(n);
 		StackReq::all_of(&[temp_mat_scratch::<T>(n, 1), n_scratch, n_scratch, n_scratch])
 	}
 
-	/// returns the size and alignment of the workspace required to compute the numeric
+	/// returns the layout of the workspace required to compute the numeric
 	/// cholesky $LL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_simplicial_numeric_llt_scratch<I: Index, T: ComplexField>(n: usize) -> StackReq {
 		factorize_simplicial_numeric_ldlt_scratch::<I, T>(n)
@@ -1622,7 +1622,7 @@ pub mod supernodal {
 			supernodal::SymbolicSupernodeRef { start, pattern }
 		}
 
-		/// returns the size and alignment of the workspace required to solve the system
+		/// returns the layout of the workspace required to solve the system
 		/// $A x = rhs$
 		pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 			_ = par;
@@ -2261,7 +2261,7 @@ pub mod supernodal {
 		}
 	}
 
-	/// returns the size and alignment of the workspace required to compute the symbolic supernodal
+	/// returns the layout of the workspace required to compute the symbolic supernodal
 	/// factorization of a matrix of size `n`
 	pub fn factorize_supernodal_symbolic_cholesky_scratch<I: Index>(n: usize) -> StackReq {
 		StackReq::new::<I>(n).array(4)
@@ -2743,7 +2743,7 @@ pub mod supernodal {
 		move |&i| i < idx
 	}
 
-	/// returns the size and alignment of the workspace required to compute the numeric
+	/// returns the layout of the workspace required to compute the numeric
 	/// cholesky $LL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_supernodal_numeric_llt_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
@@ -2799,7 +2799,7 @@ pub mod supernodal {
 		req.and(StackReq::new::<I>(n))
 	}
 
-	/// returns the size and alignment of the workspace required to compute the numeric
+	/// returns the layout of the workspace required to compute the numeric
 	/// cholesky $LDL^H$ factorization of a matrix $A$ with dimension `n`
 	pub fn factorize_supernodal_numeric_ldlt_scratch<I: Index, T: ComplexField>(
 		symbolic: &SymbolicSupernodalCholesky<I>,
@@ -2857,7 +2857,7 @@ pub mod supernodal {
 		req.and(StackReq::new::<I>(n))
 	}
 
-	/// returns the size and alignment of the workspace required to compute the numeric
+	/// returns the layout of the workspace required to compute the numeric
 	/// cholesky $LBL^\top$ factorization with intranodal pivoting of a matrix $A$ with dimension
 	/// `n`
 	pub fn factorize_supernodal_numeric_intranode_lblt_scratch<I: Index, T: ComplexField>(
@@ -3594,7 +3594,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		}
 	}
 
-	/// computes the required workspace size and alignment for a numerical $LL^H$ factorization
+	/// computes the required workspace layout for a numerical $LL^H$ factorization
 	#[inline]
 	pub fn factorize_numeric_llt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LltParams, T>) -> StackReq {
 		let n = self.nrows();
@@ -3612,7 +3612,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		StackReq::all_of(&[A_scratch, StackReq::or(permute_scratch, factor_scratch)])
 	}
 
-	/// computes the required workspace size and alignment for a numerical $LDL^H$ factorization
+	/// computes the required workspace layout for a numerical $LDL^H$ factorization
 	#[inline]
 	pub fn factorize_numeric_ldlt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LdltParams, T>) -> StackReq {
 		let n = self.nrows();
@@ -3632,7 +3632,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		StackReq::all_of(&[regularization_signs, A_scratch, StackReq::or(permute_scratch, factor_scratch)])
 	}
 
-	/// computes the required workspace size and alignment for a numerical intranodal $LBL^\top$
+	/// computes the required workspace layout for a numerical intranodal $LBL^\top$
 	/// factorization
 	#[inline]
 	pub fn factorize_numeric_intranode_lblt_scratch<T: ComplexField>(&self, par: Par, params: Spec<LbltParams, T>) -> StackReq {
@@ -3870,7 +3870,7 @@ impl<I: Index> SymbolicCholesky<I> {
 		})
 	}
 
-	/// computes the required workspace size and alignment for a dense solve in place using an
+	/// computes the required workspace layout for a dense solve in place using an
 	/// $LL^H$, $LDL^H$ or intranodal $LBL^\top$ factorization
 	pub fn solve_in_place_scratch<T: ComplexField>(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(match self.raw() {

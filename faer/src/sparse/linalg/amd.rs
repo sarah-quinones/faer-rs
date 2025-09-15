@@ -1010,7 +1010,7 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 	nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }
 
-/// computes the size and alignment of required workspace for computing the amd ordering of a sorted
+/// computes the layout of required workspace for computing the amd ordering of a sorted
 /// matrix
 pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	let n_scratch = StackReq::new::<I>(n);
@@ -1042,7 +1042,7 @@ pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	])
 }
 
-/// computes the size and alignment of required workspace for computing the amd ordering of an
+/// computes the layout of required workspace for computing the amd ordering of an
 /// unsorted matrix
 pub fn order_maybe_unsorted_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	StackReq::all_of(&[order_scratch::<I>(n, nnz_upper), StackReq::new::<I>(n + 1), StackReq::new::<I>(nnz_upper)])

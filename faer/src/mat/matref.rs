@@ -1278,6 +1278,41 @@ impl<
 		imp(self.rb().as_dyn().as_dyn_stride().canonical())
 	}
 
+	/// returns `true` if `self` is the identity matrix.
+	/// otherwise returns `false`.
+	#[inline]
+	pub fn is_identity(&self) -> bool
+	where
+		T: Conjugate,
+	{
+		fn imp<T: ComplexField>(A: MatRef<'_, T>) -> bool {
+			with_dim!({
+				let M = A.nrows();
+				let N = A.ncols();
+			});
+
+			let A = A.as_shape(M, N);
+
+			for j in N.indices() {
+				for i in M.indices() {
+					if *i == *j {
+						if A[(i, j)] != one() {
+							return false;
+						}
+					} else {
+						if A[(i, j)] != zero() {
+							return false;
+						}
+					}
+				}
+			}
+
+			true
+		}
+
+		imp(self.rb().as_dyn().as_dyn_stride().canonical())
+	}
+
 	/// returns `true` if any of the elements of `self` is `NaN`.
 	/// otherwise returns `false`.
 	#[inline]

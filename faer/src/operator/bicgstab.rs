@@ -1,7 +1,7 @@
 use super::*;
 use crate::assert;
 
-/// computes the size and alignment of required workspace for executing the bicgstab algorithm
+/// computes the layout of required workspace for executing the bicgstab algorithm
 pub fn bicgstab_scratch<T: ComplexField>(
 	left_precond: impl Precond<T>,
 	right_precond: impl Precond<T>,
