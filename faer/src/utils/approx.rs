@@ -114,6 +114,7 @@ impl<R: RealField, T: ComplexField<Real = R>> equator::Cmp<T, T> for ApproxEq<R>
 		let diff = abs(*lhs - *rhs);
 		let max = max(abs(*lhs), abs(*rhs));
 
+		#[allow(clippy::overly_complex_bool_expr)]
 		if (max == zero() && diff <= *abs_tol) || (diff <= *abs_tol || diff <= *rel_tol * max) {
 			Ok(())
 		} else {
