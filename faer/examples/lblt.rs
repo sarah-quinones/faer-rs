@@ -4,6 +4,7 @@ use diol::prelude::*;
 use dyn_stack::{MemBuffer, MemStack};
 use faer::diag::Diag;
 use faer::linalg::cholesky::lblt;
+use faer::linalg::cholesky::lblt::factor::PivotingStrategy;
 use faer::prelude::*;
 use faer::reborrow::ReborrowMut;
 use faer::stats::prelude::*;
@@ -88,7 +89,8 @@ fn faer(bencher: Bencher, PlotArg(n): PlotArg) {
 	let perm_inv = &mut *vec![0usize; n];
 
 	let par = Par::Seq;
-	let params = default();
+	let mut params: faer::Spec<faer::linalg::cholesky::lblt::factor::LbltParams, f64> = default();
+	params.pivoting = PivotingStrategy::Partial;
 
 	let scratch = lblt::factor::cholesky_in_place_scratch::<usize, f64>(n, par, params);
 	let mut mem = MemBuffer::new(scratch);
@@ -113,7 +115,7 @@ fn main() -> eyre::Result<()> {
 
 			f
 		},
-		[64, 96, 128, 192, 256, 1024, 2048, 4096, 8192].map(PlotArg),
+		[8, 16, 32, 64, 96, 128, 192, 256, 1024, 2048, 4096, 8192].map(PlotArg),
 	);
 
 	bench.run()?;
