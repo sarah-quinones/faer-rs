@@ -3192,23 +3192,23 @@ fn main() -> eyre::Result<()> {
 					};
 				}
 
-				register_one!("LLT", llt, "block_decomp");
-				register_one!("LDLT", ldlt, "block_decomp");
-				register_one!("LBLT", lblt, "block_decomp");
-				register_one!("LBLT diagonal pivoting", lblt_diag, "block_decomp");
-				register_one!("LBLT rook pivoting", lblt_rook, "block_decomp");
-				register_one!("LBLT diagonal + rook pivoting", lblt_rook_diag, "block_decomp");
-				register_one!("LBLT full pivoting", lblt_full, "decomp");
+				register_one!("llt", llt, "block_decomp");
+				register_one!("ldlt", ldlt, "block_decomp");
+				register_one!("lblt", lblt, "block_decomp");
+				register_one!("lblt diagonal pivoting", lblt_diag, "block_decomp");
+				register_one!("lblt rook pivoting", lblt_rook, "block_decomp");
+				register_one!("lblt diagonal + rook pivoting", lblt_rook_diag, "block_decomp");
+				register_one!("lblt full pivoting", lblt_full, "decomp");
 
-				register_one!("LU partial pivoting", partial_piv_lu, "block_decomp");
-				register_one!("LU full pivoting", full_piv_lu, "decomp");
+				register_one!("lu partial pivoting", partial_piv_lu, "block_decomp");
+				register_one!("lu full pivoting", full_piv_lu, "decomp");
 
-				register_one!("QR", qr, "block_decomp");
-				register_one!("QR column pivoting", col_piv_qr, "decomp");
+				register_one!("qr no pivoting", qr, "block_decomp");
+				register_one!("qr column pivoting", col_piv_qr, "decomp");
 
-				register_one!("SVD", svd, "svd");
-				register_one!("self adjoint EVD", self_adjoint_evd, "svd");
-				register_one!("EVD", evd, "evd");
+				register_one!("svd", svd, "svd");
+				register_one!("evd self adjoint", self_adjoint_evd, "svd");
+				register_one!("evd general", evd, "evd");
 			}
 		}};
 	}

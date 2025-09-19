@@ -467,17 +467,20 @@ fn lu_in_place_unblocked<T: ComplexField>(
 				let mut best = core::iter::repeat_with(|| (0, 0, zero())).take(nthreads).collect::<alloc::vec::Vec<_>>();
 				let full_cols = A11.ncols();
 
-				best.par_iter_mut()
-					.zip_eq(A11.rb_mut().par_col_partition_mut(nthreads))
-					.zip_eq(rhs.par_partition(nthreads))
-					.enumerate()
-					.for_each(|(idx, (((max_row, max_col, max_score), A11), rhs))| {
+				spindle::for_each(
+					nthreads,
+					best.par_iter_mut()
+						.zip_eq(A11.rb_mut().par_col_partition_mut(nthreads))
+						.zip_eq(rhs.par_partition(nthreads))
+						.enumerate(),
+					|(idx, (((max_row, max_col, max_score), A11), rhs))| {
 						(*max_row, *max_col, *max_score) = {
 							let (a, mut b, c) = rank_one_update_and_best_in_matrix(A11, lhs, rhs, simd_align(k + 1));
 							b += par_split_indices(full_cols, idx, nthreads).0;
 							(a, b, c)
 						};
-					});
+					},
+				);
 
 				max_row = 0;
 				max_col = 0;

@@ -158,18 +158,18 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 			let left_threads = Ord::min((nthreads as f64 * (A_left.ncols() as f64 / len)) as usize, nthreads);
 			let right_threads = nthreads - left_threads;
 
-			use rayon::prelude::*;
-			rayon::join(
-				|| {
+			crate::utils::thread::join_raw(
+				|_| {
 					if A_left.ncols() > 0 {
-						A_left.par_col_partition_mut(left_threads).for_each(|A| swap(A))
+						spindle::for_each(left_threads, A_left.par_col_partition_mut(left_threads), |A| swap(A))
 					}
 				},
-				|| {
+				|_| {
 					if A_right.ncols() > 0 {
-						A_right.par_col_partition_mut(right_threads).for_each(|A| swap(A))
+						spindle::for_each(right_threads, A_right.par_col_partition_mut(right_threads), |A| swap(A))
 					}
 				},
+				par,
 			);
 		},
 	}

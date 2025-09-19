@@ -88,7 +88,7 @@ fn make_householder_imp<T: ComplexField>(head: &mut T, out: ColMut<'_, T>, input
 		None => zip!(out).for_each(|unzip!(e)| {
 			*e = *e * head_with_beta_inv;
 		}),
-		Some(input) => zip!(out, input).for_each(|unzip!(o, e)| {
+		Some(input) => zip!(out, input).for_each(|unzip!(o, e): Zip!(&mut T, &T)| {
 			*o = *e * head_with_beta_inv;
 		}),
 	}
@@ -571,10 +571,13 @@ fn apply_block_householder_on_the_left_in_place_generic<'M, 'N, 'K, T: ComplexFi
 			#[cfg(feature = "rayon")]
 			{
 				use rayon::prelude::*;
-				tmp.rb_mut()
-					.par_col_partition_mut(n_tasks)
-					.zip_eq(matrix.rb_mut().par_col_partition_mut(n_tasks))
-					.for_each(func);
+				spindle::for_each(
+					n_tasks,
+					tmp.rb_mut()
+						.par_col_partition_mut(n_tasks)
+						.zip_eq(matrix.rb_mut().par_col_partition_mut(n_tasks)),
+					func,
+				);
 			}
 		}
 	}

@@ -416,7 +416,7 @@ pub fn tridiag_in_place<T: ComplexField>(
 
 				*a11 = *a11 - y1 - conj(y1);
 
-				z!(A21.rb_mut(), u2, y2.rb()).for_each(|uz!(a, u, y)| {
+				z!(A21.rb_mut(), u2, y2.rb()).for_each(|uz!(a, u, y): Zip!(&mut T, &T, &T)| {
 					*a = *a - conj(y1) * *u - *y;
 				});
 			}
@@ -465,7 +465,7 @@ pub fn tridiag_in_place<T: ComplexField>(
 
 					*a11 = *a11 - u1 * conj(y1) - *y1 * conj(u1);
 
-					z!(A21.rb_mut(), u2.rb(), y2.rb()).for_each(|uz!(a, u, y)| {
+					z!(A21.rb_mut(), u2.rb(), y2.rb()).for_each(|uz!(a, u, y): Zip!(&mut T, &T, &T)| {
 						*a = *a - *u * conj(y1) - *y * conj(u1);
 					});
 
@@ -487,7 +487,7 @@ pub fn tridiag_in_place<T: ComplexField>(
 								from_real(tau_inv),
 								simd_align(k1 + 1),
 							);
-							z!(y2.rb_mut(), z2.rb_mut()).for_each(|uz!(y, z)| *y = *y + *z);
+							z!(y2.rb_mut(), z2.rb()).for_each(|uz!(y, z): Zip!(&mut T, &T)| *y = *y + *z);
 						},
 						#[cfg(feature = "rayon")]
 						Par::Rayon(nthreads) => {
@@ -510,7 +510,7 @@ pub fn tridiag_in_place<T: ComplexField>(
 								let y2 = y2.rb();
 
 								let f = from_real(tau_inv);
-								z2.rb_mut().par_col_iter_mut().enumerate().for_each(|(idx, mut z2)| {
+								spindle::for_each(nthreads, z2.rb_mut().par_col_iter_mut().enumerate(), |(idx, mut z2)| {
 									let first = idx_to_col_start(idx);
 									let last_col = idx_to_col_start(idx + 1);
 									let nrows = n2 - first;
@@ -579,7 +579,7 @@ pub fn tridiag_in_place<T: ComplexField>(
 					);
 				}
 
-				z!(y2.rb_mut(), A21.rb()).for_each(|uz!(y, a)| *y = *y + mul_real(*a, tau_inv));
+				z!(y2.rb_mut(), A21.rb()).for_each(|uz!(y, a): Zip!(&mut T, &T)| *y = *y + mul_real(*a, tau_inv));
 
 				*y1 = mul_real(*a11 + dot::inner_prod(A21.rb().transpose(), Conj::Yes, x2.rb(), Conj::No), tau_inv);
 
@@ -588,7 +588,7 @@ pub fn tridiag_in_place<T: ComplexField>(
 					tau_inv,
 				);
 				*y1 = *y1 - b;
-				z!(y2.rb_mut(), x2.rb()).for_each(|uz!(y, u)| {
+				z!(y2.rb_mut(), x2.rb()).for_each(|uz!(y, u): Zip!(&mut T, &T)| {
 					*y = *y - b * *u;
 				});
 			}

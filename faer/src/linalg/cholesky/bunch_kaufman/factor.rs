@@ -185,7 +185,7 @@ fn rank_1_update_and_argmax<T: ComplexField>(A: MatMut<'_, T>, L: ColRef<'_, T>,
 
 			let mut r = alloc::vec![(0usize, 0usize, zero::<T::Real>()); nthreads];
 
-			r.par_iter_mut().enumerate().for_each(|(idx, out)| {
+			spindle::for_each(nthreads, r.par_iter_mut().enumerate(), |(idx, out)| {
 				let A = unsafe { A.rb().const_cast() };
 				let start = N.idx_inc(idx_to_col_start(idx));
 				let end = N.idx_inc(idx_to_col_start(idx + 1));
@@ -250,7 +250,7 @@ fn rank_2_update_and_argmax<'N, T: ComplexField>(
 
 			let mut r = alloc::vec![(0usize, 0usize, zero::<T::Real>()); nthreads];
 
-			r.par_iter_mut().enumerate().for_each(|(idx, out)| {
+			spindle::for_each(nthreads, r.par_iter_mut().enumerate(), |(idx, out)| {
 				let A = unsafe { A.rb().const_cast() };
 				let start = N.idx_inc(idx_to_col_start(idx));
 				let end = N.idx_inc(idx_to_col_start(idx + 1));
@@ -662,7 +662,7 @@ fn lblt_blocked_step<T: ComplexField>(
 				let n = A.nrows();
 
 				let mut L = L.col_mut(0);
-				zip!(W0, L.rb_mut()).for_each(|unzip!(w, a)| *a = mul_real(*w, diag_inv));
+				zip!(W0, L.rb_mut()).for_each(|unzip!(w, a): Zip!(&T, &mut T)| *a = mul_real(*w, diag_inv));
 
 				for j in 0..n {
 					A[(j, j)] = from_real(real(A[(j, j)]) - diag * abs2(L[j]));
