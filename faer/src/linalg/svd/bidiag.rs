@@ -100,8 +100,8 @@ pub fn bidiag_in_place<T: ComplexField>(
 				let vp = A02.rb().row(k1);
 
 				*a11 = *a11 - up0 * y1 - z1;
-				z!(A21.rb_mut(), up.rb(), z2.rb()).for_each(|uz!(a, u, z)| *a = *a - *u * y1 - *z);
-				z!(A12.rb_mut(), y2.rb(), vp.rb()).for_each(|uz!(a, y, v)| *a = *a - up0 * *y - z1 * *v);
+				z!(A21.rb_mut(), up.rb(), z2.rb()).for_each(|uz!(a, u, z): Zip!(&mut T, &T, &T)| *a = *a - *u * y1 - *z);
+				z!(A12.rb_mut(), y2.rb(), vp.rb()).for_each(|uz!(a, y, v): Zip!(&mut T, &T, &T)| *a = *a - up0 * *y - z1 * *v);
 			}
 
 			let HouseholderInfo { tau: tl, .. } = make_householder_in_place(a11, A21.rb_mut());
@@ -125,13 +125,16 @@ pub fn bidiag_in_place<T: ComplexField>(
 						use rayon::prelude::*;
 						let nthreads = nthreads.get();
 
-						A22.rb_mut()
-							.par_col_partition_mut(nthreads)
-							.zip_eq(y2.rb_mut().par_partition_mut(nthreads))
-							.zip_eq(vp.par_partition(nthreads))
-							.for_each(|((A22, y2), vp)| {
+						spindle::for_each(
+							nthreads,
+							A22.rb_mut()
+								.par_col_partition_mut(nthreads)
+								.zip_eq(y2.rb_mut().par_partition_mut(nthreads))
+								.zip_eq(vp.par_partition(nthreads)),
+							|((A22, y2), vp)| {
 								bidiag_fused_op(A22, A21.rb(), up.rb(), z2.rb(), y2, vp.rb(), simd_align(k + 1));
-							});
+							},
+						);
 					},
 				}
 			} else {
@@ -173,14 +176,14 @@ pub fn bidiag_in_place<T: ComplexField>(
 			let b = *y2_a + dot::inner_prod(y2_b, Conj::No, A12_b.rb().transpose(), Conj::Yes);
 
 			if m != infinity() {
-				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a)| {
+				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a): Zip!(&mut T, &T, &T)| {
 					let w = *z - *a * conj(beta);
 					let w = w * conj(m);
 					let w = w - *u * b;
 					*z = mul_real(w, tr_inv);
 				});
 			} else {
-				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a)| {
+				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a): Zip!(&mut T, &T, &T)| {
 					let w = *a - *u * b;
 					*z = mul_real(w, tr_inv);
 				});

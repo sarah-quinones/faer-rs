@@ -416,11 +416,13 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 						Par::Rayon(nthreads) => {
 							let nthreads = nthreads.get();
 							use rayon::prelude::*;
-							norm.par_partition_mut(nthreads)
-								.zip(dot.par_partition_mut(nthreads))
-								.zip(B01.par_partition_mut(nthreads))
-								.zip(B11.par_col_partition_mut(nthreads))
-								.for_each(|(((norm, dot), B01), B11)| {
+							spindle::for_each(
+								nthreads,
+								norm.par_partition_mut(nthreads)
+									.zip(dot.par_partition_mut(nthreads))
+									.zip(B01.par_partition_mut(nthreads))
+									.zip(B11.par_col_partition_mut(nthreads)),
+								|(((norm, dot), B01), B11)| {
 									update_mat_and_dot_simd(
 										norm,
 										dot,
@@ -432,7 +434,8 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 										copy(tau_inv),
 										simd_align(k + 1),
 									);
-								});
+								},
+							);
 						},
 					}
 				} else {

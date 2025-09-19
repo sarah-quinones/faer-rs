@@ -17,6 +17,7 @@ use pulp::Simd;
 use reborrow::*;
 
 const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
+const PAR_THRESHOLD_MNK: usize = 4096;
 
 pub(crate) mod internal;
 
@@ -293,7 +294,7 @@ mod matmul_vertical {
 
 						let job_idx = core::sync::atomic::AtomicUsize::new(0);
 
-						(0..nthreads).into_par_iter().for_each(|_| {
+						spindle::for_each(nthreads, (0..nthreads).into_par_iter(), |_| {
 							loop {
 								let job_idx = job_idx.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 								if job_idx < job_count {
@@ -557,7 +558,7 @@ mod matmul_horizontal {
 
 						let job_idx = core::sync::atomic::AtomicUsize::new(0);
 
-						(0..nthreads).into_par_iter().for_each(|_| {
+						spindle::for_each(nthreads, (0..nthreads).into_par_iter(), |_| {
 							loop {
 								let job_idx = job_idx.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 								if job_idx < job_count {
@@ -896,16 +897,19 @@ mod matvec_rowmajor {
 				let nthreads = nthreads.get();
 
 				use rayon::prelude::*;
-				dst.par_partition_mut(nthreads)
-					.zip_eq(lhs.par_row_partition(nthreads))
-					.for_each(|(dst, lhs)| {
+
+				spindle::for_each(
+					nthreads,
+					dst.par_partition_mut(nthreads).zip_eq(lhs.par_row_partition(nthreads)),
+					|(dst, lhs)| {
 						make_guard!(M);
 						let nrows = dst.nrows().bind(M);
 						let dst = dst.as_row_shape_mut(nrows);
 						let lhs = lhs.as_row_shape(nrows);
 
 						matvec(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
-					})
+					},
+				)
 			},
 		}
 	}
@@ -1059,18 +1063,21 @@ mod matvec_colmajor {
 				let Z = 0usize.bind(Z);
 				let z = IdxInc::new_checked(0, lhs.ncols());
 
-				tmp.rb_mut()
-					.par_col_iter_mut()
-					.zip_eq(lhs.par_col_partition(nthreads))
-					.zip_eq(rhs.par_partition(nthreads))
-					.for_each(|((dst, lhs), rhs)| {
+				spindle::for_each(
+					nthreads,
+					tmp.rb_mut()
+						.par_col_iter_mut()
+						.zip_eq(lhs.par_col_partition(nthreads))
+						.zip_eq(rhs.par_partition(nthreads)),
+					|((dst, lhs), rhs)| {
 						make_guard!(K);
 						let K = lhs.ncols().bind(K);
 						let lhs = lhs.as_col_shape(K);
 						let rhs = rhs.as_row_shape(K);
 
 						matvec(dst, Accum::Replace, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
-					});
+					},
+				);
 
 				matvec(
 					dst.rb_mut(),
@@ -1249,12 +1256,15 @@ mod rank_update {
 			Par::Rayon(nthreads) => {
 				let nthreads = nthreads.get();
 				use rayon::prelude::*;
-				dst.par_col_partition_mut(nthreads)
-					.zip(rhs.par_partition(nthreads))
-					.for_each(|(dst, rhs)| {
+
+				spindle::for_each(
+					nthreads,
+					dst.par_col_partition_mut(nthreads).zip(rhs.par_partition(nthreads)),
+					|(dst, rhs)| {
 						with_dim!(N, dst.ncols());
 						rank_update_imp(dst.as_col_shape_mut(N), beta, lhs, conj_lhs, rhs.as_col_shape(N), conj_rhs, alpha);
-					});
+					},
+				);
 			},
 		}
 	}
@@ -1420,7 +1430,11 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 									rhs.col_stride(),
 									conj_rhs == Conj::Yes,
 									&raw const alpha as *const (),
-									par.degree(),
+									if *M * *N * *K >= const { PAR_THRESHOLD_MNK * size_of::<T>() } {
+										par.degree()
+									} else {
+										1
+									},
 								);
 								return;
 							}
@@ -1527,7 +1541,7 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			let task_per_thread = task_count.msrv_div_ceil(nthreads);
 
 			let dst = dst.rb();
-			(0..nthreads).into_par_iter().for_each(|tid| {
+			spindle::for_each(nthreads, (0..nthreads).into_par_iter(), |tid| {
 				let task_idx = tid * task_per_thread;
 				if task_idx >= task_count {
 					return;

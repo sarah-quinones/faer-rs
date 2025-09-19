@@ -11,17 +11,19 @@ pub mod thread {
 	/// between the two
 	#[inline]
 	pub fn join_raw(op_a: impl Send + FnOnce(Par), op_b: impl Send + FnOnce(Par), parallelism: Par) {
-		fn implementation(op_a: &mut (dyn Send + FnMut(Par)), op_b: &mut (dyn Send + FnMut(Par)), parallelism: Par) {
+		fn implementation<'a>(op_a: &'a mut (dyn Send + FnMut(Par)), op_b: &'a mut (dyn Send + FnMut(Par)), parallelism: Par) {
 			match parallelism {
-				Par::Seq => (op_a(parallelism), op_b(parallelism)),
+				Par::Seq => {
+					(op_a(parallelism), op_b(parallelism));
+				},
 				#[cfg(feature = "rayon")]
 				Par::Rayon(n_threads) => {
 					let n_threads = n_threads.get();
 					if n_threads == 1 {
-						(op_a(Par::Seq), op_b(Par::Seq))
+						(op_a(Par::Seq), op_b(Par::Seq));
 					} else {
 						let parallelism = Par::Rayon(core::num::NonZeroUsize::new(n_threads - n_threads / 2).unwrap());
-						rayon::join(|| op_a(parallelism), || op_b(parallelism))
+						spindle::for_each(2, [op_a, op_b], |op| op(parallelism));
 					}
 				},
 			};
