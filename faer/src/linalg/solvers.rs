@@ -9,6 +9,7 @@ use linalg::svd::ComputeSvdVectors;
 pub use linalg::cholesky::ldlt::factor::LdltError;
 pub use linalg::cholesky::llt::factor::LltError;
 pub use linalg::evd::EvdError;
+pub use linalg::gevd::{GevdError, SelfAdjointGevdError};
 pub use linalg::svd::SvdError;
 
 /// shape info of a linear system solver
@@ -377,6 +378,21 @@ impl<C: Conjugate> MatRef<'_, C> {
 	}
 
 	#[track_caller]
+	fn gen_eigen_imp(&self, B: MatRef<'_, C>) -> Result<GeneralizedEigen<Real<C>>, GevdError> {
+		if const { C::Canonical::IS_REAL } {
+			GeneralizedEigen::new_from_real(unsafe { crate::hacks::coerce(*self) }, unsafe { crate::hacks::coerce(B) })
+		} else if const { C::IS_CANONICAL } {
+			GeneralizedEigen::new(unsafe { crate::hacks::coerce::<_, MatRef<'_, Complex<Real<C>>>>(*self) }, unsafe {
+				crate::hacks::coerce::<_, MatRef<'_, Complex<Real<C>>>>(B)
+			})
+		} else {
+			GeneralizedEigen::new(unsafe { crate::hacks::coerce::<_, MatRef<'_, ComplexConj<Real<C>>>>(*self) }, unsafe {
+				crate::hacks::coerce::<_, MatRef<'_, ComplexConj<Real<C>>>>(B)
+			})
+		}
+	}
+
+	#[track_caller]
 	fn eigenvalues_imp(&self) -> Result<Vec<Complex<Real<C>>>, EvdError> {
 		let par = get_global_parallelism();
 
@@ -444,6 +460,12 @@ impl<C: Conjugate> MatRef<'_, C> {
 }
 
 impl<T: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short, T>>> mat::generic::Mat<Inner> {
+	/// returns the generalized_eigendecomposition of `(self, B)`
+	#[track_caller]
+	pub fn generalized_eigen(&self, B: impl AsMatRef<T = T, Rows = usize, Cols = usize>) -> Result<GeneralizedEigen<Real<T>>, GevdError> {
+		self.rb().gen_eigen_imp(B.as_mat_ref())
+	}
+
 	/// returns the eigendecomposition of `self`
 	#[track_caller]
 	pub fn eigen(&self) -> Result<Eigen<Real<T>>, EvdError> {
@@ -579,6 +601,14 @@ pub struct SelfAdjointEigen<T> {
 pub struct Eigen<T> {
 	U: Mat<Complex<T>>,
 	S: Diag<Complex<T>>,
+}
+
+/// eigendecomposition
+#[derive(Clone, Debug)]
+pub struct GeneralizedEigen<T> {
+	U: Mat<Complex<T>>,
+	S_a: Diag<Complex<T>>,
+	S_b: Diag<Complex<T>>,
 }
 
 impl<T: ComplexField> Llt<T> {
@@ -1232,6 +1262,39 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 	}
 }
 
+fn real_to_cplx<T: RealField>(
+	mut U: MatMut<'_, Complex<T>>,
+	mut S: DiagMut<'_, Complex<T>>,
+	U_real: MatRef<'_, T>,
+	S_re: DiagRef<'_, T>,
+	S_im: DiagRef<'_, T>,
+) {
+	let n = U.ncols();
+
+	let mut j = 0;
+	while j < n {
+		if S_im[j] == zero() {
+			S[j] = Complex::new(S_re[j].clone(), zero());
+
+			for i in 0..n {
+				U[(i, j)] = Complex::new(U_real[(i, j)].clone(), zero());
+			}
+
+			j += 1;
+		} else {
+			S[j] = Complex::new(S_re[j].clone(), S_im[j].clone());
+			S[j + 1] = Complex::new(S_re[j].clone(), neg(&S_im[j]));
+
+			for i in 0..n {
+				U[(i, j)] = Complex::new(U_real[(i, j)].clone(), U_real[(i, j + 1)].clone());
+				U[(i, j + 1)] = Complex::new(U_real[(i, j)].clone(), neg(&U_real[(i, j + 1)]));
+			}
+
+			j += 2;
+		}
+	}
+}
+
 impl<T: RealField> Eigen<T> {
 	/// returns the eigendecomposition of $A$
 	#[track_caller]
@@ -1273,28 +1336,7 @@ impl<T: RealField> Eigen<T> {
 		let mut U = Mat::zeros(n, n);
 		let mut S = Diag::zeros(n);
 
-		let mut j = 0;
-		while j < n {
-			if S_im[j] == zero() {
-				S[j] = Complex::new(S_re[j].clone(), zero());
-
-				for i in 0..n {
-					U[(i, j)] = Complex::new(U_real[(i, j)].clone(), zero());
-				}
-
-				j += 1;
-			} else {
-				S[j] = Complex::new(S_re[j].clone(), S_im[j].clone());
-				S[j + 1] = Complex::new(S_re[j].clone(), neg(&S_im[j]));
-
-				for i in 0..n {
-					U[(i, j)] = Complex::new(U_real[(i, j)].clone(), U_real[(i, j + 1)].clone());
-					U[(i, j + 1)] = Complex::new(U_real[(i, j)].clone(), neg(&U_real[(i, j + 1)]));
-				}
-
-				j += 2;
-			}
-		}
+		real_to_cplx(U.as_mut(), S.as_mut(), U_real.as_ref(), S_re.as_ref(), S_im.as_ref());
 
 		Ok(Self { U, S })
 	}
@@ -1324,11 +1366,8 @@ impl<T: RealField> Eigen<T> {
 		)?;
 
 		if conj == Conj::Yes {
-			for c in U.col_iter_mut() {
-				for x in c.iter_mut() {
-					*x = math_utils::conj(x);
-				}
-			}
+			zip!(&mut U).for_each(|unzip!(c)| *c = math_utils::conj(c));
+			zip!(&mut S).for_each(|unzip!(c)| *c = math_utils::conj(c));
 		}
 
 		Ok(Self { U, S })
@@ -1342,6 +1381,112 @@ impl<T: RealField> Eigen<T> {
 	/// returns the factor $S$
 	pub fn S(&self) -> DiagRef<'_, Complex<T>> {
 		self.S.as_ref()
+	}
+}
+
+impl<T: RealField> GeneralizedEigen<T> {
+	/// returns the generalized eigendecomposition of $(A, B)$
+	#[track_caller]
+	pub fn new<C: Conjugate<Canonical = Complex<T>>>(A: MatRef<'_, C>, B: MatRef<'_, C>) -> Result<Self, GevdError> {
+		let n = A.nrows();
+		assert!(all(A.nrows() == n, A.ncols() == n, B.nrows() == n, B.ncols() == n));
+		Self::new_imp(A.canonical(), B.canonical(), Conj::get::<C>())
+	}
+
+	/// returns the generalized eigendecomposition of $(A, B)$
+	#[track_caller]
+	pub fn new_from_real(A: MatRef<'_, T>, B: MatRef<'_, T>) -> Result<Self, GevdError> {
+		let n = A.nrows();
+		assert!(all(A.nrows() == n, A.ncols() == n, B.nrows() == n, B.ncols() == n));
+
+		let par = get_global_parallelism();
+
+		let mut U_real = Mat::zeros(n, n);
+		let mut S_re = Diag::zeros(n);
+		let mut S_im = Diag::zeros(n);
+		let mut S_b = Diag::zeros(0);
+		let A = &mut A.cloned();
+		let B = &mut B.cloned();
+
+		linalg::gevd::gevd_real(
+			A.as_mut(),
+			B.as_mut(),
+			S_re.as_mut(),
+			S_im.as_mut(),
+			S_b.as_mut(),
+			None,
+			Some(U_real.as_mut()),
+			par,
+			MemStack::new(&mut MemBuffer::new(linalg::gevd::gevd_scratch::<T>(
+				n,
+				linalg::evd::ComputeEigenvectors::No,
+				linalg::evd::ComputeEigenvectors::Yes,
+				par,
+				default(),
+			))),
+			default(),
+		)?;
+
+		let mut U = Mat::zeros(n, n);
+		let mut S_a = Diag::zeros(n);
+		let S_b = zip!(&S_b).map(|unzip!(x)| Complex::new(x.clone(), zero()));
+
+		real_to_cplx(U.as_mut(), S_a.as_mut(), U_real.as_ref(), S_re.as_ref(), S_im.as_ref());
+
+		Ok(Self { U, S_a, S_b })
+	}
+
+	fn new_imp(A: MatRef<'_, Complex<T>>, B: MatRef<'_, Complex<T>>, conj: Conj) -> Result<Self, GevdError> {
+		let par = get_global_parallelism();
+
+		let n = A.nrows();
+
+		let mut U = Mat::zeros(n, n);
+		let mut S_a = Diag::zeros(n);
+		let mut S_b = Diag::zeros(n);
+		let A = &mut A.cloned();
+		let B = &mut B.cloned();
+
+		linalg::gevd::gevd_cplx(
+			A.as_mut(),
+			B.as_mut(),
+			S_a.as_mut(),
+			S_b.as_mut(),
+			None,
+			Some(U.as_mut()),
+			par,
+			MemStack::new(&mut MemBuffer::new(linalg::gevd::gevd_scratch::<Complex<T>>(
+				n,
+				linalg::evd::ComputeEigenvectors::No,
+				linalg::evd::ComputeEigenvectors::Yes,
+				par,
+				default(),
+			))),
+			default(),
+		)?;
+
+		if conj == Conj::Yes {
+			zip!(&mut U).for_each(|unzip!(c)| *c = math_utils::conj(c));
+			zip!(&mut S_a).for_each(|unzip!(c)| *c = math_utils::conj(c));
+			zip!(&mut S_b).for_each(|unzip!(c)| *c = math_utils::conj(c));
+		}
+
+		Ok(Self { U, S_a, S_b })
+	}
+
+	/// returns the factor $U$
+	pub fn U(&self) -> MatRef<'_, Complex<T>> {
+		self.U.as_ref()
+	}
+
+	/// returns the factor $S_a$
+	pub fn S_a(&self) -> DiagRef<'_, Complex<T>> {
+		self.S_a.as_ref()
+	}
+
+	/// returns the factor $S_b$
+	pub fn S_b(&self) -> DiagRef<'_, Complex<T>> {
+		self.S_b.as_ref()
 	}
 }
 
@@ -2503,10 +2648,53 @@ mod tests {
 		let n = A.nrows();
 		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
-		let evd = A.eigen().unwrap();
-		let e = A.eigenvalues().unwrap();
-		assert!(&A * evd.U() ~ evd.U() * evd.S());
-		assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+		{
+			let evd = A.eigen().unwrap();
+			let e = A.eigenvalues().unwrap();
+			assert!(&A * evd.U() ~ evd.U() * evd.S());
+			assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+		}
+		{
+			let evd = A.conjugate().eigen().unwrap();
+			let e = A.conjugate().eigenvalues().unwrap();
+			assert!(A.conjugate() * evd.U() ~ evd.U() * evd.S());
+			assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+		}
+	}
+
+	#[test]
+	fn test_geigen_cplx() {
+		let rng = &mut StdRng::seed_from_u64(0);
+		let n = 50;
+
+		let A = CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+		}
+		.rand::<Mat<c64>>(rng);
+
+		let B = CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+		}
+		.rand::<Mat<c64>>(rng);
+
+		let n = A.nrows();
+		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
+
+		{
+			let evd = A.generalized_eigen(&B).unwrap();
+			let e = zip!(evd.S_a(), evd.S_b()).map(|unzip!(a, b)| a / b);
+			assert!(&A * evd.U() ~ &B * evd.U() * e);
+		}
+
+		{
+			let evd = A.conjugate().generalized_eigen(B.conjugate()).unwrap();
+			let e = zip!(evd.S_a(), evd.S_b()).map(|unzip!(a, b)| a / b);
+			assert!(A.conjugate() * evd.U() ~ B.conjugate() * evd.U() * e);
+		}
 	}
 
 	#[test]

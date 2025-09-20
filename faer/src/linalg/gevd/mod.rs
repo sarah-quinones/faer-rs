@@ -22,6 +22,22 @@ use equator::assert;
 
 pub use linalg::evd::ComputeEigenvectors;
 
+/// eigendecomposition error
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GevdError {
+	/// reached max iterations
+	NoConvergence,
+}
+
+/// eigendecomposition error
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SelfAdjointGevdError {
+	/// reached max iterations
+	NoConvergence,
+	/// B matrix not positive definite
+	NonPositiveDefinite,
+}
+
 /// generalized schur decomposition parameters
 #[derive(Clone, Copy, Debug)]
 pub struct GeneralizedSchurParams {
@@ -138,7 +154,7 @@ fn compute_gevd_generic<T: ComplexField>(
 		stack: &mut MemStack,
 	),
 	qz_to_gevd: fn(A: MatRef<'_, T>, B: MatRef<'_, T>, Q: Option<MatMut<'_, T>>, Z: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack),
-) {
+) -> Result<(), GevdError> {
 	let n = A.nrows();
 	assert!(all(
 		A.nrows() == n,
@@ -157,7 +173,7 @@ fn compute_gevd_generic<T: ComplexField>(
 	}
 
 	if n == 0 {
-		return;
+		return Ok(());
 	}
 
 	#[cfg(feature = "perf-warn")]
@@ -194,7 +210,7 @@ fn compute_gevd_generic<T: ComplexField>(
 				u.fill(nan());
 			}
 		}
-		return;
+		return Err(GevdError::NoConvergence);
 	}
 	let need_qz = u_left.is_some() || u_right.is_some();
 
@@ -257,6 +273,7 @@ fn compute_gevd_generic<T: ComplexField>(
 	);
 
 	qz_to_gevd(A.rb(), B.rb(), u_left.rb_mut(), u_right.rb_mut(), par, stack);
+	Ok(())
 }
 
 #[math]
@@ -1209,7 +1226,13 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 
 /// computes the layout of the workspace required to compute a matrix pair's
 /// generalized eigendecomposition
-pub fn gevd_scratch<T: ComplexField>(dim: usize, left: ComputeEigenvectors, right: ComputeEigenvectors, par: Par, params: GevdParams) -> StackReq {
+pub fn gevd_scratch<T: ComplexField>(
+	dim: usize,
+	left: ComputeEigenvectors,
+	right: ComputeEigenvectors,
+	par: Par,
+	params: Spec<GevdParams, T>,
+) -> StackReq {
 	let _ = (left, right);
 
 	let n = dim;
@@ -1233,30 +1256,32 @@ pub fn gevd_scratch<T: ComplexField>(dim: usize, left: ComputeEigenvectors, righ
 ///
 /// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
 /// $U_R$
+///
+/// the values in $A$ and $B$ after this function is called are unspecified.
 #[track_caller]
 pub fn gevd_real<T: RealField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
-	S_re: ColMut<'_, T>,
-	S_im: ColMut<'_, T>,
-	beta: ColMut<'_, T>,
+	S_re: DiagMut<'_, T>,
+	S_im: DiagMut<'_, T>,
+	beta: DiagMut<'_, T>,
 	U_left: Option<MatMut<'_, T>>,
 	U_right: Option<MatMut<'_, T>>,
 	par: Par,
 	stack: &mut MemStack,
-	params: GevdParams,
-) {
+	params: Spec<GevdParams, T>,
+) -> Result<(), GevdError> {
 	compute_gevd_generic(
 		A,
 		B,
-		S_re,
-		S_im,
-		beta,
+		S_re.column_vector_mut(),
+		S_im.column_vector_mut(),
+		beta.column_vector_mut(),
 		U_left,
 		U_right,
 		par,
 		stack,
-		params,
+		params.config,
 		qz_real::hessenberg_to_qz,
 		qz_to_gevd_real,
 	)
@@ -1266,29 +1291,31 @@ pub fn gevd_real<T: RealField>(
 ///
 /// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
 /// $U_R$
+///
+/// the values in $A$ and $B$ after this function is called are unspecified.
 #[track_caller]
 pub fn gevd_cplx<T: ComplexField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
-	S: ColMut<'_, T>,
-	beta: ColMut<'_, T>,
+	S: DiagMut<'_, T>,
+	beta: DiagMut<'_, T>,
 	U_left: Option<MatMut<'_, T>>,
 	U_right: Option<MatMut<'_, T>>,
 	par: Par,
 	stack: &mut MemStack,
-	params: GevdParams,
-) {
+	params: Spec<GevdParams, T>,
+) -> Result<(), GevdError> {
 	compute_gevd_generic(
 		A,
 		B,
-		S,
+		S.column_vector_mut(),
 		ColMut::from_slice_mut(&mut []),
-		beta,
+		beta.column_vector_mut(),
 		U_left,
 		U_right,
 		par,
 		stack,
-		params,
+		params.config,
 		|A: MatMut<'_, T>,
 		 B: MatMut<'_, T>,
 		 Q: Option<MatMut<'_, T>>,
@@ -1377,9 +1404,9 @@ mod tests {
 		{
 			let mut H = A.to_owned();
 			let mut T = B.to_owned();
-			let mut alpha_re = Col::<f64>::zeros(n);
-			let mut alpha_im = Col::<f64>::zeros(n);
-			let mut beta = Col::<f64>::zeros(n);
+			let mut alpha_re = Diag::<f64>::zeros(n);
+			let mut alpha_im = Diag::<f64>::zeros(n);
+			let mut beta = Diag::<f64>::zeros(n);
 
 			let mut UL = Mat::<f64>::identity(n, n);
 			let mut UR = Mat::<f64>::identity(n, n);
@@ -1398,10 +1425,11 @@ mod tests {
 					ComputeEigenvectors::Yes,
 					ComputeEigenvectors::Yes,
 					Par::Seq,
-					auto!(f64),
+					default(),
 				))),
-				auto!(f64),
-			);
+				default(),
+			)
+			.unwrap();
 
 			{
 				let mut i = 0;
@@ -1480,8 +1508,8 @@ mod tests {
 		{
 			let mut H = A.to_owned();
 			let mut T = B.to_owned();
-			let mut alpha_re = Col::<c64>::zeros(n);
-			let mut beta = Col::<c64>::zeros(n);
+			let mut alpha_re = Diag::<c64>::zeros(n);
+			let mut beta = Diag::<c64>::zeros(n);
 
 			let mut UL = Mat::<c64>::identity(n, n);
 			let mut UR = Mat::<c64>::identity(n, n);
@@ -1499,10 +1527,11 @@ mod tests {
 					ComputeEigenvectors::Yes,
 					ComputeEigenvectors::Yes,
 					Par::Seq,
-					auto!(c64),
+					default(),
 				))),
-				auto!(c64),
-			);
+				default(),
+			)
+			.unwrap();
 
 			{
 				let mut i = 0;

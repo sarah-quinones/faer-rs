@@ -14,6 +14,12 @@ impl<T: core::fmt::Debug, Dim: Shape> core::fmt::Debug for Own<T, Dim> {
 }
 
 impl<T, Dim: Shape> Diag<T, Dim> {
+	/// returns the stride of the diagonal, specified in number of elements, not in bytes
+	#[inline(always)]
+	pub fn stride(&self) -> isize {
+		1
+	}
+
 	/// returns the diagonal as a column vector
 	#[inline(always)]
 	pub fn column_vector(&self) -> ColRef<'_, T, Dim> {
