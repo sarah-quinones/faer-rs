@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use crate::col::{Col, ColMut, ColRef};
 use crate::mat::{Mat, MatMut, MatRef};
 use crate::row::{Row, RowMut, RowRef};
-use crate::{ContiguousFwd, Idx, Shape, Stride, Unbind};
+use crate::{ContiguousFwd, Idx, Shape, Stride, Unbind, diag};
 use equator::{assert, debug_assert};
 use reborrow::*;
 
@@ -63,6 +63,23 @@ impl<'a, T, Len: Shape> IntoView for &'a Row<T, Len> {
 	#[inline]
 	fn into_view(self) -> Self::Target {
 		self.as_ref().try_as_row_major().unwrap()
+	}
+}
+
+impl<'a, T, Len: Shape> IntoView for &'a mut diag::Diag<T, Len> {
+	type Target = diag::DiagMut<'a, T, Len, ContiguousFwd>;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		self.as_mut().column_vector_mut().try_as_col_major_mut().unwrap().as_diagonal_mut()
+	}
+}
+impl<'a, T, Len: Shape> IntoView for &'a diag::Diag<T, Len> {
+	type Target = diag::DiagRef<'a, T, Len, ContiguousFwd>;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		self.as_ref().column_vector().try_as_col_major().unwrap().as_diagonal()
 	}
 }
 
@@ -168,6 +185,57 @@ impl<'a, T, Rows: Shape, RStride: Stride> IntoView for &'a mut ColRef<'_, T, Row
 	}
 }
 
+impl<'a, T, Rows: Shape, DStride: Stride> IntoView for diag::DiagMut<'a, T, Rows, DStride> {
+	type Target = Self;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		self
+	}
+}
+impl<'a, T, Rows: Shape, DStride: Stride> IntoView for diag::DiagRef<'a, T, Rows, DStride> {
+	type Target = Self;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		self
+	}
+}
+
+impl<'a, T, Rows: Shape, DStride: Stride> IntoView for &'a diag::DiagMut<'_, T, Rows, DStride> {
+	type Target = diag::DiagRef<'a, T, Rows, DStride>;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		self.rb()
+	}
+}
+impl<'a, T, Rows: Shape, DStride: Stride> IntoView for &'a diag::DiagRef<'_, T, Rows, DStride> {
+	type Target = diag::DiagRef<'a, T, Rows, DStride>;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		*self
+	}
+}
+
+impl<'a, T, Rows: Shape, DStride: Stride> IntoView for &'a mut diag::DiagMut<'_, T, Rows, DStride> {
+	type Target = diag::DiagMut<'a, T, Rows, DStride>;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		self.rb_mut()
+	}
+}
+impl<'a, T, Rows: Shape, DStride: Stride> IntoView for &'a mut diag::DiagRef<'_, T, Rows, DStride> {
+	type Target = diag::DiagRef<'a, T, Rows, DStride>;
+
+	#[inline]
+	fn into_view(self) -> Self::Target {
+		*self
+	}
+}
+
 impl<'a, T, Cols: Shape, CStride: Stride> IntoView for RowMut<'a, T, Cols, CStride> {
 	type Target = Self;
 
@@ -249,6 +317,8 @@ pub enum VecLayoutTransform {
 
 /// type with a given matrix shape
 pub trait MatIndex {
+	type Kind;
+
 	/// type of rows
 	type Rows: Copy + Eq + core::fmt::Debug;
 	/// type of columns
@@ -267,7 +337,7 @@ pub trait MatIndex {
 	type Item;
 
 	/// matrix type with type erased dimensions
-	type Dyn: MatIndex<Dyn = Self::Dyn, LayoutTransform = Self::LayoutTransform, Item = Self::Item, Slice = Self::Slice>;
+	type Dyn: MatIndex<Kind = Self::Kind, Dyn = Self::Dyn, LayoutTransform = Self::LayoutTransform, Item = Self::Item, Slice = Self::Slice>;
 
 	type Slice: for<'a> SliceFamily<'a, Self::Item>;
 
@@ -315,7 +385,7 @@ impl<'a, T, U, F: SliceFamily<'a, T>, G: SliceFamily<'a, U>> SliceFamily<'a, Zip
 
 /// single matrix
 #[derive(Copy, Clone, Debug)]
-pub struct LastEq<Rows, Cols, Mat>(pub Mat, pub PhantomData<(Rows, Cols)>);
+pub struct LastEq<Kind, Mat>(pub Mat, pub PhantomData<Kind>);
 
 /// single element
 #[derive(Copy, Clone, Debug)]
@@ -323,7 +393,7 @@ pub struct Last<Mat>(pub Mat);
 
 /// zipped matrices
 #[derive(Copy, Clone, Debug)]
-pub struct ZipEq<Rows, Cols, Head, Tail>(pub Head, pub Tail, PhantomData<(Rows, Cols)>);
+pub struct ZipEq<Kind, Head, Tail>(pub Head, pub Tail, PhantomData<Kind>);
 
 /// zipped elements
 #[derive(Copy, Clone, Debug)]
@@ -331,11 +401,12 @@ pub struct Zip<Head, Tail>(pub Head, pub Tail);
 
 /// single matrix view
 impl<
+	Kind,
 	Rows: Copy + Eq + core::fmt::Debug,
 	Cols: Copy + Eq + core::fmt::Debug,
-	Head: MatIndex<Rows = Rows, Cols = Cols>,
-	Tail: MatIndex<Rows = Rows, Cols = Cols>,
-> ZipEq<Rows, Cols, Head, Tail>
+	Head: MatIndex<Kind = Kind, Rows = Rows, Cols = Cols>,
+	Tail: MatIndex<Kind = Kind, Rows = Rows, Cols = Cols>,
+> ZipEq<Kind, Head, Tail>
 {
 	/// creates a zip matrix, after asserting that the dimensions match
 	#[inline(always)]
@@ -354,13 +425,14 @@ impl<
 	}
 }
 
-impl<Rows: Copy + Eq + core::fmt::Debug, Cols: Copy + Eq + core::fmt::Debug, Mat: MatIndex<Rows = Rows, Cols = Cols>> MatIndex
-	for LastEq<Rows, Cols, Mat>
+impl<Kind, Rows: Copy + Eq + core::fmt::Debug, Cols: Copy + Eq + core::fmt::Debug, Mat: MatIndex<Rows = Rows, Cols = Cols, Kind = Kind>> MatIndex
+	for LastEq<Kind, Mat>
 {
 	type Cols = Mat::Cols;
-	type Dyn = LastEq<<Mat::Dyn as MatIndex>::Rows, <Mat::Dyn as MatIndex>::Cols, Mat::Dyn>;
+	type Dyn = LastEq<<Mat::Dyn as MatIndex>::Kind, Mat::Dyn>;
 	type Index = Mat::Index;
 	type Item = Last<Mat::Item>;
+	type Kind = Mat::Kind;
 	type LayoutTransform = Mat::LayoutTransform;
 	type Rows = Mat::Rows;
 	type Slice = Last<Mat::Slice>;
@@ -412,18 +484,20 @@ impl<Rows: Copy + Eq + core::fmt::Debug, Cols: Copy + Eq + core::fmt::Debug, Mat
 }
 
 impl<
+	Kind,
 	Rows: Copy + Eq + core::fmt::Debug,
 	Cols: Copy + Eq + core::fmt::Debug,
-	L: MatIndex<Rows = Rows, Cols = Cols>,
-	R: MatIndex<Rows = Rows, Cols = Cols, Index = L::Index, LayoutTransform = L::LayoutTransform>,
-> MatIndex for ZipEq<Rows, Cols, L, R>
+	L: MatIndex<Kind = Kind, Rows = Rows, Cols = Cols>,
+	R: MatIndex<Kind = Kind, Rows = Rows, Cols = Cols, Index = L::Index, LayoutTransform = L::LayoutTransform>,
+> MatIndex for ZipEq<Kind, L, R>
 where
 	R::Dyn: MatIndex<Rows = <L::Dyn as MatIndex>::Rows, Cols = <L::Dyn as MatIndex>::Cols, Index = <L::Dyn as MatIndex>::Index>,
 {
 	type Cols = L::Cols;
-	type Dyn = ZipEq<<L::Dyn as MatIndex>::Rows, <L::Dyn as MatIndex>::Cols, L::Dyn, R::Dyn>;
+	type Dyn = ZipEq<<L::Dyn as MatIndex>::Kind, L::Dyn, R::Dyn>;
 	type Index = L::Index;
 	type Item = Zip<L::Item, R::Item>;
+	type Kind = L::Kind;
 	type LayoutTransform = L::LayoutTransform;
 	type Rows = L::Rows;
 	type Slice = Zip<L::Slice, R::Slice>;
@@ -482,6 +556,7 @@ impl<'b, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatIndex
 	type Dyn = MatMut<'b, T, usize, usize, isize, isize>;
 	type Index = (Idx<Rows>, Idx<Cols>);
 	type Item = &'b mut T;
+	type Kind = kind::Mat;
 	type LayoutTransform = MatLayoutTransform;
 	type Rows = Rows;
 	type Slice = SliceMut<'b, T>;
@@ -563,6 +638,7 @@ impl<'b, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride> MatIndex
 	type Dyn = MatRef<'b, T, usize, usize, isize, isize>;
 	type Index = (Idx<Rows>, Idx<Cols>);
 	type Item = &'b T;
+	type Kind = kind::Mat;
 	type LayoutTransform = MatLayoutTransform;
 	type Rows = Rows;
 	type Slice = SliceRef<'b, T>;
@@ -644,6 +720,7 @@ impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColMut<'b, T, Len, Strd> {
 	type Dyn = ColMut<'b, T, usize, isize>;
 	type Index = Idx<Len>;
 	type Item = &'b mut T;
+	type Kind = kind::Col;
 	type LayoutTransform = VecLayoutTransform;
 	type Rows = Len;
 	type Slice = SliceMut<'b, T>;
@@ -671,7 +748,7 @@ impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColMut<'b, T, Len, Strd> {
 
 	#[inline]
 	unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
-		let ptr = this.rb().ptr_inbounds_at_mut(i);
+		let ptr = this.ptr_inbounds_at_mut(i);
 		&mut *ptr
 	}
 
@@ -712,11 +789,86 @@ impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColMut<'b, T, Len, Strd> {
 	}
 }
 
+impl<'b, T, Len: Shape, Strd: Stride> MatIndex for diag::DiagMut<'b, T, Len, Strd> {
+	type Cols = Len;
+	type Dyn = diag::DiagMut<'b, T, usize, isize>;
+	type Index = Idx<Len>;
+	type Item = &'b mut T;
+	type Kind = kind::Diag;
+	type LayoutTransform = VecLayoutTransform;
+	type Rows = Len;
+	type Slice = SliceMut<'b, T>;
+
+	#[inline]
+	fn nrows(this: &Self) -> Self::Rows {
+		this.dim()
+	}
+
+	#[inline]
+	fn ncols(this: &Self) -> Self::Cols {
+		this.dim()
+	}
+
+	#[inline]
+	unsafe fn get_slice_unchecked<'a>(this: &'a mut Self, idx: Self::Index, n_elems: usize) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
+		let ptr = this.rb_mut().column_vector_mut().ptr_inbounds_at_mut(idx);
+		core::slice::from_raw_parts_mut(ptr, n_elems)
+	}
+
+	#[inline]
+	unsafe fn from_dyn_idx(idx: <Self::Dyn as MatIndex>::Index) -> Self::Index {
+		Idx::<Len>::new_unbound(idx)
+	}
+
+	#[inline]
+	unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
+		let ptr = this.rb_mut().column_vector_mut().ptr_inbounds_at_mut(i);
+		&mut *ptr
+	}
+
+	#[inline(always)]
+	unsafe fn next_unchecked<'a>(slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice) -> Self::Item {
+		let (head, tail) = core::mem::take(slice).split_first_mut().unwrap_unchecked();
+		*slice = tail;
+		head
+	}
+
+	#[inline(always)]
+	fn is_contiguous(this: &Self) -> bool {
+		this.stride().element_stride() == 1
+	}
+
+	#[inline(always)]
+	fn preferred_layout(this: &Self) -> Self::LayoutTransform {
+		let strd = this.stride().element_stride();
+		let len = this.dim().unbound();
+
+		if len > 1 && strd == 1 {
+			VecLayoutTransform::None
+		} else if len > 1 && strd == -1 {
+			VecLayoutTransform::Reverse
+		} else {
+			VecLayoutTransform::None
+		}
+	}
+
+	#[inline(always)]
+	fn with_layout(this: Self, layout: Self::LayoutTransform) -> Self::Dyn {
+		use VecLayoutTransform::*;
+		let this = this.as_dyn_mut().as_dyn_stride_mut();
+		match layout {
+			None => this,
+			Reverse => this.column_vector_mut().reverse_rows_mut().as_diagonal_mut(),
+		}
+	}
+}
+
 impl<'b, T, Len: Shape, Strd: Stride> MatIndex for RowMut<'b, T, Len, Strd> {
 	type Cols = Len;
 	type Dyn = RowMut<'b, T, usize, isize>;
 	type Index = Idx<Len>;
 	type Item = &'b mut T;
+	type Kind = kind::Row;
 	type LayoutTransform = VecLayoutTransform;
 	type Rows = ();
 	type Slice = SliceMut<'b, T>;
@@ -790,6 +942,7 @@ impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColRef<'b, T, Len, Strd> {
 	type Dyn = ColRef<'b, T, usize, isize>;
 	type Index = Idx<Len>;
 	type Item = &'b T;
+	type Kind = kind::Col;
 	type LayoutTransform = VecLayoutTransform;
 	type Rows = Len;
 	type Slice = SliceRef<'b, T>;
@@ -858,11 +1011,86 @@ impl<'b, T, Len: Shape, Strd: Stride> MatIndex for ColRef<'b, T, Len, Strd> {
 	}
 }
 
+impl<'b, T, Len: Shape, Strd: Stride> MatIndex for diag::DiagRef<'b, T, Len, Strd> {
+	type Cols = Len;
+	type Dyn = diag::DiagRef<'b, T, usize, isize>;
+	type Index = Idx<Len>;
+	type Item = &'b T;
+	type Kind = kind::Diag;
+	type LayoutTransform = VecLayoutTransform;
+	type Rows = Len;
+	type Slice = SliceRef<'b, T>;
+
+	#[inline]
+	fn nrows(this: &Self) -> Self::Rows {
+		this.dim()
+	}
+
+	#[inline]
+	fn ncols(this: &Self) -> Self::Cols {
+		this.dim()
+	}
+
+	#[inline]
+	unsafe fn get_slice_unchecked<'a>(this: &'a mut Self, idx: Self::Index, n_elems: usize) -> <Self::Slice as SliceFamily<'a, Self::Item>>::Slice {
+		let ptr = this.column_vector().ptr_inbounds_at(idx);
+		core::slice::from_raw_parts(ptr, n_elems)
+	}
+
+	#[inline]
+	unsafe fn from_dyn_idx(idx: <Self::Dyn as MatIndex>::Index) -> Self::Index {
+		Idx::<Len>::new_unbound(idx)
+	}
+
+	#[inline]
+	unsafe fn get_unchecked(this: &mut Self, i: Self::Index) -> Self::Item {
+		let ptr = this.column_vector().ptr_inbounds_at(i);
+		&*ptr
+	}
+
+	#[inline(always)]
+	unsafe fn next_unchecked<'a>(slice: &mut <Self::Slice as SliceFamily<'a, Self::Item>>::Slice) -> Self::Item {
+		let (head, tail) = core::mem::take(slice).split_first().unwrap_unchecked();
+		*slice = tail;
+		head
+	}
+
+	#[inline(always)]
+	fn is_contiguous(this: &Self) -> bool {
+		this.stride().element_stride() == 1
+	}
+
+	#[inline(always)]
+	fn preferred_layout(this: &Self) -> Self::LayoutTransform {
+		let strd = this.stride().element_stride();
+		let len = this.dim().unbound();
+
+		if len > 1 && strd == 1 {
+			VecLayoutTransform::None
+		} else if len > 1 && strd == -1 {
+			VecLayoutTransform::Reverse
+		} else {
+			VecLayoutTransform::None
+		}
+	}
+
+	#[inline(always)]
+	fn with_layout(this: Self, layout: Self::LayoutTransform) -> Self::Dyn {
+		use VecLayoutTransform::*;
+		let this = this.as_dyn().as_dyn_stride();
+		match layout {
+			None => this,
+			Reverse => this.column_vector().reverse_rows().as_diagonal(),
+		}
+	}
+}
+
 impl<'b, T, Len: Shape, Strd: Stride> MatIndex for RowRef<'b, T, Len, Strd> {
 	type Cols = Len;
 	type Dyn = RowRef<'b, T, usize, isize>;
 	type Index = Idx<Len>;
 	type Item = &'b T;
+	type Kind = kind::Row;
 	type LayoutTransform = VecLayoutTransform;
 	type Rows = ();
 	type Slice = SliceRef<'b, T>;
@@ -1529,6 +1757,67 @@ fn for_each_mat_triangular_lower<Z: MatIndex<LayoutTransform = MatLayoutTransfor
 }
 
 #[inline(always)]
+fn for_each_diag<Z: MatIndex>(z: Z, mut f: impl FnMut(<Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Rows = usize, Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+{
+	let layout = Z::preferred_layout(&z);
+	let mut z = Z::with_layout(z, layout);
+
+	let m = Z::Dyn::nrows(&z);
+	if m == 0 {
+		return;
+	}
+
+	unsafe {
+		if Z::Dyn::is_contiguous(&z) {
+			annotate_noalias_col::<Z::Dyn>(&mut f, Z::Dyn::get_slice_unchecked(&mut z, 0, m), 0, m);
+		} else {
+			for i in 0..m {
+				f(Z::Dyn::get_unchecked(&mut z, i))
+			}
+		}
+	}
+}
+
+#[inline(always)]
+fn for_each_diag_with_index<Idx, Z: MatIndex<LayoutTransform = VecLayoutTransform, Index = Idx>>(z: Z, mut f: impl FnMut(Idx, <Z as MatIndex>::Item))
+where
+	Z::Dyn: MatIndex<Rows = usize, Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+{
+	let layout = Z::preferred_layout(&z);
+	let mut z = Z::with_layout(z, layout);
+
+	let m = Z::Dyn::nrows(&z);
+	if m == 0 {
+		return;
+	}
+
+	unsafe {
+		match layout {
+			VecLayoutTransform::None => {
+				if Z::Dyn::is_contiguous(&z) {
+					annotate_noalias_col_with_index::<Z, _>(&mut f, Z::Dyn::get_slice_unchecked(&mut z, 0, m), 0, m, false);
+				} else {
+					for i in 0..m {
+						f(Z::from_dyn_idx(i), Z::Dyn::get_unchecked(&mut z, i))
+					}
+				}
+			},
+			VecLayoutTransform::Reverse => {
+				if Z::Dyn::is_contiguous(&z) {
+					annotate_noalias_col_with_index::<Z, _>(&mut f, Z::Dyn::get_slice_unchecked(&mut z, 0, m), 0, m, true);
+				} else {
+					for i in 0..m {
+						f(Z::from_dyn_idx(m - i - 1), Z::Dyn::get_unchecked(&mut z, i))
+					}
+				}
+			},
+		}
+	}
+}
+
+#[inline(always)]
 fn for_each_col<Z: MatIndex>(z: Z, mut f: impl FnMut(<Z as MatIndex>::Item))
 where
 	Z::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
@@ -1649,8 +1938,11 @@ where
 	}
 }
 
-impl<Rows: Shape, Cols: Shape, M: MatIndex<LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>>
-	LastEq<Rows, Cols, M>
+impl<
+	Rows: Shape,
+	Cols: Shape,
+	M: MatIndex<Kind = kind::Mat, LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
+> LastEq<kind::Mat, M>
 where
 	M::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 {
@@ -1734,9 +2026,9 @@ where
 impl<
 	Rows: Shape,
 	Cols: Shape,
-	L: MatIndex<LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
-	R: MatIndex<LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
-> ZipEq<Rows, Cols, L, R>
+	L: MatIndex<Kind = kind::Mat, LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
+	R: MatIndex<Kind = kind::Mat, LayoutTransform = MatLayoutTransform, Rows = Rows, Cols = Cols, Index = (Idx<Rows>, Idx<Cols>)>,
+> ZipEq<kind::Mat, L, R>
 where
 	L::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
 	R::Dyn: MatIndex<Rows = usize, Cols = usize, Index = (usize, usize)>,
@@ -1818,7 +2110,7 @@ where
 	}
 }
 
-impl<Rows: Shape, M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>> LastEq<Rows, (), M>
+impl<Rows: Shape, M: MatIndex<Kind = kind::Col, LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>> LastEq<kind::Col, M>
 where
 	M::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 {
@@ -1865,9 +2157,9 @@ where
 
 impl<
 	Rows: Shape,
-	L: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>,
-	R: MatIndex<LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>,
-> ZipEq<Rows, (), L, R>
+	L: MatIndex<Kind = kind::Col, LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>,
+	R: MatIndex<Kind = kind::Col, LayoutTransform = VecLayoutTransform, Rows = Rows, Cols = (), Index = Idx<Rows>>,
+> ZipEq<kind::Col, L, R>
 where
 	L::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
 	R::Dyn: MatIndex<Rows = usize, Cols = (), Index = usize>,
@@ -1913,7 +2205,106 @@ where
 	}
 }
 
-impl<Cols: Shape, M: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>> LastEq<(), Cols, M>
+impl<Dim: Shape, M: MatIndex<Kind = kind::Diag, LayoutTransform = VecLayoutTransform, Rows = Dim, Cols = Dim, Index = Idx<Dim>>> LastEq<kind::Diag, M>
+where
+	M::Dyn: MatIndex<Rows = usize, Cols = usize, Index = usize>,
+{
+	/// applies `f` to each element of `self`
+	#[inline(always)]
+	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
+		for_each_diag(self, f);
+	}
+
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
+	#[inline(always)]
+	pub fn for_each_with_index(self, f: impl FnMut(Idx<Dim>, <Self as MatIndex>::Item)) {
+		for_each_diag_with_index(self, f);
+	}
+
+	/// applies `f` to each element of `self` and collect its result into a new matrix
+	#[inline(always)]
+	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> diag::Diag<T, Dim> {
+		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
+		let mut f = f;
+		let mut this = self;
+		Col::from_fn(
+			m,
+			#[inline(always)]
+			|i| f(unsafe { Self::get_unchecked(&mut this, i) }),
+		)
+		.into_diagonal()
+	}
+
+	/// applies `f` to each element of `self` and collect its result into a new matrix
+	#[inline(always)]
+	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Dim>, <Self as MatIndex>::Item) -> T) -> diag::Diag<T, Dim> {
+		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
+		let mut f = f;
+		let mut this = self;
+
+		Col::from_fn(
+			m,
+			#[inline(always)]
+			|i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
+		)
+		.into_diagonal()
+	}
+}
+
+impl<
+	Dim: Shape,
+	L: MatIndex<Kind = kind::Diag, LayoutTransform = VecLayoutTransform, Rows = Dim, Cols = Dim, Index = Idx<Dim>>,
+	R: MatIndex<Kind = kind::Diag, LayoutTransform = VecLayoutTransform, Rows = Dim, Cols = Dim, Index = Idx<Dim>>,
+> ZipEq<kind::Diag, L, R>
+where
+	L::Dyn: MatIndex<Rows = usize, Cols = usize, Index = usize>,
+	R::Dyn: MatIndex<Rows = usize, Cols = usize, Index = usize>,
+{
+	/// applies `f` to each element of `self`
+	#[inline(always)]
+	pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
+		for_each_diag(self, f);
+	}
+
+	/// applies `f` to each element of `self`, while passing the indices of the position of the
+	/// current element
+	#[inline(always)]
+	pub fn for_each_with_index(self, f: impl FnMut(Idx<Dim>, <Self as MatIndex>::Item)) {
+		for_each_diag_with_index(self, f);
+	}
+
+	/// applies `f` to each element of `self` and collect its result into a new matrix
+	#[inline(always)]
+	pub fn map<T>(self, f: impl FnMut(<Self as MatIndex>::Item) -> T) -> diag::Diag<T, Dim> {
+		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
+		let mut f = f;
+		let mut this = self;
+		Col::from_fn(
+			m,
+			#[inline(always)]
+			|i| f(unsafe { Self::get_unchecked(&mut this, i) }),
+		)
+		.into_diagonal()
+	}
+
+	/// applies `f` to each element of `self` and collect its result into a new matrix
+	#[inline(always)]
+	pub fn map_with_index<T>(self, f: impl FnMut(Idx<Dim>, <Self as MatIndex>::Item) -> T) -> diag::Diag<T, Dim> {
+		let (m, _) = (Self::nrows(&self), Self::ncols(&self));
+		let mut f = f;
+		let mut this = self;
+
+		Col::from_fn(
+			m,
+			#[inline(always)]
+			|i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
+		)
+		.into_diagonal()
+	}
+}
+
+impl<Cols: Shape, M: MatIndex<Kind = kind::Row, LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>> LastEq<kind::Row, M>
 where
 	M::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 {
@@ -1960,9 +2351,9 @@ where
 
 impl<
 	Cols: Shape,
-	L: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>,
-	R: MatIndex<LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>,
-> ZipEq<(), Cols, L, R>
+	L: MatIndex<Kind = kind::Row, LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>,
+	R: MatIndex<Kind = kind::Row, LayoutTransform = VecLayoutTransform, Rows = (), Cols = Cols, Index = Idx<Cols>>,
+> ZipEq<kind::Row, L, R>
 where
 	L::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
 	R::Dyn: MatIndex<Rows = (), Cols = usize, Index = usize>,
@@ -2006,4 +2397,11 @@ where
 			|i| f(i, unsafe { Self::get_unchecked(&mut this, i) }),
 		)
 	}
+}
+
+pub mod kind {
+	pub struct Col;
+	pub struct Row;
+	pub struct Mat;
+	pub struct Diag;
 }

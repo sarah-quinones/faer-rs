@@ -76,6 +76,12 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagRef<'a, T, Dim, Stride> {
 		}
 	}
 
+	/// returns the stride of the diagonal, specified in number of elements, not in bytes
+	#[inline(always)]
+	pub fn stride(&self) -> Stride {
+		self.inner.row_stride()
+	}
+
 	/// returns the diagonal as a column vector view.
 	#[inline(always)]
 	pub fn column_vector(self) -> ColRef<'a, T, Dim, Stride> {
