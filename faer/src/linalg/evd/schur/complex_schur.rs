@@ -1415,7 +1415,7 @@ mod tests {
 				for j in 0..n {
 					for i in 0..n {
 						if i <= j + 1 {
-							h[(i, j)] = c64::new(rng.gen(), rng.gen());
+							h[(i, j)] = c64::new(rng.random(), rng.random());
 						}
 					}
 				}

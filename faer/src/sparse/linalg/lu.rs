@@ -1918,7 +1918,7 @@ mod tests {
 			load_mtx::<usize>(MtxData::from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_lu/YAO.mtx")).unwrap());
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let mut gen = || T::new(rng.gen::<f64>(), rng.gen::<f64>());
+		let mut gen = || T::new(rng.random::<f64>(), rng.random::<f64>());
 
 		let val = val.iter().map(|_| gen()).collect::<alloc::vec::Vec<_>>();
 		let A = SparseColMatRef::<'_, usize, T>::new(SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_idx), &val);
@@ -2045,7 +2045,7 @@ mod tests {
 			load_mtx::<usize>(MtxData::from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_lu/YAO.mtx")).unwrap());
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let mut gen = || T::new(rng.gen::<f64>(), rng.gen::<f64>());
+		let mut gen = || T::new(rng.random::<f64>(), rng.random::<f64>());
 
 		let val = val.iter().map(|_| gen()).collect::<alloc::vec::Vec<_>>();
 		let A = SparseColMatRef::<'_, usize, T>::new(SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_idx), &val);
@@ -2112,7 +2112,7 @@ mod tests {
 			load_mtx::<usize>(MtxData::from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_lu/YAO.mtx")).unwrap());
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let mut gen = || T::new(rng.gen::<f64>(), rng.gen::<f64>());
+		let mut gen = || T::new(rng.random::<f64>(), rng.random::<f64>());
 
 		let val = val.iter().map(|_| gen()).collect::<alloc::vec::Vec<_>>();
 		let A = SparseColMatRef::<'_, usize, T>::new(SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_idx), &val);

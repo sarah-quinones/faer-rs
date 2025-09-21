@@ -56,7 +56,7 @@
 //! 	let mut rhs = Vec::new();
 //! 	let mut rng = StdRng::seed_from_u64(0);
 //! 	rhs.try_reserve_exact(dim)?;
-//! 	rhs.resize_with(dim, || rng.gen::<f64>());
+//! 	rhs.resize_with(dim, || rng.random::<f64>());
 //!
 //! 	let mut sol = Vec::new();
 //! 	sol.try_reserve_exact(dim)?;
@@ -279,7 +279,7 @@
 //! 	let mut rhs = Vec::new();
 //! 	let mut rng = StdRng::seed_from_u64(0);
 //! 	rhs.try_reserve_exact(dim)?;
-//! 	rhs.resize_with(dim, || rng.gen::<f64>());
+//! 	rhs.resize_with(dim, || rng.random::<f64>());
 //!
 //! 	let mut sol = Vec::new();
 //! 	sol.try_reserve_exact(dim)?;

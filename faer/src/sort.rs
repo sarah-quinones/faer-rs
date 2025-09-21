@@ -1021,8 +1021,8 @@ mod tests {
 	fn test_quicksort_big() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
-		let a = &mut *(0..1000).map(|_| rng.gen::<u32>()).collect::<Vec<_>>();
-		let b = &mut *(0..1000).map(|_| rng.gen::<f64>()).collect::<Vec<_>>();
+		let a = &mut *(0..1000).map(|_| rng.random::<u32>()).collect::<Vec<_>>();
+		let b = &mut *(0..1000).map(|_| rng.random::<f64>()).collect::<Vec<_>>();
 
 		let a_orig = &*a.to_vec();
 		let b_orig = &*b.to_vec();

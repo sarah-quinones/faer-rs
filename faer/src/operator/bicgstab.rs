@@ -362,9 +362,9 @@ pub fn bicgstab<T: ComplexField>(
 mod tests {
 	use super::*;
 	use crate::mat;
+	use crate::stats::prelude::*;
 	use dyn_stack::MemBuffer;
 	use equator::assert;
-	use rand::prelude::*;
 
 	#[test]
 	fn test_bicgstab() {
@@ -375,7 +375,7 @@ mod tests {
 		let ref rhs = A * sol;
 		let ref mut diag = Mat::<f64>::identity(2, 2);
 		for i in 0..2 {
-			diag[(i, i)] = f64::exp(rand::distributions::Standard.sample(rng));
+			diag[(i, i)] = f64::exp(StandardUniform.sample(rng));
 		}
 		let ref diag = *diag;
 

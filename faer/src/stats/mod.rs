@@ -4,15 +4,30 @@ mod meanvar;
 pub use meanvar::{NanHandling, col_mean, col_varm, row_mean, row_varm};
 
 pub mod prelude {
-	#[cfg(feature = "rand")]
-	pub use num_complex::ComplexDistribution;
+	pub use super::ComplexDistribution;
+
 	#[cfg(feature = "rand")]
 	pub use rand::prelude::*;
 	#[cfg(feature = "rand")]
-	pub use rand_distr::{Standard, StandardNormal};
+	pub use rand_distr::{Normal, StandardNormal, StandardUniform};
 
 	#[cfg(feature = "rand")]
 	pub use super::{CwiseColDistribution, CwiseMatDistribution, CwiseRowDistribution, DistributionExt, UnitaryMat};
+}
+
+/// A generic random value distribution for complex numbers.
+#[derive(Clone, Copy, Debug)]
+pub struct ComplexDistribution<Re, Im = Re> {
+	re: Re,
+	im: Im,
+}
+
+impl<Re, Im> ComplexDistribution<Re, Im> {
+	/// Creates a complex distribution from independent
+	/// distributions of the real and imaginary parts.
+	pub fn new(re: Re, im: Im) -> Self {
+		ComplexDistribution { re, im }
+	}
 }
 
 #[cfg(feature = "rand")]
@@ -20,8 +35,10 @@ pub use self::rand::*;
 
 #[cfg(feature = "rand")]
 mod rand {
+	use super::ComplexDistribution;
 	use crate::internal_prelude::*;
-	use rand::distributions::Distribution;
+	use rand::Rng;
+	use rand::distr::Distribution;
 
 	pub trait DistributionExt {
 		fn rand<T>(&self, rng: &mut (impl ?Sized + rand::Rng)) -> T
@@ -103,6 +120,16 @@ mod rand {
 			}
 
 			q
+		}
+	}
+
+	impl<T, Re, Im> Distribution<Complex<T>> for ComplexDistribution<Re, Im>
+	where
+		Re: Distribution<T>,
+		Im: Distribution<T>,
+	{
+		fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<T> {
+			Complex::new(self.re.sample(rng), self.im.sample(rng))
 		}
 	}
 }
