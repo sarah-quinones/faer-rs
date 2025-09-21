@@ -12,6 +12,9 @@ pub mod lsmr;
 /// krylov-schur eigensolvers.
 pub mod eigen;
 
+mod self_adjoint_eigen;
+mod svd;
+
 mod operator_impl;
 
 /// specifies whether the initial guess should be assumed to be zero or not

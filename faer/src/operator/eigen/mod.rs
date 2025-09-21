@@ -61,7 +61,7 @@ fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMu
 
 		for i in 0..j {
 			let r = V.col(i).adjoint() * Vnext.rb();
-			zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x)| *y = *y - r * *x);
+			zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = *y - r * *x);
 			h[i] = r;
 		}
 
@@ -74,7 +74,7 @@ fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMu
 					all_true = false;
 
 					let r = V.col(i).adjoint() * Vnext.rb();
-					zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x)| *y = *y - r * *x);
+					zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = *y - r * *x);
 					h[i] = h[i] + r;
 
 					converged[i] = abs(r) < f * Vnext.norm_l2();
@@ -333,7 +333,7 @@ fn partial_schur_real_imp<T: RealField>(
 		let f = v0.norm_l2();
 		if f > min_positive() {
 			let f = recip(f);
-			zip!(V.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x)| *y = f * *x);
+			zip!(V.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = f * *x);
 		} else {
 			let n0 = n as u32;
 			let n1 = (n >> 32) as u32;
@@ -686,19 +686,19 @@ fn partial_schur_real_imp<T: RealField>(
 			eigvals[idx] = Complex::new(copy(*re), im);
 			if idx + 1 < limit {
 				let (ej, ej1) = eigvecs.rb_mut().two_cols_mut(idx, idx + 1);
-				zip!(ej, ej1, v_re, v_im).for_each(|unzip!(y0, y1, re, im)| {
+				zip!(ej, ej1, v_re, v_im).for_each(|unzip!(y0, y1, re, im): Zip!(&mut Complex<T>, &mut Complex<T>, &T, &T)| {
 					*y0 = Complex::new(copy(*re), copy(*im));
 					*y1 = Complex::new(copy(*re), -*im);
 				});
 			} else {
 				let ej = eigvecs.rb_mut().col_mut(idx);
-				zip!(ej, v_re, v_im).for_each(|unzip!(y0, re, im)| {
+				zip!(ej, v_re, v_im).for_each(|unzip!(y0, re, im): Zip!(&mut Complex<T>, &T, &T)| {
 					*y0 = Complex::new(copy(*re), copy(*im));
 				});
 			}
 		} else {
 			eigvals[idx] = Complex::new(copy(*re), zero());
-			zip!(eigvecs.rb_mut().col_mut(idx), v_re).for_each(|unzip!(y, x)| *y = Complex::new(copy(*x), zero()));
+			zip!(eigvecs.rb_mut().col_mut(idx), v_re).for_each(|unzip!(y, x): Zip!(&mut Complex<T>, &T)| *y = Complex::new(copy(*x), zero()));
 		}
 
 		idx += bs;
@@ -750,7 +750,7 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let f = v0.norm_l2();
 		if f > min_positive() {
 			let f = recip(f);
-			zip!(V.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x)| *y = mul_real(*x, f));
+			zip!(V.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = mul_real(*x, f));
 		} else {
 			let n0 = n as u32;
 			let n1 = (n >> 32) as u32;
@@ -1009,7 +1009,7 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let v = V.col(j);
 
 		eigvals[idx] = Complex::new(real(*w), imag(*w));
-		zip!(eigvecs.rb_mut().col_mut(idx), v).for_each(|unzip!(y, x)| *y = Complex::new(real(*x), imag(*x)));
+		zip!(eigvecs.rb_mut().col_mut(idx), v).for_each(|unzip!(y, x): Zip!(&mut Complex<T::Real>, &T)| *y = Complex::new(real(*x), imag(*x)));
 	}
 	limit
 }
@@ -1109,6 +1109,120 @@ pub fn partial_eigen<T: ComplexField>(
 		partial_schur_cplx_imp(
 			eigvecs,
 			eigvals,
+			A,
+			v0,
+			min_dim,
+			max_dim,
+			n_eigval,
+			tolerance,
+			params.max_restarts,
+			par,
+			stack,
+		)
+	};
+
+	PartialEigenInfo {
+		n_converged_eigen: n_eigval,
+		non_exhaustive: NonExhaustive(()),
+	}
+}
+
+/// computes an estimate of the eigenvalues (and corresponding eigenvectors) of $A$ with the largest
+/// magnitude, assuming $A$ is self-adjoint, until the provided outputs are full or the maximum
+/// number of algorithm restarts is reached.
+pub fn partial_self_adjoint_eigen<T: ComplexField>(
+	eigvecs: MatMut<'_, T>,
+	eigvals: &mut [T],
+	A: &dyn LinOp<T>,
+	v0: ColRef<'_, T>,
+	tolerance: T::Real,
+	par: Par,
+	stack: &mut MemStack,
+	params: PartialEigenParams,
+) -> PartialEigenInfo {
+	let n = v0.nrows();
+	assert!(all(
+		eigvals.len() == eigvecs.ncols(),
+		A.nrows() == n,
+		A.ncols() == n,
+		eigvecs.nrows() == n,
+	));
+	let n_eigval = eigvals.len();
+	let n_eigval = Ord::min(n_eigval, n);
+
+	if n == 0 {
+		return PartialEigenInfo {
+			n_converged_eigen: 0,
+			non_exhaustive: NonExhaustive(()),
+		};
+	}
+
+	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
+
+	let n_eigval = {
+		super::self_adjoint_eigen::partial_self_adjoint_eigen_imp(
+			eigvecs,
+			eigvals,
+			A,
+			v0,
+			min_dim,
+			max_dim,
+			n_eigval,
+			tolerance,
+			params.max_restarts,
+			par,
+			stack,
+		)
+	};
+
+	PartialEigenInfo {
+		n_converged_eigen: n_eigval,
+		non_exhaustive: NonExhaustive(()),
+	}
+}
+
+/// computes an estimate of the singular values (and corresponding singular vectors) of $A$ with the
+/// largest magnitude, until the provided outputs are full or the maximum number of algorithm
+/// restarts is reached.
+pub fn partial_svd<T: ComplexField>(
+	left_singular_vecs: MatMut<'_, T>,
+	right_singular_vecs: MatMut<'_, T>,
+	singular_vals: &mut [T],
+	A: &dyn BiLinOp<T>,
+	v0: ColRef<'_, T>,
+	tolerance: T::Real,
+	par: Par,
+	stack: &mut MemStack,
+	params: PartialEigenParams,
+) -> PartialEigenInfo {
+	let n = v0.nrows();
+	assert!(all(
+		singular_vals.len() == left_singular_vecs.ncols(),
+		singular_vals.len() == right_singular_vecs.ncols(),
+		A.nrows() == n,
+		A.ncols() == n,
+		left_singular_vecs.nrows() == n,
+		right_singular_vecs.nrows() == n,
+	));
+	let n_eigval = singular_vals.len();
+	let n_eigval = Ord::min(n_eigval, n);
+
+	if n == 0 {
+		return PartialEigenInfo {
+			n_converged_eigen: 0,
+			non_exhaustive: NonExhaustive(()),
+		};
+	}
+
+	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
+
+	let n_eigval = {
+		super::svd::partial_svd_imp(
+			left_singular_vecs,
+			right_singular_vecs,
+			singular_vals,
 			A,
 			v0,
 			min_dim,
