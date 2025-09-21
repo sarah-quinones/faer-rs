@@ -2425,7 +2425,7 @@ mod tests {
 
 		let (m, n, col_ptr, row_idx, val) =
 			load_mtx::<usize>(MtxData::from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_qr/lp_share2b.mtx")).unwrap());
-		let val = val.iter().map(|&x| c64::new(x, gen.gen())).collect::<Vec<_>>();
+		let val = val.iter().map(|&x| c64::new(x, gen.random())).collect::<Vec<_>>();
 
 		let nnz = row_idx.len();
 
@@ -2524,7 +2524,7 @@ mod tests {
 
 		let a = A.as_dyn().to_dense();
 
-		let rhs = Mat::<T>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
+		let rhs = Mat::<T>::from_fn(m, 2, |_, _| c64::new(gen.random(), gen.random()));
 		let mut x = rhs.clone();
 		let mut work = rhs.clone();
 		qr.solve_in_place_with_conj(
@@ -2556,7 +2556,7 @@ mod tests {
 		let (m, n, col_ptr, row_idx, val) =
 			load_mtx::<usize>(MtxData::from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_qr/lp_share2b.mtx")).unwrap());
 
-		let val = val.iter().map(|&x| c64::new(x, gen.gen())).collect::<Vec<_>>();
+		let val = val.iter().map(|&x| c64::new(x, gen.random())).collect::<Vec<_>>();
 
 		let nnz = row_idx.len();
 
@@ -2646,7 +2646,7 @@ mod tests {
 		);
 
 		let a = A.as_dyn().to_dense();
-		let rhs = Mat::<T>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
+		let rhs = Mat::<T>::from_fn(m, 2, |_, _| c64::new(gen.random(), gen.random()));
 		{
 			let mut x = rhs.clone();
 			let mut work = rhs.clone();
@@ -2686,7 +2686,7 @@ mod tests {
 
 		let (m, n, col_ptr, row_idx, val) =
 			load_mtx::<usize>(MtxData::from_file(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/sparse_qr/lp_share2b.mtx")).unwrap());
-		let val = val.iter().map(|&x| c64::new(x, gen.gen())).collect::<Vec<_>>();
+		let val = val.iter().map(|&x| c64::new(x, gen.random())).collect::<Vec<_>>();
 		let nnz = row_idx.len();
 
 		let A = SparseColMatRef::<'_, I, T>::new(SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_idx), &val);
@@ -2707,7 +2707,7 @@ mod tests {
 		let (m, n) = (n, m);
 
 		let a = A.to_dense();
-		let rhs = Mat::<T>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
+		let rhs = Mat::<T>::from_fn(m, 2, |_, _| c64::new(gen.random(), gen.random()));
 
 		for supernodal_flop_ratio_threshold in [
 			SupernodalThreshold::FORCE_SUPERNODAL,
@@ -2775,7 +2775,7 @@ mod tests {
 		let a0_col_ptr = vec![0usize; 21];
 		let A0 = SparseColMatRef::<'_, I, T>::new(SymbolicSparseColMatRef::new_checked(40, 20, &a0_col_ptr, None, &[]), &[]);
 
-		let a1_val = [c64::new(gen.gen(), gen.gen()), c64::new(gen.gen(), gen.gen())];
+		let a1_val = [c64::new(gen.random(), gen.random()), c64::new(gen.random(), gen.random())];
 		let A1 = SparseColMatRef::<'_, I, T>::new(SymbolicSparseColMatRef::new_checked(40, 5, &[0, 1, 2, 2, 2, 2], None, &[0, 0]), &a1_val);
 		let A2 = SparseColMatRef::<'_, I, T>::new(SymbolicSparseColMatRef::new_checked(40, 5, &[0, 1, 2, 2, 2, 2], None, &[4, 4]), &a1_val);
 

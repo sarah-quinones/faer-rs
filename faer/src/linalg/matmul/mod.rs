@@ -2189,9 +2189,9 @@ mod tests {
 					#[cfg(miri)]
 					let big = 31;
 					for _ in 0..3 {
-						let m = rand::random::<usize>() % big;
-						let mut n = rand::random::<usize>() % big;
-						let mut k = rand::random::<usize>() % big;
+						let m = rand::random::<u32>() as usize % big;
+						let mut n = rand::random::<u32>() as usize % big;
+						let mut k = rand::random::<u32>() as usize % big;
 
 						match (!dst.is_dense(), !lhs.is_dense(), !rhs.is_dense()) {
 							(true, true, _) | (true, _, true) | (_, true, true) => {

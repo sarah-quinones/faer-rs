@@ -47,7 +47,7 @@ pub(crate) fn make_givens<T: ComplexField>(f: T, g: T) -> (T::Real, T, T) {
 
 #[math]
 pub(crate) fn rot<T: ComplexField>(c: T::Real, s: T, x: RowMut<'_, T>, y: RowMut<'_, T>) {
-	zip!(x, y).for_each(|unzip!(x, y)| {
+	zip!(x, y).for_each(|unzip!(x, y): Zip!(&mut _, &mut _)| {
 		(*x, *y) = (mul_real(*x, c) + *y * s, mul_real(*y, c) - *x * conj(s));
 	});
 }
@@ -803,7 +803,7 @@ mod tests {
 	#[test]
 	fn test_givens() {
 		let rng = &mut StdRng::seed_from_u64(0);
-		let rand = rand::distributions::Standard;
+		let rand = ComplexDistribution::new(StandardUniform, StandardUniform);
 		let mut sample = || -> c32 { rand.sample(rng) };
 
 		let shift = c32::new(0.5, 0.5);

@@ -338,7 +338,6 @@ mod tests {
 	use crate::{mat, matrix_free};
 	use dyn_stack::MemBuffer;
 	use equator::assert;
-	use rand::prelude::*;
 
 	#[test]
 	fn test_cg() {
@@ -379,12 +378,12 @@ mod tests {
 		.sample(rng);
 		let mut d = Col::zeros(n);
 		for i in 0..n {
-			d[i] = c64::new(f64::exp(rand::distributions::Standard.sample(rng)).recip(), 0.0);
+			d[i] = c64::new(f64::exp(StandardUniform.sample(rng)).recip(), 0.0);
 		}
 		let ref A = Q * d.as_ref().as_diagonal() * Q.adjoint();
 		let ref mut diag = Mat::<c64>::identity(n, n);
 		for i in 0..n {
-			diag[(i, i)] = c64::new(f64::exp(rand::distributions::Standard.sample(rng)).recip(), 0.0);
+			diag[(i, i)] = c64::new(f64::exp(StandardUniform.sample(rng)).recip(), 0.0);
 		}
 		let ref diag = *diag;
 		let ref mut sol = CwiseMatDistribution {

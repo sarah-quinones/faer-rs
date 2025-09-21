@@ -592,10 +592,10 @@ mod tests {
 
 			let ref mut diag = Scale(c64::new(2.0, 0.0)) * Mat::<c64>::identity(n, n);
 			for i in 0..n {
-				diag[(i, i)] = (128.0 * f64::exp(rand::distributions::Standard.sample(rng))).into();
+				diag[(i, i)] = (128.0 * f64::exp(rand_distr::StandardUniform.sample(rng))).into();
 			}
 			for i in 0..n - 1 {
-				diag[(i + 1, i)] = f64::exp(rand::distributions::Standard.sample(rng)).into();
+				diag[(i + 1, i)] = f64::exp(rand_distr::StandardUniform.sample(rng)).into();
 			}
 
 			let params = LsmrParams::default();
@@ -646,10 +646,10 @@ mod tests {
 
 			let ref mut diag = Scale(c64::new(2.0, 0.0)) * Mat::<c64>::identity(n, n);
 			for i in 0..n {
-				diag[(i, i)] = (128.0 * f64::exp(rand::distributions::Standard.sample(rng))).into();
+				diag[(i, i)] = (128.0 * f64::exp(rand_distr::StandardUniform.sample(rng))).into();
 			}
 			for i in 0..n - 1 {
-				diag[(i + 1, i)] = f64::exp(rand::distributions::Standard.sample(rng)).into();
+				diag[(i + 1, i)] = f64::exp(rand_distr::StandardUniform.sample(rng)).into();
 			}
 
 			let params = LsmrParams::default();
