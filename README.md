@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/bae4b2ae-292b-4894-b5b5-afaf56725056" alt="faer logo"/ width="25%">
+  <img src="https://codeberg.org/repo-avatars/0e47ec7b1315cbc11200a81d60f8e274aec9cfe3ceed567ce32f5629b1df054e" alt="faer logo"/ width="25%">
 </p>
 
 # faer
@@ -12,14 +12,14 @@ the aim is to provide a fully featured library for linear algebra with focus on 
 
 see the [official website](https://faer.veganb.tw) and the [docs.rs](https://docs.rs/faer/latest/faer) documentation for code examples and usage instructions.
 
-questions about using the library, contributing, and future directions can be discussed in the [discord server](https://discord.gg/Ak5jDsAFVZ).
+questions about using the library, contributing, and future directions can be discussed in the [zulip server](https://faer.zulipchat.com).
 
 # contributing
 
 if you'd like to contribute to `faer`, check out the list of "good first issue"
 issues. these are all (or should be) issues that are suitable for getting
 started, and they generally include a detailed set of instructions for what to
-do. please ask questions on the discord server or the issue itself if anything
+do. please ask questions on the zulip server or the issue itself if anything
 is unclear!
 
 # minimum supported rust version
