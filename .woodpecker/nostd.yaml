@@ -1,0 +1,13 @@
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+steps:
+  - name: nostd
+    image: rust
+    environment:
+      CARGO_TERM_COLOR: always
+    commands:
+      - rustup toolchain install nightly-2025-01-08
+      - rustup default nightly-2025-01-08
+      - cd ./faer-no-std-test && cargo run --profile nostd

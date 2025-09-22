@@ -1,0 +1,15 @@
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+steps:
+  - name: tests
+    image: rust
+
+    environment:
+      CARGO_TERM_COLOR: always
+    commands:
+      - rustup toolchain install nightly
+      - rustup default nightly
+      - cargo install cargo-nextest --locked
+      - cd faer && cargo nextest run --features=unstable && cd ..

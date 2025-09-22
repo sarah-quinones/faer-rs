@@ -1,0 +1,12 @@
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+steps:
+  - name: msrv
+    image: rust
+    environment:
+      CARGO_TERM_COLOR: always
+    commands:
+      - rustup toolchain install 1.84.0
+      - cargo +1.84.0 build

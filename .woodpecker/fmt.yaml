@@ -1,0 +1,16 @@
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+steps:
+  - name: fmt
+    image: rust
+    environment:
+      CARGO_TERM_COLOR: always
+    commands:
+      - rustup toolchain install nightly
+      - rustup default nightly
+      - rustup component add rustfmt
+      - cargo fmt --check
+      - cargo install ripgrep --locked
+      - if [[ $(rg blocksize) ]]; then false; fi
