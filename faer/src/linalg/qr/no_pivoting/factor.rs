@@ -76,7 +76,7 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>, ro
 
 /// the recommended block size to use for a $QR$ decomposition of a matrix with the given shape.
 #[inline]
-pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
+pub fn recommended_block_size<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
 	let prod = nrows * ncols;
 	let size = nrows.min(ncols);
 
@@ -138,14 +138,14 @@ fn qr_in_place_blocked<T: ComplexField>(
 
 	let (m, n) = A.shape();
 	let size = Ord::min(m, n);
-	let blocksize = H.nrows();
+	let block_size = H.nrows();
 
-	assert!(blocksize > 0);
+	assert!(block_size > 0);
 
-	if blocksize == 1 {
+	if block_size == 1 {
 		return qr_in_place_unblocked(A, H.row_mut(0), row_start, col_start);
 	}
-	let sub_blocksize = if m * n < params.blocking_threshold { 1 } else { blocksize / 2 };
+	let sub_block_size = if m * n < params.blocking_threshold { 1 } else { block_size / 2 };
 
 	let mut A = A;
 	let mut H = H;
@@ -154,8 +154,8 @@ fn qr_in_place_blocked<T: ComplexField>(
 	let mut row = row_start;
 
 	while row < size && col < n {
-		let blocksize = Ord::min(blocksize, Ord::min(size - row, n - col));
-		let sub_blocksize = Ord::min(blocksize, sub_blocksize);
+		let block_size = Ord::min(block_size, Ord::min(size - row, n - col));
+		let sub_block_size = Ord::min(block_size, sub_block_size);
 
 		let mut A = A.rb_mut();
 		let mut H = H.rb_mut();
@@ -179,13 +179,13 @@ fn qr_in_place_blocked<T: ComplexField>(
 
 		let start = row;
 		let mut offset = 0;
-		while offset < blocksize && col < n {
-			let blocksize = Ord::min(n - col, blocksize - offset);
-			let sub_blocksize = Ord::min(blocksize, sub_blocksize);
+		while offset < block_size && col < n {
+			let block_size = Ord::min(n - col, block_size - offset);
+			let sub_block_size = Ord::min(block_size, sub_block_size);
 
 			let new_row = qr_in_place_blocked(
-				A.rb_mut().subcols_mut(0, col + blocksize),
-				H.rb_mut().subrows_mut(offset, sub_blocksize),
+				A.rb_mut().subcols_mut(0, col + block_size),
+				H.rb_mut().subrows_mut(offset, sub_block_size),
 				row,
 				col,
 				par,
@@ -197,24 +197,24 @@ fn qr_in_place_blocked<T: ComplexField>(
 			if local > 0 {
 				let mut k = 0;
 				while k < local {
-					let sub_blocksize = Ord::min(sub_blocksize, local - k);
+					let sub_block_size = Ord::min(sub_block_size, local - k);
 
 					if k > 0 {
-						let mut H = H.rb_mut().get_mut(offset.., ..).subcols_mut(row + k, sub_blocksize);
+						let mut H = H.rb_mut().get_mut(offset.., ..).subcols_mut(row + k, sub_block_size);
 						let (H0, H1) = H.rb_mut().split_at_row_mut(k);
-						let H0 = H0.rb().subrows(0, sub_blocksize);
-						let H1 = H1.subrows_mut(0, sub_blocksize);
+						let H0 = H0.rb().subrows(0, sub_block_size);
+						let H1 = H1.subrows_mut(0, sub_block_size);
 
 						{ H1 }.copy_from_triangular_upper(H0);
 					}
-					k += sub_blocksize;
+					k += sub_block_size;
 				}
 
 				householder::upgrade_householder_factor(
 					H.rb_mut().get_mut(offset..offset + local, row..row + local),
 					A.rb().get(row.., row..row + local),
 					local,
-					sub_blocksize,
+					sub_block_size,
 					par,
 				);
 
@@ -251,7 +251,7 @@ fn qr_in_place_blocked<T: ComplexField>(
 				}
 			}
 
-			let (Q0, A1) = A.rb_mut().get_mut(row.., ..).split_at_col_mut(col + blocksize);
+			let (Q0, A1) = A.rb_mut().get_mut(row.., ..).split_at_col_mut(col + block_size);
 			let Q0 = Q0.rb().get(.., row..row + local);
 			let H = H.rb().get(offset..offset + local, row..row + local);
 			if A1.ncols() > 0 {
@@ -260,7 +260,7 @@ fn qr_in_place_blocked<T: ComplexField>(
 
 			offset += local;
 			row += local;
-			col += blocksize;
+			col += block_size;
 		}
 	}
 	row
@@ -268,8 +268,8 @@ fn qr_in_place_blocked<T: ComplexField>(
 
 #[track_caller]
 pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<QrParams, T>) -> QrInfo {
-	let blocksize = Q_coeff.nrows();
-	assert!(all(blocksize > 0, Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),));
+	let block_size = Q_coeff.nrows();
+	assert!(all(block_size > 0, Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),));
 
 	#[cfg(feature = "perf-warn")]
 	if A.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(QR_WARN) {
@@ -284,20 +284,20 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 	let rank = qr_in_place_blocked(A, Q_coeff.rb_mut(), 0, 0, par, stack, params);
 	Q_coeff.rb_mut().get_mut(.., rank..).fill(zero());
 
-	let mut col = rank / blocksize * blocksize;
+	let mut col = rank / block_size * block_size;
 	let n = Q_coeff.ncols();
 	while col < n {
-		let blocksize = Ord::min(blocksize, n - col);
+		let block_size = Ord::min(block_size, n - col);
 
 		let start = Ord::max(rank, col);
 
 		Q_coeff
 			.rb_mut()
-			.get_mut(start - col.., start..col + blocksize)
+			.get_mut(start - col.., start..col + block_size)
 			.diagonal_mut()
 			.fill(infinity());
 
-		col += blocksize;
+		col += block_size;
 	}
 
 	QrInfo { rank }
@@ -306,11 +306,11 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 /// computes the layout of required workspace for performing a qr
 /// decomposition with no pivoting
 #[inline]
-pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par, params: Spec<QrParams, T>) -> StackReq {
+pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, block_size: usize, par: Par, params: Spec<QrParams, T>) -> StackReq {
 	let _ = par;
 	let _ = nrows;
 	let _ = &params;
-	temp_mat_scratch::<T>(blocksize, ncols)
+	temp_mat_scratch::<T>(block_size, ncols)
 }
 
 #[cfg(test)]

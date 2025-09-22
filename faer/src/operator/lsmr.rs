@@ -82,9 +82,9 @@ pub fn lsmr_scratch<T: ComplexField>(right_precond: impl BiPrecond<T>, mat: impl
 		let sk = temp_mat_scratch::<T>(s, k);
 		let sk2 = temp_mat_scratch::<T>(2 * s, 2 * k);
 
-		let ms_bs = qr::no_pivoting::factor::recommended_blocksize::<T>(m, s);
-		let ns_bs = qr::no_pivoting::factor::recommended_blocksize::<T>(n, s);
-		let ss_bs = qr::no_pivoting::factor::recommended_blocksize::<T>(2 * s, 2 * s);
+		let ms_bs = qr::no_pivoting::factor::recommended_block_size::<T>(m, s);
+		let ns_bs = qr::no_pivoting::factor::recommended_block_size::<T>(n, s);
+		let ss_bs = qr::no_pivoting::factor::recommended_block_size::<T>(2 * s, 2 * s);
 
 		let AT = A.transpose_apply_scratch(k, par);
 		let A = A.apply_scratch(k, par);
@@ -164,7 +164,7 @@ pub fn lsmr<T: ComplexField>(
 	) -> Result<LsmrInfo<T::Real>, LsmrError<T::Real>> {
 		fn thin_qr<T: ComplexField>(mut Q: MatMut<'_, T>, mut R: MatMut<'_, T>, mut mat: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
 			let k = R.nrows();
-			let bs = qr::no_pivoting::factor::recommended_blocksize::<T>(mat.nrows(), mat.ncols());
+			let bs = qr::no_pivoting::factor::recommended_block_size::<T>(mat.nrows(), mat.ncols());
 			let (mut house, mut stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, Ord::min(mat.nrows(), mat.ncols()), stack) };
 			let mut house = house.as_mat_mut();
 

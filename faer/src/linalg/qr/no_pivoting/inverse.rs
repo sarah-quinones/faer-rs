@@ -1,9 +1,9 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn inverse_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par) -> StackReq {
+pub fn inverse_scratch<T: ComplexField>(dim: usize, block_size: usize, par: Par) -> StackReq {
 	_ = par;
-	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, blocksize, dim)
+	linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, block_size, dim)
 }
 
 #[track_caller]
@@ -19,9 +19,9 @@ pub fn inverse<T: ComplexField>(
 	// A^-1 = R^-1 Q^-1
 
 	let n = Q_basis.ncols();
-	let blocksize = Q_coeff.nrows();
+	let block_size = Q_coeff.nrows();
 	assert!(all(
-		blocksize > 0,
+		block_size > 0,
 		Q_basis.nrows() == n,
 		Q_basis.ncols() == n,
 		Q_coeff.ncols() == n,

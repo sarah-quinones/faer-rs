@@ -65,65 +65,66 @@ mod tests {
 	#[test]
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
-		let n = 50;
-		let k = 3;
+		for n in [50, 200, 400] {
+			let k = 3;
 
-		let A = CwiseMatDistribution {
-			nrows: n,
-			ncols: n,
-			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
-		}
-		.rand::<Mat<c64>>(rng);
+			let A = CwiseMatDistribution {
+				nrows: n,
+				ncols: n,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
 
-		let B = CwiseMatDistribution {
-			nrows: n,
-			ncols: k,
-			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
-		}
-		.rand::<Mat<c64>>(rng);
+			let B = CwiseMatDistribution {
+				nrows: n,
+				ncols: k,
+				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+			}
+			.rand::<Mat<c64>>(rng);
 
-		let A = &A * A.adjoint();
-		let mut L = A.to_owned();
+			let A = &A * A.adjoint();
+			let mut L = A.to_owned();
 
-		ldlt::factor::cholesky_in_place(
-			L.as_mut(),
-			Default::default(),
-			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(
-				n,
+			ldlt::factor::cholesky_in_place(
+				L.as_mut(),
+				Default::default(),
 				Par::Seq,
+				MemStack::new(&mut MemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(
+					n,
+					Par::Seq,
+					default(),
+				))),
 				default(),
-			))),
-			default(),
-		)
-		.unwrap();
+			)
+			.unwrap();
 
-		let approx_eq = CwiseMat(ApproxEq::eps() * 8.0 * (n as f64));
+			let approx_eq = CwiseMat(ApproxEq::eps() * 8.0 * (n as f64));
 
-		{
-			let mut X = B.to_owned();
-			ldlt::solve::solve_in_place(
-				L.as_ref(),
-				L.diagonal(),
-				X.as_mut(),
-				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
-			);
+			{
+				let mut X = B.to_owned();
+				ldlt::solve::solve_in_place(
+					L.as_ref(),
+					L.diagonal(),
+					X.as_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
+				);
 
-			assert!(&A * &X ~ B);
-		}
+				assert!(&A * &X ~ B);
+			}
 
-		{
-			let mut X = B.to_owned();
-			ldlt::solve::solve_in_place(
-				L.conjugate(),
-				L.conjugate().diagonal(),
-				X.as_mut(),
-				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
-			);
+			{
+				let mut X = B.to_owned();
+				ldlt::solve::solve_in_place(
+					L.conjugate(),
+					L.conjugate().diagonal(),
+					X.as_mut(),
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
+				);
 
-			assert!(A.conjugate() * &X ~ B);
+				assert!(A.conjugate() * &X ~ B);
+			}
 		}
 	}
 }

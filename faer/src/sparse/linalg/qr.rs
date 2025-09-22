@@ -325,7 +325,7 @@ pub mod supernodal {
 		col_ptr_for_tau_val: alloc::vec::Vec<I>,
 		col_ptr_for_val: alloc::vec::Vec<I>,
 		super_etree: alloc::vec::Vec<I>,
-		max_blocksize: alloc::vec::Vec<I>,
+		max_block_size: alloc::vec::Vec<I>,
 		nrows: usize,
 	}
 
@@ -418,12 +418,12 @@ pub mod supernodal {
 			for s in 0..n_supernodes {
 				let s_h_row_begin = H_symbolic.col_ptr_for_row_idx[s].zx();
 				let s_h_row_full_end = H_symbolic.col_ptr_for_row_idx[s + 1].zx();
-				let max_blocksize = H_symbolic.max_blocksize[s].zx();
+				let max_block_size = H_symbolic.max_block_size[s].zx();
 
 				loop_scratch = loop_scratch.or(
 					linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(
 						s_h_row_full_end - s_h_row_begin,
-						max_blocksize,
+						max_block_size,
 						rhs_ncols,
 					),
 				);
@@ -530,7 +530,7 @@ pub mod supernodal {
 		let mut col_ptr_for_tau_val = try_zeroed::<I>(n_supernodes + 1)?;
 		let mut col_ptr_for_val = try_zeroed::<I>(n_supernodes + 1)?;
 		let mut super_etree_ = try_zeroed::<I>(n_supernodes)?;
-		let mut max_blocksize = try_zeroed::<I>(n_supernodes)?;
+		let mut max_block_size = try_zeroed::<I>(n_supernodes)?;
 		let super_etree = bytemuck::cast_slice_mut::<I, I::Signed>(&mut super_etree_);
 
 		let to_wide = |i: I| i.zx() as u128;
@@ -595,9 +595,9 @@ pub mod supernodal {
 			let s_col_count = panel_width + (L_col_ptr_for_row_idx[*s + 1] - L_col_ptr_for_row_idx[*s]);
 			val_count += to_wide(s_row_count) * to_wide(s_col_count);
 			row_count += to_wide(s_row_count);
-			let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<Symbolic>(s_row_count.zx(), s_col_count.zx()) as u128;
-			max_blocksize[*s] = from_wide(blocksize);
-			tau_count += blocksize * to_wide(Ord::min(s_row_count, s_col_count));
+			let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<Symbolic>(s_row_count.zx(), s_col_count.zx()) as u128;
+			max_block_size[*s] = from_wide(block_size);
+			tau_count += block_size * to_wide(Ord::min(s_row_count, s_col_count));
 			*next_val_ptr = from_wide(val_count);
 			*next_row_ptr = from_wide(row_count);
 			*next_tau_ptr = from_wide(tau_count);
@@ -611,7 +611,7 @@ pub mod supernodal {
 			col_ptr_for_val,
 			super_etree: super_etree_,
 			col_ptr_for_tau_val,
-			max_blocksize,
+			max_block_size,
 			nrows: *M,
 		})
 	}
@@ -624,7 +624,7 @@ pub mod supernodal {
 		householder_val: &'a [T],
 		tau_val: &'a [T],
 		householder_row_idx: &'a [I],
-		tau_blocksize: &'a [I],
+		tau_block_size: &'a [I],
 		householder_nrows: &'a [I],
 		householder_ncols: &'a [I],
 	}
@@ -646,7 +646,7 @@ pub mod supernodal {
 		pub unsafe fn new_unchecked(
 			symbolic: &'a SymbolicSupernodalQr<I>,
 			householder_row_idx: &'a [I],
-			tau_blocksize: &'a [I],
+			tau_block_size: &'a [I],
 			householder_nrows: &'a [I],
 			householder_ncols: &'a [I],
 			r_val: &'a [T],
@@ -659,10 +659,10 @@ pub mod supernodal {
 			assert!(rt_val.len() == symbolic.R_adjoint().len_val());
 			assert!(tau_val.len() == symbolic.householder().len_tau_val());
 			assert!(householder_val.len() == symbolic.householder().len_householder_val());
-			assert!(tau_blocksize.len() == householder_nrows.len());
+			assert!(tau_block_size.len() == householder_nrows.len());
 			Self {
 				symbolic,
-				tau_blocksize,
+				tau_block_size,
 				householder_nrows,
 				householder_ncols,
 				rt_val,
@@ -751,13 +751,13 @@ pub mod supernodal {
 						s_ncols + (L_symbolic.col_ptr_for_row_idx()[s + 1].zx() - L_symbolic.col_ptr_for_row_idx()[s].zx()),
 					);
 					let s_tau = &tau[tau_begin..tau_end];
-					let max_blocksize = H_symbolic.max_blocksize[s].zx();
-					let s_tau = MatRef::from_column_major_slice(s_tau, max_blocksize, Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin));
+					let max_block_size = H_symbolic.max_block_size[s].zx();
+					let s_tau = MatRef::from_column_major_slice(s_tau, max_block_size, Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin));
 
 					let mut start = 0;
 					let end = s_H.ncols();
 					while start < end {
-						let bs = self.tau_blocksize[block_count].zx();
+						let bs = self.tau_block_size[block_count].zx();
 						let nrows = self.householder_nrows[block_count].zx();
 						let ncols = self.householder_ncols[block_count].zx();
 
@@ -880,7 +880,7 @@ pub mod supernodal {
 		for s in 0..n_supernodes {
 			let s_h_row_begin = symbolic.H.col_ptr_for_row_idx[s].zx();
 			let s_h_row_full_end = symbolic.H.col_ptr_for_row_idx[s + 1].zx();
-			let max_blocksize = symbolic.H.max_blocksize[s].zx();
+			let max_block_size = symbolic.H.max_block_size[s].zx();
 			let s_col_begin = symbolic.L.supernode_begin()[s].zx();
 			let s_col_end = symbolic.L.supernode_end()[s].zx();
 			let s_ncols = s_col_end - s_col_begin;
@@ -889,7 +889,7 @@ pub mod supernodal {
 			loop_scratch = loop_scratch.or(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
 				s_h_row_full_end - s_h_row_begin,
 				s_ncols + s_pattern_len,
-				max_blocksize,
+				max_block_size,
 				par,
 				params,
 			));
@@ -897,7 +897,7 @@ pub mod supernodal {
 			loop_scratch = loop_scratch.or(
 				linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(
 					s_h_row_full_end - s_h_row_begin,
-					max_blocksize,
+					max_block_size,
 					s_ncols + s_pattern_len,
 				),
 			);
@@ -909,7 +909,7 @@ pub mod supernodal {
 	/// computes the numerical $QR$ factorization of $A$
 	///
 	/// - `householder_row_idx` must have length `symbolic.householder().len_householder_row_idx()`
-	/// - `tau_blocksize` must have length `symbolic.householder().len_householder_row_idx() +
+	/// - `tau_block_size` must have length `symbolic.householder().len_householder_row_idx() +
 	///   symbolic.householder().n_supernodes()`
 	/// - `householder_nrows` must have length `symbolic.householder().len_householder_row_idx()
 	///   + symbolic.householder().n_supernodes()`
@@ -924,7 +924,7 @@ pub mod supernodal {
 	#[track_caller]
 	pub fn factorize_supernodal_numeric_qr<'a, I: Index, T: ComplexField>(
 		householder_row_idx: &'a mut [I],
-		tau_blocksize: &'a mut [I],
+		tau_block_size: &'a mut [I],
 		householder_nrows: &'a mut [I],
 		householder_ncols: &'a mut [I],
 
@@ -944,14 +944,14 @@ pub mod supernodal {
 			r_val.len() == symbolic.R_adjoint().len_val(),
 			householder_val.len() == symbolic.householder().len_householder_val(),
 			tau_val.len() == symbolic.householder().len_tau_val(),
-			tau_blocksize.len() == symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes(),
+			tau_block_size.len() == symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes(),
 			householder_nrows.len() == symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes(),
 			householder_ncols.len() == symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes(),
 		));
 
 		factorize_supernodal_numeric_qr_impl(
 			householder_row_idx,
-			tau_blocksize,
+			tau_block_size,
 			householder_nrows,
 			householder_ncols,
 			r_val,
@@ -975,7 +975,7 @@ pub mod supernodal {
 			SupernodalQrRef::<'_, I, T>::new_unchecked(
 				symbolic,
 				householder_row_idx,
-				tau_blocksize,
+				tau_block_size,
 				householder_nrows,
 				householder_ncols,
 				r_val,
@@ -990,7 +990,7 @@ pub mod supernodal {
 		// len: col_ptr_for_row_idx[n_supernodes]
 		householder_row_idx: &mut [I],
 
-		tau_blocksize: &mut [I],
+		tau_block_size: &mut [I],
 		householder_nrows: &mut [I],
 		householder_ncols: &mut [I],
 
@@ -1205,8 +1205,8 @@ pub mod supernodal {
 				let s_tau = &mut tau_val[tau_begin..tau_end];
 				let s_L = &mut L_val[L_begin..L_end];
 
-				let max_blocksize = H_symbolic.max_blocksize[s].zx();
-				let mut s_tau = MatMut::from_column_major_slice_mut(s_tau, max_blocksize, Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin));
+				let max_block_size = H_symbolic.max_block_size[s].zx();
+				let mut s_tau = MatMut::from_column_major_slice_mut(s_tau, max_block_size, Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin));
 
 				{
 					let mut current_min_col = 0usize;
@@ -1220,7 +1220,7 @@ pub mod supernodal {
 							s_H.ncols()
 						};
 
-						if idx_min_col == s_H.ncols() || idx_min_col >= current_min_col.saturating_add(Ord::max(1, max_blocksize / 2)) {
+						if idx_min_col == s_H.ncols() || idx_min_col >= current_min_col.saturating_add(Ord::max(1, max_block_size / 2)) {
 							let nrows = idx.saturating_sub(current_start);
 							let full_ncols = s_H.ncols() - current_start;
 							let ncols = Ord::min(nrows, idx_min_col - current_min_col);
@@ -1228,9 +1228,9 @@ pub mod supernodal {
 							let s_H = s_H.rb_mut().submatrix_mut(current_start, current_start, nrows, full_ncols);
 
 							let (mut left, mut right) = s_H.split_at_col_mut(ncols);
-							let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<Symbolic>(left.nrows(), left.ncols());
-							let bs = Ord::min(max_blocksize, bs);
-							tau_blocksize[block_count] = I::truncate(bs);
+							let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<Symbolic>(left.nrows(), left.ncols());
+							let bs = Ord::min(max_block_size, bs);
+							tau_block_size[block_count] = I::truncate(bs);
 							householder_nrows[block_count] = I::truncate(nrows);
 							householder_ncols[block_count] = I::truncate(ncols);
 							block_count += 1;
@@ -1893,7 +1893,7 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 			},
 			SymbolicQrRaw::Supernodal(symbolic) => {
 				let (householder_row_idx, indices) = indices.split_at(symbolic.householder().len_householder_row_idx());
-				let (tau_blocksize, indices) =
+				let (tau_block_size, indices) =
 					indices.split_at(symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes());
 				let (householder_nrows, indices) =
 					indices.split_at(symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes());
@@ -1908,7 +1908,7 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 					supernodal::SupernodalQrRef::<'_, I, T>::new_unchecked(
 						symbolic,
 						householder_row_idx,
-						tau_blocksize,
+						tau_block_size,
 						householder_nrows,
 						householder_ncols,
 						r_val,
@@ -2049,7 +2049,7 @@ impl<I: Index> SymbolicQr<I> {
 			},
 			SymbolicQrRaw::Supernodal(symbolic) => {
 				let (householder_row_idx, indices) = indices.split_at_mut(symbolic.householder().len_householder_row_idx());
-				let (tau_blocksize, indices) =
+				let (tau_block_size, indices) =
 					indices.split_at_mut(symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes());
 				let (householder_nrows, indices) =
 					indices.split_at_mut(symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes());
@@ -2069,7 +2069,7 @@ impl<I: Index> SymbolicQr<I> {
 
 				supernodal::factorize_supernodal_numeric_qr::<I, T>(
 					householder_row_idx,
-					tau_blocksize,
+					tau_block_size,
 					householder_nrows,
 					householder_ncols,
 					r_val,
@@ -2385,13 +2385,13 @@ mod tests {
 		let mut householder_val = vec![0.0; symbolic.householder().len_householder_val()];
 		let mut tau_val = vec![0.0; symbolic.householder().len_tau_val()];
 
-		let mut tau_blocksize = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
+		let mut tau_block_size = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
 		let mut householder_nrows = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
 		let mut householder_ncols = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
 
 		supernodal::factorize_supernodal_numeric_qr::<I, f64>(
 			&mut householder_row_idx,
-			&mut tau_blocksize,
+			&mut tau_block_size,
 			&mut householder_nrows,
 			&mut householder_ncols,
 			&mut L_val,
@@ -2498,13 +2498,13 @@ mod tests {
 		let mut householder_val = vec![T::ZERO; symbolic.householder().len_householder_val()];
 		let mut tau_val = vec![T::ZERO; symbolic.householder().len_tau_val()];
 
-		let mut tau_blocksize = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
+		let mut tau_block_size = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
 		let mut householder_nrows = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
 		let mut householder_ncols = vec![0usize; symbolic.householder().len_householder_row_idx() + symbolic.householder().n_supernodes()];
 
 		let qr = supernodal::factorize_supernodal_numeric_qr::<I, T>(
 			&mut householder_row_idx,
-			&mut tau_blocksize,
+			&mut tau_block_size,
 			&mut householder_nrows,
 			&mut householder_ncols,
 			&mut L_val,

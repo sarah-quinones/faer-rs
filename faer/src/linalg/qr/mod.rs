@@ -62,7 +62,7 @@
 //! let rank = Ord::min(a.nrows(), a.ncols());
 //!
 //! // we choose the recommended block size for the householder factors of our problem.
-//! let blocksize = factor::recommended_blocksize::<f64>(a.nrows(), a.ncols());
+//! let block_size = factor::recommended_block_size::<f64>(a.nrows(), a.ncols());
 //!
 //! // we allocate the memory for the operations that we perform
 //! let mut mem =
@@ -70,18 +70,18 @@
 //! 		factor::qr_in_place_scratch::<f64>(
 //! 			a.nrows(),
 //! 			a.ncols(),
-//! 			blocksize,
+//! 			block_size,
 //! 			Par::Seq,
 //! 			Default::default(),
 //! 		),
 //! 		householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<
 //! 			f64,
-//! 		>(a.nrows(), blocksize, b.ncols()),
+//! 		>(a.nrows(), block_size, b.ncols()),
 //! 	]));
 //! let mut stack = MemStack::new(&mut mem);
 //!
 //! let mut qr = a;
-//! let mut h_factor = Mat::zeros(blocksize, rank);
+//! let mut h_factor = Mat::zeros(block_size, rank);
 //! factor::qr_in_place(
 //! 	qr.as_mut(),
 //! 	h_factor.as_mut(),
@@ -175,17 +175,17 @@ mod tests {
 		let rank = Ord::min(a.nrows(), a.ncols());
 
 		// we choose the recommended block size for the householder factors of our problem.
-		let blocksize = factor::recommended_blocksize::<f64>(a.nrows(), a.ncols());
+		let block_size = factor::recommended_block_size::<f64>(a.nrows(), a.ncols());
 
 		// we allocate the memory for the operations that we perform
 		let mut mem = MemBuffer::new(StackReq::any_of(&[
-			factor::qr_in_place_scratch::<f64>(a.nrows(), a.ncols(), blocksize, Par::Seq, Default::default()),
-			householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(a.nrows(), blocksize, b.ncols()),
+			factor::qr_in_place_scratch::<f64>(a.nrows(), a.ncols(), block_size, Par::Seq, Default::default()),
+			householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(a.nrows(), block_size, b.ncols()),
 		]));
 		let mut stack = MemStack::new(&mut mem);
 
 		let mut qr = a;
-		let mut h_factor = Mat::zeros(blocksize, rank);
+		let mut h_factor = Mat::zeros(block_size, rank);
 		factor::qr_in_place(qr.as_mut(), h_factor.as_mut(), Par::Seq, stack.rb_mut(), Default::default());
 
 		// now the householder bases are in the strictly lower trapezoidal part of `a`, and the

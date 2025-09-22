@@ -1,5 +1,5 @@
 use crate::internal_prelude::*;
-use crate::linalg::cholesky::ldlt::factor::cholesky_recursion;
+use crate::linalg::cholesky::ldlt::factor::LdltParams;
 
 /// dynamic $LL^\top$ regularization.
 ///
@@ -45,7 +45,7 @@ impl<T: RealField> Default for LltRegularization<T> {
 #[derive(Copy, Clone, Debug)]
 pub struct LltParams {
 	pub recursion_threshold: usize,
-	pub blocksize: usize,
+	pub block_size: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -54,9 +54,11 @@ pub struct LltParams {
 impl<T: ComplexField> Auto<T> for LltParams {
 	#[inline]
 	fn auto() -> Self {
+		let ldlt = <LdltParams as Auto<T>>::auto();
+
 		Self {
-			recursion_threshold: 64,
-			blocksize: 128,
+			recursion_threshold: ldlt.recursion_threshold,
+			block_size: ldlt.block_size,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
@@ -82,11 +84,12 @@ pub fn cholesky_in_place<T: ComplexField>(
 	let mut D = unsafe { temp_mat_uninit(N, 1, stack).0 };
 	let D = D.as_mat_mut();
 
-	match cholesky_recursion(
+	match linalg::cholesky::ldlt::factor::cholesky_block_left_looking(
 		A,
 		D.col_mut(0).transpose_mut(),
+		params.block_size,
 		params.recursion_threshold,
-		params.blocksize,
+		params.block_size,
 		true,
 		regularization.dynamic_regularization_delta > zero() && regularization.dynamic_regularization_epsilon > zero(),
 		&regularization.dynamic_regularization_epsilon,

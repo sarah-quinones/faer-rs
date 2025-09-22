@@ -29,7 +29,7 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 
 /// computes the layout of the workspace required to compute a matrix's hessenberg
 /// decomposition
-pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
+pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, block_size: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
 	let params = params.config;
 	let _ = par;
 	let n = dim;
@@ -40,11 +40,11 @@ pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, blocksize: usize
 		])])
 	} else {
 		StackReq::all_of(&[
-			temp_mat_scratch::<T>(n, blocksize),
-			temp_mat_scratch::<T>(blocksize, 1),
+			temp_mat_scratch::<T>(n, block_size),
+			temp_mat_scratch::<T>(block_size, 1),
 			StackReq::any_of(&[
 				StackReq::all_of(&[temp_mat_scratch::<T>(n, 1), temp_mat_scratch::<T>(n, par.degree())]),
-				temp_mat_scratch::<T>(n, blocksize),
+				temp_mat_scratch::<T>(n, block_size),
 			]),
 		])
 	}

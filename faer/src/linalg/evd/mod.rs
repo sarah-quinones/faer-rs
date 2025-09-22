@@ -117,7 +117,7 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 	params: Spec<SelfAdjointEvdParams, T>,
 ) -> StackReq {
 	let n = dim;
-	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
 
 	let prologue = StackReq::all_of(&[
 		temp_mat_scratch::<T>(n, n),
@@ -284,7 +284,7 @@ pub fn self_adjoint_evd<T: ComplexField>(
 
 	trid.copy_from_triangular_lower(A);
 
-	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
 	let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
 	let mut householder = householder.as_mat_mut();
 
@@ -930,7 +930,7 @@ pub fn evd_scratch<T: ComplexField>(
 	}
 
 	let compute_eigen = eigen_left == ComputeEigenvectors::Yes || eigen_right == ComputeEigenvectors::Yes;
-	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n - 1, n - 1);
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n - 1, n - 1);
 
 	let H = temp_mat_scratch::<T>(n, n);
 	let X = H;
@@ -974,7 +974,7 @@ fn evd_imp<T: ComplexField>(
 		}
 	}
 
-	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n - 1, n - 1);
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n - 1, n - 1);
 	let mut s = s;
 	let mut s_im = s_im;
 

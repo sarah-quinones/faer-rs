@@ -81,10 +81,10 @@ fn svd_imp_scratch<T: ComplexField>(
 ) -> StackReq {
 	assert!(m >= n);
 
-	let householder_blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+	let householder_block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
 	let bid = temp_mat_scratch::<T>(m, n);
-	let householder_left = temp_mat_scratch::<T>(householder_blocksize, n);
-	let householder_right = temp_mat_scratch::<T>(householder_blocksize, n);
+	let householder_left = temp_mat_scratch::<T>(householder_block_size, n);
+	let householder_right = temp_mat_scratch::<T>(householder_block_size, n);
 
 	let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag.into());
 	let diag = temp_mat_scratch::<T>(n, 1);
@@ -98,7 +98,7 @@ fn svd_imp_scratch<T: ComplexField>(
 
 	let apply_householder_u = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
 		m,
-		householder_blocksize,
+		householder_block_size,
 		match compute_u {
 			ComputeSvdVectors::No => 0,
 			ComputeSvdVectors::Thin => n,
@@ -107,7 +107,7 @@ fn svd_imp_scratch<T: ComplexField>(
 	);
 	let apply_householder_v = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
 		n - 1,
-		householder_blocksize,
+		householder_block_size,
 		match compute_v {
 			ComputeSvdVectors::No => 0,
 			_ => n,
@@ -319,7 +319,7 @@ fn svd_imp<T: ComplexField>(
 	let m = matrix.nrows();
 	let n = matrix.ncols();
 
-	let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
 
 	let (mut bid, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, n, stack) };
 	let mut bid = bid.as_mat_mut();
@@ -454,7 +454,7 @@ pub fn svd_scratch<T: ComplexField>(
 	if m as f64 / n as f64 <= params.qr_ratio_threshold {
 		svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
 	} else {
-		let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+		let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
 		StackReq::all_of(&[
 			temp_mat_scratch::<T>(m, n),
 			temp_mat_scratch::<T>(bs, n),
@@ -540,7 +540,7 @@ pub fn svd<T: ComplexField>(
 	if m as f64 / n as f64 <= params.qr_ratio_threshold {
 		compute_squareish_svd(matrix, s, u.rb_mut(), v.rb_mut(), par, stack, params)?;
 	} else {
-		let bs = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+		let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
 		let (mut qr, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, n, stack) };
 		let mut qr = qr.as_mat_mut();
 		let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };

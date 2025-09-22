@@ -35,7 +35,7 @@ use reborrow::*;
 /// assert_eq!(m, swapped);
 /// ```
 #[track_caller]
-#[inline]
+#[inline(never)]
 pub fn swap_cols<N: Shape, T>(a: ColMut<'_, T, N>, b: ColMut<'_, T, N>) {
 	fn swap<T>() -> impl FnMut(Zip<&mut T, Last<&mut T>>) {
 		|unzip!(a, b)| core::mem::swap(a, b)

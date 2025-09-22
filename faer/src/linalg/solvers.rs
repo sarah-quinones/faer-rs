@@ -918,8 +918,8 @@ impl<T: ComplexField> Qr<T> {
 		let (m, n) = QR.shape();
 		let size = Ord::min(m, n);
 
-		let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
-		let mut Q_coeff = Mat::zeros(blocksize, size);
+		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
+		let mut Q_coeff = Mat::zeros(block_size, size);
 
 		linalg::qr::no_pivoting::factor::qr_in_place(
 			QR.as_mut(),
@@ -928,7 +928,7 @@ impl<T: ComplexField> Qr<T> {
 			MemStack::new(&mut MemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
 				m,
 				n,
-				blocksize,
+				block_size,
 				par,
 				default(),
 			))),
@@ -1019,8 +1019,8 @@ impl<T: ComplexField> ColPivQr<T> {
 		let mut col_perm_fwd = vec![0usize; n];
 		let mut col_perm_bwd = vec![0usize; n];
 
-		let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
-		let mut Q_coeff = Mat::zeros(blocksize, size);
+		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
+		let mut Q_coeff = Mat::zeros(block_size, size);
 
 		linalg::qr::col_pivoting::factor::qr_in_place(
 			QR.as_mut(),
@@ -1031,7 +1031,7 @@ impl<T: ComplexField> ColPivQr<T> {
 			MemStack::new(&mut MemBuffer::new(linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(
 				m,
 				n,
-				blocksize,
+				block_size,
 				par,
 				default(),
 			))),
@@ -2012,7 +2012,7 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 		assert!(all(self.nrows() == self.ncols(), self.nrows() == rhs.nrows(),));
 
 		let n = self.nrows();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 		let k = rhs.ncols();
 
 		linalg::qr::no_pivoting::solve::solve_in_place_with_conj(
@@ -2023,7 +2023,7 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 			rhs,
 			par,
 			MemStack::new(&mut MemBuffer::new(linalg::qr::no_pivoting::solve::solve_in_place_scratch::<T>(
-				n, blocksize, k, par,
+				n, block_size, k, par,
 			))),
 		);
 	}
@@ -2035,7 +2035,7 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 		assert!(all(self.nrows() == self.ncols(), self.ncols() == rhs.nrows(),));
 
 		let n = self.nrows();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 		let k = rhs.ncols();
 
 		linalg::qr::no_pivoting::solve::solve_transpose_in_place_with_conj(
@@ -2046,7 +2046,7 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 			rhs,
 			par,
 			MemStack::new(&mut MemBuffer::new(
-				linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(n, blocksize, k, par),
+				linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(n, block_size, k, par),
 			)),
 		);
 	}
@@ -2061,7 +2061,7 @@ impl<T: ComplexField> SolveLstsqCore<T> for Qr<T> {
 
 		let m = self.nrows();
 		let n = self.ncols();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 		let k = rhs.ncols();
 
 		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj(
@@ -2072,7 +2072,7 @@ impl<T: ComplexField> SolveLstsqCore<T> for Qr<T> {
 			rhs,
 			par,
 			MemStack::new(&mut MemBuffer::new(linalg::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(
-				m, n, blocksize, k, par,
+				m, n, block_size, k, par,
 			))),
 		);
 	}
@@ -2083,7 +2083,7 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 		let par = get_global_parallelism();
 		let m = self.nrows();
 		let n = self.ncols();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(m, n);
 
@@ -2094,7 +2094,7 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 			self.R(),
 			par,
 			MemStack::new(&mut MemBuffer::new(linalg::qr::no_pivoting::reconstruct::reconstruct_scratch::<T>(
-				m, n, blocksize, par,
+				m, n, block_size, par,
 			))),
 		);
 
@@ -2106,7 +2106,7 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 		assert!(self.nrows() == self.ncols());
 
 		let n = self.ncols();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(n, n);
 
@@ -2117,7 +2117,7 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 			self.R(),
 			par,
 			MemStack::new(&mut MemBuffer::new(linalg::qr::no_pivoting::inverse::inverse_scratch::<T>(
-				n, blocksize, par,
+				n, block_size, par,
 			))),
 		);
 
@@ -2133,7 +2133,7 @@ impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 		assert!(all(self.nrows() == self.ncols(), self.nrows() == rhs.nrows(),));
 
 		let n = self.nrows();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 		let k = rhs.ncols();
 
 		linalg::qr::col_pivoting::solve::solve_in_place_with_conj(
@@ -2145,7 +2145,7 @@ impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 			rhs,
 			par,
 			MemStack::new(&mut MemBuffer::new(linalg::qr::col_pivoting::solve::solve_in_place_scratch::<usize, T>(
-				n, blocksize, k, par,
+				n, block_size, k, par,
 			))),
 		);
 	}
@@ -2157,7 +2157,7 @@ impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 		assert!(all(self.nrows() == self.ncols(), self.ncols() == rhs.nrows(),));
 
 		let n = self.nrows();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 		let k = rhs.ncols();
 
 		linalg::qr::col_pivoting::solve::solve_transpose_in_place_with_conj(
@@ -2171,7 +2171,7 @@ impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 			MemStack::new(&mut MemBuffer::new(linalg::qr::col_pivoting::solve::solve_transpose_in_place_scratch::<
 				usize,
 				T,
-			>(n, blocksize, k, par))),
+			>(n, block_size, k, par))),
 		);
 	}
 }
@@ -2185,7 +2185,7 @@ impl<T: ComplexField> SolveLstsqCore<T> for ColPivQr<T> {
 
 		let m = self.nrows();
 		let n = self.ncols();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 		let k = rhs.ncols();
 
 		linalg::qr::col_pivoting::solve::solve_lstsq_in_place_with_conj(
@@ -2199,7 +2199,7 @@ impl<T: ComplexField> SolveLstsqCore<T> for ColPivQr<T> {
 			MemStack::new(&mut MemBuffer::new(linalg::qr::col_pivoting::solve::solve_lstsq_in_place_scratch::<
 				usize,
 				T,
-			>(m, n, blocksize, k, par))),
+			>(m, n, block_size, k, par))),
 		);
 	}
 }
@@ -2209,7 +2209,7 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 		let par = get_global_parallelism();
 		let m = self.nrows();
 		let n = self.ncols();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(m, n);
 
@@ -2221,7 +2221,7 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 			self.P(),
 			par,
 			MemStack::new(&mut MemBuffer::new(
-				linalg::qr::col_pivoting::reconstruct::reconstruct_scratch::<usize, T>(m, n, blocksize, par),
+				linalg::qr::col_pivoting::reconstruct::reconstruct_scratch::<usize, T>(m, n, block_size, par),
 			)),
 		);
 
@@ -2233,7 +2233,7 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 		assert!(self.nrows() == self.ncols());
 
 		let n = self.ncols();
-		let blocksize = self.Q_coeff().nrows();
+		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(n, n);
 
@@ -2245,7 +2245,7 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 			self.P(),
 			par,
 			MemStack::new(&mut MemBuffer::new(linalg::qr::col_pivoting::inverse::inverse_scratch::<usize, T>(
-				n, blocksize, par,
+				n, block_size, par,
 			))),
 		);
 

@@ -6,7 +6,7 @@ use linalg::matmul::triangular::BlockStructure;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PivLltParams {
-	pub blocksize: usize,
+	pub block_size: usize,
 
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -16,7 +16,7 @@ impl Default for PivLltParams {
 	#[inline]
 	fn default() -> Self {
 		Self {
-			blocksize: 128,
+			block_size: 128,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
@@ -86,7 +86,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 
 			let mut k = 0usize;
 			while k < n {
-				let bs = Ord::min(n - k, params.blocksize);
+				let bs = Ord::min(n - k, params.block_size);
 
 				for i in k..n {
 					dot_products[i] = zero::<T::Real>();

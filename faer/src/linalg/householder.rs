@@ -124,8 +124,8 @@ pub(crate) fn make_householder_out_of_place<T: ComplexField>(head: &mut T, out: 
 pub fn upgrade_householder_factor<T: ComplexField>(
 	householder_factor: MatMut<'_, T>,
 	essentials: MatRef<'_, T>,
-	blocksize: usize,
-	prev_blocksize: usize,
+	block_size: usize,
+	prev_block_size: usize,
 	par: Par,
 ) {
 	assert!(all(
@@ -133,7 +133,7 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 		essentials.ncols() == householder_factor.ncols(),
 	));
 
-	if blocksize == prev_blocksize || householder_factor.nrows().unbound() <= prev_blocksize {
+	if block_size == prev_block_size || householder_factor.nrows().unbound() <= prev_block_size {
 		return;
 	}
 
@@ -143,24 +143,24 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 
 	assert!(householder_factor.nrows() == householder_factor.ncols());
 
-	let block_count = householder_factor.nrows().msrv_div_ceil(blocksize);
+	let block_count = householder_factor.nrows().msrv_div_ceil(block_size);
 	if block_count > 1 {
-		assert!(all(blocksize > prev_blocksize, blocksize % prev_blocksize == 0,));
+		assert!(all(block_size > prev_block_size, block_size % prev_block_size == 0,));
 		let mid = block_count / 2;
 
 		let (tau_tl, _, _, tau_br) = householder_factor.split_at_mut(mid, mid);
 		let (basis_left, basis_right) = essentials.split_at_col(mid);
 		let basis_right = basis_right.split_at_row(mid).1;
 		join_raw(
-			|parallelism| upgrade_householder_factor(tau_tl, basis_left, blocksize, prev_blocksize, parallelism),
-			|parallelism| upgrade_householder_factor(tau_br, basis_right, blocksize, prev_blocksize, parallelism),
+			|parallelism| upgrade_householder_factor(tau_tl, basis_left, block_size, prev_block_size, parallelism),
+			|parallelism| upgrade_householder_factor(tau_br, basis_right, block_size, prev_block_size, parallelism),
 			par,
 		);
 		return;
 	}
 
-	if prev_blocksize < 8 {
-		// pretend that prev_blocksize == 1, recompute whole top half of matrix
+	if prev_block_size < 8 {
+		// pretend that prev_block_size == 1, recompute whole top half of matrix
 
 		let (basis_top, basis_bot) = essentials.split_at_row(n);
 		let acc_structure = BlockStructure::UnitTriangularUpper;
@@ -188,9 +188,9 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 			par,
 		);
 	} else {
-		let prev_block_count = householder_factor.nrows().msrv_div_ceil(prev_blocksize);
+		let prev_block_count = householder_factor.nrows().msrv_div_ceil(prev_block_size);
 
-		let mid = (prev_block_count / 2) * prev_blocksize;
+		let mid = (prev_block_count / 2) * prev_block_size;
 
 		let (tau_tl, mut tau_tr, _, tau_br) = householder_factor.split_at_mut(mid, mid);
 		let (basis_left, basis_right) = essentials.split_at_col(mid);
@@ -199,8 +199,8 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 		join_raw(
 			|parallelism| {
 				join_raw(
-					|parallelism| upgrade_householder_factor(tau_tl, basis_left, blocksize, prev_blocksize, parallelism),
-					|parallelism| upgrade_householder_factor(tau_br, basis_right, blocksize, prev_blocksize, parallelism),
+					|parallelism| upgrade_householder_factor(tau_tl, basis_left, block_size, prev_block_size, parallelism),
+					|parallelism| upgrade_householder_factor(tau_br, basis_right, block_size, prev_block_size, parallelism),
 					parallelism,
 				);
 			},
@@ -233,88 +233,88 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 /// transformation to a right-hand-side matrix in place
 pub fn apply_block_householder_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	rhs_ncols: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, rhs_ncols)
+	temp_mat_scratch::<T>(block_size, rhs_ncols)
 }
 
 /// computes the layout of required workspace for applying the transpose of a block
 /// householder transformation to a right-hand-side matrix in place
 pub fn apply_block_householder_transpose_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	rhs_ncols: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, rhs_ncols)
+	temp_mat_scratch::<T>(block_size, rhs_ncols)
 }
 
 /// computes the layout of required workspace for applying a block householder
 /// transformation to a left-hand-side matrix in place
 pub fn apply_block_householder_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	lhs_nrows: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, lhs_nrows)
+	temp_mat_scratch::<T>(block_size, lhs_nrows)
 }
 
 /// computes the layout of required workspace for applying the transpose of a block
 /// householder transformation to a left-hand-side matrix in place
 pub fn apply_block_householder_transpose_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	lhs_nrows: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, lhs_nrows)
+	temp_mat_scratch::<T>(block_size, lhs_nrows)
 }
 
 /// computes the layout of required workspace for applying the transpose of a sequence
 /// of block householder transformations to a right-hand-side matrix in place
 pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	rhs_ncols: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, rhs_ncols)
+	temp_mat_scratch::<T>(block_size, rhs_ncols)
 }
 
 /// computes the layout of required workspace for applying a sequence of block
 /// householder transformations to a right-hand-side matrix in place
 pub fn apply_block_householder_sequence_on_the_left_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	rhs_ncols: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, rhs_ncols)
+	temp_mat_scratch::<T>(block_size, rhs_ncols)
 }
 
 /// computes the layout of required workspace for applying the transpose of a sequence
 /// of block householder transformations to a left-hand-side matrix in place
 pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	lhs_nrows: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, lhs_nrows)
+	temp_mat_scratch::<T>(block_size, lhs_nrows)
 }
 
 /// computes the layout of required workspace for applying a sequence of block
 /// householder transformations to a left-hand-side matrix in place
 pub fn apply_block_householder_sequence_on_the_right_in_place_scratch<T: ComplexField>(
 	householder_basis_nrows: usize,
-	blocksize: usize,
+	block_size: usize,
 	lhs_nrows: usize,
 ) -> StackReq {
 	let _ = householder_basis_nrows;
-	temp_mat_scratch::<T>(blocksize, lhs_nrows)
+	temp_mat_scratch::<T>(block_size, lhs_nrows)
 }
 
 #[track_caller]
@@ -696,14 +696,14 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<T: Comple
 
 	let mut j = size;
 
-	let mut blocksize = size % householder_factor.nrows();
-	if blocksize == 0 {
-		blocksize = householder_factor.nrows();
+	let mut block_size = size % householder_factor.nrows();
+	if block_size == 0 {
+		block_size = householder_factor.nrows();
 	}
 
 	while j > 0 {
-		let j_prev = j - blocksize;
-		blocksize = householder_factor.nrows();
+		let j_prev = j - block_size;
+		block_size = householder_factor.nrows();
 
 		let essentials = householder_basis.get(j_prev.., j_prev..j);
 		let householder = householder_factor.get(.., j_prev..j).subrows(0, j - j_prev);
@@ -730,7 +730,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 	let mut matrix = matrix;
 	let mut stack = stack;
 
-	let blocksize = householder_factor.nrows();
+	let block_size = householder_factor.nrows();
 
 	let m = householder_basis.nrows();
 	let n = householder_basis.ncols();
@@ -741,16 +741,16 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 
 	let mut j = 0;
 	while j < size {
-		let blocksize = Ord::min(blocksize, size - j);
+		let block_size = Ord::min(block_size, size - j);
 
-		let essentials = householder_basis.get(j.., j..j + blocksize);
-		let householder = householder_factor.get(.., j..j + blocksize).subrows(0, blocksize);
+		let essentials = householder_basis.get(j.., j..j + block_size);
+		let householder = householder_factor.get(.., j..j + block_size).subrows(0, block_size);
 
 		let matrix = matrix.rb_mut().get_mut(j.., ..);
 
 		apply_block_householder_transpose_on_the_left_in_place_with_conj(essentials, householder, conj_lhs, matrix, par, stack.rb_mut());
 
-		j += blocksize;
+		j += block_size;
 	}
 }
 
