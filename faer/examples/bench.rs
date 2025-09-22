@@ -1872,7 +1872,7 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 
 	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
 	lapack_set_num_threads(parallel);
-	let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(m, n);
+	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
 
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
@@ -1882,7 +1882,7 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 		return bench_eigen(bencher, eig::QR, A.rb());
 	}
 
-	let mut Q = Mat::zeros(blocksize, Ord::min(m, n));
+	let mut Q = Mat::zeros(block_size, Ord::min(m, n));
 	let mut QR = Mat::zeros(m, n);
 
 	#[cfg(any(openblas, mkl, blis))]
@@ -1949,7 +1949,7 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
-		m, n, blocksize, parallel, params,
+		m, n, block_size, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 
@@ -2035,7 +2035,7 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 
 	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
 	lapack_set_num_threads(parallel);
-	let blocksize = linalg::qr::col_pivoting::factor::recommended_blocksize::<T>(m, n);
+	let block_size = linalg::qr::col_pivoting::factor::recommended_block_size::<T>(m, n);
 
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
@@ -2045,7 +2045,7 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 		return bench_eigen(bencher, eig::CQR, A.rb());
 	}
 
-	let mut Q = Mat::zeros(blocksize, Ord::min(m, n));
+	let mut Q = Mat::zeros(block_size, Ord::min(m, n));
 	let mut QR = Mat::zeros(m, n);
 
 	let col_fwd = &mut *avec![0usize; n];
@@ -2124,7 +2124,7 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 
 	let params = Default::default();
 	let stack = &mut MemBuffer::new(linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(
-		m, n, blocksize, parallel, params,
+		m, n, block_size, parallel, params,
 	));
 	let stack = MemStack::new(stack);
 
@@ -2301,7 +2301,7 @@ fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 
 fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
 	let m = n;
-	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
+	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN || Lib::LAPACK))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
 		|| (!T::IS_NATIVE && Ord::max(m, n) > 1024)
 	{
@@ -3212,6 +3212,25 @@ fn main() -> eyre::Result<()> {
 			}
 		}};
 	}
+
+	let shl = |a: u32, b: i32| {
+		if b >= 0 { a << b } else { a >> -b }
+	};
+
+	spindle::SPIN_LIMIT.store(
+		shl(
+			spindle::DEFAULT_SPIN_LIMIT,
+			std::env::var("SPIN").as_deref().unwrap_or("0").parse::<i32>().unwrap(),
+		),
+		std::sync::atomic::Ordering::Relaxed,
+	);
+	spindle::PAUSE_LIMIT.store(
+		shl(
+			spindle::DEFAULT_PAUSE_LIMIT,
+			std::env::var("PAUSE").as_deref().unwrap_or("0").parse::<i32>().unwrap(),
+		),
+		std::sync::atomic::Ordering::Relaxed,
+	);
 
 	spindle::with_lock(rayon::current_num_threads(), || -> eyre::Result<()> {
 		register!(f32);

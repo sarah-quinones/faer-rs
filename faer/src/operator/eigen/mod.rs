@@ -326,8 +326,8 @@ fn partial_schur_real_imp<T: RealField>(
 		let (mut w, stack) = temp_mat_zeroed::<T, _, _>(max_dim, 2, stack);
 		let mut w = w.as_mat_mut();
 
-		let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(max_dim, max_dim);
-		let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(blocksize, max_dim, stack);
+		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(max_dim, max_dim);
+		let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, max_dim, stack);
 		let mut householder = householder.as_mat_mut();
 
 		let f = v0.norm_l2();
@@ -366,8 +366,8 @@ fn partial_schur_real_imp<T: RealField>(
 			{
 				let n = max_dim - active;
 
-				let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
-				let mut householder = householder.rb_mut().get_mut(..blocksize, ..n - 1);
+				let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+				let mut householder = householder.rb_mut().get_mut(..block_size, ..n - 1);
 
 				linalg::evd::hessenberg::hessenberg_in_place(H_slice.rb_mut(), householder.rb_mut(), par, stack, default());
 
@@ -582,8 +582,8 @@ fn partial_schur_real_imp<T: RealField>(
 		let (mut w_re, mut w_im) = w.rb_mut().get_mut(active..max_dim, ..).two_cols_mut(0, 1);
 
 		{
-			let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
-			let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(blocksize, n - 1, stack);
+			let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+			let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, n - 1, stack);
 			let mut householder = householder.as_mat_mut();
 
 			linalg::evd::hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, default());
@@ -743,8 +743,8 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let (mut Q, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
 		let mut Q = Q.as_mat_mut();
 
-		let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(max_dim, max_dim);
-		let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(blocksize, max_dim, stack);
+		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(max_dim, max_dim);
+		let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, max_dim, stack);
 		let mut householder = householder.as_mat_mut();
 
 		let f = v0.norm_l2();
@@ -783,8 +783,8 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 			{
 				let n = max_dim - active;
 
-				let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
-				let mut householder = householder.rb_mut().get_mut(..blocksize, ..n - 1);
+				let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+				let mut householder = householder.rb_mut().get_mut(..block_size, ..n - 1);
 
 				linalg::evd::hessenberg::hessenberg_in_place(H_slice.rb_mut(), householder.rb_mut(), par, stack, default());
 
@@ -946,8 +946,8 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let mut w = w.as_mat_mut();
 
 		{
-			let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
-			let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(blocksize, n - 1, stack);
+			let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+			let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, n - 1, stack);
 			let mut householder = householder.as_mat_mut();
 
 			linalg::evd::hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, default());
@@ -1036,12 +1036,12 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize,
 	let vecs = Q;
 	let tmp = temp_mat_scratch::<T>(n, max_dim);
 
-	let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(max_dim, max_dim);
-	let householder = temp_mat_scratch::<T>(blocksize, max_dim);
+	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(max_dim, max_dim);
+	let householder = temp_mat_scratch::<T>(block_size, max_dim);
 	let arnoldi = A.apply_scratch(1, par).or(StackReq::new::<bool>(max_dim));
 
-	let hess = linalg::evd::hessenberg::hessenberg_in_place_scratch::<T>(max_dim, blocksize, par, default());
-	let apply_house = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(max_dim - 1, blocksize, max_dim - 1);
+	let hess = linalg::evd::hessenberg::hessenberg_in_place_scratch::<T>(max_dim, block_size, par, default());
+	let apply_house = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(max_dim - 1, block_size, max_dim - 1);
 	let schur = schur::multishift_qr_scratch::<T>(max_dim, max_dim, true, true, par, auto!(T));
 
 	StackReq::all_of(&[

@@ -1,9 +1,9 @@
 use crate::assert;
 use crate::internal_prelude::*;
 
-pub fn reconstruct_scratch<T: ComplexField>(nrows: usize, ncols: usize, blocksize: usize, par: Par) -> StackReq {
+pub fn reconstruct_scratch<T: ComplexField>(nrows: usize, ncols: usize, block_size: usize, par: Par) -> StackReq {
 	_ = par;
-	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, blocksize, ncols)
+	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, block_size, ncols)
 }
 
 #[track_caller]

@@ -229,8 +229,8 @@ fn compute_gevd_generic<T: ComplexField>(
 	}
 
 	{
-		let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
-		let (mut householder, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(blocksize, n, stack) };
+		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+		let (mut householder, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(block_size, n, stack) };
 		let mut householder = householder.as_mat_mut();
 		linalg::qr::no_pivoting::factor::qr_in_place(B.rb_mut(), householder.rb_mut(), par, stack, default());
 		linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
@@ -1236,12 +1236,12 @@ pub fn gevd_scratch<T: ComplexField>(
 	let _ = (left, right);
 
 	let n = dim;
-	let blocksize = linalg::qr::no_pivoting::factor::recommended_blocksize::<T>(n, n);
+	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
 
 	StackReq::any_of(&[
-		linalg::temp_mat_scratch::<T>(blocksize, n).and(
-			linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(n, n, blocksize, par, default())
-				.or(linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(n, blocksize, n)),
+		linalg::temp_mat_scratch::<T>(block_size, n).and(
+			linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(n, n, block_size, par, default())
+				.or(linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(n, block_size, n)),
 		),
 		gen_hessenberg::generalized_hessenberg_scratch::<T>(n, auto!(T)),
 		if const { T::IS_REAL } {

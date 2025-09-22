@@ -4,7 +4,7 @@ use crate::perm::swap_cols_idx;
 use linalg::householder::{self, HouseholderInfo};
 use pulp::Simd;
 
-pub use super::super::no_pivoting::factor::recommended_blocksize;
+pub use super::super::no_pivoting::factor::recommended_block_size;
 
 // B11 += A10 * dot
 // B01 += l * dot
@@ -470,14 +470,14 @@ fn qr_in_place_unblocked<'out, I: Index, T: ComplexField>(
 pub fn qr_in_place_scratch<I: Index, T: ComplexField>(
 	nrows: usize,
 	ncols: usize,
-	blocksize: usize,
+	block_size: usize,
 	par: Par,
 	params: Spec<ColPivQrParams, T>,
 ) -> StackReq {
 	let _ = nrows;
 	let _ = ncols;
 	let _ = par;
-	let _ = blocksize;
+	let _ = block_size;
 	let _ = &params;
 	linalg::temp_mat_scratch::<T>(ncols, 2)
 }
@@ -504,24 +504,24 @@ pub fn qr_in_place<'out, I: Index, T: ComplexField>(
 	let mut A = A;
 	let mut H = Q_coeff;
 	let size = H.ncols();
-	let blocksize = H.nrows();
+	let block_size = H.nrows();
 
 	let ret = qr_in_place_unblocked(A.rb_mut(), H.rb_mut().row_mut(0), col_perm, col_perm_inv, par, stack, params);
 
 	let mut j = 0;
 	while j < size {
-		let blocksize = Ord::min(blocksize, size - j);
+		let block_size = Ord::min(block_size, size - j);
 
-		let mut H = H.rb_mut().subcols_mut(j, blocksize).subrows_mut(0, blocksize);
+		let mut H = H.rb_mut().subcols_mut(j, block_size).subrows_mut(0, block_size);
 
-		for j in 0..blocksize {
+		for j in 0..block_size {
 			H[(j, j)] = copy(H[(0, j)]);
 		}
 
-		let A = A.rb().get(j.., j..j + blocksize);
+		let A = A.rb().get(j.., j..j + block_size);
 
-		householder::upgrade_householder_factor(H.rb_mut(), A, blocksize, 1, par);
-		j += blocksize;
+		householder::upgrade_householder_factor(H.rb_mut(), A, block_size, 1, par);
+		j += block_size;
 	}
 	ret
 }

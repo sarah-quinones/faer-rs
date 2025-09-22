@@ -4,23 +4,23 @@ use crate::internal_prelude::*;
 pub fn solve_lstsq_in_place_scratch<I: Index, T: ComplexField>(
 	qr_nrows: usize,
 	qr_ncols: usize,
-	qr_blocksize: usize,
+	qr_block_size: usize,
 	rhs_ncols: usize,
 	par: Par,
 ) -> StackReq {
 	StackReq::and(
-		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(qr_nrows, qr_ncols, qr_blocksize, rhs_ncols, par),
+		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(qr_nrows, qr_ncols, qr_block_size, rhs_ncols, par),
 		crate::perm::permute_rows_in_place_scratch::<I, T>(qr_ncols, rhs_ncols),
 	)
 }
 
-pub fn solve_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> StackReq {
-	solve_lstsq_in_place_scratch::<I, T>(qr_dim, qr_dim, qr_blocksize, rhs_ncols, par)
+pub fn solve_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_block_size: usize, rhs_ncols: usize, par: Par) -> StackReq {
+	solve_lstsq_in_place_scratch::<I, T>(qr_dim, qr_dim, qr_block_size, rhs_ncols, par)
 }
 
-pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_blocksize: usize, rhs_ncols: usize, par: Par) -> StackReq {
+pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_block_size: usize, rhs_ncols: usize, par: Par) -> StackReq {
 	StackReq::and(
-		linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(qr_dim, qr_blocksize, rhs_ncols, par),
+		linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(qr_dim, qr_block_size, rhs_ncols, par),
 		crate::perm::permute_rows_in_place_scratch::<I, T>(qr_dim, rhs_ncols),
 	)
 }
@@ -80,10 +80,10 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = Q_basis.nrows();
-	let blocksize = Q_coeff.nrows();
+	let block_size = Q_coeff.nrows();
 
 	assert!(all(
-		blocksize > 0,
+		block_size > 0,
 		rhs.nrows() == n,
 		Q_basis.nrows() == n,
 		Q_basis.ncols() == n,
@@ -129,10 +129,10 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = Q_basis.nrows();
-	let blocksize = Q_coeff.nrows();
+	let block_size = Q_coeff.nrows();
 
 	assert!(all(
-		blocksize > 0,
+		block_size > 0,
 		rhs.nrows() == n,
 		Q_basis.nrows() == n,
 		Q_basis.ncols() == n,

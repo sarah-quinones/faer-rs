@@ -215,7 +215,7 @@ fn solve_lower_triangular_in_place_base_case_generic_imp<'N, 'K, T: ComplexField
 }
 
 #[inline]
-fn blocksize(n: usize) -> usize {
+fn block_size(n: usize) -> usize {
 	// we want remainder to be a multiple of register size
 	let base_rem = n / 2;
 	n - if n >= 32 {
@@ -436,7 +436,7 @@ fn solve_unit_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(
 
 	make_guard!(HEAD);
 	make_guard!(TAIL);
-	let bs = N.partition(IdxInc::new_checked(blocksize(n), N), HEAD, TAIL);
+	let bs = N.partition(IdxInc::new_checked(block_size(n), N), HEAD, TAIL);
 
 	let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_with(bs, bs);
 	let (mut rhs_top, mut rhs_bot) = rhs.split_rows_with_mut(bs);
@@ -508,7 +508,7 @@ fn solve_lower_triangular_in_place_imp<'N, 'K, T: ComplexField>(
 
 	make_guard!(HEAD);
 	make_guard!(TAIL);
-	let bs = N.partition(IdxInc::new_checked(blocksize(n), N), HEAD, TAIL);
+	let bs = N.partition(IdxInc::new_checked(block_size(n), N), HEAD, TAIL);
 
 	let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_with(bs, bs);
 	let (mut rhs_top, mut rhs_bot) = rhs.split_rows_with_mut(bs);

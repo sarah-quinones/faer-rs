@@ -4,7 +4,7 @@ use crate::{assert, debug_assert};
 
 #[math]
 #[inline]
-fn swap_elems<T: ComplexField>(col: ColMut<'_, T>, i: usize, j: usize) {
+pub(crate) fn swap_elems<T: ComplexField>(col: ColMut<'_, T>, i: usize, j: usize) {
 	debug_assert!(all(i < col.nrows(), j < col.nrows()));
 	let rs = col.row_stride();
 	let col = col.as_ptr_mut();
@@ -87,7 +87,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	let half = n / 2;
 	let pow = Ord::min(16, half.next_power_of_two());
 
-	let blocksize = half.next_multiple_of(pow);
+	let block_size = half.next_multiple_of(pow);
 
 	let mut n_trans = 0;
 
@@ -96,15 +96,15 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	n_trans += lu_in_place_recursion(
 		A.rb_mut().get_mut(.., start..end),
 		0,
-		blocksize,
-		&mut trans[..blocksize],
+		block_size,
+		&mut trans[..block_size],
 		par,
 		params.into(),
 	);
 
 	{
 		let mut A = A.rb_mut().get_mut(.., start..end);
-		let (A00, mut A01, A10, mut A11) = A.rb_mut().split_at_mut(blocksize, blocksize);
+		let (A00, mut A01, A10, mut A11) = A.rb_mut().split_at_mut(block_size, block_size);
 
 		let A00 = A00.rb();
 		let A10 = A10.rb();
@@ -115,10 +115,10 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 		linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one::<T>(), par);
 
 		n_trans += lu_in_place_recursion(
-			A.rb_mut().get_mut(blocksize..m, ..),
-			blocksize,
+			A.rb_mut().get_mut(block_size..m, ..),
+			block_size,
 			n,
-			&mut trans[blocksize..n],
+			&mut trans[block_size..n],
 			par,
 			params.into(),
 		);
@@ -183,7 +183,7 @@ pub struct PartialPivLuParams {
 	/// threshold at which the implementation should stop recursing
 	pub recursion_threshold: usize,
 	/// blocking variant step size
-	pub blocksize: usize,
+	pub block_size: usize,
 	/// threshold at which size parallelism should be disabled
 	pub par_threshold: usize,
 
@@ -210,7 +210,7 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 	fn auto() -> Self {
 		Self {
 			recursion_threshold: 16,
-			blocksize: 64,
+			block_size: 64,
 			par_threshold: 128 * 128,
 			non_exhaustive: NonExhaustive(()),
 		}
@@ -312,7 +312,7 @@ mod tests {
 
 			let params = PartialPivLuParams {
 				recursion_threshold: 2,
-				blocksize: 2,
+				block_size: 2,
 				..auto!(f64)
 			};
 			let p = lu_in_place(

@@ -2,6 +2,8 @@ use crate::internal_prelude::*;
 use crate::{assert, perm};
 use linalg::matmul::triangular::BlockStructure;
 
+const TOP_BIT: usize = 1 << (usize::BITS - 1);
+
 /// pivoting strategy for choosing the pivots
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -31,7 +33,7 @@ pub struct LbltParams {
 	/// pivoting strategy
 	pub pivoting: PivotingStrategy,
 	/// block size of the algorithm
-	pub blocksize: usize,
+	pub block_size: usize,
 
 	/// threshold at which size parallelism should be disabled
 	pub par_threshold: usize,
@@ -59,7 +61,7 @@ fn swap_self_adjoint<T: ComplexField>(A: MatMut<'_, T>, i: usize, j: usize) {
 	let (Ai, Aj) = A.split_at_row_mut(j);
 	let Ai = Ai.get_mut(i + 1..j, i);
 	let Aj = Aj.get_mut(0, i + 1..j).transpose_mut();
-	zip!(Ai, Aj).for_each(|unzip!(x, y)| {
+	zip!(Ai, Aj).for_each(|unzip!(x, y): Zip!(&mut _, &mut _)| {
 		let tmp = conj(*x);
 		*x = conj(*y);
 		*y = tmp;
@@ -426,8 +428,8 @@ fn lblt_full_piv<T: ComplexField>(A: MatMut<'_, T>, subdiag: DiagMut<'_, T>, piv
 		}
 
 		if npiv == 2 {
-			pivots[0] = !(i0 + k);
-			pivots[1] = !(i1 + k);
+			pivots[0] = (i0 + k) | TOP_BIT;
+			pivots[1] = (i1 + k) | TOP_BIT;
 		} else {
 			pivots[0] = i0 + k;
 		}
@@ -531,6 +533,7 @@ fn update_and_offdiag_argmax<T: ComplexField>(
 }
 
 #[math]
+#[inline(never)]
 fn lblt_blocked_step<T: ComplexField>(
 	alpha: T::Real,
 	W: MatMut<'_, T>,
@@ -548,17 +551,17 @@ fn lblt_blocked_step<T: ComplexField>(
 	let mut W = W;
 
 	let n = A.nrows();
-	let blocksize = W.ncols();
+	let block_size = W.ncols();
 
-	assert!(all(A.nrows() == n, A.ncols() == n, W.nrows() == n, subdiag.dim() == n, blocksize >= 2,));
+	assert!(all(A.nrows() == n, A.ncols() == n, W.nrows() == n, subdiag.dim() == n, block_size >= 2,));
 
-	let kmax = Ord::min(blocksize - 1, n);
+	let kmax = Ord::min(block_size - 1, n);
 	let mut k = 0usize;
 	while k < kmax {
 		let mut A = A.rb_mut();
 		let mut W = W.rb_mut();
 		let mut subdiag = subdiag.rb_mut().column_vector_mut().get_mut(k..);
-		let mut A_left = A_left.rb_mut().get_mut(k.., ..);
+		let A_left = A_left.rb_mut().get_mut(k.., ..);
 
 		let (mut Wl, mut Wr) = W.rb_mut().get_mut(k.., ..).split_at_col_mut(k);
 		let (mut Al, mut Ar) = A.rb_mut().get_mut(k.., ..).split_at_col_mut(k);
@@ -634,14 +637,12 @@ fn lblt_blocked_step<T: ComplexField>(
 			if i0 != 0 {
 				swap_self_adjoint(Ar.rb_mut(), 0, i0);
 				perm::swap_rows_idx(Al.rb_mut(), 0, i0);
-				perm::swap_rows_idx(A_left.rb_mut(), 0, i0);
 				perm::swap_rows_idx(Wl.rb_mut(), 0, i0);
 				perm::swap_rows_idx(Wr.rb_mut(), 0, i0);
 			}
 			if npiv == 2 && i1 != 1 {
 				swap_self_adjoint(Ar.rb_mut(), 1, i1);
 				perm::swap_rows_idx(Al.rb_mut(), 1, i1);
-				perm::swap_rows_idx(A_left.rb_mut(), 1, i1);
 				perm::swap_rows_idx(Wl.rb_mut(), 1, i1);
 				perm::swap_rows_idx(Wr.rb_mut(), 1, i1);
 			}
@@ -714,8 +715,8 @@ fn lblt_blocked_step<T: ComplexField>(
 		let offset = A_left.ncols();
 
 		if npiv == 2 {
-			pivots[k] = !(offset + i0 + k);
-			pivots[k + 1] = !(offset + i1 + k);
+			pivots[k] = (offset + i0 + k) | TOP_BIT;
+			pivots[k + 1] = (offset + i1 + k) | TOP_BIT;
 		} else {
 			pivots[k] = offset + i0 + k;
 		}
@@ -750,7 +751,7 @@ fn lblt_blocked<T: ComplexField>(
 	A: MatMut<'_, T>,
 	subdiag: DiagMut<'_, T>,
 	pivots: &mut [usize],
-	blocksize: usize,
+	block_size: usize,
 	rook: bool,
 	diagonal: bool,
 	par: Par,
@@ -764,15 +765,17 @@ fn lblt_blocked<T: ComplexField>(
 
 	let mut k = 0;
 	while k < n {
-		let (_, _, A_left, A) = A.rb_mut().split_at_mut(k, k);
-		let (mut W, _) = unsafe { temp_mat_uninit::<T, _, _>(n - k, blocksize, stack) };
+		let (_, _, mut A_left, A_right) = A.rb_mut().split_at_mut(k, k);
+		let (mut W, _) = unsafe { temp_mat_uninit::<T, _, _>(n - k, block_size, stack) };
 		let W = W.as_mat_mut();
 
-		if blocksize < 2 || n - k <= blocksize {
+		let next;
+
+		if block_size < 2 || n - k <= block_size {
 			lblt_unblocked(
 				copy(alpha),
-				A_left,
-				A,
+				A_left.rb_mut(),
+				A_right,
 				subdiag.rb_mut().get_mut(k..).as_diagonal_mut(),
 				&mut pivots[k..],
 				rook,
@@ -780,13 +783,13 @@ fn lblt_blocked<T: ComplexField>(
 				par,
 			);
 
-			k = n;
+			next = n;
 		} else {
-			let blocksize = lblt_blocked_step(
+			let block_size = lblt_blocked_step(
 				copy(alpha),
 				W,
-				A_left,
-				A,
+				A_left.rb_mut(),
+				A_right,
 				subdiag.rb_mut().get_mut(k..).as_diagonal_mut(),
 				&mut pivots[k..],
 				rook,
@@ -794,12 +797,42 @@ fn lblt_blocked<T: ComplexField>(
 				par,
 			);
 
-			k += blocksize;
+			next = k + block_size;
 		}
+
+		let pivots = &pivots[k..next];
+
+		let A_left = A.rb_mut().get_mut(.., ..k);
+
+		if A_left.ncols() > 0 {
+			match par {
+				Par::Seq => {
+					for mut col in A_left.col_iter_mut() {
+						for (i, &j) in core::iter::zip(k..next, pivots) {
+							let j = j & !TOP_BIT;
+							linalg::lu::partial_pivoting::factor::swap_elems(col.rb_mut(), i, j);
+						}
+					}
+				},
+				#[cfg(feature = "rayon")]
+				Par::Rayon(nthreads) => {
+					let nthreads = nthreads.get();
+					spindle::for_each(nthreads, A_left.par_col_iter_mut(), |mut col| {
+						for (i, &j) in core::iter::zip(k..next, pivots) {
+							let j = j & !TOP_BIT;
+							linalg::lu::partial_pivoting::factor::swap_elems(col.rb_mut(), i, j);
+						}
+					});
+				},
+			}
+		}
+
+		k = next;
 	}
 }
 
 #[math]
+#[inline(never)]
 fn lblt_unblocked<T: ComplexField>(
 	alpha: T::Real,
 	A_left: MatMut<'_, T>,
@@ -822,7 +855,7 @@ fn lblt_unblocked<T: ComplexField>(
 	while k < n {
 		let (_, _, mut L_prev, mut A) = A.rb_mut().split_at_mut(k, k);
 		let mut subdiag = subdiag.rb_mut().column_vector_mut().get_mut(k..);
-		let mut A_left = A_left.rb_mut().get_mut(k.., ..);
+		let A_left = A_left.rb_mut().get_mut(k.., ..);
 
 		let npiv;
 
@@ -887,12 +920,10 @@ fn lblt_unblocked<T: ComplexField>(
 			// swap pivots to first (and second) column
 			if i0 != 0 {
 				swap_self_adjoint(A.rb_mut(), 0, i0);
-				perm::swap_rows_idx(A_left.rb_mut(), 0, i0);
 				perm::swap_rows_idx(L_prev.rb_mut(), 0, i0);
 			}
 			if npiv == 2 && i1 != 1 {
 				swap_self_adjoint(A.rb_mut(), 1, i1);
-				perm::swap_rows_idx(A_left.rb_mut(), 1, i1);
 				perm::swap_rows_idx(L_prev.rb_mut(), 1, i1);
 			}
 
@@ -938,8 +969,8 @@ fn lblt_unblocked<T: ComplexField>(
 
 		let offset = A_left.ncols();
 		if npiv == 2 {
-			pivots[k] = !(offset + i0 + k);
-			pivots[k + 1] = !(offset + i1 + k);
+			pivots[k] = (offset + i0 + k) | TOP_BIT;
+			pivots[k + 1] = (offset + i1 + k) | TOP_BIT;
 		} else {
 			pivots[k] = offset + i0 + k;
 		}
@@ -951,8 +982,8 @@ impl<T: ComplexField> Auto<T> for LbltParams {
 	fn auto() -> Self {
 		Self {
 			pivoting: PivotingStrategy::PartialDiag,
-			blocksize: 64,
-			par_threshold: 256 * 512,
+			block_size: 64,
+			par_threshold: 128 * 128,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
@@ -1199,7 +1230,7 @@ pub fn rank1_update_fallback<'a, T: ComplexField>(mut A: MatMut<'a, T>, mut L0: 
 pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<LbltParams, T>) -> StackReq {
 	let params = params.config;
 	let _ = par;
-	let mut bs = params.blocksize;
+	let mut bs = params.block_size;
 	if bs < 2 || dim <= bs {
 		bs = 0;
 	}
@@ -1258,7 +1289,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	let (mut pivots, stack) = stack.make_with::<usize>(n, |_| 0);
 	let pivots = &mut *pivots;
 
-	let mut bs = params.blocksize;
+	let mut bs = params.block_size;
 	if bs < 2 || n <= bs {
 		bs = 0;
 	}
@@ -1283,10 +1314,7 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 
 	let mut transposition_count = 0usize;
 	for i in 0..n {
-		let mut p = pivots[i];
-		if (p as isize) < 0 {
-			p = !p;
-		}
+		let p = pivots[i] & !TOP_BIT;
 		if i != p {
 			transposition_count += 1;
 		}

@@ -1,4 +1,4 @@
-//! the bunch kaufman decomposition of a self-adjoint matrix $a$ is such that:
+//! the $L B L^\top$ decomposition of a self-adjoint matrix $A$ is such that:
 //! $$P A P^\top = LBL^H$$
 //! where $P$ is a permutation matrix, $B$ is a block diagonal matrix, with $1\times 1$ or $2 \times
 //! 2 $ diagonal blocks, and $L$ is a unit lower triangular matrix
@@ -120,7 +120,7 @@ mod tests {
 
 				let params = LbltParams {
 					pivoting,
-					blocksize: 4,
+					block_size: 4,
 					..auto!(c64)
 				};
 				let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()));

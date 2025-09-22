@@ -229,7 +229,7 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 ) -> Result<usize, usize> {
 	let N = A.ncols();
 
-	let blocksize = 4 * (core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>());
+	let block_size = 4 * (core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>());
 
 	let mut A = A;
 	let mut D = D;
@@ -238,8 +238,8 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 
 	let mut j = 0;
 	while j < N {
-		let blocksize = Ord::min(blocksize, N - j);
-		let j_next = j + blocksize;
+		let block_size = Ord::min(block_size, N - j);
+		let j_next = j + block_size;
 
 		with_dim!(HEAD, j_next);
 		let A = A.rb_mut().submatrix_mut(0, 0, HEAD, HEAD);
@@ -248,7 +248,7 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 		let signs = signs.map(|signs| Array::from_ref(&signs[..*HEAD], HEAD));
 
 		count += simd_cholesky_row_batch(simd, A, D, HEAD.idx_inc(j), is_llt, regularize, eps.clone(), delta.clone(), signs)?;
-		j += blocksize;
+		j += block_size;
 	}
 
 	Ok(count)
@@ -398,12 +398,12 @@ fn cholesky_fallback<T: ComplexField>(
 }
 
 #[math]
-pub(crate) fn cholesky_recursion<T: ComplexField>(
+pub(crate) fn cholesky_recursion_right_looking<T: ComplexField>(
 	A: MatMut<'_, T>,
 	D: RowMut<'_, T>,
 
 	recursion_threshold: usize,
-	blocksize: usize,
+	block_size: usize,
 	is_llt: bool,
 	regularize: bool,
 	eps: &T::Real,
@@ -416,27 +416,27 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 		simd_cholesky(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
 	} else {
 		let mut count = 0;
-		let blocksize = Ord::min(n.next_power_of_two() / 2, blocksize);
+		let block_size = Ord::min(n.next_power_of_two() / 2, block_size);
 		let mut A = A;
 		let mut D = D;
 
 		let mut j = 0;
 		while j < n {
-			let blocksize = Ord::min(blocksize, n - j);
+			let block_size = Ord::min(block_size, n - j);
 
-			let (mut A00, A01, mut A10, mut A11) = A.rb_mut().get_mut(j.., j..).split_at_mut(blocksize, blocksize);
+			let (mut A00, A01, mut A10, mut A11) = A.rb_mut().get_mut(j.., j..).split_at_mut(block_size, block_size);
 
-			let mut D0 = D.rb_mut().subcols_mut(j, blocksize);
+			let mut D0 = D.rb_mut().subcols_mut(j, block_size);
 
 			let mut L10xD0 = A01.transpose_mut();
 
-			let signs = signs.map(|signs| &signs[j..][..blocksize]);
+			let signs = signs.map(|signs| &signs[j..][..block_size]);
 
-			match cholesky_recursion(
+			match cholesky_recursion_right_looking(
 				A00.rb_mut(),
 				D0.rb_mut(),
 				recursion_threshold,
-				blocksize,
+				block_size,
 				is_llt,
 				regularize,
 				eps,
@@ -470,12 +470,12 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 				);
 			} else {
 				if has_spicy_matmul::<T>() {
-					for k in 0..blocksize {
+					for k in 0..block_size {
 						let d = real(D0[k]);
 						let d = recip(d);
 
-						for i in j + blocksize..n {
-							let i = i - (j + blocksize);
+						for i in j + block_size..n {
+							let i = i - (j + block_size);
 							A10[(i, k)] = mul_real(A10[(i, k)], d);
 						}
 					}
@@ -495,12 +495,12 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 						MemStack::new(&mut []),
 					);
 				} else {
-					for k in 0..blocksize {
+					for k in 0..block_size {
 						let d = real(D0[k]);
 						let d = recip(d);
 
-						for i in j + blocksize..n {
-							let i = i - (j + blocksize);
+						for i in j + block_size..n {
+							let i = i - (j + block_size);
 							let a = copy(A10[(i, k)]);
 							A10[(i, k)] = mul_real(A10[(i, k)], d);
 							L10xD0[(i, k)] = a;
@@ -520,7 +520,147 @@ pub(crate) fn cholesky_recursion<T: ComplexField>(
 				}
 			};
 
-			j += blocksize;
+			j += block_size;
+		}
+
+		Ok(count)
+	}
+}
+
+#[math]
+pub(crate) fn cholesky_block_left_looking<T: ComplexField>(
+	A: MatMut<'_, T>,
+	D: RowMut<'_, T>,
+
+	right_looking_threshold: usize,
+	recursion_threshold: usize,
+	block_size: usize,
+
+	is_llt: bool,
+	regularize: bool,
+	eps: &T::Real,
+	delta: &T::Real,
+	signs: Option<&[i8]>,
+	par: Par,
+) -> Result<usize, usize> {
+	let n = A.nrows();
+	let cholesky = |A: MatMut<'_, T>, D: RowMut<'_, T>, signs: Option<&[i8]>| {
+		cholesky_recursion_right_looking(A, D, recursion_threshold, block_size, is_llt, regularize, eps, delta, signs, par)
+	};
+
+	if true || n < right_looking_threshold {
+		cholesky(A, D, signs)
+	} else {
+		let mut A = A;
+		let mut D = D;
+
+		let mut count = 0;
+		let mut j = 0;
+		while j < n {
+			let bj = Ord::min(n - j, right_looking_threshold);
+
+			let (_, A01, AL, mut AR) = A.rb_mut().split_at_mut(j, j);
+			let AL = AL.rb();
+			let mut AL0xD0 = A01.get_mut(.., ..bj).transpose_mut();
+
+			let (AL0, AL1) = AL.split_at_row(bj);
+			let (mut AR0, mut AR1) = AR.rb_mut().get_mut(.., ..bj).split_at_row_mut(bj);
+
+			let (D0, D1) = D.rb_mut().split_at_col_mut(j);
+			let D0 = D0.rb();
+			let mut D1 = D1.get_mut(..bj);
+
+			if is_llt {
+				linalg::matmul::triangular::matmul(
+					AR0.rb_mut(),
+					BlockStructure::TriangularLower,
+					Accum::Add,
+					AL0.rb(),
+					BlockStructure::Rectangular,
+					AL0.rb().adjoint(),
+					BlockStructure::Rectangular,
+					-one::<T>(),
+					par,
+				);
+
+				linalg::matmul::matmul(AR1.rb_mut(), Accum::Add, AL1.rb(), AL0.rb().adjoint(), -one::<T>(), par);
+			} else {
+				if has_spicy_matmul::<T>() {
+					spicy_matmul::<usize, T>(
+						AR0.rb_mut(),
+						BlockStructure::TriangularLower,
+						None,
+						None,
+						Accum::Add,
+						AL0.rb(),
+						Conj::No,
+						AL0.rb().transpose(),
+						Conj::Yes,
+						Some(D0.rb().transpose().as_diagonal()),
+						-one::<T>(),
+						par,
+						MemStack::new(&mut []),
+					);
+
+					spicy_matmul::<usize, T>(
+						AR1.rb_mut(),
+						BlockStructure::Rectangular,
+						None,
+						None,
+						Accum::Add,
+						AL1.rb(),
+						Conj::No,
+						AL0.rb().transpose(),
+						Conj::Yes,
+						Some(D0.rb().transpose().as_diagonal()),
+						-one::<T>(),
+						par,
+						MemStack::new(&mut []),
+					);
+				} else {
+					for i in 0..j {
+						let d = real(D0[i]);
+						for k in 0..bj {
+							AL0xD0[(k, i)] = mul_real(AL0[(k, i)], d);
+						}
+					}
+					let AL0xD0 = AL0xD0.rb();
+					linalg::matmul::triangular::matmul(
+						AR0.rb_mut(),
+						BlockStructure::TriangularLower,
+						Accum::Add,
+						AL0,
+						BlockStructure::Rectangular,
+						AL0xD0.adjoint(),
+						BlockStructure::Rectangular,
+						-one::<T>(),
+						par,
+					);
+					linalg::matmul::matmul(AR1.rb_mut(), Accum::Add, AL1, AL0xD0.adjoint(), -one::<T>(), par);
+				}
+			};
+
+			match cholesky(AR0.rb_mut(), D1.rb_mut(), signs.map(|signs| &signs[j..][..bj])) {
+				Ok(local_count) => count += local_count,
+				Err(fail_idx) => return Err(j + fail_idx),
+			}
+
+			if is_llt {
+				linalg::triangular_solve::solve_lower_triangular_in_place(AR0.conjugate(), AR1.rb_mut().transpose_mut(), par);
+			} else {
+				linalg::triangular_solve::solve_unit_lower_triangular_in_place(AR0.conjugate(), AR1.rb_mut().transpose_mut(), par);
+				for k in 0..bj {
+					let d = real(D1[k]);
+					let d = recip(d);
+
+					for i in j + bj..n {
+						let i = i - (j + bj);
+						AR1[(i, k)] = mul_real(AR1[(i, k)], d);
+					}
+				}
+			}
+
+			j += bj;
 		}
 
 		Ok(count)
@@ -573,7 +713,7 @@ impl<T: RealField> Default for LdltRegularization<'_, T> {
 #[derive(Copy, Clone, Debug)]
 pub struct LdltParams {
 	pub recursion_threshold: usize,
-	pub blocksize: usize,
+	pub block_size: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
@@ -583,7 +723,7 @@ impl<T: ComplexField> Auto<T> for LdltParams {
 	fn auto() -> Self {
 		Self {
 			recursion_threshold: 64,
-			blocksize: 128,
+			block_size: 128,
 			non_exhaustive: NonExhaustive(()),
 		}
 	}
@@ -612,11 +752,12 @@ pub fn cholesky_in_place<T: ComplexField>(
 	let mut D = D.col_mut(0).transpose_mut();
 	let mut A = A;
 
-	let ret = match cholesky_recursion(
+	let ret = match cholesky_block_left_looking(
 		A.rb_mut(),
 		D.rb_mut(),
+		params.block_size,
 		params.recursion_threshold,
-		params.blocksize,
+		params.block_size,
 		false,
 		regularization.dynamic_regularization_delta > zero() && regularization.dynamic_regularization_epsilon > zero(),
 		&regularization.dynamic_regularization_epsilon,
@@ -719,7 +860,7 @@ mod tests {
 				let mut D = Row::zeros(n);
 				let mut D = D.as_mut();
 
-				cholesky_recursion(L.rb_mut(), D.rb_mut(), 32, 32, llt, false, &0.0, &0.0, None, Par::Seq).unwrap();
+				cholesky_recursion_right_looking(L.rb_mut(), D.rb_mut(), 32, 32, llt, false, &0.0, &0.0, None, Par::Seq).unwrap();
 
 				for j in 0..n {
 					for i in 0..j {
