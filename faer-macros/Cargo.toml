@@ -1,6 +1,6 @@
 [package]
 name = "faer-macros"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2021"
 authors = ["sarah quiñones <sarah@veganb.tw>"]
 description = "linear algebra library"
