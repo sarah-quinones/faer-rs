@@ -566,7 +566,7 @@ fn qz_to_gevd_real<T: RealField>(
 
 				acoef = scale;
 				bcoefr = wr;
-				bcoefi = -wi;
+				bcoefi = wi;
 
 				// scale to avoid over/underflow
 				acoefa = abs(acoef);
@@ -800,7 +800,7 @@ fn qz_to_gevd_real<T: RealField>(
 
 				acoef = scale;
 				bcoefr = wr;
-				bcoefi = -wi;
+				bcoefi = wi;
 
 				// scale to avoid over/underflow
 				acoefa = abs(acoef);
@@ -1449,8 +1449,8 @@ mod tests {
 						let ai = alpha_im[i];
 						let b = beta[i];
 
-						assert!((b / (ar.abs() + ai.abs())) * &A * ur ~ B * (ar * ur + ai * ui) / (ar.abs() + ai.abs()));
-						assert!((b / (ar.abs() + ai.abs())) * &A * ui ~ B * (ar * ui - ai * ur) / (ar.abs() + ai.abs()));
+						assert!(b * &A * ur ~ B * (ar * ur - ai * ui) );
+						assert!(b * &A * ui ~ B * (ar * ui + ai * ur) );
 
 						i += 2;
 					}
@@ -1475,8 +1475,8 @@ mod tests {
 						let ai = alpha_im[i];
 						let b = beta[i];
 
-						assert!((b / (ar.abs() + ai.abs())) * ur.adjoint() * &A ~ (ar * ur + ai * ui).adjoint() / (ar.abs() + ai.abs()) * B);
-						assert!((b / (ar.abs() + ai.abs())) * ui.adjoint() * &A ~ (ar * ui - ai * ur).adjoint() / (ar.abs() + ai.abs()) * B);
+						assert!(b * ur.adjoint() * &A ~ (ar * ur - ai * ui).adjoint() * B);
+						assert!(b * ui.adjoint() * &A ~ (ar * ui + ai * ur).adjoint() * B);
 
 						i += 2;
 					}

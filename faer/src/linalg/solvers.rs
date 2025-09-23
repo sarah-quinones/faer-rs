@@ -1404,7 +1404,7 @@ impl<T: RealField> GeneralizedEigen<T> {
 		let mut U_real = Mat::zeros(n, n);
 		let mut S_re = Diag::zeros(n);
 		let mut S_im = Diag::zeros(n);
-		let mut S_b = Diag::zeros(0);
+		let mut S_b = Diag::zeros(n);
 		let A = &mut A.cloned();
 		let B = &mut B.cloned();
 
@@ -2719,6 +2719,38 @@ mod tests {
 
 		assert!(&A * evd.U() ~ evd.U() * evd.S());
 		assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+	}
+
+	#[test]
+	fn test_geigen_real() {
+		let rng = &mut StdRng::seed_from_u64(0);
+		let n = 50;
+
+		let A = CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: StandardNormal,
+		}
+		.rand::<Mat<f64>>(rng);
+
+		let B = CwiseMatDistribution {
+			nrows: n,
+			ncols: n,
+			dist: StandardNormal,
+		}
+		.rand::<Mat<f64>>(rng);
+
+		let n = A.nrows();
+		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
+
+		let Ac = zip!(&A).map(|unzip!(x)| c64::new(*x, 0.0));
+		let Bc = zip!(&B).map(|unzip!(x)| c64::new(*x, 0.0));
+
+		{
+			let evd = A.generalized_eigen(&B).unwrap();
+			let e = zip!(evd.S_a(), evd.S_b()).map(|unzip!(a, b)| a / b);
+			assert!(&Ac * evd.U() ~ &Bc * evd.U() * e);
+		}
 	}
 
 	#[test]

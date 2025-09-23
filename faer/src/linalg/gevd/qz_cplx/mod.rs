@@ -266,7 +266,7 @@ fn hessenberg_to_qz_unblocked<T: ComplexField>(
 				// go to next block -- exit if finished.
 				ilast = ilast.wrapping_sub(1);
 				if ilast == usize::MAX || ilast < ilo {
-					return;
+					break 'main_loop;
 				}
 
 				// reset counters

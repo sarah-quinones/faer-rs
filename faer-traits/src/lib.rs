@@ -363,7 +363,7 @@ fn sqrt_impl<T: RealField>(re: T, im: T) -> (T, T) {
 	}
 
 	let out_re = sqrt(mul_pow2(sum, half));
-	let mut out_im = sqrt(mul_pow2(abs - re, half));
+	let mut out_im = sqrt(max(zero(), mul_pow2(abs - re, half)));
 	if im_negative {
 		out_im = -out_im;
 	}

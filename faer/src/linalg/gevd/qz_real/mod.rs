@@ -845,7 +845,7 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 				// * Go to next block -- exit if finished.
 				ilast = ilast.wrapping_sub(1);
 				if ilast == usize::MAX || ilast < ilo {
-					return;
+					break 'main_loop;
 				}
 
 				// * Reset counters
@@ -1150,7 +1150,11 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 				// * Normalize so beta > 0, and Im( alpha1 ) > 0
 				// *
 				beta[ilast - 1] = copy(b1a);
-				beta[ilast] = copy(b2a);
+				if wi != zero() {
+					beta[ilast] = copy(b1a);
+				} else {
+					beta[ilast] = copy(b2a);
+				}
 				alphar[ilast - 1] = (wr * b1a) * s1inv;
 				alphai[ilast - 1] = (wi * b1a) * s1inv;
 				alphar[ilast] = (wr * b2a) * s1inv;

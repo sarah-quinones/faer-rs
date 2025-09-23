@@ -196,8 +196,10 @@ use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
 use faer_traits::*;
 
+/// shorthand for `<_ as Auto::<T>>::auto()`
+#[macro_export]
 macro_rules! auto {
-	($ty: ty) => {
+	($ty: ty $(,)?) => {
 		$crate::Auto::<$ty>::auto()
 	};
 }
