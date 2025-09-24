@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://codeberg.org/repo-avatars/0e47ec7b1315cbc11200a81d60f8e274aec9cfe3ceed567ce32f5629b1df054e" alt="faer logo"/ width="25%">
+  <img src="https://faer.veganb.tw/faer-logo-color.png" alt="faer logo"/ width="25%">
 </p>
 
 # faer
