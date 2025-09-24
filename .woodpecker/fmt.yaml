@@ -13,4 +13,4 @@ steps:
       - rustup component add rustfmt
       - cargo fmt --check
       - cargo install ripgrep --locked
-      - if [[ $(rg blocksize) ]]; then false; fi
+      - if [ $(rg blocksize) ]; then false; fi
