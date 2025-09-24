@@ -43,11 +43,11 @@ pub enum SelfAdjointGevdError {
 pub struct GeneralizedSchurParams {
 	/// An estimate of the relative cost of flops within the near-the-diagonal shift chase compared
 	/// to flops within the matmul calls of a QZ sweep.
-	pub relative_cost_estimate_of_shift_chase_to_matmul: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	pub relative_cost_estimate_of_shift_chase_to_matmul: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 	/// Function that returns the number of shifts to use for a given matrix size
-	pub recommended_shift_count: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	pub recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 	/// Function that returns the deflation window to use for a given matrix size
-	pub recommended_deflation_window: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	pub recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 	/// Threshold to switch between blocked and unblocked code
 	pub blocking_threshold: usize,
 	/// Threshold of percent of aggressive-early-deflation window that must converge to skip a
@@ -79,7 +79,7 @@ pub struct GevdParams {
 	pub non_exhaustive: NonExhaustive,
 }
 
-fn default_relative_cost_estimate_of_shift_chase_to_matmul(n: usize, nh: usize) -> usize {
+extern "C" fn default_relative_cost_estimate_of_shift_chase_to_matmul(n: usize, nh: usize) -> usize {
 	_ = (n, nh);
 	10
 }

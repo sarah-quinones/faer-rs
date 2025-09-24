@@ -3,6 +3,7 @@ members = [
   "faer-traits",
   "faer",
   "faer-macros",
+  "faer-ffi",
 ]
 exclude = [
   "faer-no-std-test",

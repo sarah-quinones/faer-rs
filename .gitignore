@@ -12,3 +12,4 @@ compile_commands.json
 diol*.json
 mkl_bench
 openblas_bench
+faer-ffi/faer.h

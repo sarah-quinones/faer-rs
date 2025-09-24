@@ -833,6 +833,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "faer-ffi"
+version = "0.1.0"
+dependencies = [
+ "faer",
+ "paste",
+]
+
+[[package]]
 name = "faer-macros"
 version = "0.22.1"
 dependencies = [

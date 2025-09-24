@@ -6,9 +6,9 @@ pub(crate) mod real_schur;
 #[derive(Clone, Copy, Debug)]
 pub struct SchurParams {
 	/// function that returns the number of shifts to use for a given matrix size
-	pub recommended_shift_count: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	pub recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 	/// function that returns the deflation window to use for a given matrix size
-	pub recommended_deflation_window: fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	pub recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 	/// threshold to switch between blocked and unblocked code
 	pub blocking_threshold: usize,
 	/// threshold of percent of aggressive-early-deflation window that must converge to skip a
@@ -51,7 +51,7 @@ pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool,
 	])
 }
 
-fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
+extern "C" fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
 	let n = dim;
 	if n < 30 {
 		2
@@ -70,7 +70,7 @@ fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usiz
 	}
 }
 
-fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) -> usize {
+extern "C" fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) -> usize {
 	let n = dim;
 	if n < 30 {
 		2

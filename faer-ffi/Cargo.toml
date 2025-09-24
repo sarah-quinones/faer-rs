@@ -1,0 +1,22 @@
+[package]
+name = "faer-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+faer = { version = "0.23.0", path = "../faer" }
+paste = "1.0.15"
+
+[features]
+default = [
+  "std",
+  "rayon",
+  "rand",
+  "linalg",
+  "sparse-linalg",
+]
+std = ["faer/std"]
+rand = ["faer/rand"]
+rayon = ["faer/rayon", "std"]
+linalg = ["faer/linalg"]
+sparse-linalg = ["faer/sparse-linalg"]
