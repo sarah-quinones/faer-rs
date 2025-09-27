@@ -697,6 +697,7 @@ fn aggressive_early_deflation<T: RealField>(
 	}
 	v.fill(zero());
 	v.rb_mut().diagonal_mut().fill(one::<T>());
+	#[allow(clippy::overly_complex_bool_expr)]
 	let infqr = if true || jw < params.blocking_threshold {
 		lahqr(true, tw.rb_mut(), Some(v.rb_mut()), s_re_window.rb_mut(), s_im_window.rb_mut(), 0, jw)
 	} else {

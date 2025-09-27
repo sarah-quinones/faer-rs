@@ -20,19 +20,12 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-          components: clippy, rustfmt, rust-src, miri
+          components: clippy, rustfmt
 
       - name: Formatting check
-        run:
-          cargo fmt --all -- --check &&
-          cd ./faer-entity &&
-          cargo fmt --all -- --check
-        # want to get all quality issues
-        continue-on-error: true
+        run: cargo +nightly fmt --all -- --check
 
       - name: Linting check
-        run:
-          cargo clippy --all-targets &&
-          cd ./faer-entity &&
-          cargo clippy --all-targets
-        continue-on-error: true
+        env:
+          RUSTFLAGS: -Awarnings # ignore warnings for clippy
+        run: cargo clippy --all-targets
