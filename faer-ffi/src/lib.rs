@@ -320,7 +320,7 @@ macro_rules! funcs {
 		>$inputs: tt -> $output_ty: ty
 			$body:block
 	) => {
-		paste::paste! {
+		pastey::paste! {
 			$(
 				#[unsafe(no_mangle)]
 				pub unsafe extern "C" fn [<libfaer_v0_23_ $func _ $ty0_list>] $inputs -> $output_ty { type $ty0 = $ty0_list;#[allow(unused_unsafe)] unsafe {$body} }
@@ -335,13 +335,13 @@ macro_rules! funcs {
 		>$inputs: tt -> $output_ty: ty
 			$body:block
 	) => {
-		paste::paste! {
+		pastey::paste! {
 			$(
 				#[unsafe(no_mangle)]
 				pub unsafe extern "C" fn [<libfaer_v0_23_ $func _u32_ $ty0_list >] $inputs -> $output_ty { type $ty0 = $ty0_list; type $ty1 = u32;#[allow(unused_unsafe)] unsafe {$body} }
 			)*
 		}
-		paste::paste! {
+		pastey::paste! {
 			$(
 				#[unsafe(no_mangle)]
 				pub unsafe extern "C" fn [<libfaer_v0_23_ $func _u64_ $ty0_list >] $inputs -> $output_ty { type $ty0 = $ty0_list; type $ty1 = u64;#[allow(unused_unsafe)] unsafe {$body} }
