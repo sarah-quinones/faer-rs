@@ -1084,6 +1084,7 @@ pub trait ComplexField:
 	fn mul_pow2_impl(lhs: &Self, rhs: &Self::Real) -> Self;
 
 	fn is_finite_impl(value: &Self) -> bool;
+	#[allow(clippy::eq_op)]
 	fn is_nan_impl(value: &Self) -> bool {
 		value != value
 	}
