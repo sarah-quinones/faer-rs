@@ -4,6 +4,7 @@ pub(crate) mod complex_schur;
 pub(crate) mod real_schur;
 
 #[derive(Clone, Copy, Debug)]
+
 pub struct SchurParams {
 	/// function that returns the number of shifts to use for a given matrix size
 	pub recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
@@ -14,7 +15,6 @@ pub struct SchurParams {
 	/// threshold of percent of aggressive-early-deflation window that must converge to skip a
 	/// sweep
 	pub nibble_threshold: usize,
-
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
@@ -35,6 +35,7 @@ pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool,
 	let nsr = (params.recommended_shift_count)(n, nh);
 
 	let _ = want_t;
+
 	let _ = want_z;
 
 	if n <= 3 {
@@ -53,6 +54,7 @@ pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool,
 
 extern "C" fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
 	let n = dim;
+
 	if n < 30 {
 		2
 	} else if n < 60 {
@@ -72,6 +74,7 @@ extern "C" fn default_recommended_shift_count(dim: usize, _active_block_dim: usi
 
 extern "C" fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) -> usize {
 	let n = dim;
+
 	if n < 30 {
 		2
 	} else if n < 60 {
@@ -83,6 +86,7 @@ extern "C" fn default_recommended_deflation_window(dim: usize, _active_block_dim
 		{
 			(n as f64 / (n as f64).log2()) as usize
 		}
+
 		#[cfg(not(feature = "std"))]
 		{
 			libm::log2(n as f64 / (n as f64)) as usize

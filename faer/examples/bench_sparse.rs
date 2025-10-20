@@ -25,30 +25,39 @@ fn download(name: &str, sym: bool) -> SparseColMat<usize, f64> {
 	let url = MAP[name];
 
 	let mut dst = Vec::new();
+
 	{
 		let mut easy = Easy::new();
+
 		easy.url(url).unwrap();
 
 		let mut transfer = easy.transfer();
+
 		transfer
 			.write_function(|data| {
 				dst.extend_from_slice(data);
+
 				Ok(data.len())
 			})
 			.unwrap();
+
 		transfer.perform().unwrap();
 	}
 
 	let tmp = std::env::temp_dir().join("__tmp__.mtx");
 
 	let tar = flate2::read::GzDecoder::new(&*dst);
+
 	let mut mtx = tar::Archive::new(tar);
+
 	let mut size = 0;
 
 	for entry in mtx.entries().unwrap() {
 		let mut entry = entry.unwrap();
+
 		if entry.path().unwrap().extension() == Some(OsStr::new("mtx")) && entry.size() > size {
 			size = entry.size();
+
 			entry.unpack(&tmp).unwrap();
 		}
 	}
@@ -66,6 +75,7 @@ fn download(name: &str, sym: bool) -> SparseColMat<usize, f64> {
 				.zip(&val)
 				.flat_map(|(&[row, col], &val)| {
 					let val = if row == col { val / 2.0 } else { val };
+
 					[Triplet::new(row, col, val), Triplet::new(col, row, val)]
 				})
 				.collect::<Vec<_>>()
@@ -81,11 +91,13 @@ fn download(name: &str, sym: bool) -> SparseColMat<usize, f64> {
 }
 
 #[cfg(suitesparse)]
+
 fn suitesparse_llt(bencher: Bencher, name: String) {
 	let A = download(&name, true);
 
 	unsafe {
 		let mut common = core::mem::zeroed::<cholmod_common>();
+
 		let mut A = cholmod_sparse_struct {
 			nrow: A.nrows(),
 			ncol: A.ncols(),
@@ -104,15 +116,21 @@ fn suitesparse_llt(bencher: Bencher, name: String) {
 		};
 
 		cholmod_l_start(&mut common);
+
 		cholmod_l_defaults(&mut common);
+
 		common.nmethods = 1;
+
 		common.method[0].ordering = CHOLMOD_AMD as _;
 
 		let mut L = cholmod_l_analyze(&mut A, &mut common);
+
 		bencher.bench(|| {
 			cholmod_l_factorize(&mut A, L, &mut common);
 		});
+
 		cholmod_l_free_factor(&mut L, &mut common);
+
 		cholmod_l_finish(&mut common);
 	}
 }
@@ -121,6 +139,7 @@ fn faer_llt(bencher: Bencher, name: String) {
 	let A = download(&name, true);
 
 	let symbolic = linalg::solvers::SymbolicLlt::try_new(A.symbolic(), Side::Lower).unwrap();
+
 	bencher.bench(|| linalg::solvers::Llt::try_new_with_symbolic(symbolic.clone(), A.rb(), Side::Lower));
 }
 
@@ -132,13 +151,16 @@ fn main() -> eyre::Result<()> {
 			"llt",
 			{
 				let list = diol::variadics::Nil;
+
 				#[cfg(suitesparse)]
 				let list = diol::variadics::Cons {
 					head: suitesparse_llt,
 					tail: list,
 				};
+
 				#[cfg(faer)]
 				let list = diol::variadics::Cons { head: faer_llt, tail: list };
+
 				list
 			},
 			["nd3k", "af shell7", "G3 circuit"].map(String::from),

@@ -2,20 +2,25 @@
 
 use core::ffi::c_void;
 use faer::dyn_stack::StackReq;
-use faer::{c32, c64};
+use faer::{c32, c64, cx128, fx128};
 
 trait RealField: faer::traits::RealField + Copy + 'static {}
+
 impl<T: faer::traits::RealField + Copy + 'static> RealField for T {}
+
 trait ComplexField: faer::traits::ComplexField + Copy + 'static {}
+
 impl<T: faer::traits::ComplexField + Copy + 'static> ComplexField for T {}
 
 type AsIs<T> = T;
 
 #[derive(Copy, Clone)]
+
 pub enum Never {}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct MatRef {
 	pub ptr: *const c_void,
 	pub nrows: usize,
@@ -26,6 +31,7 @@ pub struct MatRef {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct MatMut {
 	pub ptr: *mut c_void,
 	pub nrows: usize,
@@ -36,6 +42,7 @@ pub struct MatMut {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct VecRef {
 	pub ptr: *const c_void,
 	pub len: usize,
@@ -44,6 +51,7 @@ pub struct VecRef {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct VecMut {
 	pub ptr: *mut c_void,
 	pub len: usize,
@@ -52,6 +60,7 @@ pub struct VecMut {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct SliceRef {
 	pub ptr: *const c_void,
 	pub len: usize,
@@ -59,17 +68,21 @@ pub struct SliceRef {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct SliceMut {
 	pub ptr: *mut c_void,
 	pub len: usize,
 }
 
 pub enum Scalar {}
+
 pub enum Index {}
+
 pub enum Real {}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub enum Accum {
 	Replace,
 	Add,
@@ -77,6 +90,7 @@ pub enum Accum {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub enum Conj {
 	No,
 	Yes,
@@ -84,6 +98,7 @@ pub enum Conj {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub enum ParTag {
 	Seq,
 	Rayon,
@@ -91,6 +106,7 @@ pub enum ParTag {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct Par {
 	pub tag: ParTag,
 	pub nthreads: usize,
@@ -98,6 +114,7 @@ pub struct Par {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub enum Block {
 	Rectangular,
 	TriangularLower,
@@ -110,6 +127,7 @@ pub enum Block {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct Layout {
 	pub len_bytes: usize,
 	pub align_bytes: usize,
@@ -126,6 +144,7 @@ impl From<StackReq> for Layout {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+
 pub struct MemAlloc {
 	pub ptr: *mut c_void,
 	pub len_bytes: usize,
@@ -187,6 +206,7 @@ impl MatMut {
 }
 
 #[allow(dead_code)]
+
 impl VecRef {
 	fn diag<'a, T>(self) -> faer::diag::DiagRef<'a, T> {
 		unsafe { faer::diag::DiagRef::from_raw_parts(self.ptr as *const T, self.len, self.stride) }
@@ -202,6 +222,7 @@ impl VecRef {
 }
 
 #[allow(dead_code)]
+
 impl VecMut {
 	fn diag<'a, T>(self) -> faer::diag::DiagMut<'a, T> {
 		unsafe { faer::diag::DiagMut::from_raw_parts_mut(self.ptr as *mut T, self.len, self.stride) }
@@ -298,7 +319,7 @@ macro_rules! funcs {
 			$body:block
 	) => {
 		$crate::funcs!(
-			impl 2 @ fn $func<$ty0 in (f32, f64, c32, c64,),>$inputs -> $output_ty $body
+			impl 2 @ fn $func<$ty0 in (f32, f64, fx128, c32, c64, cx128,),>$inputs -> $output_ty $body
 		);
 	};
 
@@ -349,6 +370,7 @@ macro_rules! funcs {
 		}
 	};
 }
+
 pub(crate) use funcs;
 
 macro_rules! cerr {
@@ -403,6 +425,15 @@ macro_rules! cparams {
 			$($field: $field_ty,)*
 		}
 
+		funcs!({
+			pub fn $name<T>() -> $name {
+				let default: $path = faer::auto!(T);
+				$name {
+					$($field: default.$field.into(),)*
+				}
+			}
+		});
+
 		impl $name {
 			#[allow(dead_code)]
 			fn faer<T: ComplexField>(self) -> faer::Spec<$path, T> {
@@ -419,16 +450,27 @@ macro_rules! cparams {
 				}
 			}
 		}
+		impl From<$path> for $name {
+			#[allow(unused_variables)]
+			fn from(value: $path) -> $name {
+				$name {
+					$($field: value.$field.into(),)*
+				}
+			}
+		}
 	)*};
 }
 
 #[cfg(feature = "linalg")]
+
 pub mod linalg {
+
 	use super::*;
 	use faer::linalg as la;
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub enum ComputeSvdVectors {
 		No,
 		Thin,
@@ -447,6 +489,7 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub enum ComputeEigenvectors {
 		No,
 		Yes,
@@ -463,6 +506,7 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub enum PivotingStrategy {
 		/// searches for the k-th pivot in the k-th column
 		Partial,
@@ -491,16 +535,39 @@ pub mod linalg {
 		}
 	}
 
+	impl From<la::cholesky::lblt::factor::PivotingStrategy> for PivotingStrategy {
+		fn from(value: la::cholesky::lblt::factor::PivotingStrategy) -> Self {
+			match value {
+				la::cholesky::lblt::factor::PivotingStrategy::Partial => PivotingStrategy::Partial,
+				la::cholesky::lblt::factor::PivotingStrategy::PartialDiag => PivotingStrategy::PartialDiag,
+				la::cholesky::lblt::factor::PivotingStrategy::Rook => PivotingStrategy::Rook,
+				la::cholesky::lblt::factor::PivotingStrategy::RookDiag => PivotingStrategy::RookDiag,
+				la::cholesky::lblt::factor::PivotingStrategy::Full => PivotingStrategy::Full,
+				_ => PivotingStrategy::Partial,
+			}
+		}
+	}
+
 	cerr!({
 		#[ok(faer::linalg::cholesky::llt::factor::LltInfo)]
 		#[err(faer::linalg::cholesky::llt::factor::LltError)]
+
 		pub enum LltStatus {
 			Ok { dynamic_regularization_count: usize },
 			NonPositivePivot { index: usize },
 		}
 
+		#[ok(faer::linalg::cholesky::llt_pivoting::factor::PivLltInfo)]
+		#[err(faer::linalg::cholesky::llt::factor::LltError)]
+
+		pub enum PivLltStatus {
+			Ok { rank: usize, transposition_count: usize },
+			NonPositivePivot { index: usize },
+		}
+
 		#[ok(faer::linalg::cholesky::ldlt::factor::LdltInfo)]
 		#[err(faer::linalg::cholesky::ldlt::factor::LdltError)]
+
 		pub enum LdltStatus {
 			Ok { dynamic_regularization_count: usize },
 			ZeroPivot { index: usize },
@@ -508,30 +575,35 @@ pub mod linalg {
 
 		#[ok(faer::linalg::cholesky::lblt::factor::LbltInfo)]
 		#[err(Never)]
+
 		pub enum LbltStatus {
 			Ok { transposition_count: usize },
 		}
 
 		#[ok(faer::linalg::qr::no_pivoting::factor::QrInfo)]
 		#[err(Never)]
+
 		pub enum QrStatus {
 			Ok { rank: usize },
 		}
 
 		#[ok(faer::linalg::qr::col_pivoting::factor::ColPivQrInfo)]
 		#[err(Never)]
+
 		pub enum ColPivQrStatus {
 			Ok { transposition_count: usize },
 		}
 
 		#[ok(faer::linalg::lu::partial_pivoting::factor::PartialPivLuInfo)]
 		#[err(Never)]
+
 		pub enum PartialPivLuStatus {
 			Ok { transposition_count: usize },
 		}
 
 		#[ok(faer::linalg::lu::full_pivoting::factor::FullPivLuInfo)]
 		#[err(Never)]
+
 		pub enum FullPivLuStatus {
 			Ok { transposition_count: usize },
 		}
@@ -539,6 +611,7 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub enum SvdStatus {
 		Ok { padding: usize },
 		NoConvergence { padding: usize },
@@ -546,6 +619,7 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub enum EvdStatus {
 		Ok { padding: usize },
 		NoConvergence { padding: usize },
@@ -553,6 +627,7 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub enum GevdStatus {
 		Ok { padding: usize },
 		NoConvergence { padding: usize },
@@ -587,18 +662,27 @@ pub mod linalg {
 
 	cparams!({
 		#[repr(faer::linalg::cholesky::llt::factor::LltParams)]
+
 		pub struct LltParams {
 			recursion_threshold: usize,
 			block_size: usize,
 		}
 
+		#[repr(faer::linalg::cholesky::llt_pivoting::factor::PivLltParams)]
+
+		pub struct PivLltParams {
+			block_size: usize,
+		}
+
 		#[repr(faer::linalg::cholesky::ldlt::factor::LdltParams)]
+
 		pub struct LdltParams {
 			recursion_threshold: usize,
 			block_size: usize,
 		}
 
 		#[repr(faer::linalg::cholesky::lblt::factor::LbltParams)]
+
 		pub struct LbltParams {
 			pivoting: PivotingStrategy,
 			par_threshold: usize,
@@ -606,18 +690,21 @@ pub mod linalg {
 		}
 
 		#[repr(faer::linalg::qr::no_pivoting::factor::QrParams)]
+
 		pub struct QrParams {
 			blocking_threshold: usize,
 			par_threshold: usize,
 		}
 
 		#[repr(faer::linalg::qr::col_pivoting::factor::ColPivQrParams)]
+
 		pub struct ColPivQrParams {
 			blocking_threshold: usize,
 			par_threshold: usize,
 		}
 
 		#[repr(faer::linalg::lu::partial_pivoting::factor::PartialPivLuParams)]
+
 		pub struct PartialPivLuParams {
 			recursion_threshold: usize,
 			block_size: usize,
@@ -625,38 +712,45 @@ pub mod linalg {
 		}
 
 		#[repr(faer::linalg::lu::full_pivoting::factor::FullPivLuParams)]
+
 		pub struct FullPivLuParams {
 			par_threshold: usize,
 		}
 
 		#[repr(faer::linalg::svd::bidiag::BidiagParams)]
+
 		pub struct BidiagParams {
 			par_threshold: usize,
 		}
 
 		#[repr(faer::linalg::evd::tridiag::TridiagParams)]
+
 		pub struct TridiagParams {
 			par_threshold: usize,
 		}
 
 		#[repr(faer::linalg::evd::hessenberg::HessenbergParams)]
+
 		pub struct HessenbergParams {
 			par_threshold: usize,
 			blocking_threshold: usize,
 		}
 
 		#[repr(faer::linalg::gevd::gen_hessenberg::GeneralizedHessenbergParams)]
+
 		pub struct GeneralizedHessenbergParams {
 			block_size: usize,
 			blocking_threshold: usize,
 		}
 
 		#[repr(faer::linalg::evd::EvdFromSchurParams)]
+
 		pub struct EvdFromSchurParams {
 			recursion_threshold: usize,
 		}
 
 		#[repr(faer::linalg::evd::schur::SchurParams)]
+
 		pub struct SchurParams {
 			recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 			recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
@@ -665,6 +759,7 @@ pub mod linalg {
 		}
 
 		#[repr(faer::linalg::gevd::GeneralizedSchurParams)]
+
 		pub struct GeneralizedSchurParams {
 			relative_cost_estimate_of_shift_chase_to_matmul: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
 			recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
@@ -674,6 +769,7 @@ pub mod linalg {
 		}
 
 		#[repr(faer::linalg::svd::SvdParams)]
+
 		pub struct SvdParams {
 			bidiag: BidiagParams,
 			qr: QrParams,
@@ -682,12 +778,14 @@ pub mod linalg {
 		}
 
 		#[repr(faer::linalg::evd::SelfAdjointEvdParams)]
+
 		pub struct SelfAdjointEvdParams {
 			tridiag: TridiagParams,
 			recursion_threshold: usize,
 		}
 
 		#[repr(faer::linalg::evd::EvdParams)]
+
 		pub struct EvdParams {
 			hessenberg: HessenbergParams,
 			schur: SchurParams,
@@ -695,6 +793,7 @@ pub mod linalg {
 		}
 
 		#[repr(faer::linalg::gevd::GevdParams)]
+
 		pub struct GevdParams {
 			hessenberg: GeneralizedHessenbergParams,
 			schur: GeneralizedSchurParams,
@@ -704,12 +803,14 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub struct GevdFromSchurParams {
 		pub padding: usize,
 	}
 
 	impl GevdFromSchurParams {
 		#[allow(dead_code)]
+
 		fn faer<T: ComplexField>(self) -> faer::Spec<la::gevd::GevdFromSchurParams, T> {
 			<la::gevd::GevdFromSchurParams>::from(self).into()
 		}
@@ -717,19 +818,30 @@ pub mod linalg {
 
 	impl From<GevdFromSchurParams> for la::gevd::GevdFromSchurParams {
 		#[allow(unused_variables)]
+
 		fn from(value: GevdFromSchurParams) -> la::gevd::GevdFromSchurParams {
 			la::gevd::GevdFromSchurParams { ..faer::auto!(f32) }
 		}
 	}
 
+	impl From<la::gevd::GevdFromSchurParams> for GevdFromSchurParams {
+		#[allow(unused_variables)]
+
+		fn from(_: la::gevd::GevdFromSchurParams) -> GevdFromSchurParams {
+			GevdFromSchurParams { padding: 0 }
+		}
+	}
+
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub struct LltRegularization {
 		/// regularized value
 		pub dynamic_regularization_delta: *const Real,
 		/// regularization threshold
 		pub dynamic_regularization_epsilon: *const Real,
 	}
+
 	impl LltRegularization {
 		fn faer<T: RealField>(self) -> faer::linalg::cholesky::llt::factor::LltRegularization<T> {
 			{
@@ -743,6 +855,7 @@ pub mod linalg {
 
 	#[repr(C)]
 	#[derive(Copy, Clone)]
+
 	pub struct LdltRegularization {
 		/// regularized value
 		pub dynamic_regularization_delta: *const Real,
@@ -752,6 +865,7 @@ pub mod linalg {
 		/// i8
 		pub dynamic_regularization_signs: SliceMut,
 	}
+
 	impl LdltRegularization {
 		fn faer<'a, T: RealField>(self) -> faer::linalg::cholesky::ldlt::factor::LdltRegularization<'a, T> {
 			{
@@ -864,6 +978,73 @@ pub mod linalg {
 			la::cholesky::llt::inverse::inverse(A_inv.faer::<T>(), L.faer(), par.faer(), mem.faer())
 		}
 
+		pub fn piv_llt_factor_in_place_scratch<I, T>(dim: usize, par: Par, params: PivLltParams) -> Layout {
+			la::cholesky::llt_pivoting::factor::cholesky_in_place_scratch::<I, T>(dim, par.faer(), params.faer()).into()
+		}
+
+		pub fn piv_llt_factor_in_place<I, T>(
+			A: MatMut,
+			perm_fwd: SliceMut,
+			perm_bwd: SliceMut,
+			par: Par,
+			mem: MemAlloc,
+			params: PivLltParams,
+		) -> PivLltStatus {
+			la::cholesky::llt_pivoting::factor::cholesky_in_place::<I, T>(
+				A.faer(),
+				perm_fwd.slice(),
+				perm_bwd.slice(),
+				par.faer(),
+				mem.faer(),
+				params.faer(),
+			)
+			.map(|x| x.0)
+			.into()
+		}
+
+		pub fn piv_llt_solve_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
+			la::cholesky::llt_pivoting::solve::solve_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
+		}
+
+		pub fn piv_llt_solve_in_place<I, T>(L: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
+			la::cholesky::llt_pivoting::solve::solve_in_place_with_conj(
+				L.faer::<T>(),
+				faer::perm::PermRef::<I>::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				A_conj.faer(),
+				rhs.faer(),
+				par.faer(),
+				mem.faer(),
+			)
+		}
+
+		pub fn piv_llt_reconstruct_scratch<I, T>(dim: usize, par: Par) -> Layout {
+			la::cholesky::llt_pivoting::reconstruct::reconstruct_scratch::<I, T>(dim, par.faer()).into()
+		}
+
+		pub fn piv_llt_reconstruct<I, T>(A: MatMut, L: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, par: Par, mem: MemAlloc) {
+			la::cholesky::llt_pivoting::reconstruct::reconstruct(
+				A.faer::<T>(),
+				L.faer(),
+				faer::perm::PermRef::<I>::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				par.faer(),
+				mem.faer(),
+			)
+		}
+
+		pub fn piv_llt_inverse_scratch<I, T>(dim: usize, par: Par) -> Layout {
+			la::cholesky::llt_pivoting::inverse::inverse_scratch::<I, T>(dim, par.faer()).into()
+		}
+
+		pub fn piv_llt_inverse<I, T>(A_inv: MatMut, L: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, par: Par, mem: MemAlloc) {
+			la::cholesky::llt_pivoting::inverse::inverse(
+				A_inv.faer::<T>(),
+				L.faer(),
+				faer::perm::PermRef::<I>::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				par.faer(),
+				mem.faer(),
+			)
+		}
+
 		// LDLT
 		pub fn ldlt_factor_in_place_scratch<T>(dim: usize, par: Par, params: LdltParams) -> Layout {
 			la::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(dim, par.faer(), params.faer()).into()
@@ -944,7 +1125,7 @@ pub mod linalg {
 				diag.diag(),
 				subdiag.diag(),
 				A_conj.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
@@ -970,7 +1151,7 @@ pub mod linalg {
 				L.faer(),
 				diag.diag(),
 				subdiag.diag(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -995,7 +1176,7 @@ pub mod linalg {
 				L.faer(),
 				diag.diag(),
 				subdiag.diag(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1219,7 +1400,7 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Q_basis.ncols),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1246,7 +1427,7 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Q_basis.ncols),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1273,7 +1454,7 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Q_basis.ncols),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1300,7 +1481,7 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Q_basis.ncols),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1325,7 +1506,7 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Q_basis.ncols),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1373,7 +1554,7 @@ pub mod linalg {
 			la::lu::partial_pivoting::solve::solve_in_place_with_conj::<I, T>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1398,7 +1579,7 @@ pub mod linalg {
 			la::lu::partial_pivoting::solve::solve_transpose_in_place_with_conj::<I, T>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1415,7 +1596,7 @@ pub mod linalg {
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1430,7 +1611,7 @@ pub mod linalg {
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), L.nrows),
+				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1483,8 +1664,8 @@ pub mod linalg {
 			la::lu::full_pivoting::solve::solve_in_place_with_conj::<I, T>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), L.nrows),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), U.ncols),
+				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1511,8 +1692,8 @@ pub mod linalg {
 			la::lu::full_pivoting::solve::solve_transpose_in_place_with_conj::<I, T>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), L.nrows),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), U.ncols),
+				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
@@ -1539,8 +1720,8 @@ pub mod linalg {
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), L.nrows),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), U.ncols),
+				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1565,8 +1746,8 @@ pub mod linalg {
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), L.nrows),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), U.ncols),
+				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1586,7 +1767,9 @@ pub mod linalg {
 
 		pub fn svd<T>(A: MatRef, U: MatMut, S: VecMut, V: MatMut, par: Par, mem: MemAlloc, params: SvdParams) -> SvdStatus {
 			let U = if U.ncols == 0 { None } else { Some(U.faer()) };
+
 			let V = if V.ncols == 0 { None } else { Some(V.faer()) };
+
 			la::svd::svd::<T>(A.faer(), S.diag(), U, V, par.faer(), mem.faer(), params.faer()).into()
 		}
 
@@ -1597,6 +1780,7 @@ pub mod linalg {
 
 		pub fn self_adjoint_evd<T>(A: MatRef, U: MatMut, S: VecMut, par: Par, mem: MemAlloc, params: SelfAdjointEvdParams) -> EvdStatus {
 			let U = if U.ncols == 0 { None } else { Some(U.faer()) };
+
 			la::evd::self_adjoint_evd::<T>(A.faer(), S.diag(), U, par.faer(), mem.faer(), params.faer()).into()
 		}
 
@@ -1613,13 +1797,18 @@ pub mod linalg {
 
 		pub fn evd<T>(A: MatRef, UL: MatMut, UR: MatMut, S: VecMut, S_im: VecMut, par: Par, mem: MemAlloc, params: EvdParams) -> EvdStatus {
 			type R = <T as faer::traits::ComplexField>::Real;
+
 			if const { <T as faer::traits::ComplexField>::IS_REAL } {
 				let UL = if UL.ncols == 0 { None } else { Some(UL.faer()) };
+
 				let UR = if UR.ncols == 0 { None } else { Some(UR.faer()) };
+
 				la::evd::evd_real::<R>(A.faer(), S.diag(), S_im.diag(), UL, UR, par.faer(), mem.faer(), params.faer()).into()
 			} else {
 				let UL = if UL.ncols == 0 { None } else { Some(UL.faer()) };
+
 				let UR = if UR.ncols == 0 { None } else { Some(UR.faer()) };
+
 				la::evd::evd_cplx::<R>(A.faer(), S.diag(), UL, UR, par.faer(), mem.faer(), params.faer()).into()
 			}
 		}
@@ -1648,9 +1837,12 @@ pub mod linalg {
 			params: GevdParams,
 		) -> GevdStatus {
 			type R = <T as faer::traits::ComplexField>::Real;
+
 			if const { <T as faer::traits::ComplexField>::IS_REAL } {
 				let UL = if UL.ncols == 0 { None } else { Some(UL.faer()) };
+
 				let UR = if UR.ncols == 0 { None } else { Some(UR.faer()) };
+
 				la::gevd::gevd_real::<R>(
 					A.faer(),
 					B.faer(),
@@ -1666,7 +1858,9 @@ pub mod linalg {
 				.into()
 			} else {
 				let UL = if UL.ncols == 0 { None } else { Some(UL.faer()) };
+
 				let UR = if UR.ncols == 0 { None } else { Some(UR.faer()) };
+
 				la::gevd::gevd_cplx::<R>(
 					A.faer(),
 					B.faer(),
@@ -1682,4 +1876,45 @@ pub mod linalg {
 			}
 		}
 	});
+}
+
+#[unsafe(no_mangle)]
+
+pub extern "C" fn libfaer_v0_23_get_global_par() -> Par {
+	match faer::get_global_parallelism() {
+		faer::Par::Seq => Par {
+			tag: ParTag::Seq,
+			nthreads: 1,
+		},
+		faer::Par::Rayon(nthreads) => Par {
+			tag: ParTag::Rayon,
+			nthreads: nthreads.get(),
+		},
+	}
+}
+
+#[unsafe(no_mangle)]
+
+pub extern "C" fn libfaer_v0_23_set_global_par(par: Par) {
+	faer::set_global_parallelism(match par.tag {
+		ParTag::Seq => faer::Par::Seq,
+		ParTag::Rayon => faer::Par::rayon(par.nthreads),
+	})
+}
+
+#[unsafe(no_mangle)]
+
+pub unsafe extern "C" fn libfaer_v0_23_alloc(size: usize, align: usize) -> *mut c_void {
+	unsafe {
+		std::alloc::alloc(match core::alloc::Layout::from_size_align(size, align) {
+			Ok(layout) => layout,
+			Err(_) => return core::ptr::null_mut(),
+		}) as *mut c_void
+	}
+}
+
+#[unsafe(no_mangle)]
+
+pub unsafe extern "C" fn libfaer_v0_23_dealloc(ptr: *mut c_void, size: usize, align: usize) {
+	unsafe { std::alloc::dealloc(ptr as *mut u8, core::alloc::Layout::from_size_align_unchecked(size, align)) }
 }

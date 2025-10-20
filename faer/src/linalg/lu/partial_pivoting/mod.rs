@@ -5,7 +5,6 @@
 #![allow(missing_docs)]
 
 pub mod factor;
-pub mod solve;
-
 pub mod inverse;
 pub mod reconstruct;
+pub mod solve;

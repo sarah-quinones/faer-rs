@@ -25,24 +25,27 @@
 //! after computing a [`dyn_stack::StackReq`], one can query its layout to allocate the
 //! required memory. the simplest way to do so is through [`dyn_stack::MemBuffer::new`]
 
+use crate::Shape;
 use crate::internal_prelude::*;
+use crate::mat::matown::align_for;
+use crate::mat::{AsMatMut, MatMut};
 use core::marker::PhantomData;
 use dyn_stack::StackReq;
 use faer_traits::ComplexField;
 
-use crate::Shape;
-use crate::mat::matown::align_for;
-use crate::mat::{AsMatMut, MatMut};
-
 /// returns the stack requirements for creating a temporary matrix with the given dimensions.
+
 pub fn temp_mat_scratch<T: ComplexField>(nrows: usize, ncols: usize) -> StackReq {
 	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows;
+
 	if align > core::mem::size_of::<T>() {
 		col_stride = col_stride.msrv_next_multiple_of(align / core::mem::size_of::<T>());
 	}
+
 	let len = col_stride.checked_mul(ncols).unwrap();
+
 	StackReq::new_aligned::<T>(len, align)
 }
 
@@ -56,6 +59,7 @@ struct DynMat<'a, T: ComplexField, Rows: Shape, Cols: Shape> {
 
 impl<'a, T: ComplexField, Rows: Shape, Cols: Shape> Drop for DynMat<'a, T, Rows, Cols> {
 	#[inline]
+
 	fn drop(&mut self) {
 		unsafe { core::ptr::drop_in_place(core::slice::from_raw_parts_mut(self.ptr, self.col_stride * self.ncols.unbound())) };
 	}
@@ -82,8 +86,10 @@ struct DropGuard<T> {
 	ptr: *mut T,
 	len: usize,
 }
+
 impl<T> Drop for DropGuard<T> {
 	#[inline]
+
 	fn drop(&mut self) {
 		unsafe { core::ptr::drop_in_place(core::slice::from_raw_parts_mut(self.ptr, self.len)) };
 	}
@@ -91,6 +97,7 @@ impl<T> Drop for DropGuard<T> {
 
 /// creates a temporary matrix of uninit values, from the given memory stack.
 #[track_caller]
+
 pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape + 'a>(
 	nrows: Rows,
 	ncols: Cols,
@@ -99,26 +106,35 @@ pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: 
 	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows.unbound();
+
 	if align > core::mem::size_of::<T>() {
 		col_stride = col_stride.msrv_next_multiple_of(align / core::mem::size_of::<T>());
 	}
+
 	let len = col_stride.checked_mul(ncols.unbound()).unwrap();
 
 	let (uninit, stack) = stack.make_aligned_uninit::<T>(len, align);
 
 	let ptr = uninit.as_mut_ptr() as *mut T;
+
 	if core::mem::needs_drop::<T>() {
 		unsafe {
 			let mut guard = DropGuard { ptr, len: 0 };
+
 			for j in 0..len {
 				let ptr = ptr.add(j);
+
 				let val = T::nan_impl();
+
 				ptr.write(val);
+
 				guard.len += 1;
 			}
+
 			core::mem::forget(guard);
 		}
 	}
+
 	(
 		DynMat {
 			ptr,
@@ -133,6 +149,7 @@ pub unsafe fn temp_mat_uninit<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: 
 
 /// creates a temporary matrix of zero values, from the given memory stack.
 #[track_caller]
+
 pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape + 'a>(
 	nrows: Rows,
 	ncols: Cols,
@@ -141,10 +158,13 @@ pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape +
 	let align = align_for(core::mem::size_of::<T>(), core::mem::align_of::<T>(), core::mem::needs_drop::<T>());
 
 	let mut col_stride = nrows.unbound();
+
 	if align > core::mem::size_of::<T>() {
 		col_stride = col_stride.msrv_next_multiple_of(align / core::mem::size_of::<T>());
 	}
+
 	let len = col_stride.checked_mul(ncols.unbound()).unwrap();
+
 	_ = stack.make_aligned_uninit::<T>(len, align);
 
 	let (uninit, stack) = stack.make_aligned_uninit::<T>(len, align);
@@ -153,12 +173,17 @@ pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape +
 
 	unsafe {
 		let mut guard = DropGuard { ptr, len: 0 };
+
 		for j in 0..len {
 			let ptr = ptr.add(j);
+
 			let val = T::zero_impl();
+
 			ptr.write(val);
+
 			guard.len += 1;
 		}
+
 		core::mem::forget(guard);
 	}
 
@@ -174,32 +199,25 @@ pub fn temp_mat_zeroed<'a, T: ComplexField + 'a, Rows: Shape + 'a, Cols: Shape +
 	)
 }
 
+pub mod cholesky;
+pub mod evd;
+pub mod gevd;
+pub mod householder;
+/// jacobi rotation matrix
+pub mod jacobi;
+/// kronecker product
+pub mod kron;
+pub mod lu;
+mod mat_ops;
 pub mod matmul;
+pub mod qr;
+pub(crate) mod reductions;
+/// high level solvers
+pub mod solvers;
+pub mod svd;
 /// triangular matrix inverse
 pub mod triangular_inverse;
 /// triangular matrix solve
 pub mod triangular_solve;
-
-pub(crate) mod reductions;
 /// matrix zipping implementation
 pub mod zip;
-
-pub mod householder;
-/// jacobi rotation matrix
-pub mod jacobi;
-
-/// kronecker product
-pub mod kron;
-
-pub mod cholesky;
-pub mod lu;
-pub mod qr;
-
-pub mod evd;
-pub mod gevd;
-pub mod svd;
-
-mod mat_ops;
-
-/// high level solvers
-pub mod solvers;

@@ -10,6 +10,7 @@ pub fn has_spicy_matmul<T: ComplexField>() -> bool {
 			return true;
 		}
 	}
+
 	false
 }
 
@@ -22,32 +23,29 @@ pub fn spicy_matmul_scratch<T: ComplexField>(nrows: usize, ncols: usize, depth: 
 	}
 
 	let diag = temp_mat_scratch::<T>(nrows, if diag { depth } else { 0 });
+
 	let gather = temp_mat_scratch::<T>(nrows, if gather { ncols } else { 0 });
+
 	diag.and(gather)
 }
 
-#[math]
 pub fn spicy_matmul<I: Index, T: ComplexField>(
 	C: MatMut<'_, T>,
 	C_block: BlockStructure,
 	row_idx: Option<&[I]>,
 	col_idx: Option<&[I]>,
 	beta: Accum,
-
 	A: MatRef<'_, T>,
 	conj_A: Conj,
-
 	B: MatRef<'_, T>,
 	conj_B: Conj,
-
 	D: Option<DiagRef<'_, T>>,
 	alpha: T,
-
 	par: Par,
-
 	stack: &mut MemStack,
 ) {
 	let mut C = C;
+
 	assert!(all(
 		A.ncols() == B.nrows(),
 		A.nrows() == row_idx.map(|idx| idx.len()).unwrap_or(C.nrows()),
@@ -55,11 +53,15 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 	));
 
 	let nrows = A.nrows();
+
 	let ncols = B.ncols();
+
 	let depth = A.ncols();
+
 	if nrows == 0 || ncols == 0 {
 		return;
 	}
+
 	let par = if (nrows * ncols).saturating_mul(depth) > 32usize * 32usize * 32usize {
 		par
 	} else {
@@ -71,6 +73,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			assert!(i.zx() < C.nrows());
 		}
 	}
+
 	if let Some(col_idx) = col_idx {
 		for &j in col_idx {
 			assert!(j.zx() < C.ncols());
@@ -91,16 +94,22 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 
 		if let Some(feat) = feat {
 			let mut C = C;
+
 			let mut A = A;
+
 			let mut B = B;
+
 			let mut row_idx = row_idx;
+
 			let mut col_idx = col_idx;
 
 			if matches!(C_block, BlockStructure::StrictTriangularLower | BlockStructure::UnitTriangularLower) {
 				if nrows == 0 {
 					return;
 				}
+
 				A = A.get(1.., ..);
+
 				if let Some(row_idx) = &mut row_idx {
 					*row_idx = &row_idx[1..];
 				} else {
@@ -112,6 +121,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				if ncols == 0 {
 					return;
 				}
+
 				B = B.get(.., 1..);
 
 				if let Some(col_idx) = &mut col_idx {
@@ -178,24 +188,29 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 					&raw const alpha as _,
 					par.degree(),
 				);
+
 				return;
 			}
 		}
 	}
 
 	let (mut out, stack) = unsafe { temp_mat_uninit::<T, _, _>(nrows, if row_idx.is_some() || col_idx.is_some() { ncols } else { 0 }, stack) };
+
 	let mut out = out.as_mat_mut();
 
 	let (mut scaled, stack) = unsafe { temp_mat_uninit::<T, _, _>(nrows, if D.is_some() { depth } else { 0 }, stack) };
+
 	let mut scaled = scaled.as_mat_mut();
 
 	let _ = stack;
 
 	let A = if let Some(D) = D {
 		for k in 0..depth {
-			let d = real(D[k]);
-			zip!(scaled.rb_mut().col_mut(k), A.col(k)).for_each(|unzip!(x, y)| *x = mul_real(*y, d));
+			let ref d = D[k].real();
+
+			zip!(scaled.rb_mut().col_mut(k), A.col(k)).for_each(|unzip!(x, y)| *x = y.mul_real(d));
 		}
+
 		scaled.rb()
 	} else {
 		A
@@ -235,7 +250,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				B.get(.., ..size),
 				BlockStructure::Rectangular,
 				conj_B,
-				copy(alpha),
+				alpha.copy(),
 				par,
 			);
 
@@ -266,6 +281,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 	}
 
 	let lower = C_block.is_lower();
+
 	let upper = C_block.is_upper();
 
 	let diag = matches!(C_block.diag_kind(), DiagonalKind::Generic) as usize;
@@ -276,7 +292,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for (i, &ii) in row_idx.iter().enumerate() {
 						if (lower && j < i + diag) || (upper && i < j + diag) {
-							C[(ii.zx(), jj.zx())] = copy(out[(i, j)]);
+							C[(ii.zx(), jj.zx())] = out[(i, j)].copy();
 						}
 					}
 				}
@@ -285,7 +301,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for (i, &ii) in row_idx.iter().enumerate() {
 						if (lower && j < i + diag) || (upper && i < j + diag) {
-							C[(ii.zx(), jj.zx())] = C[(ii.zx(), jj.zx())] + out[(i, j)];
+							C[(ii.zx(), jj.zx())] += &out[(i, j)];
 						}
 					}
 				}
@@ -296,7 +312,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				for j in 0..ncols {
 					for (i, &ii) in row_idx.iter().enumerate() {
 						if (lower && j < i + diag) || (upper && i < j + diag) {
-							C[(ii.zx(), j)] = copy(out[(i, j)]);
+							C[(ii.zx(), j)] = out[(i, j)].copy();
 						}
 					}
 				}
@@ -305,7 +321,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				for j in 0..ncols {
 					for (i, &ii) in row_idx.iter().enumerate() {
 						if (lower && j < i + diag) || (upper && i < j + diag) {
-							C[(ii.zx(), j)] = C[(ii.zx(), j)] + out[(i, j)];
+							C[(ii.zx(), j)] += &out[(i, j)];
 						}
 					}
 				}
@@ -316,7 +332,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for i in 0..nrows {
 						if (lower && j < i + diag) || (upper && i < j + diag) {
-							C[(i, jj.zx())] = copy(out[(i, j)]);
+							C[(i, jj.zx())] = out[(i, j)].copy();
 						}
 					}
 				}
@@ -325,7 +341,7 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 				for (j, &jj) in col_idx.iter().enumerate() {
 					for i in 0..nrows {
 						if (lower && j < i + diag) || (upper && i < j + diag) {
-							C[(i, jj.zx())] = C[(i, jj.zx())] + out[(i, j)];
+							C[(i, jj.zx())] += &out[(i, j)];
 						}
 					}
 				}

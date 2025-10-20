@@ -4,32 +4,41 @@ use linalg::matmul::triangular::BlockStructure;
 
 pub fn reconstruct_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
+
 	temp_mat_scratch::<T>(dim, dim)
 }
 
 #[track_caller]
-#[math]
+
 pub fn reconstruct<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef<'_, T>, par: Par, stack: &mut MemStack) {
 	let mut out = out;
+
 	_ = stack;
 
 	let n = out.nrows();
+
 	assert!(all(out.nrows() == n, out.ncols() == n, L.nrows() == n, L.ncols() == n, D.dim() == n,));
 
 	let (mut LxD, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+
 	let mut LxD = LxD.as_mat_mut();
+
 	{
 		with_dim!(N, n);
+
 		let mut LxD = LxD.rb_mut().as_shape_mut(N, N);
+
 		let L = L.as_shape(N, N);
+
 		let D = D.as_shape(N);
 
 		for j in N.indices() {
-			let d = copy(D[j]);
+			let d = &D[j].real();
 
-			LxD[(j, j)] = copy(d);
+			LxD[(j, j)] = d.to_cplx();
+
 			for i in j.next().to(N.end()) {
-				LxD[(i, j)] = L[(i, j)] * d;
+				LxD[(i, j)] = L[(i, j)].mul_real(d);
 			}
 		}
 	}
@@ -50,7 +59,9 @@ pub fn reconstruct<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: Dia
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -59,8 +70,10 @@ mod tests {
 	use linalg::cholesky::ldlt::*;
 
 	#[test]
+
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -71,6 +84,7 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let A = &A * A.adjoint();
+
 		let mut L = A.to_owned();
 
 		factor::cholesky_in_place(
@@ -85,6 +99,7 @@ mod tests {
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
 
 		let mut A_rec = Mat::zeros(n, n);
+
 		reconstruct::reconstruct(
 			A_rec.as_mut(),
 			L.as_ref(),

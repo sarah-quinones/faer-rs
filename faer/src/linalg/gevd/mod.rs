@@ -19,11 +19,11 @@
 use crate::internal_prelude::*;
 use complex::Complex;
 use equator::assert;
-
 pub use linalg::evd::ComputeEigenvectors;
 
 /// eigendecomposition error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+
 pub enum GevdError {
 	/// reached max iterations
 	NoConvergence,
@@ -31,6 +31,7 @@ pub enum GevdError {
 
 /// eigendecomposition error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+
 pub enum SelfAdjointGevdError {
 	/// reached max iterations
 	NoConvergence,
@@ -40,6 +41,7 @@ pub enum SelfAdjointGevdError {
 
 /// generalized schur decomposition parameters
 #[derive(Clone, Copy, Debug)]
+
 pub struct GeneralizedSchurParams {
 	/// An estimate of the relative cost of flops within the near-the-diagonal shift chase compared
 	/// to flops within the matmul calls of a QZ sweep.
@@ -53,13 +55,13 @@ pub struct GeneralizedSchurParams {
 	/// Threshold of percent of aggressive-early-deflation window that must converge to skip a
 	/// sweep
 	pub nibble_threshold: usize,
-
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
 /// schur to eigendecomposition conversion parameters
 #[derive(Clone, Copy, Debug)]
+
 pub struct GevdFromSchurParams {
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -67,6 +69,7 @@ pub struct GevdFromSchurParams {
 
 /// eigendecomposition tuning parameters
 #[derive(Clone, Copy, Debug)]
+
 pub struct GevdParams {
 	/// hessenberg parameters
 	pub hessenberg: gen_hessenberg::GeneralizedHessenbergParams,
@@ -74,13 +77,13 @@ pub struct GevdParams {
 	pub schur: GeneralizedSchurParams,
 	/// eigendecomposition from schur conversion parameters
 	pub evd_from_schur: GevdFromSchurParams,
-
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
 extern "C" fn default_relative_cost_estimate_of_shift_chase_to_matmul(n: usize, nh: usize) -> usize {
 	_ = (n, nh);
+
 	10
 }
 
@@ -120,14 +123,13 @@ impl<T: ComplexField> Auto<T> for GevdFromSchurParams {
 
 /// hessenberg decomposition
 pub mod gen_hessenberg;
-
 /// $QZ$ decomposition for complex matrices
 pub mod qz_cplx;
 /// $QZ$ decomposition for real matrices
 pub mod qz_real;
 
 #[track_caller]
-#[math]
+
 fn compute_gevd_generic<T: ComplexField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
@@ -139,7 +141,6 @@ fn compute_gevd_generic<T: ComplexField>(
 	par: Par,
 	stack: &mut MemStack,
 	params: GevdParams,
-
 	hessenberg_to_qz: fn(
 		A: MatMut<'_, T>,
 		B: MatMut<'_, T>,
@@ -156,6 +157,7 @@ fn compute_gevd_generic<T: ComplexField>(
 	qz_to_gevd: fn(A: MatRef<'_, T>, B: MatRef<'_, T>, Q: Option<MatMut<'_, T>>, Z: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack),
 ) -> Result<(), GevdError> {
 	let n = A.nrows();
+
 	assert!(all(
 		A.nrows() == n,
 		A.ncols() == n,
@@ -165,9 +167,11 @@ fn compute_gevd_generic<T: ComplexField>(
 		if const { T::IS_REAL } { alpha_im.nrows() } else { n } == n,
 		beta.nrows() == n,
 	));
+
 	if let Some(u_left) = u_left.rb() {
 		assert!(all(u_left.nrows() == n, u_left.ncols() == n));
 	}
+
 	if let Some(u_right) = u_right.rb() {
 		assert!(all(u_right.nrows() == n, u_right.ncols() == n));
 	}
@@ -182,9 +186,15 @@ fn compute_gevd_generic<T: ComplexField>(
 			if let Some(matrix) = u.rb() {
 				if matrix.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(GEVD_WARN) {
 					if matrix.col_stride().unsigned_abs() == 1 {
-						log::warn!(target: "faer_perf", "GEVD prefers column-major eigenvector matrix. Found row-major matrix.");
+						log::warn!(
+							target : "faer_perf",
+							"GEVD prefers column-major eigenvector matrix. Found row-major matrix."
+						);
 					} else {
-						log::warn!(target: "faer_perf", "GEVD prefers column-major eigenvector matrix. Found matrix with generic strides.");
+						log::warn!(
+							target : "faer_perf",
+							"GEVD prefers column-major eigenvector matrix. Found matrix with generic strides."
+						);
 					}
 				}
 			}
@@ -193,9 +203,15 @@ fn compute_gevd_generic<T: ComplexField>(
 		for M in [A.rb(), B.rb()] {
 			if M.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(GEVD_WARN) {
 				if M.col_stride().unsigned_abs() == 1 {
-					log::warn!(target: "faer_perf", "GEVD prefers column-major input matrix. Found row-major matrix.");
+					log::warn!(
+						target : "faer_perf",
+						"GEVD prefers column-major input matrix. Found row-major matrix."
+					);
 				} else {
-					log::warn!(target: "faer_perf", "GEVD prefers column-major input matrix. Found matrix with generic strides.");
+					log::warn!(
+						target : "faer_perf",
+						"GEVD prefers column-major input matrix. Found matrix with generic strides."
+					);
 				}
 			}
 		}
@@ -203,23 +219,34 @@ fn compute_gevd_generic<T: ComplexField>(
 
 	if !(A.is_all_finite() && B.is_all_finite()) {
 		{ alpha_re }.fill(nan());
+
 		{ alpha_im }.fill(nan());
+
 		{ beta }.fill(nan());
+
 		for u in [u_left, u_right] {
 			if let Some(mut u) = u {
 				u.fill(nan());
 			}
 		}
+
 		return Err(GevdError::NoConvergence);
 	}
+
 	let need_qz = u_left.is_some() || u_right.is_some();
 
 	let mut A = A;
+
 	let mut B = B;
+
 	let mut u_left = u_left;
+
 	let mut u_right = u_right;
+
 	let mut alpha_re = alpha_re;
+
 	let mut alpha_im = alpha_im;
+
 	let mut beta = beta;
 
 	for u in [u_left.rb_mut(), u_right.rb_mut()] {
@@ -230,9 +257,13 @@ fn compute_gevd_generic<T: ComplexField>(
 
 	{
 		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+
 		let (mut householder, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(block_size, n, stack) };
+
 		let mut householder = householder.as_mat_mut();
+
 		linalg::qr::no_pivoting::factor::qr_in_place(B.rb_mut(), householder.rb_mut(), par, stack, default());
+
 		linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 			B.rb(),
 			householder.rb(),
@@ -273,92 +304,118 @@ fn compute_gevd_generic<T: ComplexField>(
 	);
 
 	qz_to_gevd(A.rb(), B.rb(), u_left.rb_mut(), u_right.rb_mut(), par, stack);
+
 	Ok(())
 }
 
-#[math]
 fn solve_shifted_1x1<T: ComplexField>(smin: T::Real, ca: T::Real, A: T, d0: T, B: &mut T, w: T) {
-	let safmin = min_positive::<T::Real>();
-	let smlnum = safmin + safmin;
-	let smin = max(smin, smlnum);
+	let ref safmin = min_positive::<T::Real>();
 
-	let CR = mul_real(A, ca) - w * d0;
+	let ref smlnum = safmin + safmin;
 
-	let cmax = abs(CR);
-	if cmax < smin {
-		// use smin * I
-		let smin_inv = recip(smin);
-		*B = mul_real(*B, smin_inv);
+	let ref smin = smin.fmax(smlnum);
+
+	let CR = A.mul_real(ca) - w * d0;
+
+	let cmax = CR.abs();
+
+	if cmax < *smin {
+		let smin_inv = smin.recip();
+
+		*B = B.mul_real(smin_inv);
 	}
 
-	// w is real
-	let C = recip(CR);
-	*B = *B * C;
+	let C = CR.recip();
+
+	*B *= C;
 }
 
-#[math]
-fn solve_complex_shifted_1x1<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, d0: T, mut B: MatMut<'_, T>, wr: T, wi: T) {
+fn solve_complex_shifted_1x1<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, ref d0: T, mut B: MatMut<'_, T>, wr: T, wi: T) {
 	let nw = B.ncols();
-	let safmin = min_positive::<T>();
-	let smlnum = safmin + safmin;
-	let smin = max(smin, smlnum);
 
-	// Compute the real part of  C = ca A - w D
-	let CR = ca * A[(0, 0)] - wr * d0;
+	let ref safmin = min_positive::<T>();
+
+	let ref smlnum = safmin + safmin;
+
+	let ref smin = smin.fmax(smlnum);
+
+	let CR = ca * &A[(0, 0)] - wr * d0;
+
 	let CI = -wi * d0;
 
-	let cmax = max(abs(CR), abs(CI));
-	if cmax < smin {
-		// use smin * I
-		let smin_inv = recip(smin);
-		zip!(B.rb_mut()).for_each(|unzip!(x)| *x = *x * smin_inv);
+	let cmax = CR.abs().fmax(CI.abs());
+
+	if cmax < *smin {
+		let ref smin_inv = smin.recip();
+
+		zip!(B.rb_mut()).for_each(|unzip!(x)| *x *= smin_inv);
 	}
 
 	if nw == 1 {
-		// w is real
-		let C = recip(CR);
-		zip!(B.rb_mut()).for_each(|unzip!(x)| *x = *x * C);
+		let ref C = CR.recip();
+
+		zip!(B.rb_mut()).for_each(|unzip!(x)| *x *= C);
 	} else {
-		// w is complex
 		let (Br, Bi) = B.two_cols_mut(0, 1);
-		let C = recip(Complex { re: CR, im: CI });
+
+		let C = Complex { re: CR, im: CI }.recip();
+
 		zip!(Br, Bi).for_each(|unzip!(re, im)| {
-			(*re, *im) = (*re * C.re - *im * C.im, *re * C.im + *im * C.re);
+			(*re, *im) = (&*re * &C.re - &*im * &C.im, &*re * &C.im + &*im * &C.re);
 		});
 	}
 }
 
-#[math]
-fn solve_complex_shifted_2x2<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, d0: T, d1: T, mut B: MatMut<'_, T>, wr: T, wi: T, stack: &mut MemStack) {
+fn solve_complex_shifted_2x2<T: RealField>(
+	smin: T,
+	ref ca: T,
+	A: MatRef<'_, T>,
+	ref d0: T,
+	ref d1: T,
+	mut B: MatMut<'_, T>,
+	ref wr: T,
+	ref wi: T,
+	stack: &mut MemStack,
+) {
 	let nw = B.ncols();
-	let zero = zero::<T>;
-	let safmin = min_positive::<T>();
-	let smlnum = safmin + safmin;
-	let smin = max(smin, smlnum);
 
-	// Compute the real part of  C = ca A - w D
+	let zero = zero::<T>;
+
+	let ref safmin = min_positive::<T>();
+
+	let ref smlnum = safmin + safmin;
+
+	let ref smin = smin.fmax(smlnum);
 
 	if nw == 1 {
-		// w is real
-
 		let (mut C, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(2, 2, stack) };
+
 		let mut C = C.as_mat_mut();
+
 		let mut row_perm_fwd = [0usize; 2];
+
 		let mut row_perm_inv = [0usize; 2];
+
 		let mut col_perm_fwd = [0usize; 2];
+
 		let mut col_perm_inv = [0usize; 2];
 
-		C[(0, 0)] = ca * A[(0, 0)] - wr * d0;
-		C[(1, 0)] = ca * A[(1, 0)];
-		C[(0, 1)] = ca * A[(0, 1)];
-		C[(1, 1)] = ca * A[(1, 1)] - wr * d1;
+		C[(0, 0)] = ca * &A[(0, 0)] - wr * d0;
+
+		C[(1, 0)] = ca * &A[(1, 0)];
+
+		C[(0, 1)] = ca * &A[(0, 1)];
+
+		C[(1, 1)] = ca * &A[(1, 1)] - wr * d1;
 
 		let cmax = C.norm_max();
-		if cmax < smin {
-			// use smin * I
-			let smin_inv = recip(smin);
-			zip!(B.rb_mut()).for_each(|unzip!(x)| *x = *x * smin_inv);
+
+		if cmax < *smin {
+			let ref smin_inv = smin.recip();
+
+			zip!(B.rb_mut()).for_each(|unzip!(x)| *x *= smin_inv);
 		}
+
 		let (_, row_perm, col_perm) = linalg::lu::full_pivoting::factor::lu_in_place(
 			C.rb_mut(),
 			&mut row_perm_fwd,
@@ -369,42 +426,47 @@ fn solve_complex_shifted_2x2<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, d0:
 			stack,
 			Default::default(),
 		);
+
 		linalg::lu::full_pivoting::solve::solve_in_place(C.rb(), C.rb(), row_perm, col_perm, B.rb_mut(), Par::Seq, stack);
 	} else {
-		// w is complex
-
 		let (mut C, stack) = unsafe { linalg::temp_mat_uninit::<Complex<T>, _, _>(2, 2, stack) };
+
 		let mut C = C.as_mat_mut();
+
 		let mut row_perm_fwd = [0usize; 2];
+
 		let mut row_perm_inv = [0usize; 2];
+
 		let mut col_perm_fwd = [0usize; 2];
+
 		let mut col_perm_inv = [0usize; 2];
 
 		C[(0, 0)] = Complex {
-			re: ca * A[(0, 0)] - wr * d0,
+			re: ca * &A[(0, 0)] - wr * d0,
 			im: -wi * d0,
 		};
 
 		C[(1, 0)] = Complex {
-			re: ca * A[(1, 0)],
+			re: ca * &A[(1, 0)],
 			im: zero(),
 		};
 
 		C[(0, 1)] = Complex {
-			re: ca * A[(0, 1)],
+			re: ca * &A[(0, 1)],
 			im: zero(),
 		};
 
 		C[(1, 1)] = Complex {
-			re: ca * A[(1, 1)] - wr * d1,
+			re: ca * &A[(1, 1)] - wr * d1,
 			im: -wi * d1,
 		};
 
 		let cmax = C.norm_max();
-		if cmax < smin {
-			// use smin * I
-			let smin_inv = recip(smin);
-			zip!(B.rb_mut()).for_each(|unzip!(x)| *x = *x * smin_inv);
+
+		if cmax < *smin {
+			let ref smin_inv = smin.recip();
+
+			zip!(B.rb_mut()).for_each(|unzip!(x)| *x *= smin_inv);
 		}
 
 		let (_, row_perm, col_perm) = linalg::lu::full_pivoting::factor::lu_in_place(
@@ -419,22 +481,26 @@ fn solve_complex_shifted_2x2<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, d0:
 		);
 
 		let n = B.nrows();
+
 		let (Br, Bi) = B.two_cols_mut(0, 1);
+
 		let (mut B, stack) = unsafe { linalg::temp_mat_uninit::<Complex<T>, _, _>(n, 1, stack) };
+
 		let mut B = B.as_mat_mut().col_mut(0);
+
 		zip!(&mut B, &Br, &Bi).for_each(|unzip!(z, re, im)| {
 			*z = Complex {
-				re: copy(*re),
-				im: copy(*im),
+				re: re.copy(),
+				im: im.copy(),
 			}
 		});
+
 		linalg::lu::full_pivoting::solve::solve_in_place(C.rb(), C.rb(), row_perm, col_perm, B.rb_mut().as_mat_mut(), Par::Seq, stack);
 
-		zip!(Br, Bi, &B).for_each(|unzip!(re, im, z)| (*re, *im) = (copy(z.re), copy(z.im)));
+		zip!(Br, Bi, &B).for_each(|unzip!(re, im, z)| (*re, *im) = (z.re.copy(), z.im.copy()));
 	}
 }
 
-#[math]
 fn qz_to_gevd_real<T: RealField>(
 	A: MatRef<'_, T>,
 	B: MatRef<'_, T>,
@@ -444,267 +510,345 @@ fn qz_to_gevd_real<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let n = A.nrows();
+
 	if n == 0 {
 		return;
 	}
 
 	let one = one::<T>;
+
 	let zero = zero::<T>;
 
-	let ulp = eps::<T>();
-	let safmin = min_positive::<T>();
-	let smallnum = safmin * from_f64(n as f64);
-	let small = smallnum * recip(ulp);
-	let bignum = recip(smallnum);
-	let big = recip(small);
+	let ref ulp = eps::<T>();
+
+	let ref safmin = min_positive::<T>();
+
+	let ref smallnum = safmin * from_f64::<T::Real>(n as f64);
+
+	let ref small = smallnum * ulp.recip();
+
+	let ref bignum = smallnum.recip();
+
+	let ref big = small.recip();
 
 	let (mut acolnorm, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+
 	let acolnorm = acolnorm.as_mat_mut();
+
 	let (mut bcolnorm, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+
 	let bcolnorm = bcolnorm.as_mat_mut();
 
 	let mut acolnorm = acolnorm.col_mut(0);
+
 	let mut bcolnorm = bcolnorm.col_mut(0);
+
 	let mut anorm = zero();
+
 	let mut bnorm = zero();
 
 	let mut j = 0;
+
 	while j < n {
 		let cplx = j + 1 < n && A[(j + 1, j)] != zero();
+
 		if !cplx {
 			let a = A.rb().col(j).get(..j).norm_l1();
-			acolnorm[j] = copy(a);
-			anorm = max(anorm, a + abs(A[(j, j)]));
+
+			acolnorm[j] = a.copy();
+
+			anorm = anorm.fmax(a + A[(j, j)].abs());
 
 			j += 1;
 		} else {
 			for jc in j..j + 2 {
 				let a = A.rb().col(jc).get(..j).norm_l1();
-				acolnorm[jc] = copy(a);
-				anorm = max(anorm, a + abs(A[(j, jc)]) + abs(A[(j + 1, jc)]));
+
+				acolnorm[jc] = a.copy();
+
+				anorm = anorm.fmax(a + A[(j, jc)].abs() + A[(j + 1, jc)].abs());
 			}
-			j += 2
+
+			j += 2;
 		}
 	}
+
 	for j in 0..n {
 		let b = B.rb().col(j).get(..j).norm_l1();
-		bcolnorm[j] = copy(b);
-		bnorm = max(bnorm, b + abs(B[(j, j)]));
-	}
-	let ascale = recip(max(anorm, safmin));
-	let bscale = recip(max(bnorm, safmin));
 
-	// left eigenvectors
+		bcolnorm[j] = b.copy();
+
+		bnorm = bnorm.fmax(b + B[(j, j)].abs());
+	}
+
+	let ref anorm = anorm;
+
+	let ref bnorm = bnorm;
+
+	let ref ascale = anorm.fmax(safmin).recip();
+
+	let ref bscale = bnorm.fmax(safmin).recip();
+
 	if let Some(mut u) = Q {
 		let mut je = 0usize;
+
 		while je < n {
 			let cplx_eigval = je + 1 < n && A[(je + 1, je)] != zero();
+
 			let nw = if cplx_eigval { 2 } else { 1 };
 
-			if !cplx_eigval && max(abs(A[(je, je)]), abs(B[(je, je)])) < safmin {
+			if !cplx_eigval && A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin {
 				u.rb_mut().col_mut(je).fill(zero());
+
 				u[(je, je)] = one();
 
 				je += 1;
+
 				continue;
 			}
 
 			let mut acoef;
+
 			let mut acoefa;
+
 			let mut bcoefa;
+
 			let mut bcoefr;
+
 			let mut bcoefi;
+
 			let mut xmax;
 
 			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
+
 			let mut rhs = rhs.as_mat_mut();
 
 			if !cplx_eigval {
-				// real eigenvalue
-				let temp = max(max(abs(A[(je, je)]) * ascale, abs(B[(je, je)]) * bscale), safmin);
-				let salfar = (temp * A[(je, je)]) * ascale;
-				let sbeta = (temp * B[(je, je)]) * bscale;
+				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+
+				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
+
+				let ref sbeta = B[(je, je)].real() * temp * bscale;
 
 				acoef = sbeta * ascale;
+
 				bcoefr = salfar * bscale;
+
 				bcoefi = zero();
 
-				// scale to avoid underflow
 				let mut scale = one();
-				let lsa = abs(sbeta) >= safmin && abs(acoef) < small;
-				let lsb = abs(salfar) >= safmin && abs(bcoefr) < small;
+
+				let lsa = sbeta.abs() >= *safmin && acoef.abs() < *small;
+
+				let lsb = salfar.abs() >= *safmin && bcoefr.abs() < *small;
 
 				if lsa {
-					scale = (small / abs(sbeta)) * min(anorm, big);
+					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
+
 				if lsb {
-					scale = max(scale, (small / abs(salfar)) * min(bnorm, big));
+					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
+
 				if lsa || lsb {
-					scale = min(scale, one() / (safmin * max(one(), max(abs(acoef), abs(bcoefr)))));
+					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoefr.abs())));
+
 					if lsa {
-						acoef = ascale * (scale * sbeta)
+						acoef = ascale * (&scale * sbeta)
 					} else {
-						acoef = scale * acoef
+						acoef = &scale * acoef
 					}
+
 					if lsb {
-						bcoefr = bscale * (scale * salfar)
+						bcoefr = bscale * (&scale * salfar)
 					} else {
-						bcoefr = scale * bcoefr
+						bcoefr = &scale * bcoefr
 					}
 				}
-				acoefa = abs(acoef);
-				bcoefa = abs(bcoefr);
+
+				acoefa = acoef.abs();
+
+				bcoefa = bcoefr.abs();
+
 				rhs[(je, 0)] = one();
+
 				xmax = one();
 			} else {
-				// complex eigenvalue
-				let (scale, _, wr, _, wi) = qz_real::generalized_eigval_2x2(
-					(copy(A[(je, je)]), copy(A[(je, je + 1)]), copy(A[(je + 1, je)]), copy(A[(je + 1, je + 1)])),
-					(copy(B[(je, je)]), copy(B[(je, je + 1)]), copy(B[(je + 1, je)]), copy(B[(je + 1, je + 1)])),
+				let (ref scale, _, wr, _, wi) = qz_real::generalized_eigval_2x2(
+					(
+						A[(je, je)].copy(),
+						A[(je, je + 1)].copy(),
+						A[(je + 1, je)].copy(),
+						A[(je + 1, je + 1)].copy(),
+					),
+					(
+						B[(je, je)].copy(),
+						B[(je, je + 1)].copy(),
+						B[(je + 1, je)].copy(),
+						B[(je + 1, je + 1)].copy(),
+					),
 				);
 
-				acoef = scale;
+				acoef = scale.copy();
+
 				bcoefr = wr;
+
 				bcoefi = wi;
 
-				// scale to avoid over/underflow
-				acoefa = abs(acoef);
-				bcoefa = abs(bcoefr) + abs(bcoefi);
+				acoefa = acoef.abs();
+
+				bcoefa = bcoefr.abs() + bcoefi.abs();
+
 				let mut scale = one();
-				if acoefa * ulp < safmin && acoefa >= safmin {
-					scale = (safmin / ulp) / acoefa
+
+				if &acoefa * ulp < *safmin && acoefa >= *safmin {
+					scale = (safmin / ulp) / &acoefa;
 				}
-				if bcoefa * ulp < safmin && bcoefa >= safmin {
-					scale = max(scale, (safmin / ulp) / bcoefa)
+
+				if &bcoefa * ulp < *safmin && bcoefa >= *safmin {
+					scale = scale.fmax((safmin / ulp) / &bcoefa);
 				}
-				if safmin * acoefa > ascale {
-					scale = ascale / (safmin * acoefa)
+
+				if safmin * &acoefa > *ascale {
+					scale = ascale / (safmin * &acoefa);
 				}
-				if safmin * bcoefa > bscale {
-					scale = min(scale, bscale / (safmin * bcoefa))
+
+				if safmin * &bcoefa > *bscale {
+					scale = scale.fmin(bscale / (safmin * &bcoefa));
 				}
+
 				if scale != one() {
-					acoef = scale * acoef;
-					acoefa = abs(acoef);
-					bcoefr = scale * bcoefr;
-					bcoefi = scale * bcoefi;
-					bcoefa = abs(bcoefr) + abs(bcoefi);
+					acoef = &scale * &acoef;
+
+					acoefa = acoef.abs();
+
+					bcoefr = &scale * &bcoefr;
+
+					bcoefi = &scale * &bcoefi;
+
+					bcoefa = bcoefr.abs() + bcoefi.abs();
 				}
 
-				// compute first two components of eigenvector
+				let ref temp = &acoef * &A[(je + 1, je)];
 
-				let temp = acoef * A[(je + 1, je)];
-				let temp2r = acoef * A[(je, je)] - bcoefr * B[(je, je)];
-				let temp2i = -bcoefi * B[(je, je)];
-				if abs(temp) > abs(temp2r) + abs(temp2i) {
+				let temp2r = &acoef * &A[(je, je)] - &bcoefr * &B[(je, je)];
+
+				let temp2i = -&bcoefi * &B[(je, je)];
+
+				if temp.abs() > temp2r.abs() + temp2i.abs() {
 					rhs[(je, 0)] = one();
+
 					rhs[(je, 1)] = zero();
+
 					rhs[(je + 1, 0)] = -temp2r / temp;
+
 					rhs[(je + 1, 1)] = -temp2i / temp;
 				} else {
 					rhs[(je + 1, 0)] = one();
+
 					rhs[(je + 1, 1)] = zero();
-					let temp = acoef * A[(je, je + 1)];
-					rhs[(je, 0)] = (bcoefr * B[(je + 1, je + 1)] - acoef * A[(je + 1, je + 1)]) / temp;
-					rhs[(je, 1)] = bcoefi * B[(je + 1, je + 1)] / temp;
+
+					let ref temp = &acoef * &A[(je, je + 1)];
+
+					rhs[(je, 0)] = (&bcoefr * &B[(je + 1, je + 1)] - &acoef * &A[(je + 1, je + 1)]) / temp;
+
+					rhs[(je, 1)] = &bcoefi * &B[(je + 1, je + 1)] / temp;
 				}
-				xmax = max(abs(rhs[(je, 0)]) + abs(rhs[(je, 1)]), abs(rhs[(je + 1, 0)]) + abs(rhs[(je + 1, 1)]))
+
+				xmax = (rhs[(je, 0)].abs() + rhs[(je, 1)].abs()).fmax(rhs[(je + 1, 0)].abs() + rhs[(je + 1, 1)].abs());
 			}
 
-			let dmin = max(max(ulp * acoefa * anorm, ulp * bcoefa * bnorm), safmin);
+			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+
 			let mut j = je + nw;
+
 			while j < n {
 				let cplx = j + 1 < n && A[(j + 1, j)] != zero();
+
 				let na = if cplx { 2 } else { 1 };
 
-				let xscale = recip(xmax);
+				let ref xscale = xmax.recip();
 
-				let mut temp = max(max(acolnorm[j], bcolnorm[j]), acoefa * acolnorm[j] + bcoefa * bcolnorm[j]);
+				let mut temp = acolnorm[j].fmax(&bcolnorm[j]).fmax(&acoefa * &acolnorm[j] + &bcoefa * &bcolnorm[j]);
 
-				let b0 = copy(B[(j, j)]);
+				let b0 = B[(j, j)].copy();
+
 				let b1;
 
 				if cplx {
-					temp = max(
-						max(temp, acoefa * acolnorm[j + 1] + bcoefa * bcolnorm[j + 1]),
-						max(acolnorm[j + 1], bcolnorm[j + 1]),
-					);
-					b1 = copy(B[(j + 1, j + 1)]);
+					temp = temp
+						.fmax(&acoefa * &acolnorm[j + 1] + &bcoefa * &bcolnorm[j + 1])
+						.fmax(&acolnorm[j + 1])
+						.fmax(&acolnorm[j + 1]);
+
+					b1 = B[(j + 1, j + 1)].copy();
 				} else {
 					b1 = zero();
 				}
+
 				if temp > bignum * xscale {
 					for jw in 0..nw {
 						for jr in je..j {
-							rhs[(jr, jw)] = xscale * rhs[(jr, jw)];
+							rhs[(jr, jw)] = xscale * &rhs[(jr, jw)];
 						}
 					}
+
 					xmax = xmax * xscale;
 				}
 
-				// Compute dot products
-				//
-				//       j-1
-				// SUM = sum  conjg( a*S(k,j) - b*P(k,j) )*x(k)
-				//       k=je
-				//
-				// To reduce the op count, this is done as
-				//
-				// _        j-1                  _        j-1
-				// a*conjg( sum  S(k,j)*x(k) ) - b*conjg( sum  P(k,j)*x(k) )
-				//          k=je                          k=je
-				//
-				// which may cause underflow problems if A or B are close
-				// to underflow.  (T.g., less than SMALL.)
-
 				let (mut sums, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(na, nw, stack) };
+
 				let mut sums = sums.as_mat_mut();
+
 				let (mut sump, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(na, nw, stack) };
+
 				let mut sump = sump.as_mat_mut();
+
 				for jw in 0..nw {
 					for ja in 0..na {
 						sums[(ja, jw)] = zero();
+
 						sump[(ja, jw)] = zero();
 
 						for jr in je..j {
-							sums[(ja, jw)] = sums[(ja, jw)] + A[(jr, j + ja)] * rhs[(jr, jw)];
-							sump[(ja, jw)] = sump[(ja, jw)] + B[(jr, j + ja)] * rhs[(jr, jw)];
+							sums[(ja, jw)] = &sums[(ja, jw)] + &A[(jr, j + ja)] * &rhs[(jr, jw)];
+
+							sump[(ja, jw)] = &sump[(ja, jw)] + &B[(jr, j + ja)] * &rhs[(jr, jw)];
 						}
 					}
 				}
 
 				for ja in 0..na {
 					if cplx_eigval {
-						rhs[(j + ja, 0)] = -acoef * sums[(ja, 0)] + bcoefr * sump[(ja, 0)] - bcoefi * sump[(ja, 1)];
-						rhs[(j + ja, 1)] = -acoef * sums[(ja, 1)] + bcoefr * sump[(ja, 1)] + bcoefi * sump[(ja, 0)];
+						rhs[(j + ja, 0)] = -&acoef * &sums[(ja, 0)] + &bcoefr * &sump[(ja, 0)] - &bcoefi * &sump[(ja, 1)];
+
+						rhs[(j + ja, 1)] = -&acoef * &sums[(ja, 1)] + &bcoefr * &sump[(ja, 1)] + &bcoefi * &sump[(ja, 0)];
 					} else {
-						rhs[(j + ja, 0)] = -acoef * sums[(ja, 0)] + bcoefr * sump[(ja, 0)];
+						rhs[(j + ja, 0)] = -&acoef * &sums[(ja, 0)] + &bcoefr * &sump[(ja, 0)];
 					}
 				}
-				// Solve  ( a A - b B ).T  y = SUM(,)
-				// with scaling and perturbation of the denominator
+
 				if cplx {
 					solve_complex_shifted_2x2(
-						copy(dmin),
-						copy(acoef),
+						dmin.copy(),
+						acoef.copy(),
 						A.submatrix(j, j, na, na).transpose(),
 						b0,
 						b1,
 						rhs.rb_mut().subrows_mut(j, na),
-						copy(bcoefr),
-						copy(bcoefi),
+						bcoefr.copy(),
+						bcoefi.copy(),
 						stack,
 					);
 				} else {
 					solve_complex_shifted_1x1(
-						copy(dmin),
-						copy(acoef),
+						dmin.copy(),
+						acoef.copy(),
 						A.submatrix(j, j, na, na).transpose(),
 						b0,
 						rhs.rb_mut().subrows_mut(j, na),
-						copy(bcoefr),
-						copy(bcoefi),
+						bcoefr.copy(),
+						bcoefi.copy(),
 					);
 				}
 
@@ -712,218 +856,294 @@ fn qz_to_gevd_real<T: RealField>(
 			}
 
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
+
 			let mut tmp = tmp.as_mat_mut();
+
 			linalg::matmul::matmul(tmp.rb_mut(), Accum::Replace, u.rb().get(.., je..), rhs.rb().get(je.., ..), one(), par);
 
 			let mut u = u.rb_mut().subcols_mut(je, nw);
+
 			u.copy_from(&tmp);
-			let scale = recip(u.norm_l2());
+
+			let ref scale = u.norm_l2().recip();
+
 			zip!(u).for_each(|unzip!(u)| {
-				*u = *u * scale;
+				*u *= scale;
 			});
 
 			je += nw;
 		}
 	}
-	// right eigenvectors
+
 	if let Some(mut u) = Z {
 		let mut je = n;
+
 		while je > 0 {
 			je -= 1;
+
 			let cplx_eigval = je > 0 && A[(je, je - 1)] != zero();
+
 			let nw = if cplx_eigval { 2 } else { 1 };
+
 			je -= nw - 1;
 
-			if !cplx_eigval && max(abs(A[(je, je)]), abs(B[(je, je)])) < safmin {
+			if !cplx_eigval && A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin {
 				u.rb_mut().col_mut(je).fill(zero());
+
 				u[(je, je)] = one();
 
 				continue;
 			}
 
 			let mut acoef;
+
 			let mut acoefa;
+
 			let mut bcoefa;
+
 			let mut bcoefr;
+
 			let mut bcoefi;
 
 			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
+
 			let mut rhs = rhs.as_mat_mut();
 
 			if !cplx_eigval {
-				// real eigenvalue
-				let temp = max(max(abs(A[(je, je)]) * ascale, abs(B[(je, je)]) * bscale), safmin);
-				let salfar = (temp * A[(je, je)]) * ascale;
-				let sbeta = (temp * B[(je, je)]) * bscale;
+				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+
+				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
+
+				let ref sbeta = B[(je, je)].real() * temp * bscale;
 
 				acoef = sbeta * ascale;
+
 				bcoefr = salfar * bscale;
+
 				bcoefi = zero();
 
-				// scale to avoid underflow
 				let mut scale = one();
-				let lsa = abs(sbeta) >= safmin && abs(acoef) < small;
-				let lsb = abs(salfar) >= safmin && abs(bcoefr) < small;
+
+				let lsa = sbeta.abs() >= *safmin && acoef.abs() < *small;
+
+				let lsb = salfar.abs() >= *safmin && bcoefr.abs() < *small;
 
 				if lsa {
-					scale = (small / abs(sbeta)) * min(anorm, big);
+					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
+
 				if lsb {
-					scale = max(scale, (small / abs(salfar)) * min(bnorm, big));
+					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
+
 				if lsa || lsb {
-					scale = min(scale, one() / (safmin * max(one(), max(abs(acoef), abs(bcoefr)))));
+					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoefr.abs())));
+
 					if lsa {
-						acoef = ascale * (scale * sbeta)
+						acoef = ascale * (&scale * sbeta)
 					} else {
-						acoef = scale * acoef
+						acoef = &scale * &acoef
 					}
+
 					if lsb {
-						bcoefr = bscale * (scale * salfar)
+						bcoefr = bscale * (&scale * salfar)
 					} else {
-						bcoefr = scale * bcoefr
+						bcoefr = &scale * &bcoefr
 					}
 				}
-				acoefa = abs(acoef);
-				bcoefa = abs(bcoefr);
+
+				acoefa = acoef.abs();
+
+				bcoefa = bcoefr.abs();
+
 				rhs[(je, 0)] = one();
 
 				for jr in 0..je {
-					rhs[(jr, 0)] = bcoefr * B[(jr, je)] - acoef * A[(jr, je)];
+					rhs[(jr, 0)] = &bcoefr * &B[(jr, je)] - &acoef * &A[(jr, je)];
 				}
 			} else {
-				// complex eigenvalue
 				let (scale, _, wr, _, wi) = qz_real::generalized_eigval_2x2(
-					(copy(A[(je, je)]), copy(A[(je, je + 1)]), copy(A[(je + 1, je)]), copy(A[(je + 1, je + 1)])),
-					(copy(B[(je, je)]), copy(B[(je, je + 1)]), copy(B[(je + 1, je)]), copy(B[(je + 1, je + 1)])),
+					(
+						A[(je, je)].copy(),
+						A[(je, je + 1)].copy(),
+						A[(je + 1, je)].copy(),
+						A[(je + 1, je + 1)].copy(),
+					),
+					(
+						B[(je, je)].copy(),
+						B[(je, je + 1)].copy(),
+						B[(je + 1, je)].copy(),
+						B[(je + 1, je + 1)].copy(),
+					),
 				);
 
 				acoef = scale;
+
 				bcoefr = wr;
+
 				bcoefi = wi;
 
-				// scale to avoid over/underflow
-				acoefa = abs(acoef);
-				bcoefa = abs(bcoefr) + abs(bcoefi);
+				acoefa = acoef.abs();
+
+				bcoefa = bcoefr.abs() + bcoefi.abs();
+
 				let mut scale = one();
-				if acoefa * ulp < safmin && acoefa >= safmin {
-					scale = (safmin / ulp) / acoefa
+
+				if &acoefa * ulp < *safmin && acoefa >= *safmin {
+					scale = (safmin / ulp) / &acoefa;
 				}
-				if bcoefa * ulp < safmin && bcoefa >= safmin {
-					scale = max(scale, (safmin / ulp) / bcoefa)
+
+				if &bcoefa * ulp < *safmin && bcoefa >= *safmin {
+					scale = scale.fmax((safmin / ulp) / &bcoefa);
 				}
-				if safmin * acoefa > ascale {
-					scale = ascale / (safmin * acoefa)
+
+				if safmin * &acoefa > *ascale {
+					scale = ascale / (safmin * &acoefa);
 				}
-				if safmin * bcoefa > bscale {
-					scale = min(scale, bscale / (safmin * bcoefa))
+
+				if safmin * &bcoefa > *bscale {
+					scale = scale.fmin(bscale / (safmin * &bcoefa));
 				}
+
 				if scale != one() {
-					acoef = scale * acoef;
-					acoefa = abs(acoef);
-					bcoefr = scale * bcoefr;
-					bcoefi = scale * bcoefi;
-					bcoefa = abs(bcoefr) + abs(bcoefi);
+					acoef = &scale * &acoef;
+
+					acoefa = acoef.abs();
+
+					bcoefr = &scale * &bcoefr;
+
+					bcoefi = &scale * &bcoefi;
+
+					bcoefa = bcoefr.abs() + bcoefi.abs();
 				}
 
-				// compute first two components of eigenvector
+				let ref temp = &acoef * &A[(je + 1, je)];
 
-				let temp = acoef * A[(je + 1, je)];
-				let temp2r = acoef * A[(je + 1, je + 1)] - bcoefr * B[(je + 1, je + 1)];
-				let temp2i = -bcoefi * B[(je + 1, je + 1)];
-				if abs(temp) > abs(temp2r) + abs(temp2i) {
+				let ref temp2r = &acoef * &A[(je + 1, je + 1)] - &bcoefr * &B[(je + 1, je + 1)];
+
+				let ref temp2i = -&bcoefi * &B[(je + 1, je + 1)];
+
+				if temp.abs() > temp2r.abs() + temp2i.abs() {
 					rhs[(je + 1, 0)] = one();
+
 					rhs[(je + 1, 1)] = zero();
+
 					rhs[(je, 0)] = -temp2r / temp;
+
 					rhs[(je, 1)] = -temp2i / temp;
 				} else {
 					rhs[(je, 0)] = one();
+
 					rhs[(je, 1)] = zero();
-					let temp = acoef * A[(je, je + 1)];
-					rhs[(je + 1, 0)] = (bcoefr * B[(je, je)] - acoef * A[(je, je)]) / temp;
-					rhs[(je + 1, 1)] = bcoefi * B[(je, je)] / temp;
+
+					let ref temp = &acoef * &A[(je, je + 1)];
+
+					rhs[(je + 1, 0)] = (&bcoefr * &B[(je, je)] - &acoef * &A[(je, je)]) / temp;
+
+					rhs[(je + 1, 1)] = &bcoefi * &B[(je, je)] / temp;
 				}
 
-				let creala = acoef * rhs[(je, 0)];
-				let cimaga = acoef * rhs[(je, 1)];
-				let crealb = bcoefr * rhs[(je, 0)] - bcoefi * rhs[(je, 1)];
-				let cimagb = bcoefi * rhs[(je, 0)] + bcoefr * rhs[(je, 1)];
-				let cre2a = acoef * rhs[(je + 1, 0)];
-				let cim2a = acoef * rhs[(je + 1, 1)];
-				let cre2b = bcoefr * rhs[(je + 1, 0)] - bcoefi * rhs[(je + 1, 1)];
-				let cim2b = bcoefi * rhs[(je + 1, 0)] + bcoefr * rhs[(je + 1, 1)];
+				let ref creala = &acoef * &rhs[(je, 0)];
+
+				let ref cimaga = &acoef * &rhs[(je, 1)];
+
+				let ref crealb = &bcoefr * &rhs[(je, 0)] - &bcoefi * &rhs[(je, 1)];
+
+				let ref cimagb = &bcoefi * &rhs[(je, 0)] + &bcoefr * &rhs[(je, 1)];
+
+				let ref cre2a = &acoef * &rhs[(je + 1, 0)];
+
+				let ref cim2a = &acoef * &rhs[(je + 1, 1)];
+
+				let ref cre2b = &bcoefr * &rhs[(je + 1, 0)] - &bcoefi * &rhs[(je + 1, 1)];
+
+				let ref cim2b = &bcoefi * &rhs[(je + 1, 0)] + &bcoefr * &rhs[(je + 1, 1)];
+
 				for jr in 0..je {
-					rhs[(jr, 0)] = -creala * A[(jr, je)] + crealb * B[(jr, je)] - cre2a * A[(jr, je + 1)] + cre2b * B[(jr, je + 1)];
-					rhs[(jr, 1)] = -cimaga * A[(jr, je)] + cimagb * B[(jr, je)] - cim2a * A[(jr, je + 1)] + cim2b * B[(jr, je + 1)];
+					rhs[(jr, 0)] = -creala * &A[(jr, je)] + crealb * &B[(jr, je)] - cre2a * &A[(jr, je + 1)] + cre2b * &B[(jr, je + 1)];
+
+					rhs[(jr, 1)] = -cimaga * &A[(jr, je)] + cimagb * &B[(jr, je)] - cim2a * &A[(jr, je + 1)] + cim2b * &B[(jr, je + 1)];
 				}
 			}
-			let dmin = max(max(ulp * acoefa * anorm, ulp * bcoefa * bnorm), safmin);
+
+			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+
 			let mut j = je;
+
 			while j > 0 {
 				j -= 1;
+
 				let cplx = j > 0 && A[(j, j - 1)] != zero();
+
 				let na = if cplx { 2 } else { 1 };
+
 				j -= na - 1;
 
-				let b0 = copy(B[(j, j)]);
+				let b0 = B[(j, j)].copy();
+
 				let b1;
 
 				if cplx {
-					b1 = copy(B[(j + 1, j + 1)]);
+					b1 = B[(j + 1, j + 1)].copy();
 				} else {
 					b1 = zero();
 				}
 
 				if cplx {
 					solve_complex_shifted_2x2(
-						copy(dmin),
-						copy(acoef),
+						dmin.copy(),
+						acoef.copy(),
 						A.submatrix(j, j, na, na),
 						b0,
 						b1,
 						rhs.rb_mut().subrows_mut(j, na),
-						copy(bcoefr),
-						copy(bcoefi),
+						bcoefr.copy(),
+						bcoefi.copy(),
 						stack,
 					);
 				} else {
 					solve_complex_shifted_1x1(
-						copy(dmin),
-						copy(acoef),
+						dmin.copy(),
+						acoef.copy(),
 						A.submatrix(j, j, na, na),
 						b0,
 						rhs.rb_mut().subrows_mut(j, na),
-						copy(bcoefr),
-						copy(bcoefi),
+						bcoefr.copy(),
+						bcoefi.copy(),
 					);
 				}
 
-				// Compute the contributions of the off-diagonals of
-				// column j (and j+1, if 2-by-2 block) of A and B to the
-				// sums.
-
 				for ja in 0..na {
 					if cplx_eigval {
-						let creala = acoef * rhs[(j + ja, 0)];
-						let cimaga = acoef * rhs[(j + ja, 1)];
-						let crealb = bcoefr * rhs[(j + ja, 0)] - bcoefi * rhs[(j + ja, 1)];
-						let cimagb = bcoefi * rhs[(j + ja, 0)] + bcoefr * rhs[(j + ja, 1)];
-						for jr in 0..j {
-							rhs[(jr, 0)] = rhs[(jr, 0)] - creala * A[(jr, j + ja)] + crealb * B[(jr, j + ja)];
-							rhs[(jr, 1)] = rhs[(jr, 1)] - cimaga * A[(jr, j + ja)] + cimagb * B[(jr, j + ja)];
-						}
-					} else {
-						let creala = acoef * rhs[(j + ja, 0)];
-						let crealb = bcoefr * rhs[(j + ja, 0)];
+						let ref creala = &acoef * &rhs[(j + ja, 0)];
+
+						let ref cimaga = &acoef * &rhs[(j + ja, 1)];
+
+						let ref crealb = &bcoefr * &rhs[(j + ja, 0)] - &bcoefi * &rhs[(j + ja, 1)];
+
+						let ref cimagb = &bcoefi * &rhs[(j + ja, 0)] + &bcoefr * &rhs[(j + ja, 1)];
 
 						for jr in 0..j {
-							rhs[(jr, 0)] = rhs[(jr, 0)] - creala * A[(jr, j + ja)] + crealb * B[(jr, j + ja)];
+							rhs[(jr, 0)] -= creala * &A[(jr, j + ja)] - crealb * &B[(jr, j + ja)];
+
+							rhs[(jr, 1)] -= cimaga * &A[(jr, j + ja)] - cimagb * &B[(jr, j + ja)];
+						}
+					} else {
+						let ref creala = &acoef * &rhs[(j + ja, 0)];
+
+						let ref crealb = &bcoefr * &rhs[(j + ja, 0)];
+
+						for jr in 0..j {
+							rhs[(jr, 0)] -= creala * &A[(jr, j + ja)] - crealb * &B[(jr, j + ja)];
 						}
 					}
 				}
 			}
+
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
+
 			let mut tmp = tmp.as_mat_mut();
+
 			linalg::matmul::matmul(
 				tmp.rb_mut(),
 				Accum::Replace,
@@ -934,16 +1154,18 @@ fn qz_to_gevd_real<T: RealField>(
 			);
 
 			let mut u = u.rb_mut().subcols_mut(je, nw);
+
 			u.copy_from(&tmp);
-			let scale = recip(u.norm_l2());
+
+			let ref scale = u.norm_l2().recip();
+
 			zip!(u).for_each(|unzip!(u)| {
-				*u = *u * scale;
+				*u *= scale;
 			});
 		}
 	}
 }
 
-#[math]
 fn qz_to_gevd_cplx<T: ComplexField>(
 	A: MatRef<'_, T>,
 	B: MatRef<'_, T>,
@@ -953,272 +1175,329 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = A.nrows();
+
 	if n == 0 {
 		return;
 	}
 
 	let one = one::<T::Real>;
 
-	let ulp = eps::<T::Real>();
-	let safmin = min_positive::<T::Real>();
-	let smallnum = safmin * from_f64(n as f64);
-	let small = smallnum * recip(ulp);
-	let bignum = recip(smallnum);
-	let big = recip(small);
+	let ref ulp = eps::<T::Real>();
+
+	let ref safmin = min_positive::<T::Real>();
+
+	let ref smallnum = safmin * from_f64::<T::Real>(n as f64);
+
+	let ref small = smallnum * ulp.recip();
+
+	let ref bignum = smallnum.recip();
+
+	let ref big = small.recip();
 
 	let (mut acolnorm, stack) = linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
+
 	let acolnorm = acolnorm.as_mat_mut();
+
 	let (mut bcolnorm, stack) = linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
+
 	let bcolnorm = bcolnorm.as_mat_mut();
 
 	let mut acolnorm = acolnorm.col_mut(0);
+
 	let mut bcolnorm = bcolnorm.col_mut(0);
+
 	let mut anorm = zero::<T::Real>();
+
 	let mut bnorm = zero::<T::Real>();
 
 	let mut j = 0;
+
 	while j < n {
 		let a = A.rb().col(j).get(..j).norm_l1();
-		acolnorm[j] = copy(a);
-		anorm = max(anorm, a + abs(A[(j, j)]));
+
+		acolnorm[j] = a.copy();
+
+		anorm = anorm.fmax(a + A[(j, j)].abs());
 
 		j += 1;
 	}
-	for j in 0..n {
-		let b = B.rb().col(j).get(..j).norm_l1();
-		bcolnorm[j] = copy(b);
-		bnorm = max(bnorm, b + abs(B[(j, j)]));
-	}
-	let ascale = recip(max(anorm, safmin));
-	let bscale = recip(max(bnorm, safmin));
 
-	// left eigenvectors
+	for j in 0..n {
+		let ref b = B.rb().col(j).get(..j).norm_l1();
+
+		bcolnorm[j] = b.copy();
+
+		bnorm = bnorm.fmax(b + B[(j, j)].abs());
+	}
+
+	let ref anorm = anorm;
+
+	let ref bnorm = bnorm;
+
+	let ref ascale = anorm.fmax(safmin).recip();
+
+	let ref bscale = bnorm.fmax(safmin).recip();
+
 	if let Some(mut u) = Q {
 		let mut je = 0usize;
+
 		while je < n {
-			if max(abs(A[(je, je)]), abs(B[(je, je)])) < safmin {
+			if A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin {
 				u.rb_mut().col_mut(je).fill(zero());
-				u[(je, je)] = from_real(one());
+
+				u[(je, je)] = one().to_cplx();
 
 				je += 1;
+
 				continue;
 			}
 
 			let mut acoef;
+
 			let acoefa;
+
 			let bcoefa;
+
 			let mut bcoef;
+
 			let mut xmax;
 
 			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+
 			let mut rhs = rhs.as_mat_mut().col_mut(0);
 
 			{
-				// real eigenvalue
-				let temp = max(max(abs(A[(je, je)]) * ascale, abs(B[(je, je)]) * bscale), safmin);
-				let salfar = mul_real(mul_real(A[(je, je)], temp), ascale);
-				let sbeta = real(B[(je, je)]) * temp * bscale;
+				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+
+				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
+
+				let ref sbeta = B[(je, je)].real() * temp * bscale;
 
 				acoef = sbeta * ascale;
-				bcoef = mul_real(salfar, bscale);
 
-				// scale to avoid underflow
+				bcoef = salfar.mul_real(bscale);
+
 				let mut scale = one();
-				let lsa = abs(sbeta) >= safmin && abs(acoef) < small;
-				let lsb = abs(salfar) >= safmin && abs(bcoef) < small;
+
+				let lsa = sbeta.abs() >= *safmin && acoef.abs() < *small;
+
+				let lsb = salfar.abs() >= *safmin && bcoef.abs() < *small;
 
 				if lsa {
-					scale = (small / abs(sbeta)) * min(anorm, big);
+					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
+
 				if lsb {
-					scale = max(scale, (small / abs(salfar)) * min(bnorm, big));
+					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
+
 				if lsa || lsb {
-					scale = min(scale, one() / (safmin * max(one(), max(abs(acoef), abs(bcoef)))));
+					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoef.abs())));
+
 					if lsa {
-						acoef = sbeta * scale * ascale
+						acoef = sbeta * &scale * ascale
 					} else {
-						acoef = acoef * scale
+						acoef = acoef * &scale
 					}
+
 					if lsb {
-						bcoef = mul_real(mul_real(salfar, scale), bscale)
+						bcoef = salfar.mul_real(&scale).mul_real(bscale)
 					} else {
-						bcoef = mul_real(bcoef, scale)
+						bcoef = bcoef.mul_real(&scale)
 					}
 				}
-				acoefa = abs(acoef);
-				bcoefa = abs(bcoef);
-				rhs[je] = from_real(one());
+
+				acoefa = acoef.abs();
+
+				bcoefa = bcoef.abs();
+
+				rhs[je] = one().to_cplx();
+
 				xmax = one();
 			}
 
-			let dmin = max(max(ulp * acoefa * anorm, ulp * bcoefa * bnorm), safmin);
+			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+
 			let mut j = je + 1;
+
 			while j < n {
-				let xscale = recip(xmax);
+				let ref xscale = xmax.recip();
 
-				let temp = max(max(acolnorm[j], bcolnorm[j]), acoefa * acolnorm[j] + bcoefa * bcolnorm[j]);
+				let ref temp = acolnorm[j].fmax(&bcolnorm[j]).fmax(&acoefa * &acolnorm[j] + &bcoefa * &bcolnorm[j]);
 
-				let b0 = copy(B[(j, j)]);
+				let b0 = B[(j, j)].copy();
 
-				if temp > bignum * xscale {
+				if *temp > bignum * xscale {
 					for jr in je..j {
-						rhs[jr] = mul_real(rhs[jr], xscale);
+						rhs[jr] = rhs[jr].mul_real(xscale);
 					}
+
 					xmax = xmax * xscale;
 				}
 
-				// Compute dot products
-				//
-				//       j-1
-				// SUM = sum  conjg( a*S(k,j) - b*P(k,j) )*x(k)
-				//       k=je
-				//
-				// To reduce the op count, this is done as
-				//
-				// _        j-1                  _        j-1
-				// a*conjg( sum  S(k,j)*x(k) ) - b*conjg( sum  P(k,j)*x(k) )
-				//          k=je                          k=je
-				//
-				// which may cause underflow problems if A or B are close
-				// to underflow.  (T.g., less than SMALL.)
-
 				let mut sums = zero::<T>();
+
 				let mut sump = zero::<T>();
 
 				for jr in je..j {
-					sums = sums + conj(A[(jr, j)]) * rhs[jr];
-					sump = sump + conj(B[(jr, j)]) * rhs[jr];
+					sums += A[(jr, j)].conj() * &rhs[jr];
+
+					sump += B[(jr, j)].conj() * &rhs[jr];
 				}
 
-				rhs[j] = conj(bcoef) * sump - mul_real(sums, acoef);
-				// Solve  ( a A - b B ).T  y = SUM(,)
-				// with scaling and perturbation of the denominator
+				rhs[j] = bcoef.conj() * &sump - sums.mul_real(&acoef);
 
-				solve_shifted_1x1(copy(dmin), copy(acoef), conj(A[(j, j)]), conj(b0), &mut rhs[j], conj(bcoef));
+				solve_shifted_1x1(dmin.copy(), acoef.copy(), A[(j, j)].conj(), b0.conj(), &mut rhs[j], bcoef.conj());
 
 				j += 1;
 			}
 
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+
 			let mut tmp = tmp.as_mat_mut().col_mut(0);
+
 			linalg::matmul::matmul(
 				tmp.rb_mut(),
 				Accum::Replace,
 				u.rb().get(.., je..),
 				rhs.rb().get(je..),
-				from_real(one()),
+				one().to_cplx(),
 				par,
 			);
 
 			let mut u = u.rb_mut().col_mut(je);
+
 			u.copy_from(&tmp);
-			let scale = recip(u.norm_l2());
+
+			let ref scale = u.norm_l2().recip();
+
 			zip!(u).for_each(|unzip!(u)| {
-				*u = mul_real(*u, scale);
+				*u = u.mul_real(scale);
 			});
 
 			je += 1;
 		}
 	}
-	// right eigenvectors
+
 	if let Some(mut u) = Z {
 		let mut je = n;
+
 		while je > 0 {
 			je -= 1;
 
-			if max(abs(A[(je, je)]), abs(B[(je, je)])) < safmin {
+			if A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin {
 				u.rb_mut().col_mut(je).fill(zero());
-				u[(je, je)] = from_real(one());
+
+				u[(je, je)] = one().to_cplx();
 
 				continue;
 			}
 
 			let mut acoef;
+
 			let acoefa;
+
 			let bcoefa;
+
 			let mut bcoefr;
 
 			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+
 			let mut rhs = rhs.as_mat_mut().col_mut(0);
 
 			{
-				// real eigenvalue
-				let temp = max(max(abs(A[(je, je)]) * ascale, abs(B[(je, je)]) * bscale), safmin);
-				let salfar = mul_real(mul_real(A[(je, je)], temp), ascale);
-				let sbeta = real(B[(je, je)]) * temp * bscale;
+				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+
+				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
+
+				let ref sbeta = B[(je, je)].real() * temp * bscale;
 
 				acoef = sbeta * ascale;
-				bcoefr = mul_real(salfar, bscale);
 
-				// scale to avoid underflow
+				bcoefr = salfar.mul_real(bscale);
+
 				let mut scale = one();
-				let lsa = abs(sbeta) >= safmin && abs(acoef) < small;
-				let lsb = abs(salfar) >= safmin && abs(bcoefr) < small;
+
+				let lsa = sbeta.abs() >= *safmin && acoef.abs() < *small;
+
+				let lsb = salfar.abs() >= *safmin && bcoefr.abs() < *small;
 
 				if lsa {
-					scale = (small / abs(sbeta)) * min(anorm, big);
+					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
+
 				if lsb {
-					scale = max(scale, (small / abs(salfar)) * min(bnorm, big));
+					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
+
 				if lsa || lsb {
-					scale = min(scale, one() / (safmin * max(one(), max(abs(acoef), abs(bcoefr)))));
+					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoefr.abs())));
+
 					if lsa {
-						acoef = sbeta * scale * ascale
+						acoef = sbeta * &scale * ascale
 					} else {
-						acoef = acoef * scale
+						acoef = acoef * &scale
 					}
+
 					if lsb {
-						bcoefr = mul_real(mul_real(salfar, scale), bscale)
+						bcoefr = salfar.mul_real(&scale).mul_real(bscale)
 					} else {
-						bcoefr = mul_real(bcoefr, scale)
+						bcoefr = bcoefr.mul_real(&scale)
 					}
 				}
-				acoefa = abs(acoef);
-				bcoefa = abs(bcoefr);
-				rhs[je] = from_real(one());
+
+				acoefa = acoef.abs();
+
+				bcoefa = bcoefr.abs();
+
+				rhs[je] = one().to_cplx();
 
 				for jr in 0..je {
-					rhs[jr] = bcoefr * B[(jr, je)] - mul_real(A[(jr, je)], acoef);
+					rhs[jr] = &bcoefr * &B[(jr, je)] - A[(jr, je)].mul_real(&acoef);
 				}
 			}
-			let dmin = max(max(ulp * acoefa * anorm, ulp * bcoefa * bnorm), safmin);
+
+			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+
 			let mut j = je;
+
 			while j > 0 {
 				j -= 1;
 
-				let b0 = copy(B[(j, j)]);
+				let b0 = B[(j, j)].copy();
 
-				solve_shifted_1x1(copy(dmin), copy(acoef), copy(A[(j, j)]), b0, &mut rhs[j], copy(bcoefr));
+				solve_shifted_1x1(dmin.copy(), acoef.copy(), A[(j, j)].copy(), b0, &mut rhs[j], bcoefr.copy());
 
-				// Compute the contributions of the off-diagonals of
-				// column j (and j+1, if 2-by-2 block) of A and B to the
-				// sums.
+				let ref creala = rhs[j].mul_real(&acoef);
 
-				let creala = mul_real(rhs[j], acoef);
-				let crealb = bcoefr * rhs[j];
+				let ref crealb = &bcoefr * &rhs[j];
 
 				for jr in 0..j {
-					rhs[jr] = rhs[jr] - creala * A[(jr, j)] + crealb * B[(jr, j)];
+					rhs[jr] = &rhs[jr] - creala * &A[(jr, j)] + crealb * &B[(jr, j)];
 				}
 			}
+
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+
 			let mut tmp = tmp.as_mat_mut().col_mut(0);
+
 			linalg::matmul::matmul(
 				tmp.rb_mut(),
 				Accum::Replace,
 				u.rb().get(.., ..je + 1),
 				rhs.rb().get(..je + 1),
-				from_real(one()),
+				one().to_cplx(),
 				par,
 			);
 
 			let mut u = u.rb_mut().col_mut(je);
+
 			u.copy_from(&tmp);
-			let scale = recip(u.norm_l2());
+
+			let ref scale = u.norm_l2().recip();
+
 			zip!(u).for_each(|unzip!(u)| {
-				*u = mul_real(*u, scale);
+				*u = u.mul_real(scale);
 			});
 		}
 	}
@@ -1226,6 +1505,7 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 
 /// computes the layout of the workspace required to compute a matrix pair's
 /// generalized eigendecomposition
+
 pub fn gevd_scratch<T: ComplexField>(
 	dim: usize,
 	left: ComputeEigenvectors,
@@ -1236,6 +1516,7 @@ pub fn gevd_scratch<T: ComplexField>(
 	let _ = (left, right);
 
 	let n = dim;
+
 	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
 
 	StackReq::any_of(&[
@@ -1259,6 +1540,7 @@ pub fn gevd_scratch<T: ComplexField>(
 ///
 /// the values in $A$ and $B$ after this function is called are unspecified.
 #[track_caller]
+
 pub fn gevd_real<T: RealField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
@@ -1294,6 +1576,7 @@ pub fn gevd_real<T: RealField>(
 ///
 /// the values in $A$ and $B$ after this function is called are unspecified.
 #[track_caller]
+
 pub fn gevd_cplx<T: ComplexField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
@@ -1332,7 +1615,9 @@ pub fn gevd_cplx<T: ComplexField>(
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::stats::prelude::*;
 	use crate::utils;
@@ -1340,6 +1625,7 @@ mod tests {
 	use equator::assert;
 
 	#[test]
+
 	fn test_lishen_() {
 		let approx_eq = utils::approx::CwiseMat(utils::approx::ApproxEq::<f64>::eps() * 128.0);
 
@@ -1397,18 +1683,24 @@ mod tests {
 		];
 
 		let A = MatRef::from_row_major_array(A);
+
 		let B = MatRef::from_row_major_array(B);
 
 		let n = A.nrows();
 
 		{
 			let mut H = A.to_owned();
+
 			let mut T = B.to_owned();
+
 			let mut alpha_re = Diag::<f64>::zeros(n);
+
 			let mut alpha_im = Diag::<f64>::zeros(n);
+
 			let mut beta = Diag::<f64>::zeros(n);
 
 			let mut UL = Mat::<f64>::identity(n, n);
+
 			let mut UR = Mat::<f64>::identity(n, n);
 
 			gevd_real(
@@ -1433,24 +1725,32 @@ mod tests {
 
 			{
 				let mut i = 0;
+
 				while i < n {
 					if alpha_im[i] == 0.0 {
 						let u = UR.col(i);
+
 						let a = alpha_re[i];
+
 						let b = beta[i];
 
-						assert!((b / a) * &A * u ~ B * u);
+						assert!((b / a) * & A * u ~ B * u);
 
 						i += 1;
 					} else {
 						let ur = UR.col(i);
+
 						let ui = UR.col(i + 1);
+
 						let ar = alpha_re[i];
+
 						let ai = alpha_im[i];
+
 						let b = beta[i];
 
-						assert!(b * &A * ur ~ B * (ar * ur - ai * ui) );
-						assert!(b * &A * ui ~ B * (ar * ui + ai * ur) );
+						assert!(b * & A * ur ~ B * (ar * ur - ai * ui));
+
+						assert!(b * & A * ui ~ B * (ar * ui + ai * ur));
 
 						i += 2;
 					}
@@ -1459,24 +1759,36 @@ mod tests {
 
 			{
 				let mut i = 0;
+
 				while i < n {
 					if alpha_im[i] == 0.0 {
 						let u = UL.col(i);
+
 						let a = alpha_re[i];
+
 						let b = beta[i];
 
-						assert!(b / a * u.adjoint() * &A ~ u.adjoint() * B);
+						assert!(b / a * u.adjoint() * & A ~ u.adjoint() * B);
 
 						i += 1;
 					} else {
 						let ur = UL.col(i);
+
 						let ui = UL.col(i + 1);
+
 						let ar = alpha_re[i];
+
 						let ai = alpha_im[i];
+
 						let b = beta[i];
 
-						assert!(b * ur.adjoint() * &A ~ (ar * ur - ai * ui).adjoint() * B);
-						assert!(b * ui.adjoint() * &A ~ (ar * ui + ai * ur).adjoint() * B);
+						assert!(
+							b * ur.adjoint() * & A ~ (ar * ur - ai * ui).adjoint() * B
+						);
+
+						assert!(
+							b * ui.adjoint() * & A ~ (ar * ui + ai * ur).adjoint() * B
+						);
 
 						i += 2;
 					}
@@ -1486,9 +1798,12 @@ mod tests {
 	}
 
 	#[test]
+
 	fn test_cplx() {
 		let rng = &mut StdRng::seed_from_u64(1);
+
 		let approx_eq = utils::approx::CwiseMat(utils::approx::ApproxEq::<f64>::eps() * 128.0);
+
 		let n = 20;
 
 		let A = &CwiseMatDistribution {
@@ -1507,11 +1822,15 @@ mod tests {
 
 		{
 			let mut H = A.to_owned();
+
 			let mut T = B.to_owned();
+
 			let mut alpha_re = Diag::<c64>::zeros(n);
+
 			let mut beta = Diag::<c64>::zeros(n);
 
 			let mut UL = Mat::<c64>::identity(n, n);
+
 			let mut UR = Mat::<c64>::identity(n, n);
 
 			gevd_cplx(
@@ -1535,9 +1854,12 @@ mod tests {
 
 			{
 				let mut i = 0;
+
 				while i < n {
 					let u = UR.col(i);
+
 					let a = alpha_re[i];
+
 					let b = beta[i];
 
 					assert!(Scale(b / a) * A * u ~ B * u);
@@ -1548,9 +1870,12 @@ mod tests {
 
 			{
 				let mut i = 0;
+
 				while i < n {
 					let u = UL.col(i);
+
 					let a = alpha_re[i];
+
 					let b = beta[i];
 
 					assert!(Scale(b / a) * u.adjoint() * A ~ u.adjoint() * B);

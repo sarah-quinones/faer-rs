@@ -4,11 +4,12 @@ use linalg::matmul::triangular::BlockStructure;
 
 pub fn reconstruct_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
+
 	temp_mat_scratch::<T>(dim, dim)
 }
 
 #[track_caller]
-#[math]
+
 pub fn reconstruct<I: Index, T: ComplexField>(
 	out: MatMut<'_, T>,
 	L: MatRef<'_, T>,
@@ -19,6 +20,7 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = L.nrows();
+
 	assert!(all(
 		out.nrows() == n,
 		out.ncols() == n,
@@ -30,35 +32,43 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	));
 
 	let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+
 	let mut tmp = tmp.as_mat_mut();
+
 	let mut out = out;
+
 	let s = subdiagonal;
 
 	out.fill(zero());
+
 	out.rb_mut().diagonal_mut().fill(one());
+
 	out.copy_from_strict_triangular_lower(L);
 
 	let mut j = 0;
+
 	while j < n {
 		if s[j] == zero() {
-			let d = real(L[(j, j)]);
+			let d = &L[(j, j)].real();
 
 			for i in 0..n {
-				out[(i, j)] = mul_real(out[(i, j)], d);
+				out[(i, j)] = out[(i, j)].mul_real(d);
 			}
 
 			j += 1;
 		} else {
-			let akp1k = copy(s[j]);
-			let ak = real(L[(j, j)]);
-			let akp1 = real(L[(j + 1, j + 1)]);
+			let akp1k = &s[j].copy();
+
+			let ak = &L[(j, j)].real();
+
+			let akp1 = &L[(j + 1, j + 1)].real();
 
 			for i in 0..n {
-				let xk = copy(out[(i, j)]);
-				let xkp1 = copy(out[(i, j + 1)]);
+				let xk = &out[(i, j)];
 
-				out[(i, j)] = mul_real(xk, ak) + (xkp1 * akp1k);
-				out[(i, j + 1)] = mul_real(xkp1, akp1) + (xk * conj(akp1k));
+				let xkp1 = &out[(i, j + 1)];
+
+				(out[(i, j)], out[(i, j + 1)]) = (xk.mul_real(ak) + xkp1 * akp1k, xkp1.mul_real(akp1) + xk * akp1k.conj());
 			}
 
 			j += 2;
@@ -78,22 +88,26 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	);
 
 	let perm_inv = perm.arrays().1;
+
 	for j in 0..n {
 		let pj = perm_inv[j].zx();
+
 		for i in j..n {
 			let pi = perm_inv[i].zx();
 
-			out[(i, j)] = if pi >= pj { copy(tmp[(pi, pj)]) } else { conj(tmp[(pj, pi)]) };
+			out[(i, j)] = if pi >= pj { tmp[(pi, pj)].copy() } else { tmp[(pj, pi)].conj() };
 		}
 	}
 
 	for j in 0..n {
-		out[(j, j)] = from_real(real(out[(j, j)]));
+		out[(j, j)] = out[(j, j)].as_real();
 	}
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -102,8 +116,10 @@ mod tests {
 	use linalg::cholesky::lblt::*;
 
 	#[test]
+
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -114,9 +130,13 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let A = &A + A.adjoint();
+
 		let mut LB = A.to_owned();
+
 		let mut subdiag = Diag::zeros(n);
+
 		let perm_fwd = &mut *vec![0usize; n];
+
 		let perm_bwd = &mut *vec![0usize; n];
 
 		let (_, perm) = factor::cholesky_in_place(
@@ -132,6 +152,7 @@ mod tests {
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
 
 		let mut A_rec = Mat::zeros(n, n);
+
 		reconstruct::reconstruct(
 			A_rec.as_mut(),
 			LB.as_ref(),

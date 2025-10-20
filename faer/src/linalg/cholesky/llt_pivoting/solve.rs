@@ -4,11 +4,12 @@ use crate::perm::permute_rows;
 
 pub fn solve_in_place_scratch<I: Index, T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> StackReq {
 	_ = par;
+
 	temp_mat_scratch::<T>(dim, rhs_ncols)
 }
 
-#[math]
 #[track_caller]
+
 pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	L: MatRef<'_, T>,
 	perm: PermRef<'_, I>,
@@ -18,21 +19,28 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = L.nrows();
+
 	let k = rhs.ncols();
+
 	assert!(all(L.nrows() == n, L.ncols() == n, rhs.nrows() == n));
 
 	let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(n, k, stack) };
+
 	let mut tmp = tmp.as_mat_mut();
+
 	let mut rhs = rhs;
 
 	permute_rows(tmp.rb_mut(), rhs.rb(), perm);
+
 	linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(L, conj_lhs, tmp.rb_mut(), par);
+
 	linalg::triangular_solve::solve_upper_triangular_in_place_with_conj(L.transpose(), conj_lhs.compose(Conj::Yes), tmp.rb_mut(), par);
+
 	permute_rows(rhs.rb_mut(), tmp.rb(), perm.inverse());
 }
 
-#[math]
 #[track_caller]
+
 pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	L: MatRef<'_, C>,
 	perm: PermRef<'_, I>,
@@ -44,7 +52,9 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -53,9 +63,12 @@ mod tests {
 	use linalg::cholesky::llt_pivoting;
 
 	#[test]
+
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
+
 		let k = 3;
 
 		let A = CwiseMatDistribution {
@@ -73,8 +86,11 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let A = &A * A.adjoint();
+
 		let mut L = A.to_owned();
+
 		let perm_fwd = &mut *vec![0usize; n];
+
 		let perm_bwd = &mut *vec![0usize; n];
 
 		let (_, perm) = llt_pivoting::factor::cholesky_in_place(
@@ -91,6 +107,7 @@ mod tests {
 
 		{
 			let mut X = B.to_owned();
+
 			llt_pivoting::solve::solve_in_place(
 				L.as_ref(),
 				perm,
@@ -103,11 +120,12 @@ mod tests {
 				))),
 			);
 
-			assert!(&A * &X ~ B);
+			assert!(& A * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			llt_pivoting::solve::solve_in_place(
 				L.conjugate(),
 				perm,
@@ -120,7 +138,7 @@ mod tests {
 				))),
 			);
 
-			assert!(A.conjugate() * &X ~ B);
+			assert!(A.conjugate() * & X ~ B);
 		}
 	}
 }

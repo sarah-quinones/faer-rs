@@ -2,22 +2,27 @@ use crate::internal_prelude::*;
 use crate::perm::swap_rows_idx;
 use crate::{assert, debug_assert};
 
-#[math]
 #[inline]
+
 pub(crate) fn swap_elems<T: ComplexField>(col: ColMut<'_, T>, i: usize, j: usize) {
 	debug_assert!(all(i < col.nrows(), j < col.nrows()));
+
 	let rs = col.row_stride();
+
 	let col = col.as_ptr_mut();
+
 	unsafe {
 		let a = col.offset(i as isize * rs);
+
 		let b = col.offset(j as isize * rs);
+
 		core::ptr::swap(a, b);
 	}
 }
 
-#[math]
 fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start: usize, end: usize, trans: &mut [I]) -> usize {
 	let mut matrix = matrix;
+
 	let m = matrix.nrows();
 
 	if start == end {
@@ -28,16 +33,21 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 
 	for j in start..end {
 		let col = j;
+
 		let row = j - start;
 
 		let t = &mut trans[row];
+
 		let mut imax = row;
+
 		let mut max = zero();
 
 		for i in imax..m {
-			let abs = abs1(matrix[(i, col)]);
+			let abs = matrix[(i, col)].abs1();
+
 			if abs > max {
 				max = abs;
+
 				imax = i;
 			}
 		}
@@ -46,26 +56,30 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 
 		if imax != row {
 			swap_rows_idx(matrix.rb_mut(), row, imax);
+
 			n_trans += 1;
 		}
 
 		let mut matrix = matrix.rb_mut().get_mut(.., start..end);
 
-		let inv = recip(matrix[(row, row)]);
+		let ref inv = matrix[(row, row)].recip();
+
 		for i in row + 1..m {
-			matrix[(i, row)] = matrix[(i, row)] * inv;
+			matrix[(i, row)] *= inv;
 		}
 
 		let (_, A01, A10, A11) = matrix.rb_mut().split_at_mut(row + 1, row + 1);
+
 		let A01 = A01.row(row);
+
 		let A10 = A10.col(row);
+
 		linalg::matmul::matmul(A11, Accum::Add, A10.as_mat(), A01.as_mat(), -one::<T>(), Par::Seq);
 	}
 
 	n_trans
 }
 
-#[math]
 pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	A: MatMut<'_, T>,
 	start: usize,
@@ -75,9 +89,13 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	params: Spec<PartialPivLuParams, T>,
 ) -> usize {
 	let params = params.config;
+
 	let mut A = A;
+
 	let m = A.nrows();
+
 	let ncols = A.ncols();
+
 	let n = end - start;
 
 	if n <= params.recursion_threshold {
@@ -85,6 +103,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	}
 
 	let half = n / 2;
+
 	let pow = Ord::min(16, half.next_power_of_two());
 
 	let block_size = half.next_multiple_of(pow);
@@ -104,10 +123,13 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 
 	{
 		let mut A = A.rb_mut().get_mut(.., start..end);
+
 		let (A00, mut A01, A10, mut A11) = A.rb_mut().split_at_mut(block_size, block_size);
 
 		let A00 = A00.rb();
+
 		let A10 = A10.rb();
+
 		{
 			linalg::triangular_solve::solve_unit_lower_triangular_in_place(A00.rb(), A01.rb_mut(), par);
 		}
@@ -126,6 +148,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 
 	let swap = |mat: MatMut<'_, T>| {
 		let mut mat = mat;
+
 		for j in 0..mat.ncols() {
 			let mut col = mat.rb_mut().col_mut(j);
 
@@ -142,6 +165,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	};
 
 	let (A_left, A_right) = A.rb_mut().split_at_col_mut(start);
+
 	let A_right = A_right.get_mut(.., end - start..ncols - start);
 
 	let par = if m * (ncols - n) > params.par_threshold { par } else { Par::Seq };
@@ -149,13 +173,17 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	match par {
 		Par::Seq => {
 			swap(A_left);
+
 			swap(A_right);
 		},
 		#[cfg(feature = "rayon")]
 		Par::Rayon(nthreads) => {
 			let nthreads = nthreads.get();
+
 			let len = (A_left.ncols() + A_right.ncols()) as f64;
+
 			let left_threads = Ord::min((nthreads as f64 * (A_left.ncols() as f64 / len)) as usize, nthreads);
+
 			let right_threads = nthreads - left_threads;
 
 			crate::utils::thread::join_raw(
@@ -179,6 +207,7 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 
 /// $LU$ factorization tuning parameters
 #[derive(Copy, Clone, Debug)]
+
 pub struct PartialPivLuParams {
 	/// threshold at which the implementation should stop recursing
 	pub recursion_threshold: usize,
@@ -186,13 +215,13 @@ pub struct PartialPivLuParams {
 	pub block_size: usize,
 	/// threshold at which size parallelism should be disabled
 	pub par_threshold: usize,
-
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
 
 /// information about the resulting $LU$ factorization
 #[derive(Copy, Clone, Debug)]
+
 pub struct PartialPivLuInfo {
 	/// number of transpositions that were performed, can be used to compute the determinant of
 	/// $P$
@@ -201,12 +230,14 @@ pub struct PartialPivLuInfo {
 
 /// error in the $LU$ factorization
 #[derive(Copy, Clone, Debug)]
+
 pub enum LdltError {
 	ZeroPivot { index: usize },
 }
 
 impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 	#[inline]
+
 	fn auto() -> Self {
 		Self {
 			recursion_threshold: 16,
@@ -218,9 +249,12 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 }
 
 #[inline]
+
 pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<PartialPivLuParams, T>) -> StackReq {
 	_ = par;
+
 	_ = params;
+
 	StackReq::new::<I>(Ord::min(nrows, ncols))
 }
 
@@ -233,37 +267,48 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	params: Spec<PartialPivLuParams, T>,
 ) -> (PartialPivLuInfo, PermRef<'out, I>) {
 	let _ = &params;
+
 	let truncate = I::truncate;
 
 	#[cfg(feature = "perf-warn")]
 	if (A.col_stride().unsigned_abs() == 1 || A.row_stride().unsigned_abs() != 1) && crate::__perf_warn!(LU_WARN) {
-		log::warn!(target: "faer_perf", "LU with partial pivoting prefers column-major or row-major matrix. Found matrix with generic strides.");
+		log::warn!(
+			target : "faer_perf",
+			"LU with partial pivoting prefers column-major or row-major matrix. Found matrix with generic strides."
+		);
 	}
 
 	let mut matrix = A;
+
 	let mut stack = stack;
+
 	let m = matrix.nrows();
+
 	let n = matrix.ncols();
 
 	let size = Ord::min(n, m);
 
 	for i in 0..m {
 		let p = &mut perm[i];
+
 		*p = truncate(i);
 	}
 
 	let (mut transpositions, _) = stack.rb_mut().make_with(size, |_| truncate(0));
+
 	let transpositions = transpositions.as_mut();
 
 	let n_transpositions = lu_in_place_recursion(matrix.rb_mut(), 0, size, transpositions.as_mut(), par, params);
 
 	for idx in 0..size {
 		let t = transpositions[idx];
+
 		perm.as_mut().swap(idx, idx + t.zx());
 	}
 
 	if m < n {
 		let (left, right) = matrix.split_at_col_mut(size);
+
 		linalg::triangular_solve::solve_unit_lower_triangular_in_place(left.rb(), right, par);
 	}
 
@@ -280,15 +325,17 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 }
 
 #[cfg(test)]
+
 mod tests {
-	use dyn_stack::MemBuffer;
 
 	use super::*;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{Mat, assert};
+	use dyn_stack::MemBuffer;
 
 	#[test]
+
 	fn test_plu() {
 		let rng = &mut StdRng::seed_from_u64(0);
 
@@ -304,10 +351,13 @@ mod tests {
 				dist: StandardNormal,
 			}
 			.rand::<Mat<f64>>(rng);
+
 			let A = A.as_ref();
 
 			let mut LU = A.cloned();
+
 			let perm = &mut *vec![0usize; n];
+
 			let perm_inv = &mut *vec![0usize; n];
 
 			let params = PartialPivLuParams {
@@ -315,6 +365,7 @@ mod tests {
 				block_size: 2,
 				..auto!(f64)
 			};
+
 			let p = lu_in_place(
 				LU.as_mut(),
 				perm,
@@ -326,20 +377,25 @@ mod tests {
 			.1;
 
 			let mut L = LU.as_ref().cloned();
+
 			let mut U = LU.as_ref().cloned();
 
 			for j in 0..n {
 				for i in 0..j {
 					L[(i, j)] = 0.0;
 				}
+
 				L[(j, j)] = 1.0;
 			}
+
 			for j in 0..n {
 				for i in j + 1..n {
 					U[(i, j)] = 0.0;
 				}
 			}
+
 			let L = L.as_ref();
+
 			let U = U.as_ref();
 
 			assert!(p.inverse() * L * U ~ A);
@@ -354,10 +410,13 @@ mod tests {
 				dist: StandardNormal,
 			}
 			.rand::<Mat<f64>>(rng);
+
 			let A = A.as_ref();
 
 			let mut LU = A.cloned();
+
 			let perm = &mut *vec![0usize; m];
+
 			let perm_inv = &mut *vec![0usize; m];
 
 			let p = lu_in_place(
@@ -371,20 +430,25 @@ mod tests {
 			.1;
 
 			let mut L = LU.as_ref().cloned();
+
 			let mut U = LU.as_ref().cloned();
 
 			for j in 0..n {
 				for i in 0..j {
 					L[(i, j)] = 0.0;
 				}
+
 				L[(j, j)] = 1.0;
 			}
+
 			for j in 0..n {
 				for i in j + 1..m {
 					U[(i, j)] = 0.0;
 				}
 			}
+
 			let L = L.as_ref();
+
 			let U = U.as_ref();
 
 			let U = U.subrows(0, n);

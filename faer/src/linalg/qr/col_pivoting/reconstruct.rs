@@ -3,6 +3,7 @@ use crate::internal_prelude::*;
 
 pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, block_size: usize, par: Par) -> StackReq {
 	_ = par;
+
 	StackReq::or(
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, block_size, ncols),
 		crate::perm::permute_cols_in_place_scratch::<I, T>(nrows, ncols),
@@ -10,6 +11,7 @@ pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize
 }
 
 #[track_caller]
+
 pub fn reconstruct<I: Index, T: ComplexField>(
 	out: MatMut<'_, T>,
 	Q_basis: MatRef<'_, T>,
@@ -20,8 +22,11 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let m = Q_basis.nrows();
+
 	let n = R.ncols();
+
 	let size = Ord::min(m, n);
+
 	assert!(all(
 		out.nrows() == m,
 		out.ncols() == n,
@@ -34,15 +39,20 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	));
 
 	let mut out = out;
+
 	out.fill(zero());
+
 	out.rb_mut().get_mut(..size, ..n).copy_from_triangular_upper(R);
 
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(Q_basis, Q_coeff, Conj::No, out.rb_mut(), par, stack);
+
 	crate::perm::permute_cols_in_place(out.rb_mut(), col_perm.inverse(), stack);
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -51,8 +61,10 @@ mod tests {
 	use linalg::qr::col_pivoting::*;
 
 	#[test]
+
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		for (m, n) in [(100, 50), (50, 100)] {
 			let size = Ord::min(m, n);
 
@@ -64,8 +76,11 @@ mod tests {
 			.rand::<Mat<c64>>(rng);
 
 			let mut QR = A.to_owned();
+
 			let mut Q_coeff = Mat::zeros(4, Ord::min(m, n));
+
 			let col_perm_fwd = &mut *vec![0usize; n];
+
 			let col_perm_bwd = &mut *vec![0usize; n];
 
 			let (_, col_perm) = factor::qr_in_place(
@@ -81,6 +96,7 @@ mod tests {
 			let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
 
 			let mut A_rec = Mat::zeros(m, n);
+
 			reconstruct::reconstruct(
 				A_rec.as_mut(),
 				QR.get(.., ..size),

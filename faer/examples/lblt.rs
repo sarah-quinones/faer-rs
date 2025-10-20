@@ -21,6 +21,7 @@ extern crate intel_mkl_src;
 extern crate blis_src;
 
 #[cfg(any(openblas, mkl, blis))]
+
 fn lapack(bencher: Bencher, PlotArg(n): PlotArg) {
 	use aligned_vec::avec;
 
@@ -34,12 +35,16 @@ fn lapack(bencher: Bencher, PlotArg(n): PlotArg) {
 	.rand::<Mat<f64>>(rng);
 
 	let A = &A + A.adjoint();
+
 	let mut lblt = A.clone();
+
 	let perm = &mut *vec![0usize; n];
+
 	let perm_inv = &mut *vec![0usize; n];
 
 	let lwork = unsafe {
 		let mut lwork = core::mem::zeroed();
+
 		la::dsytrf_(
 			&(b'L' as _),
 			(&n) as *const _ as *const _,
@@ -50,6 +55,7 @@ fn lapack(bencher: Bencher, PlotArg(n): PlotArg) {
 			(&-1isize) as *const _ as *const _,
 			(&mut 0usize) as *mut _ as *mut _,
 		);
+
 		lwork as usize
 	};
 
@@ -57,7 +63,9 @@ fn lapack(bencher: Bencher, PlotArg(n): PlotArg) {
 
 	bencher.bench(|| unsafe {
 		lblt.copy_from_triangular_lower(&A);
+
 		perm.fill(0);
+
 		la::dsytrf_(
 			&(b'L' as _),
 			(&n) as *const _ as *const _,
@@ -82,20 +90,28 @@ fn faer(bencher: Bencher, PlotArg(n): PlotArg) {
 	.rand::<Mat<f64>>(rng);
 
 	let A = &A + A.adjoint();
+
 	let mut lblt = A.clone();
+
 	let mut subdiag = Diag::zeros(n);
+
 	let perm = &mut *vec![0usize; n];
+
 	let perm_inv = &mut *vec![0usize; n];
 
 	let par = Par::Seq;
+
 	let params = default();
 
 	let scratch = lblt::factor::cholesky_in_place_scratch::<usize, f64>(n, par, params);
+
 	let mut mem = MemBuffer::new(scratch);
+
 	let stack = MemStack::new(&mut mem);
 
 	bencher.bench(|| {
 		lblt.copy_from_triangular_lower(&A);
+
 		lblt::factor::cholesky_in_place(lblt.rb_mut(), subdiag.rb_mut(), perm, perm_inv, par, stack, params);
 	});
 }

@@ -4,39 +4,43 @@ use linalg::matmul::triangular::BlockStructure;
 
 pub fn inverse_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	_ = par;
+
 	temp_mat_scratch::<T>(dim, dim)
 }
 
 #[track_caller]
-#[math]
-pub fn inverse<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef<'_, T>, par: Par, stack: &mut MemStack) {
-	// A = L D L.T
-	// A^-1 = L^-T D^-1 L^-1
 
+pub fn inverse<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef<'_, T>, par: Par, stack: &mut MemStack) {
 	let mut out = out;
+
 	let n = out.nrows();
 
 	assert!(all(out.nrows() == n, out.ncols() == n, L.nrows() == n, L.ncols() == n, D.dim() == n,));
 
 	let (mut L_inv, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+
 	let mut L_inv = L_inv.as_mat_mut();
 
 	linalg::triangular_inverse::invert_unit_lower_triangular(L_inv.rb_mut(), L, par);
 
 	{
 		with_dim!(N, n);
+
 		let mut L_inv = L_inv.rb_mut().as_shape_mut(N, N);
+
 		let D = D.as_shape(N);
 
 		for j in N.indices() {
-			let d = recip(real(D[j]));
-			L_inv[(j, j)] = from_real(d);
+			let d = D[j].real().recip();
+
+			L_inv[(j, j)] = d.to_cplx();
 		}
 
 		for j in N.indices() {
 			for i in j.next().to(N.end()) {
-				let d = real(L_inv[(i, i)]);
-				L_inv[(j, i)] = mul_real(conj(L_inv[(i, j)]), d);
+				let d = L_inv[(i, i)].real();
+
+				L_inv[(j, i)] = L_inv[(i, j)].conj().mul_real(&d);
 			}
 		}
 	}
@@ -57,7 +61,9 @@ pub fn inverse<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -66,8 +72,10 @@ mod tests {
 	use linalg::cholesky::ldlt::*;
 
 	#[test]
+
 	fn test_inverse() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -78,6 +86,7 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let A = &A * A.adjoint();
+
 		let mut L = A.to_owned();
 
 		factor::cholesky_in_place(
@@ -92,6 +101,7 @@ mod tests {
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
 
 		let mut A_inv = Mat::zeros(n, n);
+
 		inverse::inverse(
 			A_inv.as_mut(),
 			L.as_ref(),

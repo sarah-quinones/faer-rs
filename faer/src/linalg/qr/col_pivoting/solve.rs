@@ -26,6 +26,7 @@ pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize
 }
 
 #[track_caller]
+
 pub fn solve_lstsq_in_place_with_conj<I: Index, T: ComplexField>(
 	Q_basis: MatRef<'_, T>,
 	Q_coeff: MatRef<'_, T>,
@@ -37,8 +38,11 @@ pub fn solve_lstsq_in_place_with_conj<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let m = Q_basis.nrows();
+
 	let n = Q_basis.ncols();
+
 	let size = Ord::min(m, n);
+
 	let mut rhs = rhs;
 
 	linalg::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj(Q_basis, Q_coeff, R, conj_QR, rhs.rb_mut(), par, stack);
@@ -47,6 +51,7 @@ pub fn solve_lstsq_in_place_with_conj<I: Index, T: ComplexField>(
 }
 
 #[track_caller]
+
 pub fn solve_lstsq_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
@@ -69,6 +74,7 @@ pub fn solve_lstsq_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = 
 }
 
 #[track_caller]
+
 pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	Q_basis: MatRef<'_, T>,
 	Q_coeff: MatRef<'_, T>,
@@ -80,6 +86,7 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = Q_basis.nrows();
+
 	let block_size = Q_coeff.nrows();
 
 	assert!(all(
@@ -96,6 +103,7 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 }
 
 #[track_caller]
+
 pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
@@ -118,6 +126,7 @@ pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 }
 
 #[track_caller]
+
 pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
 	Q_basis: MatRef<'_, T>,
 	Q_coeff: MatRef<'_, T>,
@@ -129,6 +138,7 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = Q_basis.nrows();
+
 	let block_size = Q_coeff.nrows();
 
 	assert!(all(
@@ -144,10 +154,12 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
 	let mut rhs = rhs;
 
 	crate::perm::permute_rows_in_place(rhs.rb_mut(), col_perm, stack);
+
 	linalg::qr::no_pivoting::solve::solve_transpose_in_place_with_conj(Q_basis, Q_coeff, R, conj_QR, rhs, par, stack);
 }
 
 #[track_caller]
+
 pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
@@ -170,7 +182,9 @@ pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonica
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -179,10 +193,14 @@ mod tests {
 	use linalg::qr::col_pivoting::*;
 
 	#[test]
+
 	fn test_lstsq() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let m = 100;
+
 		let n = 50;
+
 		let k = 3;
 
 		let A = CwiseMatDistribution {
@@ -200,9 +218,11 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let mut QR = A.to_owned();
+
 		let mut Q_coeff = Mat::zeros(4, n);
 
 		let col_perm_fwd = &mut *vec![0usize; n];
+
 		let col_perm_bwd = &mut *vec![0usize; n];
 
 		let (_, col_perm) = factor::qr_in_place(
@@ -225,6 +245,7 @@ mod tests {
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_lstsq_in_place(
 				QR.as_ref(),
 				Q_coeff.as_ref(),
@@ -243,11 +264,12 @@ mod tests {
 
 			let X = X.get(..n, ..);
 
-			assert!(A.adjoint() * &A * &X ~ A.adjoint() * &B);
+			assert!(A.adjoint() * & A * & X ~ A.adjoint() * & B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_lstsq_in_place(
 				QR.conjugate(),
 				Q_coeff.conjugate(),
@@ -265,14 +287,18 @@ mod tests {
 			);
 
 			let X = X.get(..n, ..);
-			assert!(A.transpose() * A.conjugate() * &X ~ A.transpose() * &B);
+
+			assert!(A.transpose() * A.conjugate() * & X ~ A.transpose() * & B);
 		}
 	}
 
 	#[test]
+
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
+
 		let k = 3;
 
 		let A = CwiseMatDistribution {
@@ -290,9 +316,11 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let mut QR = A.to_owned();
+
 		let mut Q_coeff = Mat::zeros(4, n);
 
 		let col_perm_fwd = &mut *vec![0usize; n];
+
 		let col_perm_bwd = &mut *vec![0usize; n];
 
 		let (_, col_perm) = factor::qr_in_place(
@@ -315,6 +343,7 @@ mod tests {
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_in_place(
 				QR.as_ref(),
 				Q_coeff.as_ref(),
@@ -325,11 +354,12 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq))),
 			);
 
-			assert!(&A * &X ~ B);
+			assert!(& A * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_in_place(
 				QR.conjugate(),
 				Q_coeff.conjugate(),
@@ -340,11 +370,12 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq))),
 			);
 
-			assert!(A.conjugate() * &X ~ B);
+			assert!(A.conjugate() * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_transpose_in_place(
 				QR.as_ref(),
 				Q_coeff.as_ref(),
@@ -360,11 +391,12 @@ mod tests {
 				))),
 			);
 
-			assert!(A.transpose() * &X ~ B);
+			assert!(A.transpose() * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_transpose_in_place(
 				QR.conjugate(),
 				Q_coeff.conjugate(),
@@ -380,7 +412,7 @@ mod tests {
 				))),
 			);
 
-			assert!(A.adjoint() * &X ~ B);
+			assert!(A.adjoint() * & X ~ B);
 		}
 	}
 }

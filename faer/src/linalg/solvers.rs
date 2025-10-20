@@ -3,54 +3,71 @@ use crate::{assert, get_global_parallelism};
 use alloc::vec;
 use alloc::vec::Vec;
 use dyn_stack::MemBuffer;
-use faer_traits::{ComplexConj, math_utils};
-use linalg::svd::ComputeSvdVectors;
-
+use faer_traits::ComplexConj;
 pub use linalg::cholesky::ldlt::factor::LdltError;
 pub use linalg::cholesky::llt::factor::LltError;
 pub use linalg::evd::EvdError;
 pub use linalg::gevd::{GevdError, SelfAdjointGevdError};
+use linalg::svd::ComputeSvdVectors;
 pub use linalg::svd::SvdError;
 
 /// shape info of a linear system solver
+
 pub trait ShapeCore {
 	/// returns the number of rows of the matrix
+
 	fn nrows(&self) -> usize;
+
 	/// returns the number of columns of the matrix
+
 	fn ncols(&self) -> usize;
 }
 
 /// linear system solver implementation
+
 pub trait SolveCore<T: ComplexField>: ShapeCore {
 	/// solves the equation `self × x = rhs`, implicitly conjugating `self` if needed, and stores
 	/// the result in `rhs`
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>);
+
 	/// solves the equation `self.transpose() × x = rhs`, implicitly conjugating `self` if needed,
 	/// and stores the result in `rhs`
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>);
 }
+
 /// least squares linear system solver implementation
+
 pub trait SolveLstsqCore<T: ComplexField>: ShapeCore {
 	/// solves the equation `self × x = rhs` in the sense of least squares, implicitly conjugating
 	/// `self` if needed, and stores the result in the top rows of `rhs`
+
 	fn solve_lstsq_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>);
 }
+
 /// dense linear system solver
+
 pub trait DenseSolveCore<T: ComplexField>: SolveCore<T> {
 	/// returns an approximation of the matrix that was used to create the decomposition
+
 	fn reconstruct(&self) -> Mat<T>;
+
 	/// returns an approximation of the inverse of the matrix that was used to create the
 	/// decomposition
+
 	fn inverse(&self) -> Mat<T>;
 }
 
 impl<S: ?Sized + ShapeCore> ShapeCore for &S {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		(**self).nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		(**self).ncols()
 	}
@@ -58,11 +75,13 @@ impl<S: ?Sized + ShapeCore> ShapeCore for &S {
 
 impl<T: ComplexField, S: ?Sized + SolveCore<T>> SolveCore<T> for &S {
 	#[inline]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		(**self).solve_in_place_with_conj(conj, rhs)
 	}
 
 	#[inline]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		(**self).solve_transpose_in_place_with_conj(conj, rhs)
 	}
@@ -70,6 +89,7 @@ impl<T: ComplexField, S: ?Sized + SolveCore<T>> SolveCore<T> for &S {
 
 impl<T: ComplexField, S: ?Sized + SolveLstsqCore<T>> SolveLstsqCore<T> for &S {
 	#[inline]
+
 	fn solve_lstsq_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		(**self).solve_lstsq_in_place_with_conj(conj, rhs)
 	}
@@ -77,27 +97,33 @@ impl<T: ComplexField, S: ?Sized + SolveLstsqCore<T>> SolveLstsqCore<T> for &S {
 
 impl<T: ComplexField, S: ?Sized + DenseSolveCore<T>> DenseSolveCore<T> for &S {
 	#[inline]
+
 	fn reconstruct(&self) -> Mat<T> {
 		(**self).reconstruct()
 	}
 
 	#[inline]
+
 	fn inverse(&self) -> Mat<T> {
 		(**self).inverse()
 	}
 }
 
 /// [`SolveCore`] extension trait
+
 pub trait Solve<T: ComplexField>: SolveCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $A x = b$
+
 	fn solve_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.solve_in_place_with_conj(Conj::No, { rhs }.as_mat_mut().as_dyn_cols_mut());
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $\bar A x = b$
+
 	fn solve_conjugate_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.solve_in_place_with_conj(Conj::Yes, { rhs }.as_mat_mut().as_dyn_cols_mut());
 	}
@@ -105,12 +131,15 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $A^\top x = b$
+
 	fn solve_transpose_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.solve_transpose_in_place_with_conj(Conj::No, { rhs }.as_mat_mut().as_dyn_cols_mut());
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $A^H x = b$
+
 	fn solve_adjoint_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.solve_transpose_in_place_with_conj(Conj::Yes, { rhs }.as_mat_mut().as_dyn_cols_mut());
 	}
@@ -118,12 +147,15 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $x A = b$
+
 	fn rsolve_in_place(&self, lhs: impl AsMatMut<T = T, Cols = usize>) {
 		self.solve_transpose_in_place_with_conj(Conj::No, { lhs }.as_mat_mut().as_dyn_rows_mut().transpose_mut());
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $x \bar A = b$
+
 	fn rsolve_conjugate_in_place(&self, lhs: impl AsMatMut<T = T, Cols = usize>) {
 		self.solve_transpose_in_place_with_conj(Conj::Yes, { lhs }.as_mat_mut().as_dyn_rows_mut().transpose_mut());
 	}
@@ -131,12 +163,15 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $x A^\top = b$
+
 	fn rsolve_transpose_in_place(&self, lhs: impl AsMatMut<T = T, Cols = usize>) {
 		self.solve_in_place_with_conj(Conj::No, { lhs }.as_mat_mut().as_dyn_rows_mut().transpose_mut());
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $x A^H = b$
+
 	fn rsolve_adjoint_in_place(&self, lhs: impl AsMatMut<T = T, Cols = usize>) {
 		self.solve_in_place_with_conj(Conj::Yes, { lhs }.as_mat_mut().as_dyn_rows_mut().transpose_mut());
 	}
@@ -144,84 +179,128 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $A x = b$
+
 	fn solve<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
 		let rhs = rhs.as_mat_ref();
+
 		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+
 		out.as_mat_mut().copy_from(rhs);
+
 		self.solve_in_place(&mut out);
+
 		out
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $\bar A x = b$
+
 	fn solve_conjugate<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
 		let rhs = rhs.as_mat_ref();
+
 		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+
 		out.as_mat_mut().copy_from(rhs);
+
 		self.solve_conjugate_in_place(&mut out);
+
 		out
 	}
 
 	#[track_caller]
 	#[inline]
 	/// solves $A^\top x = b$
+
 	fn solve_transpose<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
 		let rhs = rhs.as_mat_ref();
+
 		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+
 		out.as_mat_mut().copy_from(rhs);
+
 		self.solve_transpose_in_place(&mut out);
+
 		out
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $A^H x = b$
+
 	fn solve_adjoint<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
 		let rhs = rhs.as_mat_ref();
+
 		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+
 		out.as_mat_mut().copy_from(rhs);
+
 		self.solve_adjoint_in_place(&mut out);
+
 		out
 	}
 
 	#[track_caller]
 	#[inline]
 	/// solves $x A = b$
+
 	fn rsolve<Lhs: AsMatRef<T = T, Cols = usize>>(&self, lhs: Lhs) -> Lhs::Owned {
 		let lhs = lhs.as_mat_ref();
+
 		let mut out = Lhs::Owned::zeros(lhs.nrows(), lhs.ncols());
+
 		out.as_mat_mut().copy_from(lhs);
+
 		self.rsolve_in_place(&mut out);
+
 		out
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $x \bar A = b$
+
 	fn rsolve_conjugate<Lhs: AsMatRef<T = T, Cols = usize>>(&self, lhs: Lhs) -> Lhs::Owned {
 		let lhs = lhs.as_mat_ref();
+
 		let mut out = Lhs::Owned::zeros(lhs.nrows(), lhs.ncols());
+
 		out.as_mat_mut().copy_from(lhs);
+
 		self.rsolve_conjugate_in_place(&mut out);
+
 		out
 	}
 
 	#[track_caller]
 	#[inline]
 	/// solves $x A^\top = b$
+
 	fn rsolve_transpose<Lhs: AsMatRef<T = T, Cols = usize>>(&self, lhs: Lhs) -> Lhs::Owned {
 		let lhs = lhs.as_mat_ref();
+
 		let mut out = Lhs::Owned::zeros(lhs.nrows(), lhs.ncols());
+
 		out.as_mat_mut().copy_from(lhs);
+
 		self.rsolve_transpose_in_place(&mut out);
+
 		out
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $x A^H = b$
+
 	fn rsolve_adjoint<Lhs: AsMatRef<T = T, Cols = usize>>(&self, lhs: Lhs) -> Lhs::Owned {
 		let lhs = lhs.as_mat_ref();
+
 		let mut out = Lhs::Owned::zeros(lhs.nrows(), lhs.ncols());
+
 		out.as_mat_mut().copy_from(lhs);
+
 		self.rsolve_adjoint_in_place(&mut out);
+
 		out
 	}
 }
@@ -229,24 +308,28 @@ pub trait Solve<T: ComplexField>: SolveCore<T> {
 impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short, C>>> mat::generic::Mat<Inner> {
 	#[track_caller]
 	/// returns the $LU$ decomposition of `self` with partial (row) pivoting
+
 	pub fn partial_piv_lu(&self) -> PartialPivLu<C::Canonical> {
 		PartialPivLu::new(self.rb())
 	}
 
 	#[track_caller]
 	/// returns the $LU$ decomposition of `self` with full pivoting
+
 	pub fn full_piv_lu(&self) -> FullPivLu<C::Canonical> {
 		FullPivLu::new(self.rb())
 	}
 
 	#[track_caller]
 	/// returns the $QR$ decomposition of `self`
+
 	pub fn qr(&self) -> Qr<C::Canonical> {
 		Qr::new(self.rb())
 	}
 
 	#[track_caller]
 	/// returns the $QR$ decomposition of `self` with column pivoting
+
 	pub fn col_piv_qr(&self) -> ColPivQr<C::Canonical> {
 		ColPivQr::new(self.rb())
 	}
@@ -255,6 +338,7 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 	/// returns the svd of `self`
 	///
 	/// singular values are nonnegative and sorted in nonincreasing order
+
 	pub fn svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
 		Svd::new(self.rb())
 	}
@@ -263,24 +347,28 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 	/// returns the thin svd of `self`
 	///
 	/// singular values are nonnegative and sorted in nonincreasing order
+
 	pub fn thin_svd(&self) -> Result<Svd<C::Canonical>, SvdError> {
 		Svd::new_thin(self.rb())
 	}
 
 	#[track_caller]
 	/// returns the $L L^\top$ decomposition of `self`
+
 	pub fn llt(&self, side: Side) -> Result<Llt<C::Canonical>, LltError> {
 		Llt::new(self.rb(), side)
 	}
 
 	#[track_caller]
 	/// returns the $L D L^\top$ decomposition of `self`
+
 	pub fn ldlt(&self, side: Side) -> Result<Ldlt<C::Canonical>, LdltError> {
 		Ldlt::new(self.rb(), side)
 	}
 
 	#[track_caller]
 	/// returns the $LBL^\top$ decomposition of `self`
+
 	pub fn lblt(&self, side: Side) -> Lblt<C::Canonical> {
 		Lblt::new(self.rb(), side)
 	}
@@ -289,6 +377,7 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 	/// returns the eigendecomposition of `self`, assuming it is self-adjoint
 	///
 	/// eigenvalues sorted in nondecreasing order
+
 	pub fn self_adjoint_eigen(&self, side: Side) -> Result<SelfAdjointEigen<C::Canonical>, EvdError> {
 		SelfAdjointEigen::new(self.rb(), side)
 	}
@@ -297,14 +386,19 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 	/// returns the eigenvalues of `self`, assuming it is self-adjoint
 	///
 	/// eigenvalues sorted in nondecreasing order
+
 	pub fn self_adjoint_eigenvalues(&self, side: Side) -> Result<Vec<Real<C>>, EvdError> {
 		#[track_caller]
+
 		pub fn imp<T: ComplexField>(mut A: MatRef<'_, T>, side: Side) -> Result<Vec<T::Real>, EvdError> {
 			assert!(A.nrows() == A.ncols());
+
 			if side == Side::Upper {
 				A = A.transpose();
 			}
+
 			let par = get_global_parallelism();
+
 			let n = A.nrows();
 
 			let mut s = Diag::<T>::zeros(n);
@@ -323,7 +417,7 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 				default(),
 			)?;
 
-			Ok(s.column_vector().iter().map(|x| real(x)).collect())
+			Ok(s.column_vector().iter().map(|x| x.real()).collect())
 		}
 
 		imp(self.rb().canonical(), side)
@@ -333,10 +427,13 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 	/// returns the singular values of `self`
 	///
 	/// singular values are nonnegative and sorted in nonincreasing order
+
 	pub fn singular_values(&self) -> Result<Vec<Real<C>>, SvdError> {
 		pub fn imp<T: ComplexField>(A: MatRef<'_, T>) -> Result<Vec<T::Real>, SvdError> {
 			let par = get_global_parallelism();
+
 			let m = A.nrows();
+
 			let n = A.ncols();
 
 			let mut s = Diag::<T>::zeros(Ord::min(m, n));
@@ -358,7 +455,7 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 				default(),
 			)?;
 
-			Ok(s.column_vector().iter().map(|x| real(x)).collect())
+			Ok(s.column_vector().iter().map(|x| x.real()).collect())
 		}
 
 		imp(self.rb().canonical())
@@ -367,6 +464,7 @@ impl<C: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short,
 
 impl<C: Conjugate> MatRef<'_, C> {
 	#[track_caller]
+
 	fn eigen_imp(&self) -> Result<Eigen<Real<C>>, EvdError> {
 		if const { C::Canonical::IS_REAL } {
 			Eigen::new_from_real(unsafe { crate::hacks::coerce(*self) })
@@ -378,6 +476,7 @@ impl<C: Conjugate> MatRef<'_, C> {
 	}
 
 	#[track_caller]
+
 	fn gen_eigen_imp(&self, B: MatRef<'_, C>) -> Result<GeneralizedEigen<Real<C>>, GevdError> {
 		if const { C::Canonical::IS_REAL } {
 			GeneralizedEigen::new_from_real(unsafe { crate::hacks::coerce(*self) }, unsafe { crate::hacks::coerce(B) })
@@ -393,15 +492,19 @@ impl<C: Conjugate> MatRef<'_, C> {
 	}
 
 	#[track_caller]
+
 	fn eigenvalues_imp(&self) -> Result<Vec<Complex<Real<C>>>, EvdError> {
 		let par = get_global_parallelism();
 
 		if const { C::Canonical::IS_REAL } {
 			let A = unsafe { crate::hacks::coerce::<_, MatRef<'_, Real<C>>>(*self) };
+
 			assert!(A.nrows() == A.ncols());
+
 			let n = A.nrows();
 
 			let mut s_re = Diag::<Real<C>>::zeros(n);
+
 			let mut s_im = Diag::<Real<C>>::zeros(n);
 
 			linalg::evd::evd_real(
@@ -429,7 +532,9 @@ impl<C: Conjugate> MatRef<'_, C> {
 				.collect())
 		} else {
 			let A = unsafe { crate::hacks::coerce::<_, MatRef<'_, Complex<Real<C>>>>(self.canonical()) };
+
 			assert!(A.nrows() == A.ncols());
+
 			let n = A.nrows();
 
 			let mut s = Diag::<Complex<Real<C>>>::zeros(n);
@@ -462,28 +567,33 @@ impl<C: Conjugate> MatRef<'_, C> {
 impl<T: Conjugate, Inner: for<'short> Reborrow<'short, Target = mat::Ref<'short, T>>> mat::generic::Mat<Inner> {
 	/// returns the generalized_eigendecomposition of `(self, B)`
 	#[track_caller]
+
 	pub fn generalized_eigen(&self, B: impl AsMatRef<T = T, Rows = usize, Cols = usize>) -> Result<GeneralizedEigen<Real<T>>, GevdError> {
 		self.rb().gen_eigen_imp(B.as_mat_ref())
 	}
 
 	/// returns the eigendecomposition of `self`
 	#[track_caller]
+
 	pub fn eigen(&self) -> Result<Eigen<Real<T>>, EvdError> {
 		self.rb().eigen_imp()
 	}
 
 	/// returns the eigenvalues of `self`
 	#[track_caller]
+
 	pub fn eigenvalues(&self) -> Result<Vec<Complex<Real<T>>>, EvdError> {
 		self.rb().eigenvalues_imp()
 	}
 }
 
 /// [`SolveLstsqCore`] extension trait
+
 pub trait SolveLstsq<T: ComplexField>: SolveLstsqCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $A x = b$ in the sense of least squares.
+
 	fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.solve_lstsq_in_place_with_conj(Conj::No, { rhs }.as_mat_mut().as_dyn_cols_mut());
 	}
@@ -491,6 +601,7 @@ pub trait SolveLstsq<T: ComplexField>: SolveLstsqCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $\bar A x = b$ in the sense of least squares.
+
 	fn solve_conjugate_lstsq_in_place(&self, rhs: impl AsMatMut<T = T, Rows = usize>) {
 		self.solve_lstsq_in_place_with_conj(Conj::Yes, { rhs }.as_mat_mut().as_dyn_cols_mut());
 	}
@@ -498,41 +609,60 @@ pub trait SolveLstsq<T: ComplexField>: SolveLstsqCore<T> {
 	#[track_caller]
 	#[inline]
 	/// solves $A x = b$ in the sense of least squares.
+
 	fn solve_lstsq<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
 		let rhs = rhs.as_mat_ref();
+
 		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+
 		out.as_mat_mut().copy_from(rhs);
+
 		self.solve_lstsq_in_place(&mut out);
+
 		out.truncate(self.ncols(), rhs.ncols());
+
 		out
 	}
+
 	#[track_caller]
 	#[inline]
 	/// solves $\bar A x = b$ in the sense of least squares.
+
 	fn solve_conjugate_lstsq<Rhs: AsMatRef<T = T, Rows = usize>>(&self, rhs: Rhs) -> Rhs::Owned {
 		let rhs = rhs.as_mat_ref();
+
 		let mut out = Rhs::Owned::zeros(rhs.nrows(), rhs.ncols());
+
 		out.as_mat_mut().copy_from(rhs);
+
 		self.solve_conjugate_lstsq_in_place(&mut out);
+
 		out.truncate(self.ncols(), rhs.ncols());
+
 		out
 	}
 }
+
 /// [`DenseSolveCore`] extension trait
+
 pub trait DenseSolve<T: ComplexField>: DenseSolveCore<T> {}
 
 impl<T: ComplexField, S: ?Sized + SolveCore<T>> Solve<T> for S {}
+
 impl<T: ComplexField, S: ?Sized + SolveLstsqCore<T>> SolveLstsq<T> for S {}
+
 impl<T: ComplexField, S: ?Sized + DenseSolveCore<T>> DenseSolve<T> for S {}
 
 /// $L L^\top$ decomposition
 #[derive(Clone, Debug)]
+
 pub struct Llt<T> {
 	L: Mat<T>,
 }
 
 /// $L D L^\top$ decomposition
 #[derive(Clone, Debug)]
+
 pub struct Ldlt<T> {
 	L: Mat<T>,
 	D: Diag<T>,
@@ -540,6 +670,7 @@ pub struct Ldlt<T> {
 
 /// $LBL^\top$ decomposition
 #[derive(Clone, Debug)]
+
 pub struct Lblt<T> {
 	L: Mat<T>,
 	B_diag: Diag<T>,
@@ -549,6 +680,7 @@ pub struct Lblt<T> {
 
 /// $LU$ decomposition with partial (row) pivoting
 #[derive(Clone, Debug)]
+
 pub struct PartialPivLu<T> {
 	L: Mat<T>,
 	U: Mat<T>,
@@ -557,6 +689,7 @@ pub struct PartialPivLu<T> {
 
 /// $LU$ decomposition with full pivoting
 #[derive(Clone, Debug)]
+
 pub struct FullPivLu<T> {
 	L: Mat<T>,
 	U: Mat<T>,
@@ -566,6 +699,7 @@ pub struct FullPivLu<T> {
 
 /// $QR$ decomposition
 #[derive(Clone, Debug)]
+
 pub struct Qr<T> {
 	Q_basis: Mat<T>,
 	Q_coeff: Mat<T>,
@@ -574,6 +708,7 @@ pub struct Qr<T> {
 
 /// $QR$ decomposition with column pivoting
 #[derive(Clone, Debug)]
+
 pub struct ColPivQr<T> {
 	Q_basis: Mat<T>,
 	Q_coeff: Mat<T>,
@@ -583,6 +718,7 @@ pub struct ColPivQr<T> {
 
 /// svd decomposition (either full or thin)
 #[derive(Clone, Debug)]
+
 pub struct Svd<T> {
 	U: Mat<T>,
 	V: Mat<T>,
@@ -591,6 +727,7 @@ pub struct Svd<T> {
 
 /// self-adjoint eigendecomposition
 #[derive(Clone, Debug)]
+
 pub struct SelfAdjointEigen<T> {
 	U: Mat<T>,
 	S: Diag<T>,
@@ -598,6 +735,7 @@ pub struct SelfAdjointEigen<T> {
 
 /// eigendecomposition
 #[derive(Clone, Debug)]
+
 pub struct Eigen<T> {
 	U: Mat<Complex<T>>,
 	S: Diag<Complex<T>>,
@@ -605,6 +743,7 @@ pub struct Eigen<T> {
 
 /// eigendecomposition
 #[derive(Clone, Debug)]
+
 pub struct GeneralizedEigen<T> {
 	U: Mat<Complex<T>>,
 	S_a: Diag<Complex<T>>,
@@ -614,11 +753,14 @@ pub struct GeneralizedEigen<T> {
 impl<T: ComplexField> Llt<T> {
 	/// returns the $L L^\top$ decomposition of $A$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>, side: Side) -> Result<Self, LltError> {
 		assert!(all(A.nrows() == A.ncols()));
+
 		let n = A.nrows();
 
 		let mut L = Mat::zeros(n, n);
+
 		match side {
 			Side::Lower => L.copy_from_triangular_lower(A),
 			Side::Upper => L.copy_from_triangular_lower(A.adjoint()),
@@ -628,21 +770,25 @@ impl<T: ComplexField> Llt<T> {
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut L: Mat<T>) -> Result<Self, LltError> {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
 
 		let mut mem = MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, par, default()));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::llt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, default())?;
+
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 
 		Ok(Self { L })
 	}
 
 	/// returns the $L$ factor
+
 	pub fn L(&self) -> MatRef<'_, T> {
 		self.L.as_ref()
 	}
@@ -651,11 +797,14 @@ impl<T: ComplexField> Llt<T> {
 impl<T: ComplexField> Ldlt<T> {
 	/// returns the $L D L^\top$ decomposition of $A$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>, side: Side) -> Result<Self, LdltError> {
 		assert!(all(A.nrows() == A.ncols()));
+
 		let n = A.nrows();
 
 		let mut L = Mat::zeros(n, n);
+
 		match side {
 			Side::Lower => L.copy_from_triangular_lower(A),
 			Side::Upper => L.copy_from_triangular_lower(A.adjoint()),
@@ -665,30 +814,37 @@ impl<T: ComplexField> Ldlt<T> {
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut L: Mat<T>) -> Result<Self, LdltError> {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
+
 		let mut D = Diag::zeros(n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, par, default()));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::ldlt::factor::cholesky_in_place(L.as_mut(), Default::default(), par, stack, default())?;
 
 		D.copy_from(L.diagonal());
+
 		L.diagonal_mut().fill(one());
+
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 
 		Ok(Self { L, D })
 	}
 
 	/// returns the $L$ factor
+
 	pub fn L(&self) -> MatRef<'_, T> {
 		self.L.as_ref()
 	}
 
 	/// returns the $D$ factor
+
 	pub fn D(&self) -> DiagRef<'_, T> {
 		self.D.as_ref()
 	}
@@ -697,36 +853,47 @@ impl<T: ComplexField> Ldlt<T> {
 impl<T: ComplexField> Lblt<T> {
 	/// returns the $LBL^\top$ decomposition of $A$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>, side: Side) -> Self {
 		assert!(all(A.nrows() == A.ncols()));
+
 		let n = A.nrows();
 
 		let mut L = Mat::zeros(n, n);
+
 		match side {
 			Side::Lower => L.copy_from_triangular_lower(A),
 			Side::Upper => L.copy_from_triangular_lower(A.adjoint()),
 		}
+
 		Self::new_imp(L)
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut L: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
 		let n = L.nrows();
 
 		let mut diag = Diag::zeros(n);
+
 		let mut subdiag = Diag::zeros(n);
+
 		let mut perm_fwd = vec![0usize; n];
+
 		let mut perm_bwd = vec![0usize; n];
 
 		let mut mem = MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, par, default()));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::lblt::factor::cholesky_in_place(L.as_mut(), subdiag.as_mut(), &mut perm_fwd, &mut perm_bwd, par, stack, default());
 
 		diag.copy_from(L.diagonal());
+
 		L.diagonal_mut().fill(one());
+
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
 
 		Self {
@@ -738,21 +905,25 @@ impl<T: ComplexField> Lblt<T> {
 	}
 
 	/// returns the $L$ factor
+
 	pub fn L(&self) -> MatRef<'_, T> {
 		self.L.as_ref()
 	}
 
 	/// returns the diagonal of the $B$ factor
+
 	pub fn B_diag(&self) -> DiagRef<'_, T> {
 		self.B_diag.as_ref()
 	}
 
 	/// returns the subdiagonal of the $B$ factor
+
 	pub fn B_subdiag(&self) -> DiagRef<'_, T> {
 		self.B_subdiag.as_ref()
 	}
 
 	/// returns the pivoting permutation $P$
+
 	pub fn P(&self) -> PermRef<'_, usize> {
 		self.P.as_ref()
 	}
@@ -760,46 +931,57 @@ impl<T: ComplexField> Lblt<T> {
 
 fn split_LU<T: ComplexField>(LU: Mat<T>) -> (Mat<T>, Mat<T>) {
 	let (m, n) = LU.shape();
+
 	let size = Ord::min(m, n);
 
 	let (L, U) = if m >= n {
 		let mut L = LU;
+
 		let mut U = Mat::zeros(size, size);
 
 		U.copy_from_triangular_upper(L.get(..size, ..size));
 
 		z!(&mut L).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
+
 		L.diagonal_mut().fill(one());
 
 		(L, U)
 	} else {
 		let mut U = LU;
+
 		let mut L = Mat::zeros(size, size);
 
 		L.copy_from_strict_triangular_lower(U.get(..size, ..size));
 
 		z!(&mut U).for_each_triangular_lower(linalg::zip::Diag::Skip, |uz!(x)| *x = zero());
+
 		L.diagonal_mut().fill(one());
 
 		(L, U)
 	};
+
 	(L, U)
 }
 
 impl<T: ComplexField> PartialPivLu<T> {
 	/// returns the $LU$ decomposition of $A$ with partial pivoting
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>) -> Self {
 		let LU = A.to_owned();
+
 		Self::new_imp(LU)
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut LU: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
 		let (m, n) = LU.shape();
+
 		let mut row_perm_fwd = vec![0usize; m];
+
 		let mut row_perm_bwd = vec![0usize; m];
 
 		linalg::lu::partial_pivoting::factor::lu_in_place(
@@ -823,16 +1005,19 @@ impl<T: ComplexField> PartialPivLu<T> {
 	}
 
 	/// returns the $L$ factor
+
 	pub fn L(&self) -> MatRef<'_, T> {
 		self.L.as_ref()
 	}
 
 	/// returns the $U$ factor
+
 	pub fn U(&self) -> MatRef<'_, T> {
 		self.U.as_ref()
 	}
 
 	/// returns the row pivoting permutation $P$
+
 	pub fn P(&self) -> PermRef<'_, usize> {
 		self.P.as_ref()
 	}
@@ -841,19 +1026,26 @@ impl<T: ComplexField> PartialPivLu<T> {
 impl<T: ComplexField> FullPivLu<T> {
 	/// returns the $LU$ decomposition of $A$ with full pivoting
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>) -> Self {
 		let LU = A.to_owned();
+
 		Self::new_imp(LU)
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut LU: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
 		let (m, n) = LU.shape();
+
 		let mut row_perm_fwd = vec![0usize; m];
+
 		let mut row_perm_bwd = vec![0usize; m];
+
 		let mut col_perm_fwd = vec![0usize; n];
+
 		let mut col_perm_bwd = vec![0usize; n];
 
 		linalg::lu::full_pivoting::factor::lu_in_place(
@@ -883,21 +1075,25 @@ impl<T: ComplexField> FullPivLu<T> {
 	}
 
 	/// returns the factor $L$
+
 	pub fn L(&self) -> MatRef<'_, T> {
 		self.L.as_ref()
 	}
 
 	/// returns the factor $U$
+
 	pub fn U(&self) -> MatRef<'_, T> {
 		self.U.as_ref()
 	}
 
 	/// returns the row pivoting permutation $P$
+
 	pub fn P(&self) -> PermRef<'_, usize> {
 		self.P.as_ref()
 	}
 
 	/// returns the column pivoting permutation $P$
+
 	pub fn Q(&self) -> PermRef<'_, usize> {
 		self.Q.as_ref()
 	}
@@ -906,19 +1102,24 @@ impl<T: ComplexField> FullPivLu<T> {
 impl<T: ComplexField> Qr<T> {
 	/// returns the $QR$ decomposition of $A$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>) -> Self {
 		let QR = A.to_owned();
+
 		Self::new_imp(QR)
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut QR: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
 		let (m, n) = QR.shape();
+
 		let size = Ord::min(m, n);
 
 		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
+
 		let mut Q_coeff = Mat::zeros(block_size, size);
 
 		linalg::qr::no_pivoting::factor::qr_in_place(
@@ -941,30 +1142,38 @@ impl<T: ComplexField> Qr<T> {
 	}
 
 	/// returns the householder basis of $Q$
+
 	pub fn Q_basis(&self) -> MatRef<'_, T> {
 		self.Q_basis.as_ref()
 	}
 
 	/// returns the householder coefficients of $Q$
+
 	pub fn Q_coeff(&self) -> MatRef<'_, T> {
 		self.Q_coeff.as_ref()
 	}
 
 	/// returns the factor $R$
+
 	pub fn R(&self) -> MatRef<'_, T> {
 		self.R.as_ref()
 	}
 
 	/// returns the upper trapezoidal part of $R$
+
 	pub fn thin_R(&self) -> MatRef<'_, T> {
 		let size = Ord::min(self.nrows(), self.ncols());
+
 		self.R.get(..size, ..)
 	}
 
 	/// computes the factor $Q$
+
 	pub fn compute_Q(&self) -> Mat<T> {
 		let mut Q = Mat::identity(self.nrows(), self.nrows());
+
 		let par = get_global_parallelism();
+
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 			self.Q_basis(),
 			self.Q_coeff(),
@@ -979,14 +1188,19 @@ impl<T: ComplexField> Qr<T> {
 				),
 			)),
 		);
+
 		Q
 	}
 
 	/// computes the first $\min(\text{nrows}, \text{ncols})$ columns of the factor $Q$
+
 	pub fn compute_thin_Q(&self) -> Mat<T> {
 		let size = Ord::min(self.nrows(), self.ncols());
+
 		let mut Q = Mat::identity(self.nrows(), size);
+
 		let par = get_global_parallelism();
+
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 			self.Q_basis(),
 			self.Q_coeff(),
@@ -997,6 +1211,7 @@ impl<T: ComplexField> Qr<T> {
 				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(self.nrows(), self.Q_coeff.nrows(), size),
 			)),
 		);
+
 		Q
 	}
 }
@@ -1004,22 +1219,28 @@ impl<T: ComplexField> Qr<T> {
 impl<T: ComplexField> ColPivQr<T> {
 	/// returns the $QR$ decomposition of $A$ with column pivoting
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>) -> Self {
 		let QR = A.to_owned();
+
 		Self::new_imp(QR)
 	}
 
 	#[track_caller]
+
 	fn new_imp(mut QR: Mat<T>) -> Self {
 		let par = get_global_parallelism();
 
 		let (m, n) = QR.shape();
+
 		let size = Ord::min(m, n);
 
 		let mut col_perm_fwd = vec![0usize; n];
+
 		let mut col_perm_bwd = vec![0usize; n];
 
 		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
+
 		let mut Q_coeff = Mat::zeros(block_size, size);
 
 		linalg::qr::col_pivoting::factor::qr_in_place(
@@ -1049,30 +1270,38 @@ impl<T: ComplexField> ColPivQr<T> {
 	}
 
 	/// returns the householder basis of $Q$
+
 	pub fn Q_basis(&self) -> MatRef<'_, T> {
 		self.Q_basis.as_ref()
 	}
 
 	/// returns the householder coefficients of $Q$
+
 	pub fn Q_coeff(&self) -> MatRef<'_, T> {
 		self.Q_coeff.as_ref()
 	}
 
 	/// returns the factor $R$
+
 	pub fn R(&self) -> MatRef<'_, T> {
 		self.R.as_ref()
 	}
 
 	/// returns the upper trapezoidal part of $R$
+
 	pub fn thin_R(&self) -> MatRef<'_, T> {
 		let size = Ord::min(self.nrows(), self.ncols());
+
 		self.R.get(..size, ..)
 	}
 
 	/// computes the factor $Q$
+
 	pub fn compute_Q(&self) -> Mat<T> {
 		let mut Q = Mat::identity(self.nrows(), self.nrows());
+
 		let par = get_global_parallelism();
+
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 			self.Q_basis(),
 			self.Q_coeff(),
@@ -1087,14 +1316,19 @@ impl<T: ComplexField> ColPivQr<T> {
 				),
 			)),
 		);
+
 		Q
 	}
 
 	/// computes the first $\min(\text{nrows}, \text{ncols})$ columns of the factor $Q$
+
 	pub fn compute_thin_Q(&self) -> Mat<T> {
 		let size = Ord::min(self.nrows(), self.ncols());
+
 		let mut Q = Mat::identity(self.nrows(), size);
+
 		let par = get_global_parallelism();
+
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 			self.Q_basis(),
 			self.Q_coeff(),
@@ -1105,10 +1339,12 @@ impl<T: ComplexField> ColPivQr<T> {
 				linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(self.nrows(), self.Q_coeff.nrows(), size),
 			)),
 		);
+
 		Q
 	}
 
 	/// returns the column pivoting permutation $P$
+
 	pub fn P(&self) -> PermRef<'_, usize> {
 		self.P.as_ref()
 	}
@@ -1117,25 +1353,31 @@ impl<T: ComplexField> ColPivQr<T> {
 impl<T: ComplexField> Svd<T> {
 	/// returns the svd of $A$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>) -> Result<Self, SvdError> {
 		Self::new_imp(A.canonical(), Conj::get::<C>(), false)
 	}
 
 	/// returns the thin svd of $A$
 	#[track_caller]
+
 	pub fn new_thin<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>) -> Result<Self, SvdError> {
 		Self::new_imp(A.canonical(), Conj::get::<C>(), true)
 	}
 
 	#[track_caller]
+
 	fn new_imp(A: MatRef<'_, T>, conj: Conj, thin: bool) -> Result<Self, SvdError> {
 		let par = get_global_parallelism();
 
 		let (m, n) = A.shape();
+
 		let size = Ord::min(m, n);
 
 		let mut U = Mat::zeros(m, if thin { size } else { m });
+
 		let mut V = Mat::zeros(n, if thin { size } else { n });
+
 		let mut S = Diag::zeros(size);
 
 		let compute = if thin { ComputeSvdVectors::Thin } else { ComputeSvdVectors::Full };
@@ -1153,12 +1395,13 @@ impl<T: ComplexField> Svd<T> {
 		if conj == Conj::Yes {
 			for c in U.col_iter_mut() {
 				for x in c.iter_mut() {
-					*x = math_utils::conj(x);
+					*x = x.conj();
 				}
 			}
+
 			for c in V.col_iter_mut() {
 				for x in c.iter_mut() {
-					*x = math_utils::conj(x);
+					*x = x.conj();
 				}
 			}
 		}
@@ -1167,29 +1410,40 @@ impl<T: ComplexField> Svd<T> {
 	}
 
 	/// returns the factor $U$
+
 	pub fn U(&self) -> MatRef<'_, T> {
 		self.U.as_ref()
 	}
 
 	/// returns the factor $V$
+
 	pub fn V(&self) -> MatRef<'_, T> {
 		self.V.as_ref()
 	}
 
 	/// returns the factor $S$
+
 	pub fn S(&self) -> DiagRef<'_, T> {
 		self.S.as_ref()
 	}
 
 	/// returns the pseudoinverse of the original matrix $A$.
+
 	pub fn pseudoinverse(&self) -> Mat<T> {
 		let U = self.U();
+
 		let V = self.V();
+
 		let S = self.S();
+
 		let par = get_global_parallelism();
+
 		let stack = &mut MemBuffer::new(linalg::svd::pseudoinverse_from_svd_scratch::<T>(self.nrows(), self.ncols(), par));
+
 		let mut pinv = Mat::zeros(self.ncols(), self.nrows());
+
 		linalg::svd::pseudoinverse_from_svd(pinv.rb_mut(), S, U, V, par, MemStack::new(stack));
+
 		pinv
 	}
 }
@@ -1197,6 +1451,7 @@ impl<T: ComplexField> Svd<T> {
 impl<T: ComplexField> SelfAdjointEigen<T> {
 	/// returns the eigendecomposition of $A$, assuming it is self-adjoint
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = T>>(A: MatRef<'_, C>, side: Side) -> Result<Self, EvdError> {
 		assert!(A.nrows() == A.ncols());
 
@@ -1207,12 +1462,14 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 	}
 
 	#[track_caller]
+
 	fn new_imp(A: MatRef<'_, T>, conj: Conj) -> Result<Self, EvdError> {
 		let par = get_global_parallelism();
 
 		let n = A.nrows();
 
 		let mut U = Mat::zeros(n, n);
+
 		let mut S = Diag::zeros(n);
 
 		linalg::evd::self_adjoint_evd(
@@ -1232,7 +1489,7 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 		if conj == Conj::Yes {
 			for c in U.col_iter_mut() {
 				for x in c.iter_mut() {
-					*x = math_utils::conj(x);
+					*x = x.conj();
 				}
 			}
 		}
@@ -1241,23 +1498,32 @@ impl<T: ComplexField> SelfAdjointEigen<T> {
 	}
 
 	/// returns the factor $U$
+
 	pub fn U(&self) -> MatRef<'_, T> {
 		self.U.as_ref()
 	}
 
 	/// returns the factor $S$
+
 	pub fn S(&self) -> DiagRef<'_, T> {
 		self.S.as_ref()
 	}
 
 	/// returns the pseudoinverse of the original matrix $A$.
+
 	pub fn pseudoinverse(&self) -> Mat<T> {
 		let U = self.U();
+
 		let S = self.S();
+
 		let par = get_global_parallelism();
+
 		let stack = &mut MemBuffer::new(linalg::evd::pseudoinverse_from_self_adjoint_evd_scratch::<T>(self.nrows(), par));
+
 		let mut pinv = Mat::zeros(self.ncols(), self.nrows());
+
 		linalg::evd::pseudoinverse_from_self_adjoint_evd(pinv.rb_mut(), S, U, par, MemStack::new(stack));
+
 		pinv
 	}
 }
@@ -1272,6 +1538,7 @@ fn real_to_cplx<T: RealField>(
 	let n = U.ncols();
 
 	let mut j = 0;
+
 	while j < n {
 		if S_im[j] == zero() {
 			S[j] = Complex::new(S_re[j].clone(), zero());
@@ -1283,11 +1550,13 @@ fn real_to_cplx<T: RealField>(
 			j += 1;
 		} else {
 			S[j] = Complex::new(S_re[j].clone(), S_im[j].clone());
-			S[j + 1] = Complex::new(S_re[j].clone(), neg(&S_im[j]));
+
+			S[j + 1] = Complex::new(S_re[j].clone(), -(&S_im[j]));
 
 			for i in 0..n {
 				U[(i, j)] = Complex::new(U_real[(i, j)].clone(), U_real[(i, j + 1)].clone());
-				U[(i, j + 1)] = Complex::new(U_real[(i, j)].clone(), neg(&U_real[(i, j + 1)]));
+
+				U[(i, j + 1)] = Complex::new(U_real[(i, j)].clone(), -(&U_real[(i, j + 1)]));
 			}
 
 			j += 2;
@@ -1298,13 +1567,16 @@ fn real_to_cplx<T: RealField>(
 impl<T: RealField> Eigen<T> {
 	/// returns the eigendecomposition of $A$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = Complex<T>>>(A: MatRef<'_, C>) -> Result<Self, EvdError> {
 		assert!(A.nrows() == A.ncols());
+
 		Self::new_imp(A.canonical(), Conj::get::<C>())
 	}
 
 	/// returns the eigendecomposition of $A$
 	#[track_caller]
+
 	pub fn new_from_real(A: MatRef<'_, T>) -> Result<Self, EvdError> {
 		assert!(A.nrows() == A.ncols());
 
@@ -1313,7 +1585,9 @@ impl<T: RealField> Eigen<T> {
 		let n = A.nrows();
 
 		let mut U_real = Mat::zeros(n, n);
+
 		let mut S_re = Diag::zeros(n);
+
 		let mut S_im = Diag::zeros(n);
 
 		linalg::evd::evd_real(
@@ -1334,6 +1608,7 @@ impl<T: RealField> Eigen<T> {
 		)?;
 
 		let mut U = Mat::zeros(n, n);
+
 		let mut S = Diag::zeros(n);
 
 		real_to_cplx(U.as_mut(), S.as_mut(), U_real.as_ref(), S_re.as_ref(), S_im.as_ref());
@@ -1347,6 +1622,7 @@ impl<T: RealField> Eigen<T> {
 		let n = A.nrows();
 
 		let mut U = Mat::zeros(n, n);
+
 		let mut S = Diag::zeros(n);
 
 		linalg::evd::evd_cplx(
@@ -1366,19 +1642,22 @@ impl<T: RealField> Eigen<T> {
 		)?;
 
 		if conj == Conj::Yes {
-			zip!(&mut U).for_each(|unzip!(c)| *c = math_utils::conj(c));
-			zip!(&mut S).for_each(|unzip!(c)| *c = math_utils::conj(c));
+			zip!(&mut U).for_each(|unzip!(c)| *c = c.conj());
+
+			zip!(&mut S).for_each(|unzip!(c)| *c = c.conj());
 		}
 
 		Ok(Self { U, S })
 	}
 
 	/// returns the factor $U$
+
 	pub fn U(&self) -> MatRef<'_, Complex<T>> {
 		self.U.as_ref()
 	}
 
 	/// returns the factor $S$
+
 	pub fn S(&self) -> DiagRef<'_, Complex<T>> {
 		self.S.as_ref()
 	}
@@ -1387,25 +1666,35 @@ impl<T: RealField> Eigen<T> {
 impl<T: RealField> GeneralizedEigen<T> {
 	/// returns the generalized eigendecomposition of $(A, B)$
 	#[track_caller]
+
 	pub fn new<C: Conjugate<Canonical = Complex<T>>>(A: MatRef<'_, C>, B: MatRef<'_, C>) -> Result<Self, GevdError> {
 		let n = A.nrows();
+
 		assert!(all(A.nrows() == n, A.ncols() == n, B.nrows() == n, B.ncols() == n));
+
 		Self::new_imp(A.canonical(), B.canonical(), Conj::get::<C>())
 	}
 
 	/// returns the generalized eigendecomposition of $(A, B)$
 	#[track_caller]
+
 	pub fn new_from_real(A: MatRef<'_, T>, B: MatRef<'_, T>) -> Result<Self, GevdError> {
 		let n = A.nrows();
+
 		assert!(all(A.nrows() == n, A.ncols() == n, B.nrows() == n, B.ncols() == n));
 
 		let par = get_global_parallelism();
 
 		let mut U_real = Mat::zeros(n, n);
+
 		let mut S_re = Diag::zeros(n);
+
 		let mut S_im = Diag::zeros(n);
+
 		let mut S_b = Diag::zeros(n);
+
 		let A = &mut A.cloned();
+
 		let B = &mut B.cloned();
 
 		linalg::gevd::gevd_real(
@@ -1428,7 +1717,9 @@ impl<T: RealField> GeneralizedEigen<T> {
 		)?;
 
 		let mut U = Mat::zeros(n, n);
+
 		let mut S_a = Diag::zeros(n);
+
 		let S_b = zip!(&S_b).map(|unzip!(x)| Complex::new(x.clone(), zero()));
 
 		real_to_cplx(U.as_mut(), S_a.as_mut(), U_real.as_ref(), S_re.as_ref(), S_im.as_ref());
@@ -1442,9 +1733,13 @@ impl<T: RealField> GeneralizedEigen<T> {
 		let n = A.nrows();
 
 		let mut U = Mat::zeros(n, n);
+
 		let mut S_a = Diag::zeros(n);
+
 		let mut S_b = Diag::zeros(n);
+
 		let A = &mut A.cloned();
+
 		let B = &mut B.cloned();
 
 		linalg::gevd::gevd_cplx(
@@ -1466,25 +1761,30 @@ impl<T: RealField> GeneralizedEigen<T> {
 		)?;
 
 		if conj == Conj::Yes {
-			zip!(&mut U).for_each(|unzip!(c)| *c = math_utils::conj(c));
-			zip!(&mut S_a).for_each(|unzip!(c)| *c = math_utils::conj(c));
-			zip!(&mut S_b).for_each(|unzip!(c)| *c = math_utils::conj(c));
+			zip!(&mut U).for_each(|unzip!(c)| *c = c.conj());
+
+			zip!(&mut S_a).for_each(|unzip!(c)| *c = c.conj());
+
+			zip!(&mut S_b).for_each(|unzip!(c)| *c = c.conj());
 		}
 
 		Ok(Self { U, S_a, S_b })
 	}
 
 	/// returns the factor $U$
+
 	pub fn U(&self) -> MatRef<'_, Complex<T>> {
 		self.U.as_ref()
 	}
 
 	/// returns the factor $S_a$
+
 	pub fn S_a(&self) -> DiagRef<'_, Complex<T>> {
 		self.S_a.as_ref()
 	}
 
 	/// returns the factor $S_b$
+
 	pub fn S_b(&self) -> DiagRef<'_, Complex<T>> {
 		self.S_b.as_ref()
 	}
@@ -1492,110 +1792,139 @@ impl<T: RealField> GeneralizedEigen<T> {
 
 impl<T: ComplexField> ShapeCore for Llt<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.L().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.L().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for Ldlt<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.L().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.L().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for Lblt<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.L().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.L().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for PartialPivLu<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.L().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.U().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for FullPivLu<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.L().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.U().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for Qr<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.Q_basis().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.R().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for ColPivQr<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.Q_basis().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.R().ncols()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for Svd<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.U().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.V().nrows()
 	}
 }
+
 impl<T: ComplexField> ShapeCore for SelfAdjointEigen<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.U().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.U().nrows()
 	}
 }
+
 impl<T: RealField> ShapeCore for Eigen<T> {
 	#[inline]
+
 	fn nrows(&self) -> usize {
 		self.U().nrows()
 	}
 
 	#[inline]
+
 	fn ncols(&self) -> usize {
 		self.U().nrows()
 	}
@@ -1603,6 +1932,7 @@ impl<T: RealField> ShapeCore for Eigen<T> {
 
 impl<T: ComplexField> SolveCore<T> for Llt<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1611,12 +1941,14 @@ impl<T: ComplexField> SolveCore<T> for Llt<T> {
 			rhs.ncols(),
 			par,
 		));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::llt::solve::solve_in_place_with_conj(self.L.as_ref(), conj, rhs, par, stack);
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1625,60 +1957,72 @@ impl<T: ComplexField> SolveCore<T> for Llt<T> {
 			rhs.ncols(),
 			par,
 		));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::llt::solve::solve_in_place_with_conj(self.L.as_ref(), conj.compose(Conj::Yes), rhs, par, stack);
 	}
 }
 
-#[math]
 fn make_self_adjoint<T: ComplexField>(mut A: MatMut<'_, T>) {
 	assert!(A.nrows() == A.ncols());
+
 	let n = A.nrows();
+
 	for j in 0..n {
-		A[(j, j)] = from_real(real(A[(j, j)]));
+		A[(j, j)] = A[(j, j)].as_real();
+
 		for i in 0..j {
-			A[(i, j)] = conj(A[(j, i)]);
+			A[(i, j)] = A[(j, i)].conj();
 		}
 	}
 }
 
 impl<T: ComplexField> DenseSolveCore<T> for Llt<T> {
 	#[track_caller]
+
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		let n = self.L.nrows();
+
 		let mut out = Mat::zeros(n, n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::llt::reconstruct::reconstruct_scratch::<T>(n, par));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::llt::reconstruct::reconstruct(out.as_mut(), self.L(), par, stack);
 
 		make_self_adjoint(out.as_mut());
+
 		out
 	}
 
 	#[track_caller]
+
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		let n = self.L.nrows();
+
 		let mut out = Mat::zeros(n, n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::llt::inverse::inverse_scratch::<T>(n, par));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::llt::inverse::inverse(out.as_mut(), self.L(), par, stack);
 
 		make_self_adjoint(out.as_mut());
+
 		out
 	}
 }
 
 impl<T: ComplexField> SolveCore<T> for Ldlt<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1687,12 +2031,14 @@ impl<T: ComplexField> SolveCore<T> for Ldlt<T> {
 			rhs.ncols(),
 			par,
 		));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::ldlt::solve::solve_in_place_with_conj(self.L.as_ref(), self.D.as_ref(), conj, rhs, par, stack);
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1701,6 +2047,7 @@ impl<T: ComplexField> SolveCore<T> for Ldlt<T> {
 			rhs.ncols(),
 			par,
 		));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::ldlt::solve::solve_in_place_with_conj(self.L(), self.D(), conj.compose(Conj::Yes), rhs, par, stack);
@@ -1709,40 +2056,49 @@ impl<T: ComplexField> SolveCore<T> for Ldlt<T> {
 
 impl<T: ComplexField> DenseSolveCore<T> for Ldlt<T> {
 	#[track_caller]
+
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		let n = self.L.nrows();
+
 		let mut out = Mat::zeros(n, n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::ldlt::reconstruct::reconstruct_scratch::<T>(n, par));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::ldlt::reconstruct::reconstruct(out.as_mut(), self.L(), self.D(), par, stack);
 
 		make_self_adjoint(out.as_mut());
+
 		out
 	}
 
 	#[track_caller]
+
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		let n = self.L.nrows();
+
 		let mut out = Mat::zeros(n, n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::ldlt::inverse::inverse_scratch::<T>(n, par));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::ldlt::inverse::inverse(out.as_mut(), self.L(), self.D(), par, stack);
 
 		make_self_adjoint(out.as_mut());
+
 		out
 	}
 }
 
 impl<T: ComplexField> SolveCore<T> for Lblt<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1751,12 +2107,14 @@ impl<T: ComplexField> SolveCore<T> for Lblt<T> {
 			rhs.ncols(),
 			par,
 		));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::lblt::solve::solve_in_place_with_conj(self.L.as_ref(), self.B_diag(), self.B_subdiag(), conj, self.P(), rhs, par, stack);
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1765,6 +2123,7 @@ impl<T: ComplexField> SolveCore<T> for Lblt<T> {
 			rhs.ncols(),
 			par,
 		));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::lblt::solve::solve_in_place_with_conj(
@@ -1782,40 +2141,49 @@ impl<T: ComplexField> SolveCore<T> for Lblt<T> {
 
 impl<T: ComplexField> DenseSolveCore<T> for Lblt<T> {
 	#[track_caller]
+
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		let n = self.L.nrows();
+
 		let mut out = Mat::zeros(n, n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::lblt::reconstruct::reconstruct_scratch::<usize, T>(n, par));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::lblt::reconstruct::reconstruct(out.as_mut(), self.L(), self.B_diag(), self.B_subdiag(), self.P(), par, stack);
 
 		make_self_adjoint(out.as_mut());
+
 		out
 	}
 
 	#[track_caller]
+
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		let n = self.L.nrows();
+
 		let mut out = Mat::zeros(n, n);
 
 		let mut mem = MemBuffer::new(linalg::cholesky::lblt::inverse::inverse_scratch::<usize, T>(n, par));
+
 		let stack = MemStack::new(&mut mem);
 
 		linalg::cholesky::lblt::inverse::inverse(out.as_mut(), self.L(), self.B_diag(), self.B_subdiag(), self.P(), par, stack);
 
 		make_self_adjoint(out.as_mut());
+
 		out
 	}
 }
 
 impl<T: ComplexField> SolveCore<T> for PartialPivLu<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1837,6 +2205,7 @@ impl<T: ComplexField> SolveCore<T> for PartialPivLu<T> {
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1861,7 +2230,9 @@ impl<T: ComplexField> SolveCore<T> for PartialPivLu<T> {
 impl<T: ComplexField> DenseSolveCore<T> for PartialPivLu<T> {
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		let m = self.nrows();
+
 		let n = self.ncols();
 
 		let mut out = Mat::zeros(m, n);
@@ -1882,6 +2253,7 @@ impl<T: ComplexField> DenseSolveCore<T> for PartialPivLu<T> {
 	}
 
 	#[track_caller]
+
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
@@ -1908,6 +2280,7 @@ impl<T: ComplexField> DenseSolveCore<T> for PartialPivLu<T> {
 
 impl<T: ComplexField> SolveCore<T> for FullPivLu<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1932,6 +2305,7 @@ impl<T: ComplexField> SolveCore<T> for FullPivLu<T> {
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
@@ -1958,7 +2332,9 @@ impl<T: ComplexField> SolveCore<T> for FullPivLu<T> {
 impl<T: ComplexField> DenseSolveCore<T> for FullPivLu<T> {
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		let m = self.nrows();
+
 		let n = self.ncols();
 
 		let mut out = Mat::zeros(m, n);
@@ -1979,6 +2355,7 @@ impl<T: ComplexField> DenseSolveCore<T> for FullPivLu<T> {
 	}
 
 	#[track_caller]
+
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
@@ -2006,13 +2383,16 @@ impl<T: ComplexField> DenseSolveCore<T> for FullPivLu<T> {
 
 impl<T: ComplexField> SolveCore<T> for Qr<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.nrows() == rhs.nrows(),));
 
 		let n = self.nrows();
+
 		let block_size = self.Q_coeff().nrows();
+
 		let k = rhs.ncols();
 
 		linalg::qr::no_pivoting::solve::solve_in_place_with_conj(
@@ -2029,13 +2409,16 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.ncols() == rhs.nrows(),));
 
 		let n = self.nrows();
+
 		let block_size = self.Q_coeff().nrows();
+
 		let k = rhs.ncols();
 
 		linalg::qr::no_pivoting::solve::solve_transpose_in_place_with_conj(
@@ -2054,14 +2437,18 @@ impl<T: ComplexField> SolveCore<T> for Qr<T> {
 
 impl<T: ComplexField> SolveLstsqCore<T> for Qr<T> {
 	#[track_caller]
+
 	fn solve_lstsq_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == rhs.nrows(), self.nrows() >= self.ncols(),));
 
 		let m = self.nrows();
+
 		let n = self.ncols();
+
 		let block_size = self.Q_coeff().nrows();
+
 		let k = rhs.ncols();
 
 		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj(
@@ -2081,8 +2468,11 @@ impl<T: ComplexField> SolveLstsqCore<T> for Qr<T> {
 impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		let m = self.nrows();
+
 		let n = self.ncols();
+
 		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(m, n);
@@ -2103,9 +2493,11 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		assert!(self.nrows() == self.ncols());
 
 		let n = self.ncols();
+
 		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(n, n);
@@ -2127,13 +2519,16 @@ impl<T: ComplexField> DenseSolveCore<T> for Qr<T> {
 
 impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.nrows() == rhs.nrows(),));
 
 		let n = self.nrows();
+
 		let block_size = self.Q_coeff().nrows();
+
 		let k = rhs.ncols();
 
 		linalg::qr::col_pivoting::solve::solve_in_place_with_conj(
@@ -2151,13 +2546,16 @@ impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.ncols() == rhs.nrows(),));
 
 		let n = self.nrows();
+
 		let block_size = self.Q_coeff().nrows();
+
 		let k = rhs.ncols();
 
 		linalg::qr::col_pivoting::solve::solve_transpose_in_place_with_conj(
@@ -2178,14 +2576,18 @@ impl<T: ComplexField> SolveCore<T> for ColPivQr<T> {
 
 impl<T: ComplexField> SolveLstsqCore<T> for ColPivQr<T> {
 	#[track_caller]
+
 	fn solve_lstsq_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == rhs.nrows(), self.nrows() >= self.ncols(),));
 
 		let m = self.nrows();
+
 		let n = self.ncols();
+
 		let block_size = self.Q_coeff().nrows();
+
 		let k = rhs.ncols();
 
 		linalg::qr::col_pivoting::solve::solve_lstsq_in_place_with_conj(
@@ -2207,8 +2609,11 @@ impl<T: ComplexField> SolveLstsqCore<T> for ColPivQr<T> {
 impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		let m = self.nrows();
+
 		let n = self.ncols();
+
 		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(m, n);
@@ -2230,9 +2635,11 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		assert!(self.nrows() == self.ncols());
 
 		let n = self.ncols();
+
 		let block_size = self.Q_coeff().nrows();
 
 		let mut out = Mat::zeros(n, n);
@@ -2255,14 +2662,18 @@ impl<T: ComplexField> DenseSolveCore<T> for ColPivQr<T> {
 
 impl<T: ComplexField> SolveCore<T> for Svd<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.nrows() == rhs.nrows(),));
 
 		let mut rhs = rhs;
+
 		let n = self.nrows();
+
 		let k = rhs.ncols();
+
 		let mut tmp = Mat::zeros(n, k);
 
 		linalg::matmul::matmul_with_conj(
@@ -2279,6 +2690,7 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 		for j in 0..k {
 			for i in 0..n {
 				let s = recip(&real(&self.S()[i]));
+
 				tmp[(i, j)] = mul_real(&tmp[(i, j)], &s);
 			}
 		}
@@ -2287,14 +2699,18 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.ncols() == rhs.nrows(),));
 
 		let mut rhs = rhs;
+
 		let n = self.nrows();
+
 		let k = rhs.ncols();
+
 		let mut tmp = Mat::zeros(n, k);
 
 		linalg::matmul::matmul_with_conj(
@@ -2311,6 +2727,7 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 		for j in 0..k {
 			for i in 0..n {
 				let s = recip(&real(&self.S()[i]));
+
 				tmp[(i, j)] = mul_real(&tmp[(i, j)], &s);
 			}
 		}
@@ -2330,17 +2747,20 @@ impl<T: ComplexField> SolveCore<T> for Svd<T> {
 
 impl<T: ComplexField> SolveLstsqCore<T> for Svd<T> {
 	#[track_caller]
+
 	fn solve_lstsq_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == rhs.nrows(), self.nrows() >= self.ncols(),));
 
 		let m = self.nrows();
+
 		let n = self.ncols();
 
 		let size = Ord::min(m, n);
 
 		let U = self.U().get(.., ..size);
+
 		let V = self.V().get(.., ..size);
 
 		let k = rhs.ncols();
@@ -2361,6 +2781,7 @@ impl<T: ComplexField> SolveLstsqCore<T> for Svd<T> {
 		for j in 0..k {
 			for i in 0..size {
 				let s = recip(&real(&self.S()[i]));
+
 				tmp[(i, j)] = mul_real(&tmp[(i, j)], &s);
 			}
 		}
@@ -2372,18 +2793,24 @@ impl<T: ComplexField> SolveLstsqCore<T> for Svd<T> {
 impl<T: ComplexField> DenseSolveCore<T> for Svd<T> {
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		let m = self.nrows();
+
 		let n = self.ncols();
 
 		let size = Ord::min(m, n);
 
 		let U = self.U().get(.., ..size);
+
 		let V = self.V().get(.., ..size);
+
 		let S = self.S();
 
 		let mut UxS = Mat::zeros(m, size);
+
 		for j in 0..size {
 			let s = real(&S[j]);
+
 			for i in 0..m {
 				UxS[(i, j)] = mul_real(&U[(i, j)], &s);
 			}
@@ -2397,17 +2824,22 @@ impl<T: ComplexField> DenseSolveCore<T> for Svd<T> {
 	}
 
 	#[track_caller]
+
 	fn inverse(&self) -> Mat<T> {
 		let par = get_global_parallelism();
 
 		assert!(self.nrows() == self.ncols());
+
 		let n = self.nrows();
 
 		let U = self.U();
+
 		let V = self.V();
+
 		let S = self.S();
 
 		let mut VxS = Mat::zeros(n, n);
+
 		for j in 0..n {
 			let s = recip(&real(&S[j]));
 
@@ -2426,14 +2858,18 @@ impl<T: ComplexField> DenseSolveCore<T> for Svd<T> {
 
 impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 	#[track_caller]
+
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.nrows() == rhs.nrows(),));
 
 		let mut rhs = rhs;
+
 		let n = self.nrows();
+
 		let k = rhs.ncols();
+
 		let mut tmp = Mat::zeros(n, k);
 
 		linalg::matmul::matmul_with_conj(
@@ -2450,6 +2886,7 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 		for j in 0..k {
 			for i in 0..n {
 				let s = recip(&real(&self.S()[i]));
+
 				tmp[(i, j)] = mul_real(&tmp[(i, j)], &s);
 			}
 		}
@@ -2458,14 +2895,18 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 	}
 
 	#[track_caller]
+
 	fn solve_transpose_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 
 		assert!(all(self.nrows() == self.ncols(), self.ncols() == rhs.nrows(),));
 
 		let mut rhs = rhs;
+
 		let n = self.nrows();
+
 		let k = rhs.ncols();
+
 		let mut tmp = Mat::zeros(n, k);
 
 		linalg::matmul::matmul_with_conj(
@@ -2482,6 +2923,7 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 		for j in 0..k {
 			for i in 0..n {
 				let s = recip(&real(&self.S()[i]));
+
 				tmp[(i, j)] = mul_real(&tmp[(i, j)], &s);
 			}
 		}
@@ -2502,18 +2944,24 @@ impl<T: ComplexField> SolveCore<T> for SelfAdjointEigen<T> {
 impl<T: ComplexField> DenseSolveCore<T> for SelfAdjointEigen<T> {
 	fn reconstruct(&self) -> Mat<T> {
 		let par = get_global_parallelism();
+
 		let m = self.nrows();
+
 		let n = self.ncols();
 
 		let size = Ord::min(m, n);
 
 		let U = self.U().get(.., ..size);
+
 		let V = self.U().get(.., ..size);
+
 		let S = self.S();
 
 		let mut UxS = Mat::zeros(m, size);
+
 		for j in 0..size {
 			let s = real(&S[j]);
+
 			for i in 0..m {
 				UxS[(i, j)] = mul_real(&U[(i, j)], &s);
 			}
@@ -2530,13 +2978,17 @@ impl<T: ComplexField> DenseSolveCore<T> for SelfAdjointEigen<T> {
 		let par = get_global_parallelism();
 
 		assert!(self.nrows() == self.ncols());
+
 		let n = self.nrows();
 
 		let U = self.U();
+
 		let V = self.U();
+
 		let S = self.S();
 
 		let mut VxS = Mat::zeros(n, n);
+
 		for j in 0..n {
 			let s = recip(&real(&S[j]));
 
@@ -2554,19 +3006,24 @@ impl<T: ComplexField> DenseSolveCore<T> for SelfAdjointEigen<T> {
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 
 	#[track_caller]
+
 	fn test_solver(A: MatRef<'_, c64>, A_dec: impl SolveCore<c64>) {
 		#[track_caller]
+
 		fn test_solver_imp(A: MatRef<'_, c64>, A_dec: &dyn SolveCore<c64>) {
 			let rng = &mut StdRng::seed_from_u64(0xC0FFEE);
 
 			let n = A.nrows();
+
 			let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 			let k = 3;
@@ -2586,13 +3043,19 @@ mod tests {
 			.rand::<Mat<c64>>(rng);
 
 			assert!(A * A_dec.solve(R) ~ R);
+
 			assert!(A.conjugate() * A_dec.solve_conjugate(R) ~ R);
+
 			assert!(A.transpose() * A_dec.solve_transpose(R) ~ R);
+
 			assert!(A.adjoint() * A_dec.solve_adjoint(R) ~ R);
 
 			assert!(A_dec.rsolve(L) * A ~ L);
+
 			assert!(A_dec.rsolve_conjugate(L) * A.conjugate() ~ L);
+
 			assert!(A_dec.rsolve_transpose(L) * A.transpose() ~ L);
+
 			assert!(A_dec.rsolve_adjoint(L) * A.adjoint() ~ L);
 		}
 
@@ -2600,8 +3063,10 @@ mod tests {
 	}
 
 	#[test]
+
 	fn test_all_solvers() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let ref A = CwiseMatDistribution {
@@ -2610,32 +3075,45 @@ mod tests {
 			dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 		}
 		.rand::<Mat<c64>>(rng);
+
 		let A = A.rb();
 
 		test_solver(A, A.partial_piv_lu());
+
 		test_solver(A, A.full_piv_lu());
+
 		test_solver(A, A.qr());
+
 		test_solver(A, A.col_piv_qr());
+
 		test_solver(A, A.svd().unwrap());
 
 		{
 			let ref A = A * A.adjoint();
+
 			let A = A.rb();
+
 			test_solver(A, A.llt(Side::Lower).unwrap());
+
 			test_solver(A, A.ldlt(Side::Lower).unwrap());
 		}
 
 		{
 			let ref A = A + A.adjoint();
+
 			let A = A.rb();
+
 			test_solver(A, A.lblt(Side::Lower));
+
 			test_solver(A, A.self_adjoint_eigen(Side::Lower).unwrap());
 		}
 	}
 
 	#[test]
+
 	fn test_eigen_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -2646,25 +3124,35 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let n = A.nrows();
+
 		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 		{
 			let evd = A.eigen().unwrap();
+
 			let e = A.eigenvalues().unwrap();
-			assert!(&A * evd.U() ~ evd.U() * evd.S());
-			assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+
+			assert!(& A * evd.U() ~ evd.U() * evd.S());
+
+			assert!(evd.S().column_vector() ~ ColRef::from_slice(& e));
 		}
+
 		{
 			let evd = A.conjugate().eigen().unwrap();
+
 			let e = A.conjugate().eigenvalues().unwrap();
+
 			assert!(A.conjugate() * evd.U() ~ evd.U() * evd.S());
-			assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+
+			assert!(evd.S().column_vector() ~ ColRef::from_slice(& e));
 		}
 	}
 
 	#[test]
+
 	fn test_geigen_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -2682,24 +3170,31 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let n = A.nrows();
+
 		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 		{
 			let evd = A.generalized_eigen(&B).unwrap();
+
 			let e = zip!(evd.S_a(), evd.S_b()).map(|unzip!(a, b)| a / b);
-			assert!(&A * evd.U() ~ &B * evd.U() * e);
+
+			assert!(& A * evd.U() ~ & B * evd.U() * e);
 		}
 
 		{
 			let evd = A.conjugate().generalized_eigen(B.conjugate()).unwrap();
+
 			let e = zip!(evd.S_a(), evd.S_b()).map(|unzip!(a, b)| a / b);
+
 			assert!(A.conjugate() * evd.U() ~ B.conjugate() * evd.U() * e);
 		}
 	}
 
 	#[test]
+
 	fn test_eigen_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -2710,20 +3205,25 @@ mod tests {
 		.rand::<Mat<f64>>(rng);
 
 		let n = A.nrows();
+
 		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 		let evd = A.eigen().unwrap();
+
 		let e = A.eigenvalues().unwrap();
 
 		let A = Mat::from_fn(A.nrows(), A.ncols(), |i, j| c64::from(A[(i, j)]));
 
-		assert!(&A * evd.U() ~ evd.U() * evd.S());
-		assert!(evd.S().column_vector() ~ ColRef::from_slice(&e));
+		assert!(& A * evd.U() ~ evd.U() * evd.S());
+
+		assert!(evd.S().column_vector() ~ ColRef::from_slice(& e));
 	}
 
 	#[test]
+
 	fn test_geigen_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
 
 		let A = CwiseMatDistribution {
@@ -2741,48 +3241,46 @@ mod tests {
 		.rand::<Mat<f64>>(rng);
 
 		let n = A.nrows();
+
 		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (n as f64));
 
 		let Ac = zip!(&A).map(|unzip!(x)| c64::new(*x, 0.0));
+
 		let Bc = zip!(&B).map(|unzip!(x)| c64::new(*x, 0.0));
 
 		{
 			let evd = A.generalized_eigen(&B).unwrap();
+
 			let e = zip!(evd.S_a(), evd.S_b()).map(|unzip!(a, b)| a / b);
-			assert!(&Ac * evd.U() ~ &Bc * evd.U() * e);
+
+			assert!(& Ac * evd.U() ~ & Bc * evd.U() * e);
 		}
 	}
 
 	#[test]
+
 	fn test_svd_solver_for_rectangular_matrix() {
 		#[rustfmt::skip]
-    	let A = crate::mat![
-    	    [4.,   5.,   7.],
-    	    [8.,   8.,   2.],
-    	    [4.,   0.,   9.],
-    	    [2.,   6.,   2.],
-    	    [0.,   6.,   0.],
-    	];
-		#[rustfmt::skip]
-    	let B = crate::mat![
-        	[105.,    49.],
-        	[ 98.,    54.],
-        	[113.,    35.],
-        	[ 46.,    34.],
-        	[ 12.,    24.],
-     	];
+        let A = crate::mat![
+            [4., 5., 7.], [8., 8., 2.], [4., 0., 9.], [2., 6., 2.], [0., 6., 0.],
+        ];
 
 		#[rustfmt::skip]
-	    let X_true= crate::mat![
-	      [8.,   2.],
-	      [2.,   4.],
-	      [9.,   3.],
-	    ];
+        let B = crate::mat![
+            [105., 49.], [98., 54.], [113., 35.], [46., 34.], [12., 24.],
+        ];
+
+		#[rustfmt::skip]
+        let X_true = crate::mat![[8., 2.], [2., 4.], [9., 3.],];
 
 		let approx_eq = CwiseMat(ApproxEq::eps() * 128.0 * (A.nrows() as f64));
+
 		let svd = A.svd().unwrap();
+
 		let mut X = B.cloned();
+
 		svd.solve_lstsq_in_place_with_conj(crate::Conj::No, X.as_mat_mut());
+
 		assert!(X.get(..X_true.nrows(),..) ~ X_true);
 	}
 }

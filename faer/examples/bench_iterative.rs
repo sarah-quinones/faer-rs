@@ -22,11 +22,13 @@ fn eigen(bencher: Bencher, PlotArg(n): PlotArg) {
 	.rand::<Col<f64>>(rng);
 
 	let A = A.as_ref();
+
 	let v0 = v0.as_ref();
 
 	let n_eigval = 5;
 
 	let mut V = Mat::zeros(n, n_eigval);
+
 	let mut w = vec![c64::ZERO; n_eigval];
 
 	let mut mem = MemBuffer::new(faer::matrix_free::eigen::partial_eigen_scratch(&A, n_eigval, Par::Seq, default()));

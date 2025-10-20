@@ -3,7 +3,9 @@ use crate::internal_prelude::*;
 
 pub fn solve_lstsq_in_place_scratch<T: ComplexField>(qr_nrows: usize, qr_ncols: usize, qr_block_size: usize, rhs_ncols: usize, par: Par) -> StackReq {
 	_ = qr_ncols;
+
 	_ = par;
+
 	linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(qr_nrows, qr_block_size, rhs_ncols)
 }
 
@@ -13,10 +15,12 @@ pub fn solve_in_place_scratch<T: ComplexField>(qr_dim: usize, qr_block_size: usi
 
 pub fn solve_transpose_in_place_scratch<T: ComplexField>(qr_dim: usize, qr_block_size: usize, rhs_ncols: usize, par: Par) -> StackReq {
 	_ = par;
+
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(qr_dim, qr_block_size, rhs_ncols)
 }
 
 #[track_caller]
+
 pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(
 	Q_basis: MatRef<'_, T>,
 	Q_coeff: MatRef<'_, T>,
@@ -27,9 +31,13 @@ pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let m = Q_basis.nrows();
+
 	let n = Q_basis.ncols();
+
 	let size = Ord::min(m, n);
+
 	let block_size = Q_coeff.nrows();
+
 	assert!(all(
 		block_size > 0,
 		rhs.nrows() == m,
@@ -40,7 +48,9 @@ pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(
 	));
 
 	let mut rhs = rhs;
+
 	let mut stack = stack;
+
 	linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 		Q_basis,
 		Q_coeff,
@@ -54,6 +64,7 @@ pub fn solve_lstsq_in_place_with_conj<T: ComplexField>(
 }
 
 #[track_caller]
+
 pub fn solve_lstsq_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
@@ -66,6 +77,7 @@ pub fn solve_lstsq_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 }
 
 #[track_caller]
+
 pub fn solve_in_place_with_conj<T: ComplexField>(
 	Q_basis: MatRef<'_, T>,
 	Q_coeff: MatRef<'_, T>,
@@ -76,7 +88,9 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = Q_basis.nrows();
+
 	let block_size = Q_coeff.nrows();
+
 	assert!(all(
 		block_size > 0,
 		rhs.nrows() == n,
@@ -91,6 +105,7 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
 }
 
 #[track_caller]
+
 pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
@@ -103,6 +118,7 @@ pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 }
 
 #[track_caller]
+
 pub fn solve_transpose_in_place_with_conj<T: ComplexField>(
 	Q_basis: MatRef<'_, T>,
 	Q_coeff: MatRef<'_, T>,
@@ -113,6 +129,7 @@ pub fn solve_transpose_in_place_with_conj<T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let n = Q_basis.nrows();
+
 	let block_size = Q_coeff.nrows();
 
 	assert!(all(
@@ -126,9 +143,11 @@ pub fn solve_transpose_in_place_with_conj<T: ComplexField>(
 	));
 
 	let mut rhs = rhs;
+
 	let mut stack = stack;
 
 	linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(R.transpose(), conj_QR, rhs.rb_mut(), par);
+
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 		Q_basis,
 		Q_coeff,
@@ -140,6 +159,7 @@ pub fn solve_transpose_in_place_with_conj<T: ComplexField>(
 }
 
 #[track_caller]
+
 pub fn solve_transpose_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
@@ -152,7 +172,9 @@ pub fn solve_transpose_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 }
 
 #[cfg(test)]
+
 mod tests {
+
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
@@ -161,10 +183,14 @@ mod tests {
 	use linalg::qr::no_pivoting::*;
 
 	#[test]
+
 	fn test_lstsq() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let m = 100;
+
 		let n = 50;
+
 		let k = 3;
 
 		let A = CwiseMatDistribution {
@@ -182,6 +208,7 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let mut QR = A.to_owned();
+
 		let mut H = Mat::zeros(4, n);
 
 		factor::qr_in_place(
@@ -196,6 +223,7 @@ mod tests {
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_lstsq_in_place(
 				QR.as_ref(),
 				H.as_ref(),
@@ -207,11 +235,12 @@ mod tests {
 
 			let X = X.get(..n, ..);
 
-			assert!(A.adjoint() * &A * &X ~ A.adjoint() * &B);
+			assert!(A.adjoint() * & A * & X ~ A.adjoint() * & B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_lstsq_in_place(
 				QR.conjugate(),
 				H.conjugate(),
@@ -222,14 +251,18 @@ mod tests {
 			);
 
 			let X = X.get(..n, ..);
-			assert!(A.transpose() * A.conjugate() * &X ~ A.transpose() * &B);
+
+			assert!(A.transpose() * A.conjugate() * & X ~ A.transpose() * & B);
 		}
 	}
 
 	#[test]
+
 	fn test_solve() {
 		let rng = &mut StdRng::seed_from_u64(0);
+
 		let n = 50;
+
 		let k = 3;
 
 		let A = CwiseMatDistribution {
@@ -247,6 +280,7 @@ mod tests {
 		.rand::<Mat<c64>>(rng);
 
 		let mut QR = A.to_owned();
+
 		let mut H = Mat::zeros(4, n);
 
 		factor::qr_in_place(
@@ -261,6 +295,7 @@ mod tests {
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_in_place(
 				QR.as_ref(),
 				H.as_ref(),
@@ -270,11 +305,12 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(solve::solve_in_place_scratch::<c64>(n, 4, k, Par::Seq))),
 			);
 
-			assert!(&A * &X ~ B);
+			assert!(& A * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_in_place(
 				QR.conjugate(),
 				H.conjugate(),
@@ -284,11 +320,12 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(solve::solve_in_place_scratch::<c64>(n, 4, k, Par::Seq))),
 			);
 
-			assert!(A.conjugate() * &X ~ B);
+			assert!(A.conjugate() * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_transpose_in_place(
 				QR.as_ref(),
 				H.as_ref(),
@@ -298,11 +335,12 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(solve::solve_transpose_in_place_scratch::<c64>(n, 4, k, Par::Seq))),
 			);
 
-			assert!(A.transpose() * &X ~ B);
+			assert!(A.transpose() * & X ~ B);
 		}
 
 		{
 			let mut X = B.to_owned();
+
 			solve::solve_transpose_in_place(
 				QR.conjugate(),
 				H.conjugate(),
@@ -312,7 +350,7 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(solve::solve_transpose_in_place_scratch::<c64>(n, 4, k, Par::Seq))),
 			);
 
-			assert!(A.adjoint() * &X ~ B);
+			assert!(A.adjoint() * & X ~ B);
 		}
 	}
 }
