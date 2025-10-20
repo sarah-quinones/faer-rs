@@ -9,4 +9,4 @@ steps:
       CARGO_TERM_COLOR: always
     commands:
       - rustup toolchain install 1.84.0
-      - cargo +1.84.0 build
+      - cargo +1.84.0 build -p faer

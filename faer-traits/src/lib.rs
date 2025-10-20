@@ -3,10 +3,27 @@
 
 use bytemuck::Pod;
 use core::fmt::Debug;
-use imply_hack::Imply;
 use num_complex::Complex;
 use pulp::Simd;
 use qd::Quad;
+
+// taken from imply-hack (MIT license)
+pub mod imply {
+	pub trait Imply<T: ?Sized>: sealed::ImplyInner<T, Is = T> {}
+
+	impl<T: ?Sized, U: ?Sized> Imply<T> for U {}
+
+	mod sealed {
+		pub trait ImplyInner<T: ?Sized> {
+			type Is: ?Sized;
+		}
+
+		impl<T: ?Sized, U: ?Sized> ImplyInner<T> for U {
+			type Is = T;
+		}
+	}
+}
+use imply::Imply;
 
 use core::ops::*;
 use math_utils::*;
