@@ -93,7 +93,7 @@ pub mod npy {
 							NpyDType::C64
 						} else if byte_size == 4 && !is_complex {
 							NpyDType::F32
-						} else if byte_size == 16 && !is_complex {
+						} else if byte_size == 8 && !is_complex {
 							NpyDType::F64
 						} else {
 							NpyDType::Other

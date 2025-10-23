@@ -331,7 +331,7 @@ macro_rules! funcs {
 			$body:block
 	) => {
 		$crate::funcs!(
-			impl 2 @ fn $func<$ty1, $ty0 in (f32, f64, c32, c64,),>$inputs -> $output_ty $body
+			impl 2 @ fn $func<$ty1, $ty0 in (f32, f64, fx128, c32, c64, cx128,),>$inputs -> $output_ty $body
 		);
 	};
 
@@ -1819,9 +1819,9 @@ pub mod linalg {
 			compute_left: ComputeEigenvectors,
 			compute_right: ComputeEigenvectors,
 			par: Par,
-			params: EvdParams,
+			params: GevdParams,
 		) -> Layout {
-			la::evd::evd_scratch::<T>(dim, compute_left.faer(), compute_right.faer(), par.faer(), params.faer()).into()
+			la::gevd::gevd_scratch::<T>(dim, compute_left.faer(), compute_right.faer(), par.faer(), params.faer()).into()
 		}
 
 		pub fn generalized_evd<T>(
