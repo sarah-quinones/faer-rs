@@ -8,8 +8,11 @@ steps:
 
     environment:
       CARGO_TERM_COLOR: always
+      CI: 1
+      FAER_FFI: 1
     commands:
       - rustup toolchain install nightly
       - rustup default nightly
       - cargo install cargo-nextest --locked
       - cd faer && cargo nextest run --features=unstable && cd ..
+      - cd faer-ffi && cargo build && cd ..

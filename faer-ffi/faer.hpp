@@ -17,12 +17,12 @@
 #define LIBFAER_SCALAR_DISPATCH(name) \
     static_cast<decltype(&libfaer_v0_23_##name##_f32)>( \
         detail::ScalarDispatch { \
-            .f32 = libfaer_v0_23_##name##_f32, \
-            .f64 = libfaer_v0_23_##name##_f64, \
-            .fx128 = libfaer_v0_23_##name##_fx128, \
-            .c32 = libfaer_v0_23_##name##_c32, \
-            .c64 = libfaer_v0_23_##name##_c64, \
-            .cx128 = libfaer_v0_23_##name##_cx128, \
+            libfaer_v0_23_##name##_f32, \
+            libfaer_v0_23_##name##_f64, \
+            libfaer_v0_23_##name##_fx128, \
+            libfaer_v0_23_##name##_c32, \
+            libfaer_v0_23_##name##_c64, \
+            libfaer_v0_23_##name##_cx128, \
         } \
             .for_type(detail::TYPE<T>) \
     )
@@ -30,42 +30,36 @@
 #define LIBFAER_INDEX_DISPATCH(name) \
     static_cast<decltype(&libfaer_v0_23_##name##_u32_f32)>( \
         detail::ScalarDispatch { \
-            .f32 = \
-                detail::IndexDispatch { \
-                    .u32 = libfaer_v0_23_##name##_u32_f32, \
-                    .u64 = libfaer_v0_23_##name##_u64_f32, \
-                } \
-                    .for_type(detail::TYPE<I>), \
-            .f64 = \
-                detail::IndexDispatch { \
-                    .u32 = libfaer_v0_23_##name##_u32_f64, \
-                    .u64 = libfaer_v0_23_##name##_u64_f64, \
-                } \
-                    .for_type(detail::TYPE<I>), \
-            .fx128 = \
-                detail::IndexDispatch { \
-                    .u32 = libfaer_v0_23_##name##_u32_fx128, \
-                    .u64 = libfaer_v0_23_##name##_u64_fx128, \
-                } \
-                    .for_type(detail::TYPE<I>), \
-            .c32 = \
-                detail::IndexDispatch { \
-                    .u32 = libfaer_v0_23_##name##_u32_c32, \
-                    .u64 = libfaer_v0_23_##name##_u64_c32, \
-                } \
-                    .for_type(detail::TYPE<I>), \
-            .c64 = \
-                detail::IndexDispatch { \
-                    .u32 = libfaer_v0_23_##name##_u32_c64, \
-                    .u64 = libfaer_v0_23_##name##_u64_c64, \
-                } \
-                    .for_type(detail::TYPE<I>), \
-            .cx128 = \
-                detail::IndexDispatch { \
-                    .u32 = libfaer_v0_23_##name##_u32_cx128, \
-                    .u64 = libfaer_v0_23_##name##_u64_cx128, \
-                } \
-                    .for_type(detail::TYPE<I>), \
+            detail::IndexDispatch { \
+                libfaer_v0_23_##name##_u32_f32, \
+                libfaer_v0_23_##name##_u64_f32, \
+            } \
+                .for_type(detail::TYPE<I>), \
+            detail::IndexDispatch { \
+                libfaer_v0_23_##name##_u32_f64, \
+                libfaer_v0_23_##name##_u64_f64, \
+            } \
+                .for_type(detail::TYPE<I>), \
+            detail::IndexDispatch { \
+                libfaer_v0_23_##name##_u32_fx128, \
+                libfaer_v0_23_##name##_u64_fx128, \
+            } \
+                .for_type(detail::TYPE<I>), \
+            detail::IndexDispatch { \
+                libfaer_v0_23_##name##_u32_c32, \
+                libfaer_v0_23_##name##_u64_c32, \
+            } \
+                .for_type(detail::TYPE<I>), \
+            detail::IndexDispatch { \
+                libfaer_v0_23_##name##_u32_c64, \
+                libfaer_v0_23_##name##_u64_c64, \
+            } \
+                .for_type(detail::TYPE<I>), \
+            detail::IndexDispatch { \
+                libfaer_v0_23_##name##_u32_cx128, \
+                libfaer_v0_23_##name##_u64_cx128, \
+            } \
+                .for_type(detail::TYPE<I>), \
         } \
             .for_type(detail::TYPE<T>) \
     )
@@ -186,11 +180,11 @@ inline namespace v0_23 {
 
         constexpr auto ffi() const -> typename meta::Ffi<T>::Mat {
             return {
-                .ptr = this->ptr,
-                .nrows = this->nrows,
-                .ncols = this->ncols,
-                .row_stride = this->row_stride,
-                .col_stride = this->col_stride,
+                this->ptr,
+                this->nrows,
+                this->ncols,
+                this->row_stride,
+                this->col_stride,
             };
         }
     };
@@ -202,15 +196,15 @@ inline namespace v0_23 {
 
         constexpr auto mem_ffi() const -> FaerV0_23_MemAlloc {
             return {
-                .ptr = this->ptr,
-                .len_bytes = sizeof(I) * this->len,
+                this->ptr,
+                sizeof(I) * this->len,
             };
         }
 
         constexpr auto ffi() const -> typename meta::Ffi<I>::Slice {
             return {
-                .ptr = this->ptr,
-                .len = sizeof(I) * this->len,
+                this->ptr,
+                sizeof(I) * this->len,
             };
         }
     };
@@ -223,9 +217,9 @@ inline namespace v0_23 {
 
         constexpr auto ffi() const -> typename meta::Ffi<T>::Vec {
             return {
-                .ptr = this->ptr,
-                .len = this->len,
-                .stride = this->stride,
+                this->ptr,
+                this->len,
+                this->stride,
             };
         }
     };
@@ -247,10 +241,9 @@ inline namespace v0_23 {
 
         constexpr auto ffi() const -> FaerV0_23_Par {
             return {
-                .tag = this->which == Seq
-                    ? FaerV0_23_ParTag::FaerV0_23_ParTag_Seq
-                    : FaerV0_23_ParTag::FaerV0_23_ParTag_Rayon,
-                .nthreads = this->nthreads,
+                this->which == Seq ? FaerV0_23_ParTag::FaerV0_23_ParTag_Seq
+                                   : FaerV0_23_ParTag::FaerV0_23_ParTag_Rayon,
+                this->nthreads,
             };
         }
     };
@@ -295,10 +288,9 @@ inline namespace v0_23 {
     inline auto get_global_par() -> Par {
         auto par = libfaer_v0_23_get_global_par();
         return Par {
-            .which = par.tag == FaerV0_23_ParTag::FaerV0_23_ParTag_Seq
-                ? Par::Seq
-                : Par::Rayon,
-            .nthreads = par.nthreads,
+            par.tag == FaerV0_23_ParTag::FaerV0_23_ParTag_Seq ? Par::Seq
+                                                              : Par::Rayon,
+            par.nthreads,
         };
     }
 
@@ -312,15 +304,15 @@ inline namespace v0_23 {
 
         constexpr static auto from_ffi(FaerV0_23_Layout ffi) -> Layout {
             return {
-                .size = ffi.len_bytes,
-                .align = ffi.align_bytes,
+                ffi.len_bytes,
+                ffi.align_bytes,
             };
         }
 
         constexpr auto ffi() const -> FaerV0_23_Layout {
             return {
-                .len_bytes = this->size,
-                .align_bytes = this->align,
+                this->size,
+                this->align,
             };
         }
     };
@@ -1498,11 +1490,11 @@ inline namespace v0_23 {
 template<typename T>
 auto from_eigen(T&& mat) -> Mat<std::remove_pointer_t<decltype(mat.data())>> {
     return {
-        .ptr = mat.data(),
-        .nrows = static_cast<size_t>(mat.rows()),
-        .ncols = static_cast<size_t>(mat.cols()),
-        .row_stride = mat.IsRowMajor ? mat.outerStride() : mat.innerStride(),
-        .col_stride = mat.IsRowMajor ? mat.innerStride() : mat.outerStride(),
+        mat.data(),
+        static_cast<size_t>(mat.rows()),
+        static_cast<size_t>(mat.cols()),
+        mat.IsRowMajor ? mat.outerStride() : mat.innerStride(),
+        mat.IsRowMajor ? mat.innerStride() : mat.outerStride(),
     };
 }
 } // namespace faer
