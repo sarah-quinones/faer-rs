@@ -1494,6 +1494,17 @@ inline namespace v0_23 {
         }
     } // namespace detail
 } // namespace v0_23
+
+template<typename T>
+auto from_eigen(T&& mat) -> Mat<std::remove_pointer_t<decltype(mat.data())>> {
+    return {
+        .ptr = mat.data(),
+        .nrows = static_cast<size_t>(mat.rows()),
+        .ncols = static_cast<size_t>(mat.cols()),
+        .row_stride = mat.IsRowMajor ? mat.outerStride() : mat.innerStride(),
+        .col_stride = mat.IsRowMajor ? mat.innerStride() : mat.outerStride(),
+    };
+}
 } // namespace faer
 
 #undef LIBFAER_CAST_REAL
