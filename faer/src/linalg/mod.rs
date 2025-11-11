@@ -215,6 +215,8 @@ pub(crate) mod reductions;
 /// high level solvers
 pub mod solvers;
 pub mod svd;
+/// sylvester equation solvers
+pub mod sylvester;
 /// triangular matrix inverse
 pub mod triangular_inverse;
 /// triangular matrix solve
