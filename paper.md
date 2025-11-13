@@ -124,8 +124,7 @@ Eigen is compiled with the `-fopenmp` flag to enable parallelism.
 # Future work
 We have so far focused mainly on dense matrix algorithms, which will eventually form
 the foundation of supernodal sparse decompositions.
-Sparse algorithm implementations are still a work in progress and will be
-showcased in a future paper.
+Sparse algorithm implementations will be showcased in a future paper.
 
 # References
 

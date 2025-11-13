@@ -126,6 +126,12 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		}
 	}
 
+	/// returns the inverse permutation
+	#[inline]
+	pub fn transpose(self) -> Self {
+		self.inverse()
+	}
+
 	/// cast the permutation to the fixed width index type
 	#[inline(always)]
 	pub fn canonicalized(self) -> PermRef<'a, I::FixedWidth, N> {

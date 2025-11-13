@@ -62,6 +62,12 @@ impl<I: Index, N: Shape> Perm<I, N> {
 		(self.0.forward, self.0.inverse)
 	}
 
+	/// returns the permutation as an array
+	#[inline]
+	pub fn arrays(&self) -> (&[Idx<N, I>], &[Idx<N, I>]) {
+		(&self.0.forward, &self.0.inverse)
+	}
+
 	/// returns the dimension of the permutation
 	#[inline]
 	pub fn len(&self) -> N {
@@ -77,6 +83,18 @@ impl<I: Index, N: Shape> Perm<I, N> {
 				inverse: self.0.forward,
 			},
 		}
+	}
+
+	/// returns the inverse permutation
+	#[inline]
+	pub fn inverse(&self) -> PermRef<'_, I, N> {
+		self.rb().inverse()
+	}
+
+	/// returns the inverse permutation
+	#[inline]
+	pub fn transpose(&self) -> PermRef<'_, I, N> {
+		self.rb().transpose()
 	}
 }
 impl<'short, I: Index, N: Shape> Reborrow<'short> for Own<I, N> {
