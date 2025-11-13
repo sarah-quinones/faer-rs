@@ -1,42 +1,33 @@
 use crate::internal_prelude::*;
 use crate::linalg::cholesky::ldlt::factor::LdltParams;
-
 /// dynamic $LL^\top$ regularization.
 ///
 /// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
 /// their corrected sign
 #[derive(Copy, Clone, Debug)]
-
 pub struct LltRegularization<T> {
 	/// regularized value
 	pub dynamic_regularization_delta: T,
 	/// regularization threshold
 	pub dynamic_regularization_epsilon: T,
 }
-
 /// info about the result of the $LL^\top$ factorization
 #[derive(Copy, Clone, Debug)]
-
 pub struct LltInfo {
 	/// number of pivots whose value or sign had to be corrected
 	pub dynamic_regularization_count: usize,
 }
-
 /// error in the $LL^\top$ factorization
 #[derive(Copy, Clone, Debug)]
-
 pub enum LltError {
 	NonPositivePivot { index: usize },
 }
-
 impl core::fmt::Display for LltError {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		core::fmt::Debug::fmt(self, f)
 	}
 }
-
 impl core::error::Error for LltError {}
-
 impl<T: RealField> Default for LltRegularization<T> {
 	fn default() -> Self {
 		Self {
@@ -45,22 +36,17 @@ impl<T: RealField> Default for LltRegularization<T> {
 		}
 	}
 }
-
 #[derive(Copy, Clone, Debug)]
-
 pub struct LltParams {
 	pub recursion_threshold: usize,
 	pub block_size: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
-
 impl<T: ComplexField> Auto<T> for LltParams {
 	#[inline]
-
 	fn auto() -> Self {
 		let ldlt = <LdltParams as Auto<T>>::auto();
-
 		Self {
 			recursion_threshold: ldlt.recursion_threshold,
 			block_size: ldlt.block_size,
@@ -68,17 +54,12 @@ impl<T: ComplexField> Auto<T> for LltParams {
 		}
 	}
 }
-
 #[inline]
-
 pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LltParams, T>) -> StackReq {
 	_ = par;
-
 	_ = params;
-
 	temp_mat_scratch::<T>(dim, 1)
 }
-
 pub fn cholesky_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
 	regularization: LltRegularization<T::Real>,
@@ -87,13 +68,9 @@ pub fn cholesky_in_place<T: ComplexField>(
 	params: Spec<LltParams, T>,
 ) -> Result<LltInfo, LltError> {
 	let params = params.config;
-
 	let N = A.nrows();
-
 	let mut D = unsafe { temp_mat_uninit(N, 1, stack).0 };
-
 	let D = D.as_mat_mut();
-
 	match linalg::cholesky::ldlt::factor::cholesky_block_left_looking(
 		A,
 		D.col_mut(0).transpose_mut(),

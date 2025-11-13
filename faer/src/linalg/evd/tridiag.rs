@@ -3,17 +3,14 @@ use crate::internal_prelude::*;
 use linalg::householder;
 use linalg::matmul::triangular::BlockStructure;
 use linalg::matmul::{self, dot};
-
 /// tridiagonalization tuning parameters
 #[derive(Copy, Clone, Debug)]
-
 pub struct TridiagParams {
 	/// threshold at which parallelism should be disabled
 	pub par_threshold: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
-
 impl<T: ComplexField> Auto<T> for TridiagParams {
 	fn auto() -> Self {
 		Self {
@@ -22,18 +19,13 @@ impl<T: ComplexField> Auto<T> for TridiagParams {
 		}
 	}
 }
-
 /// computes the layout of the workspace required to compute a self-adjoint matrix's
 /// tridiagonalization
-
 pub fn tridiag_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<TridiagParams, T>) -> StackReq {
 	_ = par;
-
 	_ = params;
-
 	StackReq::all_of(&[temp_mat_scratch::<T>(dim, 1).array(2), temp_mat_scratch::<T>(dim, par.degree())])
 }
-
 fn tridiag_fused_op_simd<T: ComplexField>(
 	A: MatMut<'_, T, usize, usize, ContiguousFwd>,
 	y2: ColMut<'_, T, usize>,
@@ -60,12 +52,10 @@ fn tridiag_fused_op_simd<T: ComplexField>(
 		f: T,
 		align: usize,
 	}
-
 	impl<'a, 'M, 'N, T: ComplexField> pulp::WithSimd for Impl<'a, 'M, 'N, T> {
 		type Output = ();
 
 		#[inline(always)]
-
 		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
 			let Self {
 				mut A,
@@ -80,199 +70,116 @@ fn tridiag_fused_op_simd<T: ComplexField>(
 				ref f,
 				mut align,
 			} = self;
-
 			let simd = T::simd_ctx(simd);
-
 			let (m, n) = A.shape();
-
 			{
 				let simd = SimdCtx::<T, S>::new_align(simd, m, align);
-
 				let (head, body, tail) = simd.indices();
-
 				if let Some(i0) = head {
 					simd.write(z2.rb_mut(), i0, simd.zero());
 				}
-
 				for i0 in body {
 					simd.write(z2.rb_mut(), i0, simd.zero());
 				}
-
 				if let Some(i0) = tail {
 					simd.write(z2.rb_mut(), i0, simd.zero());
 				}
 			}
-
 			for j in n.indices() {
 				let i = m.idx_inc(*j);
-
 				with_dim!(m, *m - *j);
-
 				let simd = SimdCtx::<T, S>::new_align(simd, m, align);
-
 				align -= 1;
-
 				let mut A = A.rb_mut().col_mut(j).subrows_mut(i, m);
-
 				let mut z = z2.rb_mut().subrows_mut(i, m);
-
 				let rz = rz2.subrows(i, m);
-
 				let ua = u0.subrows(i, m);
-
 				let v = v2.subrows(i, m);
-
 				let y = y2.rb_mut().at_mut(j);
-
 				let ry = simd.splat(&(-&ry2[j]));
-
 				let ub = simd.splat(&(-&u1[j]));
-
 				let uc = simd.splat(&(f * &u2[j]));
-
 				let mut acc0 = simd.zero();
-
 				let mut acc1 = simd.zero();
-
 				let mut acc2 = simd.zero();
-
 				let mut acc3 = simd.zero();
-
 				let (head, body4, body1, tail) = simd.batch_indices::<4>();
-
 				if let Some(i0) = head {
 					let mut a = simd.read(A.rb(), i0);
-
 					a = simd.conj_mul_add(ry, simd.read(ua, i0), a);
-
 					a = simd.conj_mul_add(ub, simd.read(rz, i0), a);
-
 					simd.write(A.rb_mut(), i0, a);
-
 					let tmp = simd.read(z.rb(), i0);
-
 					simd.write(z.rb_mut(), i0, simd.mul_add(a, uc, tmp));
-
 					acc0 = simd.conj_mul_add(a, simd.read(v, i0), acc0);
 				}
-
 				for [i0, i1, i2, i3] in body4 {
 					{
 						let mut a = simd.read(A.rb(), i0);
-
 						a = simd.conj_mul_add(ry, simd.read(ua, i0), a);
-
 						a = simd.conj_mul_add(ub, simd.read(rz, i0), a);
-
 						simd.write(A.rb_mut(), i0, a);
-
 						let tmp = simd.read(z.rb(), i0);
-
 						simd.write(z.rb_mut(), i0, simd.mul_add(a, uc, tmp));
-
 						acc0 = simd.conj_mul_add(a, simd.read(v, i0), acc0);
 					}
-
 					{
 						let mut a = simd.read(A.rb(), i1);
-
 						a = simd.conj_mul_add(ry, simd.read(ua, i1), a);
-
 						a = simd.conj_mul_add(ub, simd.read(rz, i1), a);
-
 						simd.write(A.rb_mut(), i1, a);
-
 						let tmp = simd.read(z.rb(), i1);
-
 						simd.write(z.rb_mut(), i1, simd.mul_add(a, uc, tmp));
-
 						acc1 = simd.conj_mul_add(a, simd.read(v, i1), acc1);
 					}
-
 					{
 						let mut a = simd.read(A.rb(), i2);
-
 						a = simd.conj_mul_add(ry, simd.read(ua, i2), a);
-
 						a = simd.conj_mul_add(ub, simd.read(rz, i2), a);
-
 						simd.write(A.rb_mut(), i2, a);
-
 						let tmp = simd.read(z.rb(), i2);
-
 						simd.write(z.rb_mut(), i2, simd.mul_add(a, uc, tmp));
-
 						acc2 = simd.conj_mul_add(a, simd.read(v, i2), acc2);
 					}
-
 					{
 						let mut a = simd.read(A.rb(), i3);
-
 						a = simd.conj_mul_add(ry, simd.read(ua, i3), a);
-
 						a = simd.conj_mul_add(ub, simd.read(rz, i3), a);
-
 						simd.write(A.rb_mut(), i3, a);
-
 						let tmp = simd.read(z.rb(), i3);
-
 						simd.write(z.rb_mut(), i3, simd.mul_add(a, uc, tmp));
-
 						acc3 = simd.conj_mul_add(a, simd.read(v, i3), acc3);
 					}
 				}
-
 				for i0 in body1 {
 					let mut a = simd.read(A.rb(), i0);
-
 					a = simd.conj_mul_add(ry, simd.read(ua, i0), a);
-
 					a = simd.conj_mul_add(ub, simd.read(rz, i0), a);
-
 					simd.write(A.rb_mut(), i0, a);
-
 					let tmp = simd.read(z.rb(), i0);
-
 					simd.write(z.rb_mut(), i0, simd.mul_add(a, uc, tmp));
-
 					acc0 = simd.conj_mul_add(a, simd.read(v, i0), acc0);
 				}
-
 				if let Some(i0) = tail {
 					let mut a = simd.read(A.rb(), i0);
-
 					a = simd.conj_mul_add(ry, simd.read(ua, i0), a);
-
 					a = simd.conj_mul_add(ub, simd.read(rz, i0), a);
-
 					simd.write(A.rb_mut(), i0, a);
-
 					let tmp = simd.read(z.rb(), i0);
-
 					simd.write(z.rb_mut(), i0, simd.mul_add(a, uc, tmp));
-
 					acc0 = simd.conj_mul_add(a, simd.read(v, i0), acc0);
 				}
-
 				acc0 = simd.add(acc0, acc1);
-
 				acc2 = simd.add(acc2, acc3);
-
 				acc0 = simd.add(acc0, acc2);
-
 				let acc0 = simd.reduce_sum(acc0);
-
 				let i0 = m.idx(0);
-
 				*y = f * (acc0 - &A[i0] * &v[i0]);
 			}
 		}
 	}
-
 	with_dim!(M, A.nrows());
-
 	with_dim!(N, A.ncols());
-
 	dispatch!(
 		Impl {
 			A: A.as_shape_mut(M, N),
@@ -291,7 +198,6 @@ fn tridiag_fused_op_simd<T: ComplexField>(
 		T
 	)
 }
-
 fn tridiag_fused_op<T: ComplexField>(
 	A: MatMut<'_, T>,
 	y2: ColMut<'_, T>,
@@ -306,9 +212,7 @@ fn tridiag_fused_op<T: ComplexField>(
 	align: usize,
 ) {
 	let mut A = A;
-
 	let mut z2 = z2;
-
 	if try_const! {
 		T::SIMD_CAPABILITIES.is_simd()
 	} {
@@ -327,7 +231,6 @@ fn tridiag_fused_op<T: ComplexField>(
 		tridiag_fused_op_fallback(A, y2, z2, ry2, rz2, u0, u1, u2, v2, f);
 	}
 }
-
 fn tridiag_fused_op_fallback<T: ComplexField>(
 	A: MatMut<'_, T>,
 	y2: ColMut<'_, T>,
@@ -341,23 +244,14 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 	f: T,
 ) {
 	let par = Par::Seq;
-
 	let mut A = A;
-
 	let mut y2 = y2;
-
 	let n = A.ncols();
-
 	let (mut A0, mut A1) = A.rb_mut().split_at_row_mut(n);
-
 	let (u00, u01) = u0.split_at_row(n);
-
 	let (v20, v21) = v2.split_at_row(n);
-
 	let (mut z20, mut z21) = z2.split_at_row_mut(n);
-
 	let (rz20, rz21) = rz2.split_at_row(n);
-
 	matmul::triangular::matmul(
 		A0.rb_mut(),
 		BlockStructure::TriangularLower,
@@ -369,7 +263,6 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 		-one::<T>(),
 		par,
 	);
-
 	matmul::triangular::matmul(
 		A0.rb_mut(),
 		BlockStructure::TriangularLower,
@@ -381,11 +274,8 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 		-one::<T>(),
 		par,
 	);
-
 	matmul::matmul(A1.rb_mut(), Accum::Add, u01, ry2.adjoint(), -one::<T>(), par);
-
 	matmul::matmul(A1.rb_mut(), Accum::Add, rz21, u1.adjoint(), -one::<T>(), par);
-
 	matmul::triangular::matmul(
 		z20.rb_mut(),
 		BlockStructure::Rectangular,
@@ -397,7 +287,6 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 		f.clone(),
 		par,
 	);
-
 	matmul::triangular::matmul(
 		y2.rb_mut(),
 		BlockStructure::Rectangular,
@@ -409,19 +298,15 @@ fn tridiag_fused_op_fallback<T: ComplexField>(
 		f.clone(),
 		par,
 	);
-
 	matmul::matmul(z21.rb_mut(), Accum::Replace, A1.rb(), u2, f.clone(), par);
-
 	matmul::matmul(y2.rb_mut(), Accum::Add, A1.rb().adjoint(), v21, f.clone(), par);
 }
-
 /// computes a self-adjoint matrix $A$'s tridiagonalization such that $A = Q T Q^H$
 ///
 /// $T$ is a self-adjoint tridiagonal matrix stored in $A$'s diagonal and subdiagonal
 ///
 /// $Q$ is a sequence of householder reflections stored in the unit lower triangular half of $A$
 /// (excluding the diagonal), with the householder coefficients being stored in `householder`
-
 pub fn tridiag_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
 	householder: MatMut<'_, T>,
@@ -430,127 +315,76 @@ pub fn tridiag_in_place<T: ComplexField>(
 	params: Spec<TridiagParams, T>,
 ) {
 	let params = params.config;
-
 	let mut A = A;
-
 	let mut H = householder;
-
 	let mut par = par;
-
 	let n = A.nrows();
-
 	let b = H.nrows();
-
 	assert!(H.ncols() == n.saturating_sub(1));
-
 	if n == 0 {
 		return;
 	}
-
 	alloca!('stack: {
 		let mut y = unsafe { col![uninit::<T>, n] };
-
 		let mut w = unsafe { col![uninit::<T>, n] };
-
 		let mut z = unsafe { mat![uninit::<T>, n, par.degree()] };
 	});
-
 	{
 		let mut H = H.rb_mut().row_mut(0);
-
 		for k in 0..n {
 			let (_, A01, A10, A11) = A.rb_mut().split_at_mut(k, k);
-
 			let (_, _) = A01.split_first_col().unwrap();
-
 			let (_, A20) = A10.split_first_row_mut().unwrap();
-
 			let (mut A11, _, A21, mut A22) = A11.split_at_mut(1, 1);
-
 			let mut A21 = A21.col_mut(0);
-
 			let a11 = &mut A11[(0, 0)];
-
 			let (y1, mut y2) = y.rb_mut().split_at_row_mut(k).1.split_at_row_mut(1);
-
-			let y1 = y1[0].copy();
-
 			if k > 0 {
+				let y1 = y1[0].copy();
 				let p = k - 1;
-
 				let u2 = A20.rb().col(p);
-
 				*a11 -= &y1 + y1.conj();
-
 				z!(A21.rb_mut(), u2, y2.rb()).for_each(|uz!(a, u, y): Zip!(&mut T, &T, &T)| {
 					*a -= y1.conj() * u + y;
 				});
 			}
-
 			if k + 1 == n {
 				break;
 			}
-
 			let rem = n - k - 1;
-
 			if rem * rem / 2 < params.par_threshold {
 				par = Par::Seq;
 			}
-
 			let k1 = k + 1;
-
 			let tau_inv;
-
 			{
 				let (mut a11, mut x2) = A21.rb_mut().split_at_row_mut(1);
-
 				let a11 = &mut a11[0];
-
 				let householder::HouseholderInfo { tau, .. } = householder::make_householder_in_place(a11, x2.rb_mut());
-
 				tau_inv = tau.real().recip();
-
 				H[k] = tau.to_cplx();
-
 				let mut z2 = z.rb_mut().split_at_row_mut(k + 2).1;
-
 				let mut w2 = w.rb_mut().split_at_row_mut(k + 2).1;
-
 				let (mut y1, mut y2) = y2.rb_mut().split_at_row_mut(1);
-
 				let y1 = &mut y1[0];
-
 				let (A1, A2) = A22.rb_mut().split_at_row_mut(1);
-
 				let A1 = A1.row_mut(0);
-
 				let (mut a11, _) = A1.split_at_col_mut(1);
-
 				let a11 = &mut a11[0];
-
 				let (A21, mut A22) = A2.split_at_col_mut(1);
-
 				let mut A21 = A21.col_mut(0);
-
 				if k > 0 {
 					let p = k - 1;
-
 					let (u1, u2) = A20.rb().col(p).split_at_row(1);
-
 					let ref u1 = u1[0].copy();
-
 					*a11 -= u1 * y1.conj() + &*y1 * u1.conj();
-
 					z!(A21.rb_mut(), u2.rb(), y2.rb()).for_each(|uz!(a, u, y): Zip!(&mut T, &T, &T)| {
 						*a -= u * y1.conj() + &*y * u1.conj();
 					});
-
 					w2.copy_from(y2.rb());
-
 					match par {
 						Par::Seq => {
 							let mut z2 = z2.rb_mut().col_mut(0);
-
 							tridiag_fused_op(
 								A22.rb_mut(),
 								y2.rb_mut(),
@@ -564,64 +398,39 @@ pub fn tridiag_in_place<T: ComplexField>(
 								tau_inv.to_cplx(),
 								simd_align(k1 + 1),
 							);
-
 							z!(y2.rb_mut(), z2.rb()).for_each(|uz!(y, z): Zip!(&mut T, &T)| *y += z);
 						},
 						#[cfg(feature = "rayon")]
 						Par::Rayon(nthreads) => {
 							use rayon::prelude::*;
-
 							let nthreads = nthreads.get();
-
 							let mut z2 = z2.rb_mut().subcols_mut(0, nthreads);
-
 							let n2 = A22.ncols();
-
 							assert!((n2 as u64) < (1u64 << 50));
-
 							let idx_to_col_start = |idx: usize| {
 								let idx_as_percent = idx as f64 / nthreads as f64;
-
 								let col_start_percent = 1.0f64 - libm::sqrt(1.0f64 - idx_as_percent);
-
 								(col_start_percent * n2 as f64) as usize
 							};
-
 							{
 								let A22 = A22.rb();
-
 								let y2 = y2.rb();
-
 								let ref f = tau_inv.to_cplx::<T>();
-
 								spindle::for_each(nthreads, z2.rb_mut().par_col_iter_mut().enumerate(), |(idx, mut z2)| {
 									let first = idx_to_col_start(idx);
-
 									let last_col = idx_to_col_start(idx + 1);
-
 									let nrows = n2 - first;
-
 									let ncols = last_col - first;
-
 									let mut A = unsafe { A22.rb().subcols(first, ncols).subrows(first, nrows).const_cast() };
-
 									{
 										let y2 = unsafe { y2.subrows(first, ncols).const_cast() };
-
 										let mut z2 = z2.rb_mut().subrows_mut(first, nrows);
-
 										let ry2 = w2.rb().subrows(first, ncols);
-
 										let rz2 = w2.rb().subrows(first, nrows);
-
 										let u0 = u2.subrows(first, nrows);
-
 										let u1 = u2.subrows(first, ncols);
-
 										let u2 = x2.rb().subrows(first, ncols);
-
 										let v2 = x2.rb().subrows(first, nrows);
-
 										tridiag_fused_op(
 											A.rb_mut(),
 											y2,
@@ -636,11 +445,9 @@ pub fn tridiag_in_place<T: ComplexField>(
 											n.next_power_of_two() - (k1 + 1) - first,
 										);
 									}
-
 									z2.rb_mut().subrows_mut(0, first).fill(zero());
 								});
 							}
-
 							for z2 in z2.rb().col_iter() {
 								z!(y2.rb_mut(), z2.rb()).for_each(|uz!(y, z)| *y += z);
 							}
@@ -658,7 +465,6 @@ pub fn tridiag_in_place<T: ComplexField>(
 						tau_inv.to_cplx(),
 						par,
 					);
-
 					matmul::triangular::matmul(
 						y2.rb_mut(),
 						BlockStructure::Rectangular,
@@ -671,66 +477,46 @@ pub fn tridiag_in_place<T: ComplexField>(
 						par,
 					);
 				}
-
 				z!(y2.rb_mut(), A21.rb()).for_each(|uz!(y, a): Zip!(&mut T, &T)| {
 					*y += a.mul_real(&tau_inv);
 				});
-
 				*y1 = (&*a11 + dot::inner_prod(A21.rb().transpose(), Conj::Yes, x2.rb(), Conj::No)).mul_real(&tau_inv);
-
 				let ref b = (&*y1 + dot::inner_prod(x2.rb().transpose(), Conj::Yes, y2.rb(), Conj::No))
 					.mul_pow2(from_f64::<T::Real>(0.5))
 					.mul_real(&tau_inv);
-
 				*y1 -= b;
-
 				z!(y2.rb_mut(), x2.rb()).for_each(|uz!(y, u): Zip!(&mut T, &T)| {
 					*y -= b * u;
 				});
 			}
 		}
 	}
-
 	if n > 0 {
 		let n = n - 1;
-
 		let A = A.rb().submatrix(1, 0, n, n);
-
 		let mut H = H.rb_mut().subcols_mut(0, n);
-
 		let mut j = 0;
-
 		while j < n {
 			let b = Ord::min(b, n - j);
-
 			let mut H = H.rb_mut().submatrix_mut(0, j, b, b);
-
 			for k in 0..b {
 				H[(k, k)] = H[(0, k)].copy();
 			}
-
 			householder::upgrade_householder_factor(H.rb_mut(), A.submatrix(j, j, n - j, b), b, 1, par);
-
 			j += b;
 		}
 	}
 }
-
 #[cfg(test)]
-
 mod tests {
-
 	use super::*;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use crate::{Mat, assert, c64};
 	use dyn_stack::MemBuffer;
-
 	#[test]
-
 	fn test_tridiag_real() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		for n in [2, 3, 4, 8, 16] {
 			let A = CwiseMatDistribution {
 				nrows: n,
@@ -738,17 +524,11 @@ mod tests {
 				dist: StandardNormal,
 			}
 			.rand::<Mat<f64>>(rng);
-
 			let A = A.rb() + A.adjoint();
-
 			let b = 3;
-
 			let mut H = Mat::zeros(b, n - 1);
-
 			let mut V = A.clone();
-
 			let mut V = V.as_mut();
-
 			tridiag_in_place(
 				V.rb_mut(),
 				H.rb_mut(),
@@ -759,22 +539,14 @@ mod tests {
 				]))),
 				default(),
 			);
-
 			let mut A = A.clone();
-
 			let mut A = A.as_mut();
-
 			for iter in 0..2 {
 				let mut A = if iter == 0 { A.rb_mut() } else { A.rb_mut().transpose_mut() };
-
 				let n = n - 1;
-
 				let V = V.rb().submatrix(1, 0, n, n);
-
 				let mut A = A.rb_mut().subrows_mut(1, n);
-
 				let H = H.as_ref();
-
 				householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 					V,
 					H.as_ref(),
@@ -786,9 +558,7 @@ mod tests {
 					)),
 				);
 			}
-
 			let approx_eq = CwiseMat(ApproxEq::<f64>::eps());
-
 			for j in 0..n {
 				for i in 0..n {
 					if i > j + 1 || j > i + 1 {
@@ -796,22 +566,17 @@ mod tests {
 					}
 				}
 			}
-
 			for i in 0..n {
 				if i + 1 < n {
 					V[(i, i + 1)] = V[(i + 1, i)];
 				}
 			}
-
 			assert!(V ~ A);
 		}
 	}
-
 	#[test]
-
 	fn test_tridiag_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		for n in [2, 3, 4, 8, 16] {
 			let A = CwiseMatDistribution {
 				nrows: n,
@@ -819,17 +584,11 @@ mod tests {
 				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 			}
 			.rand::<Mat<c64>>(rng);
-
 			let A = A.rb() + A.adjoint();
-
 			let b = 3;
-
 			let mut H = Mat::zeros(b, n - 1);
-
 			let mut V = A.clone();
-
 			let mut V = V.as_mut();
-
 			tridiag_in_place(
 				V.rb_mut(),
 				H.as_mut(),
@@ -837,22 +596,14 @@ mod tests {
 				MemStack::new(&mut MemBuffer::new(tridiag_in_place_scratch::<c64>(n, Par::Seq, default()))),
 				default(),
 			);
-
 			let mut A = A.clone();
-
 			let mut A = A.as_mut();
-
 			for iter in 0..2 {
 				let mut A = if iter == 0 { A.rb_mut() } else { A.rb_mut().transpose_mut() };
-
 				let n = n - 1;
-
 				let V = V.rb().submatrix(1, 0, n, n);
-
 				let mut A = A.rb_mut().subrows_mut(1, n);
-
 				let H = H.as_ref();
-
 				householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 					V,
 					H.as_ref(),
@@ -864,9 +615,7 @@ mod tests {
 					)),
 				);
 			}
-
 			let approx_eq = CwiseMat(ApproxEq::eps());
-
 			for j in 0..n {
 				for i in 0..n {
 					if i > j + 1 || j > i + 1 {
@@ -874,13 +623,11 @@ mod tests {
 					}
 				}
 			}
-
 			for i in 0..n {
 				if i + 1 < n {
 					V[(i, i + 1)] = V[(i + 1, i)].conj();
 				}
 			}
-
 			assert!(V ~ A);
 		}
 	}

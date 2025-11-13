@@ -3,7 +3,6 @@
 //! where $Q$ is a unitary matrix (represented as a block householder sequence), and $R$ is an upper
 //! trapezoidal matrix.
 #![allow(missing_docs)]
-
 pub mod factor;
 pub mod inverse;
 pub mod reconstruct;

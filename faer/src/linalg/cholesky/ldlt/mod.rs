@@ -2,7 +2,6 @@
 //! $$A = L D L^H$$
 //! where $L$ is a unit lower triangular matrix, and $D$ is a diagonal matrix
 #![allow(missing_docs)]
-
 pub mod factor;
 pub mod inverse;
 pub mod reconstruct;

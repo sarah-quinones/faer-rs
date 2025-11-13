@@ -9,19 +9,15 @@
 //! - and finally:
 //!
 //! $$A = U S V^H$$
-
 use crate::assert;
 use crate::internal_prelude::*;
 use bidiag::BidiagParams;
 use linalg::qr::no_pivoting::factor::QrParams;
-
 /// bidiagonalization
 pub mod bidiag;
 pub(crate) mod bidiag_svd;
-
 /// whether the singular vectors should be computed
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-
 pub enum ComputeSvdVectors {
 	/// do not compute singular vectors
 	No,
@@ -30,18 +26,14 @@ pub enum ComputeSvdVectors {
 	/// compute singular vectors
 	Full,
 }
-
 /// svd error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-
 pub enum SvdError {
 	/// reached max iterations
 	NoConvergence,
 }
-
 /// svd tuning parameters
 #[derive(Debug, Copy, Clone)]
-
 pub struct SvdParams {
 	/// bidiagonalization parameters
 	pub bidiag: BidiagParams,
@@ -54,7 +46,6 @@ pub struct SvdParams {
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
-
 impl<T: ComplexField> Auto<T> for SvdParams {
 	fn auto() -> Self {
 		Self {
@@ -66,7 +57,6 @@ impl<T: ComplexField> Auto<T> for SvdParams {
 		}
 	}
 }
-
 fn svd_imp_scratch<T: ComplexField>(
 	m: usize,
 	n: usize,
@@ -77,31 +67,18 @@ fn svd_imp_scratch<T: ComplexField>(
 	par: Par,
 ) -> StackReq {
 	assert!(m >= n);
-
 	let householder_block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
-
 	let bid = temp_mat_scratch::<T>(m, n);
-
 	let householder_left = temp_mat_scratch::<T>(householder_block_size, n);
-
 	let householder_right = temp_mat_scratch::<T>(householder_block_size, n);
-
 	let compute_bidiag = bidiag::bidiag_in_place_scratch::<T>(m, n, par, params.bidiag.into());
-
 	let diag = temp_mat_scratch::<T>(n, 1);
-
 	let subdiag = diag;
-
 	let compute_ub = compute_v != ComputeSvdVectors::No;
-
 	let compute_vb = compute_u != ComputeSvdVectors::No;
-
 	let u_b = temp_mat_scratch::<T>(if compute_ub { n + 1 } else { 2 }, n + 1);
-
 	let v_b = temp_mat_scratch::<T>(n, if compute_vb { n } else { 0 });
-
 	let compute_bidiag_svd = bidiag_svd_scratch(n, compute_ub, compute_vb, par, params);
-
 	let apply_householder_u = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
 		m,
 		householder_block_size,
@@ -111,7 +88,6 @@ fn svd_imp_scratch<T: ComplexField>(
 			ComputeSvdVectors::Full => m,
 		},
 	);
-
 	let apply_householder_v = linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(
 		n - 1,
 		householder_block_size,
@@ -120,7 +96,6 @@ fn svd_imp_scratch<T: ComplexField>(
 			_ => n,
 		},
 	);
-
 	StackReq::all_of(&[
 		bid,
 		householder_left,
@@ -137,7 +112,6 @@ fn svd_imp_scratch<T: ComplexField>(
 		]),
 	])
 }
-
 fn bidiag_cplx_svd_scratch<T: ComplexField>(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> StackReq {
 	StackReq::all_of(&[
 		temp_mat_scratch::<T>(n, 1).array(4),
@@ -146,7 +120,6 @@ fn bidiag_cplx_svd_scratch<T: ComplexField>(n: usize, compute_u: bool, compute_v
 		bidiag_real_svd_scratch::<T::Real>(n, compute_u, compute_v, par, params),
 	])
 }
-
 fn bidiag_real_svd_scratch<T: RealField>(n: usize, compute_u: bool, compute_v: bool, par: Par, params: SvdParams) -> StackReq {
 	if n < params.recursion_threshold {
 		StackReq::EMPTY
@@ -157,7 +130,6 @@ fn bidiag_real_svd_scratch<T: RealField>(n: usize, compute_u: bool, compute_v: b
 		])
 	}
 }
-
 fn compute_bidiag_cplx_svd<T: ComplexField>(
 	mut diag: ColMut<'_, T, usize, ContiguousFwd>,
 	subdiag: ColMut<'_, T, usize, ContiguousFwd>,
@@ -168,65 +140,39 @@ fn compute_bidiag_cplx_svd<T: ComplexField>(
 	stack: &mut MemStack,
 ) -> Result<(), SvdError> {
 	let n = diag.nrows();
-
 	let (mut diag_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
-
 	let (mut subdiag_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
-
 	let (mut u_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
-
 	let (mut v_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, if v.is_some() { n } else { 0 }, stack) };
-
 	let (mut col_mul, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
-
 	let (mut row_mul, stack) = unsafe { temp_mat_uninit::<T, _, _>(n - 1, 1, stack) };
-
 	let mut u_real = u.rb().map(|_| u_real.as_mat_mut());
-
 	let mut v_real = v.rb().map(|_| v_real.as_mat_mut());
-
 	let mut diag_real = diag_real.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-
 	let mut subdiag_real = subdiag_real.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-
 	let mut col_mul = col_mul.as_mat_mut().col_mut(0);
-
 	let mut row_mul = row_mul.as_mat_mut().col_mut(0);
-
 	let normalized = |x: T| {
 		if x == zero() {
 			one()
 		} else {
 			let norm1 = x.real().abs().fmax(x.imag().abs());
-
 			let y = x.mul_real(norm1.recip());
-
 			y.mul_real(y.abs().recip())
 		}
 	};
-
 	let mut col_normalized = normalized(diag[0].conj());
-
 	col_mul[0] = col_normalized.copy();
-
 	diag_real[0] = diag[0].abs();
-
 	subdiag_real[n - 1] = zero();
-
 	for i in 1..n {
 		let row_normalized = normalized((&subdiag[i - 1] * col_normalized).conj());
-
 		subdiag_real[i - 1] = subdiag[i - 1].abs();
-
 		row_mul[i - 1] = row_normalized.conj();
-
 		col_normalized = normalized((&diag[i] * row_normalized).conj());
-
 		diag_real[i] = diag[i].abs();
-
 		col_mul[i] = col_normalized.copy();
 	}
-
 	compute_bidiag_real_svd(
 		diag_real.rb_mut(),
 		subdiag_real.rb_mut(),
@@ -236,42 +182,29 @@ fn compute_bidiag_cplx_svd<T: ComplexField>(
 		par,
 		stack,
 	)?;
-
 	for i in 0..n {
 		diag[i] = diag_real[i].to_cplx();
 	}
-
 	let u_real = u_real.rb();
-
 	let v_real = v_real.rb();
-
 	if let (Some(mut u), Some(u_real)) = (u.rb_mut(), u_real) {
 		z!(u.rb_mut().row_mut(0), u_real.row(0)).for_each(|uz!(u, r)| *u = r.to_cplx());
-
 		z!(u.rb_mut().row_mut(n), u_real.row(n)).for_each(|uz!(u, r)| *u = r.to_cplx());
-
 		for j in 0..u.ncols() {
 			let mut u = u.rb_mut().col_mut(j).subrows_mut(1, n - 1);
-
 			let u_real = u_real.rb().col(j).subrows(1, n - 1);
-
 			z!(u.rb_mut(), u_real, row_mul.rb()).for_each(|uz!(u, re, f)| *u = f.mul_real(re));
 		}
 	}
-
 	if let (Some(mut v), Some(v_real)) = (v.rb_mut(), v_real) {
 		for j in 0..v.ncols() {
 			let mut v = v.rb_mut().col_mut(j);
-
 			let v_real = v_real.rb().col(j);
-
 			z!(v.rb_mut(), v_real, col_mul.rb()).for_each(|uz!(v, re, f)| *v = f.mul_real(re));
 		}
 	}
-
 	Ok(())
 }
-
 fn compute_bidiag_real_svd<T: RealField>(
 	mut diag: ColMut<'_, T, usize, ContiguousFwd>,
 	mut subdiag: ColMut<'_, T, usize, ContiguousFwd>,
@@ -282,37 +215,29 @@ fn compute_bidiag_real_svd<T: RealField>(
 	stack: &mut MemStack,
 ) -> Result<(), SvdError> {
 	let n = diag.nrows();
-
 	for i in 0..n {
 		if !(diag[i].is_finite() && subdiag[i].is_finite()) {
 			return Err(SvdError::NoConvergence);
 		}
 	}
-
 	if n < params.recursion_threshold {
 		if let Some(mut u) = u.rb_mut() {
 			u.fill(zero());
-
 			u.diagonal_mut().fill(one());
 		}
-
 		if let Some(mut v) = v.rb_mut() {
 			v.fill(zero());
-
 			v.diagonal_mut().fill(one());
 		}
-
 		bidiag_svd::qr_algorithm(
 			diag.rb_mut(),
 			subdiag.rb_mut(),
 			u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
 			v.rb_mut(),
 		)?;
-
 		return Ok(());
 	} else {
 		let (mut u2, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(2, if u.is_some() { 0 } else { n + 1 }, stack) };
-
 		bidiag_svd::divide_and_conquer(
 			diag.as_row_shape_mut(n),
 			subdiag.as_row_shape_mut(n),
@@ -327,9 +252,7 @@ fn compute_bidiag_real_svd<T: RealField>(
 		)
 	}
 }
-
 /// bidiag -> divide conquer svd / qr algo
-
 fn svd_imp<T: ComplexField>(
 	matrix: MatRef<'_, T>,
 	s: ColMut<'_, T>,
@@ -349,55 +272,33 @@ fn svd_imp<T: ComplexField>(
 	params: SvdParams,
 ) -> Result<(), SvdError> {
 	assert!(matrix.nrows() >= matrix.ncols());
-
 	let m = matrix.nrows();
-
 	let n = matrix.ncols();
-
 	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
-
 	let (mut bid, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, n, stack) };
-
 	let mut bid = bid.as_mat_mut();
-
 	let (mut Hl, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };
-
 	let (mut Hr, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
-
 	let mut Hl = Hl.as_mat_mut();
-
 	let mut Hr = Hr.as_mat_mut();
-
 	bid.copy_from(matrix);
-
 	bidiag::bidiag_in_place(bid.rb_mut(), Hl.rb_mut(), Hr.rb_mut(), par, stack, params.bidiag.into());
-
 	let (mut diag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
-
 	let (mut subdiag, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
-
 	let mut diag = diag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-
 	let mut subdiag = subdiag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-
 	let (mut ub, stack) = unsafe { temp_mat_uninit::<T, _, _>(n + 1, if v.is_some() { n + 1 } else { 0 }, stack) };
-
 	let (mut vb, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, if u.is_some() { n } else { 0 }, stack) };
-
 	let mut ub = ub.as_mat_mut();
-
 	let mut vb = vb.as_mat_mut();
-
 	for i in 0..n {
 		diag[i] = bid[(i, i)].conj();
-
 		if i + 1 < n {
 			subdiag[i] = bid[(i, i + 1)].conj();
 		} else {
 			subdiag[i] = zero();
 		}
 	}
-
 	bidiag_svd(
 		diag.rb_mut(),
 		subdiag.rb_mut(),
@@ -407,32 +308,22 @@ fn svd_imp<T: ComplexField>(
 		par,
 		stack,
 	)?;
-
 	{ s }.copy_from(diag);
-
 	if let Some(mut u) = u {
 		let ncols = u.ncols();
-
 		u.rb_mut().submatrix_mut(0, 0, n, n).copy_from(vb.rb());
-
 		u.rb_mut().submatrix_mut(n, 0, m - n, ncols).fill(zero());
-
 		u.rb_mut().submatrix_mut(0, n, n, ncols - n).fill(zero());
-
 		u.rb_mut().submatrix_mut(n, n, ncols - n, ncols - n).diagonal_mut().fill(one());
-
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(bid.rb(), Hl.rb(), Conj::No, u, par, stack);
 	}
-
 	if let Some(mut v) = v {
 		v.copy_from(ub.rb().submatrix(0, 0, n, n));
-
 		for j in 1..n {
 			for i in 0..j {
 				bid[(j, i)] = bid[(i, j)].copy();
 			}
 		}
-
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 			bid.rb().submatrix(1, 0, n - 1, n - 1),
 			Hr.rb(),
@@ -442,10 +333,8 @@ fn svd_imp<T: ComplexField>(
 			stack,
 		);
 	}
-
 	Ok(())
 }
-
 fn compute_squareish_svd<T: ComplexField>(
 	matrix: MatRef<'_, T>,
 	s: ColMut<'_, T>,
@@ -472,9 +361,7 @@ fn compute_squareish_svd<T: ComplexField>(
 		svd_imp::<T>(matrix, s, u, v, compute_bidiag_cplx_svd::<T>, par, stack, params)
 	}
 }
-
 /// computes the layout of the workspace required to compute a matrix's svd
-
 pub fn svd_scratch<T: ComplexField>(
 	nrows: usize,
 	ncols: usize,
@@ -484,25 +371,17 @@ pub fn svd_scratch<T: ComplexField>(
 	params: Spec<SvdParams, T>,
 ) -> StackReq {
 	let params = params.config;
-
 	let mut m = nrows;
-
 	let mut n = ncols;
-
 	let mut compute_u = compute_u;
-
 	let mut compute_v = compute_v;
-
 	if n > m {
 		core::mem::swap(&mut m, &mut n);
-
 		core::mem::swap(&mut compute_u, &mut compute_v);
 	}
-
 	if n == 0 {
 		return StackReq::EMPTY;
 	}
-
 	let bidiag_svd_scratch = if try_const! {
 		T::IS_REAL
 	} {
@@ -510,12 +389,10 @@ pub fn svd_scratch<T: ComplexField>(
 	} else {
 		bidiag_cplx_svd_scratch::<T>
 	};
-
 	if m as f64 / n as f64 <= params.qr_ratio_threshold {
 		svd_imp_scratch::<T>(m, n, compute_u, compute_v, bidiag_svd_scratch, params, par)
 	} else {
 		let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
-
 		StackReq::all_of(&[
 			temp_mat_scratch::<T>(m, n),
 			temp_mat_scratch::<T>(bs, n),
@@ -537,12 +414,10 @@ pub fn svd_scratch<T: ComplexField>(
 		])
 	}
 }
-
 /// computes the svd of $A$, with the singular vectors being omitted, thin or full
 ///
 /// the singular are stored in $S$, and the singular vectors in $U$ and $V$ such that the singular
 /// values are sorted in nonincreasing order
-
 pub fn svd<T: ComplexField>(
 	A: MatRef<'_, T>,
 	s: DiagMut<'_, T>,
@@ -553,23 +428,16 @@ pub fn svd<T: ComplexField>(
 	params: Spec<SvdParams, T>,
 ) -> Result<(), SvdError> {
 	let params = params.config;
-
 	let (m, n) = A.shape();
-
 	let size = Ord::min(m, n);
-
 	assert!(s.dim() == size);
-
 	let s = s.column_vector_mut();
-
 	if let Some(u) = u.rb() {
 		assert!(all(u.nrows() == A.nrows(), any(u.ncols() == A.nrows(), u.ncols() == size),));
 	}
-
 	if let Some(v) = v.rb() {
 		assert!(all(v.nrows() == A.ncols(), any(v.ncols() == A.ncols(), v.ncols() == size),));
 	}
-
 	#[cfg(feature = "perf-warn")]
 	match (u.rb(), v.rb()) {
 		(Some(matrix), _) | (_, Some(matrix)) => {
@@ -589,71 +457,46 @@ pub fn svd<T: ComplexField>(
 		},
 		_ => {},
 	}
-
 	let mut u = u;
-
 	let mut v = v;
-
 	let mut matrix = A;
-
 	let do_transpose = n > m;
-
 	if do_transpose {
 		matrix = matrix.transpose();
-
 		core::mem::swap(&mut u, &mut v)
 	}
-
 	let (m, n) = matrix.shape();
-
 	if n == 0 {
 		if let Some(mut u) = u {
 			u.fill(zero());
-
 			u.rb_mut().diagonal_mut().fill(one());
 		}
-
 		return Ok(());
 	}
-
 	if m as f64 / n as f64 <= params.qr_ratio_threshold {
 		compute_squareish_svd(matrix, s, u.rb_mut(), v.rb_mut(), par, stack, params)?;
 	} else {
 		let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
-
 		let (mut qr, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, n, stack) };
-
 		let mut qr = qr.as_mat_mut();
-
 		let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n, stack) };
-
 		let mut householder = householder.as_mat_mut();
-
 		{
 			qr.copy_from(matrix.rb());
-
 			linalg::qr::no_pivoting::factor::qr_in_place(qr.rb_mut(), householder.rb_mut(), par, stack, params.qr.into());
 		}
-
 		{
 			let (mut r, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
-
 			let mut r = r.as_mat_mut();
-
 			z!(r.rb_mut()).for_each_triangular_lower(linalg::zip::Diag::Skip, |uz!(dst)| *dst = zero());
-
 			z!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n)).for_each_triangular_upper(linalg::zip::Diag::Include, |uz!(dst, src)| *dst = src.copy());
-
 			compute_squareish_svd(r.rb(), s, u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)), v.rb_mut(), par, stack, params)?;
 		}
-
 		if let Some(mut u) = u.rb_mut() {
 			u.rb_mut().subrows_mut(n, m - n).fill(zero());
-
 			if u.ncols() == m {
 				u.rb_mut().submatrix_mut(n, n, m - n, m - n).diagonal_mut().fill(one());
 			}
-
 			linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
 				qr.rb(),
 				householder.rb(),
@@ -664,33 +507,24 @@ pub fn svd<T: ComplexField>(
 			);
 		}
 	}
-
 	if do_transpose {
 		if let Some(u) = u.rb_mut() {
 			z!(u).for_each(|uz!(u)| *u = u.conj())
 		}
-
 		if let Some(v) = v.rb_mut() {
 			z!(v).for_each(|uz!(v)| *v = v.conj())
 		}
 	}
-
 	Ok(())
 }
-
 /// computes the layout of the workspace required to compute a matrix's
 /// pseudoinverse, given the svd
-
 pub fn pseudoinverse_from_svd_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> StackReq {
 	_ = par;
-
 	let size = Ord::min(nrows, ncols);
-
 	StackReq::all_of(&[temp_mat_scratch::<T>(nrows, size), temp_mat_scratch::<T>(ncols, size)])
 }
-
 /// computes a self-adjoint matrix's pseudoinverse, given the svd factors $S$, $U$ and $V$
-
 pub fn pseudoinverse_from_svd<T: ComplexField>(
 	pinv: MatMut<'_, T>,
 	s: DiagRef<'_, T>,
@@ -710,10 +544,8 @@ pub fn pseudoinverse_from_svd<T: ComplexField>(
 		stack,
 	);
 }
-
 /// computes a self-adjoint matrix's pseudoinverse, given the svd factors $S$, $U$ and $V$, and
 /// tolerance parameters for determining zero singular values
-
 pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	pinv: MatMut<'_, T>,
 	s: DiagRef<'_, T>,
@@ -725,86 +557,53 @@ pub fn pseudoinverse_from_svd_with_tolerance<T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let mut pinv = pinv;
-
 	let m = u.nrows();
-
 	let n = v.nrows();
-
 	let size = Ord::min(m, n);
-
 	assert!(all(u.nrows() == m, v.nrows() == n, u.ncols() >= size, v.ncols() >= size, s.dim() >= size));
-
 	let s = s.column_vector();
-
 	let u = u.get(.., ..size);
-
 	let v = v.get(.., ..size);
-
 	let smax = s.norm_max();
-
 	let tol = abs_tol.fmax(rel_tol * smax);
-
 	let (mut u_trunc, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, size, stack) };
-
 	let (mut vp_trunc, _) = unsafe { temp_mat_uninit::<T, _, _>(n, size, stack) };
-
 	let mut u_trunc = u_trunc.as_mat_mut();
-
 	let mut vp_trunc = vp_trunc.as_mat_mut();
-
 	let mut len = 0;
-
 	for j in 0..size {
 		let x = s[j].absmax();
-
 		if x > tol {
 			let ref p = s[j].real().recip();
-
 			u_trunc.rb_mut().col_mut(len).copy_from(u.col(j));
-
 			z!(vp_trunc.rb_mut().col_mut(len), v.col(j)).for_each(|uz!(dst, src)| *dst = src.mul_real(p));
-
 			len += 1;
 		}
 	}
-
 	let u_trunc = u_trunc.get(.., ..len);
-
 	let vp_trunc = vp_trunc.get(.., ..len);
-
 	linalg::matmul::matmul(pinv.rb_mut(), Accum::Replace, vp_trunc, u_trunc.adjoint(), one(), par);
 }
-
 #[cfg(test)]
-
 mod tests {
-
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use dyn_stack::MemBuffer;
-
 	#[track_caller]
-
 	fn test_svd<T: ComplexField>(mat: MatRef<'_, T>) {
 		let (m, n) = mat.shape();
-
 		let params = Spec::new(SvdParams {
 			recursion_threshold: 8,
 			qr_ratio_threshold: 1.0,
 			..auto!(T)
 		});
-
 		let approx_eq = CwiseMat(ApproxEq::<T::Real>::eps() * from_f64::<T::Real>(8.0 * Ord::max(m, n) as f64).sqrt());
-
 		{
 			let mut s = Mat::zeros(m, n);
-
 			let mut u = Mat::zeros(m, m);
-
 			let mut v = Mat::zeros(n, n);
-
 			svd(
 				mat.as_ref(),
 				s.as_mut().diagonal_mut(),
@@ -822,20 +621,13 @@ mod tests {
 				params,
 			)
 			.unwrap();
-
 			let reconstructed = &u * &s * v.adjoint();
-
 			assert!(reconstructed ~ mat);
 		}
-
 		let size = Ord::min(m, n);
-
 		let mut s = Mat::zeros(size, size);
-
 		let mut u = Mat::zeros(m, size);
-
 		let mut v = Mat::zeros(n, size);
-
 		{
 			svd(
 				mat.as_ref(),
@@ -854,17 +646,12 @@ mod tests {
 				params,
 			)
 			.unwrap();
-
 			let reconstructed = &u * &s * v.adjoint();
-
 			assert!(reconstructed ~ mat);
 		}
-
 		{
 			let mut s2 = Mat::zeros(size, size);
-
 			let mut u2 = Mat::zeros(m, size);
-
 			svd(
 				mat.as_ref(),
 				s2.as_mut().diagonal_mut(),
@@ -882,17 +669,12 @@ mod tests {
 				params,
 			)
 			.unwrap();
-
 			assert!(s2 ~ s);
-
 			assert!(u2 ~ u);
 		}
-
 		{
 			let mut s2 = Mat::zeros(size, size);
-
 			let mut v2 = Mat::zeros(n, size);
-
 			svd(
 				mat.as_ref(),
 				s2.as_mut().diagonal_mut(),
@@ -910,15 +692,11 @@ mod tests {
 				params,
 			)
 			.unwrap();
-
 			assert!(s2 ~ s);
-
 			assert!(v2 ~ v);
 		}
-
 		{
 			let mut s2 = Mat::zeros(size, size);
-
 			svd(
 				mat.as_ref(),
 				s2.as_mut().diagonal_mut(),
@@ -936,16 +714,12 @@ mod tests {
 				params,
 			)
 			.unwrap();
-
 			assert!(s2 ~ s);
 		}
 	}
-
 	#[test]
-
 	fn test_real() {
 		let rng = &mut StdRng::seed_from_u64(1);
-
 		for (m, n) in [
 			(3, 2),
 			(2, 2),
@@ -965,16 +739,12 @@ mod tests {
 				dist: StandardNormal,
 			}
 			.rand::<Mat<f64>>(rng);
-
 			test_svd(mat.as_ref());
 		}
 	}
-
 	#[test]
-
 	fn test_cplx() {
 		let rng = &mut StdRng::seed_from_u64(1);
-
 		for (m, n) in [
 			(1, 1),
 			(2, 2),
@@ -1003,13 +773,10 @@ mod tests {
 				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 			}
 			.rand::<Mat<c64>>(rng);
-
 			test_svd(mat.as_ref());
 		}
 	}
-
 	#[test]
-
 	fn test_special() {
 		for (m, n) in [
 			(3, 2),
@@ -1025,21 +792,14 @@ mod tests {
 			(20, 150),
 		] {
 			test_svd(Mat::<f64>::zeros(m, n).as_ref());
-
 			test_svd(Mat::<c64>::zeros(m, n).as_ref());
-
 			test_svd(Mat::<f64>::full(m, n, 1.0).as_ref());
-
 			test_svd(Mat::<c64>::full(m, n, c64::ONE).as_ref());
-
 			test_svd(Mat::<f64>::identity(m, n).as_ref());
-
 			test_svd(Mat::<c64>::identity(m, n).as_ref());
 		}
 	}
-
 	#[test]
-
 	fn test_zink() {
 		let diag = [
 			-9.931833701529301,
@@ -1063,7 +823,6 @@ mod tests {
 			1.8657003929029376e-12,
 			-6.216080089659131e-14,
 		];
-
 		let subdiag = [
 			-57.8029649868477,
 			17.67263066467847,
@@ -1086,19 +845,14 @@ mod tests {
 			-3.07282771050034e-13,
 			0.0,
 		];
-
 		let n = diag.len();
-
 		let params = SvdParams {
 			recursion_threshold: 8,
 			qr_ratio_threshold: 1.0,
 			..auto!(f64)
 		};
-
 		let mut d = ColRef::from_slice(&diag).to_owned();
-
 		let mut s = ColRef::from_slice(&subdiag).to_owned();
-
 		compute_bidiag_real_svd(
 			d.as_mut().try_as_col_major_mut().unwrap(),
 			s.as_mut().try_as_col_major_mut().unwrap(),
@@ -1109,53 +863,36 @@ mod tests {
 			MemStack::new(&mut MemBuffer::new(bidiag_real_svd_scratch::<f64>(n, false, false, Par::Seq, params))),
 		)
 		.unwrap();
-
 		assert!(d[n - 1] != 0.0);
 	}
-
 	#[test]
-
 	fn test_pinv() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		let m = 6;
-
 		let n = 36;
-
 		let mat = CwiseMatDistribution {
 			nrows: m,
 			ncols: n,
 			dist: StandardNormal,
 		}
 		.rand::<Mat<f64>>(rng);
-
 		let pinv = mat.svd().unwrap().pseudoinverse();
-
 		let err = &mat * &pinv - Mat::<f64>::identity(m, m);
-
 		assert!(err.norm_max() < 1e-10);
 	}
-
 	#[test]
-
 	fn test_pinv2() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		let m = 36;
-
 		let n = 6;
-
 		let mat = CwiseMatDistribution {
 			nrows: m,
 			ncols: n,
 			dist: StandardNormal,
 		}
 		.rand::<Mat<f64>>(rng);
-
 		let pinv = mat.svd().unwrap().pseudoinverse();
-
 		let err = &pinv * &mat - Mat::<f64>::identity(n, n);
-
 		assert!(err.norm_max() < 1e-10);
 	}
 }

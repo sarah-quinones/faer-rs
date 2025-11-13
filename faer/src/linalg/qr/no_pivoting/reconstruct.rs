@@ -1,14 +1,10 @@
 use crate::assert;
 use crate::internal_prelude::*;
-
 pub fn reconstruct_scratch<T: ComplexField>(nrows: usize, ncols: usize, block_size: usize, par: Par) -> StackReq {
 	_ = par;
-
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, block_size, ncols)
 }
-
 #[track_caller]
-
 pub fn reconstruct<T: ComplexField>(
 	out: MatMut<'_, T>,
 	Q_basis: MatRef<'_, T>,
@@ -18,11 +14,8 @@ pub fn reconstruct<T: ComplexField>(
 	stack: &mut MemStack,
 ) {
 	let m = Q_basis.nrows();
-
 	let n = R.ncols();
-
 	let size = Ord::min(m, n);
-
 	assert!(all(
 		out.nrows() == m,
 		out.ncols() == n,
@@ -32,32 +25,22 @@ pub fn reconstruct<T: ComplexField>(
 		R.nrows() == size,
 		R.ncols() == n,
 	));
-
 	let mut out = out;
-
 	out.fill(zero());
-
 	out.rb_mut().get_mut(..size, ..n).copy_from_triangular_upper(R);
-
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(Q_basis, Q_coeff, Conj::No, out.rb_mut(), par, stack);
 }
-
 #[cfg(test)]
-
 mod tests {
-
 	use super::*;
 	use crate::assert;
 	use crate::stats::prelude::*;
 	use crate::utils::approx::*;
 	use dyn_stack::MemBuffer;
 	use linalg::qr::no_pivoting::*;
-
 	#[test]
-
 	fn test_reconstruct() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		for (m, n) in [(100, 50), (50, 100)] {
 			let A = CwiseMatDistribution {
 				nrows: m,
@@ -65,13 +48,9 @@ mod tests {
 				dist: ComplexDistribution::new(StandardNormal, StandardNormal),
 			}
 			.rand::<Mat<c64>>(rng);
-
 			let size = Ord::min(m, n);
-
 			let mut QR = A.to_owned();
-
 			let mut Q_coeff = Mat::zeros(4, size);
-
 			factor::qr_in_place(
 				QR.as_mut(),
 				Q_coeff.as_mut(),
@@ -79,11 +58,8 @@ mod tests {
 				MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<c64>(m, n, 4, Par::Seq, default())) }),
 				default(),
 			);
-
 			let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
-
 			let mut A_rec = Mat::zeros(m, n);
-
 			reconstruct::reconstruct(
 				A_rec.as_mut(),
 				QR.get(.., ..size),
@@ -92,7 +68,6 @@ mod tests {
 				Par::Seq,
 				MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<c64>(m, n, 4, Par::Seq))),
 			);
-
 			assert!(A_rec ~ A);
 		}
 	}

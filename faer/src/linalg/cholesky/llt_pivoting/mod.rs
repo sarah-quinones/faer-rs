@@ -2,7 +2,6 @@
 //! that: $$P A P^\top = L L^H$$
 //! where $L$ is a unit lower triangular matrix and $P$ is a permutation matrix
 #![allow(missing_docs)]
-
 pub mod factor;
 pub mod inverse;
 pub mod reconstruct;

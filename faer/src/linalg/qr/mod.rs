@@ -19,13 +19,10 @@
 //!
 //! ```
 //! use faer::dyn_stack::{MemBuffer, MemStack, StackReq};
-//! use faer::reborrow::*;
-//!
 //! use faer::linalg::qr::no_pivoting::factor;
 //! use faer::linalg::{householder, triangular_solve};
-//!
+//! use faer::reborrow::*;
 //! use faer::{Conj, Mat, Par, mat};
-//!
 //! // we start by defining matrices A and B that define our least-squares problem.
 //! let a = mat![
 //! 	[-1.14920683, -1.67950492],
@@ -39,7 +36,6 @@
 //! 	[0.44373549, 0.84397648],
 //! 	[-1.96779374, -1.42751757_f64],
 //! ];
-//!
 //! let b = mat![
 //! 	[-0.14689786, -0.52845138, -2.26975669],
 //! 	[-1.00844774, -1.38550214, 0.50329459],
@@ -52,18 +48,14 @@
 //! 	[0.02383305, 0.41515805, -1.2816278],
 //! 	[0.34158312, -0.07552168, 0.56724015_f64],
 //! ];
-//!
 //! // approximate solution computed with numpy
 //! let expected_solution = mat![
 //! 	[0.33960324, -0.33812452, -0.8458301], //
 //! 	[-0.25718351, 0.6281214, 1.07071764_f64],
 //! ];
-//!
 //! let rank = Ord::min(a.nrows(), a.ncols());
-//!
 //! // we choose the recommended block size for the householder factors of our problem.
 //! let block_size = factor::recommended_block_size::<f64>(a.nrows(), a.ncols());
-//!
 //! // we allocate the memory for the operations that we perform
 //! let mut mem =
 //! 	MemBuffer::new(StackReq::any_of(&[
@@ -78,13 +70,9 @@
 //! 			f64,
 //! 		>(a.nrows(), block_size, b.ncols()),
 //! 	]));
-//!
 //! let mut stack = MemStack::new(&mut mem);
-//!
 //! let mut qr = a;
-//!
 //! let mut h_factor = Mat::zeros(block_size, rank);
-//!
 //! factor::qr_in_place(
 //! 	qr.as_mut(),
 //! 	h_factor.as_mut(),
@@ -92,12 +80,9 @@
 //! 	stack.rb_mut(),
 //! 	Default::default(),
 //! );
-//!
 //! // now the householder bases are in the strictly lower trapezoidal part of `a`, and the
 //! // matrix R is in the upper triangular part of `a`.
-//!
 //! let mut solution = b.clone();
-//!
 //! // compute Q^H×B
 //! householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 //! 	qr.as_ref(),
@@ -107,42 +92,32 @@
 //! 	Par::Seq,
 //! 	stack.rb_mut(),
 //! );
-//!
 //! solution.truncate(rank, b.ncols());
-//!
 //! // compute R_thin^{-1} Q_thin^H×B
 //! triangular_solve::solve_upper_triangular_in_place(
 //! 	qr.as_ref().split_at_row(rank).0,
 //! 	solution.as_mut(),
 //! 	Par::Seq,
 //! );
-//!
 //! for i in 0..rank {
 //! 	for j in 0..b.ncols() {
 //! 		assert!((solution[(i, j)] - expected_solution[(i, j)]).abs() <= 1e-6);
 //! 	}
 //! }
 //! ```
-
 pub mod col_pivoting;
 pub mod no_pivoting;
-
 #[cfg(test)]
-
 mod tests {
-
 	use crate as faer;
 	use equator::assert;
-
 	#[test]
-
 	fn test_example() {
 		use faer::dyn_stack::{MemBuffer, MemStack, StackReq};
 		use faer::linalg::qr::no_pivoting::factor;
 		use faer::linalg::{householder, triangular_solve};
 		use faer::reborrow::*;
 		use faer::{Conj, Mat, Par, mat};
-
 		let a = mat![
 			[-1.14920683, -1.67950492],
 			[-0.93009756, -0.03885086],
@@ -155,7 +130,6 @@ mod tests {
 			[0.44373549, 0.84397648],
 			[-1.96779374, -1.42751757_f64],
 		];
-
 		let b = mat![
 			[-0.14689786, -0.52845138, -2.26975669],
 			[-1.00844774, -1.38550214, 0.50329459],
@@ -168,28 +142,18 @@ mod tests {
 			[0.02383305, 0.41515805, -1.2816278],
 			[0.34158312, -0.07552168, 0.56724015_f64],
 		];
-
 		let expected_solution = mat![[0.33960324, -0.33812452, -0.8458301], [-0.25718351, 0.6281214, 1.07071764_f64],];
-
 		let rank = Ord::min(a.nrows(), a.ncols());
-
 		let block_size = factor::recommended_block_size::<f64>(a.nrows(), a.ncols());
-
 		let mut mem = MemBuffer::new(StackReq::any_of(&[
 			factor::qr_in_place_scratch::<f64>(a.nrows(), a.ncols(), block_size, Par::Seq, Default::default()),
 			householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<f64>(a.nrows(), block_size, b.ncols()),
 		]));
-
 		let mut stack = MemStack::new(&mut mem);
-
 		let mut qr = a;
-
 		let mut h_factor = Mat::zeros(block_size, rank);
-
 		factor::qr_in_place(qr.as_mut(), h_factor.as_mut(), Par::Seq, stack.rb_mut(), Default::default());
-
 		let mut solution = b.clone();
-
 		householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 			qr.as_ref(),
 			h_factor.as_ref(),
@@ -198,11 +162,8 @@ mod tests {
 			Par::Seq,
 			stack.rb_mut(),
 		);
-
 		solution.truncate(rank, b.ncols());
-
 		triangular_solve::solve_upper_triangular_in_place(qr.as_ref().split_at_row(rank).0, solution.as_mut(), Par::Seq);
-
 		for i in 0..rank {
 			for j in 0..b.ncols() {
 				assert!((solution[(i, j)] - expected_solution[(i, j)]).abs() <= 1e-6);

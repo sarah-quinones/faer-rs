@@ -11,9 +11,17 @@ struct Quad {
 
     Quad() = default;
 
-    inline Quad(double x) : x0 {x}, x1 {} {}
+    constexpr inline Quad(double x) : x0 {x}, x1 {} {}
 
-    inline Quad(double x, double y) : x0 {x}, x1 {y} {}
+    constexpr inline Quad(double x, double y) : x0 {x}, x1 {y} {}
+
+    constexpr inline explicit operator double() const {
+        return this->x0;
+    }
+
+    constexpr inline explicit operator float() const {
+        return static_cast<float>(this->x0);
+    }
 };
 
 using f128 = Quad;
@@ -212,7 +220,8 @@ struct numeric_limits<quad::f128> {
     static constexpr auto is_bounded = true;
     static constexpr auto is_modulo = false;
     static constexpr auto digits = 100;
-    static constexpr auto max_digits10 = 30;
+    static constexpr auto digits10 = 30;
+    static constexpr auto max_digits10 = 36;
 
     static quad::f128 epsilon() {
         return quad::f128 {1e-30};

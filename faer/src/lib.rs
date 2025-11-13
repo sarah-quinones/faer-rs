@@ -31,24 +31,17 @@
 //! ## example
 //! ```
 //! use faer::{Mat, Scale, mat};
-//!
 //! let a = mat![
 //! 	[1.0, 5.0, 9.0], //
 //! 	[2.0, 6.0, 10.0],
 //! 	[3.0, 7.0, 11.0],
 //! 	[4.0, 8.0, 12.0f64],
 //! ];
-//!
 //! let b = Mat::from_fn(4, 3, |i, j| (i + j) as f64);
-//!
 //! let add = &a + &b;
-//!
 //! let sub = &a - &b;
-//!
 //! let scale = Scale(3.0) * &a;
-//!
 //! let mul = &a * b.transpose();
-//!
 //! let a00 = a[(0, 0)];
 //! ```
 //!
@@ -163,14 +156,11 @@
 #![allow(non_snake_case)]
 #![warn(missing_docs)]
 #![warn(rustdoc::broken_intra_doc_links)]
-
 extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
-
 /// see: [`generativity::make_guard`]
 #[macro_export]
-
 macro_rules! make_guard {
     ($($name:ident),* $(,)?) => {
         $(#[allow(unused_unsafe)] let $name = unsafe { $crate::generativity::Id::new() };
@@ -179,33 +169,27 @@ macro_rules! make_guard {
         $name = unsafe { $crate::generativity::Guard::new($name) };)*
     };
 }
-
 macro_rules! repeat_n {
 	($e:expr, $n:expr) => {
 		iter::repeat_n($e, $n)
 	};
 }
-
 macro_rules! try_const {
 	($e:expr) => {
 		::pulp::try_const! { $e }
 	};
 }
-
 use core::num::NonZeroUsize;
 use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
 use faer_traits::*;
-
 /// shorthand for `<_ as Auto::<T>>::auto()`
 #[macro_export]
-
 macro_rules! auto {
 	($ty:ty $(,)?) => {
 		$crate::Auto::<$ty>::auto()
 	};
 }
-
 macro_rules! dispatch {
 	($imp:expr, $ty:ident, $T:ty $(,)?) => {
 		if try_const! { <$T >::IS_NATIVE_C32 } {
@@ -217,33 +201,24 @@ macro_rules! dispatch {
 		}
 	};
 }
-
 macro_rules! stack_mat {
 	($name:ident, $m:expr, $n:expr, $A:expr, $N:expr, $T:ty $(,)?) => {
 		let mut __tmp = {
 			#[repr(align(64))]
-
 			struct __Col<T, const A: usize>([T; A]);
-
 			struct __Mat<T, const A: usize, const N: usize>([__Col<T, A>; N]);
-
 			core::mem::MaybeUninit::<__Mat<$T, $A, $N>>::uninit()
 		};
-
 		let __stack = MemStack::new_any(core::slice::from_mut(&mut __tmp));
-
 		let mut $name = $crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
-
 		let mut $name = $name.as_mat_mut();
 	};
 	($name:ident, $m:expr, $n:expr, $T:ty $(,)?) => {
 		stack_mat!($name, $m, $n, $m, $n, $T)
 	};
 }
-
 #[macro_export]
 #[doc(hidden)]
-
 macro_rules! __dbg {
     () => {
         std::eprintln!("[{}:{}:{}]", std::file!(), std::line!(), std::column!())
@@ -256,22 +231,17 @@ macro_rules! __dbg {
         ($($crate::__dbg!($val)),+,)
     };
 }
-
 #[cfg(feature = "perf-warn")]
 #[macro_export]
 #[doc(hidden)]
-
 macro_rules! __perf_warn {
 	($name:ident) => {{
 		#[inline(always)]
 		#[allow(non_snake_case)]
-
 		fn $name() -> &'static ::core::sync::atomic::AtomicBool {
 			static $name: ::core::sync::atomic::AtomicBool = ::core::sync::atomic::AtomicBool::new(false);
-
 			&$name
 		}
-
 		::core::matches!(
 			$name().compare_exchange(
 				false,
@@ -283,10 +253,8 @@ macro_rules! __perf_warn {
 		)
 	}};
 }
-
 #[doc(hidden)]
 #[macro_export]
-
 macro_rules! with_dim {
     ($name:ident, $value:expr $(,)?) => {
         let __val__ = $value; $crate::make_guard!($name); let $name =
@@ -297,7 +265,6 @@ macro_rules! with_dim {
         $crate::utils::bound::Dim::new(__val__, $name);)*
     };
 }
-
 /// zips together matrix of the same size, so that coefficient-wise operations can be performed on
 /// their elements.
 ///
@@ -307,21 +274,14 @@ macro_rules! with_dim {
 /// # example
 /// ```
 /// use faer::{Mat, mat, unzip, zip};
-///
 /// let nrows = 2;
-///
 /// let ncols = 3;
-///
 /// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
-///
 /// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
-///
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
-///
 /// zip!(&mut sum, &a, &b).for_each(|unzip!(sum, a, b)| {
 /// 	*sum = a + b;
 /// });
-///
 /// for i in 0..nrows {
 /// 	for j in 0..ncols {
 /// 		assert_eq!(sum[(i, j)], a[(i, j)] + b[(i, j)]);
@@ -329,7 +289,6 @@ macro_rules! with_dim {
 /// }
 /// ```
 #[macro_export]
-
 macro_rules! zip {
     ($head:expr $(,)?) => {
         $crate::linalg::zip::LastEq($crate::linalg::zip::IntoView::into_view($head),
@@ -340,27 +299,19 @@ macro_rules! zip {
         $crate::zip!($($tail,)*))
     };
 }
-
 /// expands to the type of zipped items.
 ///
 /// # example
 /// ```
 /// use faer::{Mat, Zip, mat, unzip, zip};
-///
 /// let nrows = 2;
-///
 /// let ncols = 3;
-///
 /// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
-///
 /// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
-///
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
-///
 /// zip!(&mut sum, &a, &b).for_each(|unzip!(sum, a, b): Zip!(&mut f64, &f64, &f64)| {
 /// 	*sum = a + b;
 /// });
-///
 /// for i in 0..nrows {
 /// 	for j in 0..ncols {
 /// 		assert_eq!(sum[(i, j)], a[(i, j)] + b[(i, j)]);
@@ -368,7 +319,6 @@ macro_rules! zip {
 /// }
 /// ```
 #[macro_export]
-
 macro_rules! Zip {
     (..$(,)?) => {
         _
@@ -380,27 +330,19 @@ macro_rules! Zip {
         $crate::linalg::zip::Zip::<$head, $crate::Zip!($($tail)*) >
     };
 }
-
 /// used to undo the zipping by the [`zip!`] macro.
 ///
 /// # example
 /// ```
 /// use faer::{Mat, mat, unzip, zip};
-///
 /// let nrows = 2;
-///
 /// let ncols = 3;
-///
 /// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
-///
 /// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
-///
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
-///
 /// zip!(&mut sum, &a, &b).for_each(|unzip!(sum, a, b)| {
 /// 	*sum = a + b;
 /// });
-///
 /// for i in 0..nrows {
 /// 	for j in 0..ncols {
 /// 		assert_eq!(sum[(i, j)], a[(i, j)] + b[(i, j)]);
@@ -408,7 +350,6 @@ macro_rules! Zip {
 /// }
 /// ```
 #[macro_export]
-
 macro_rules! unzip {
     (..$(,)?) => {
         _
@@ -420,10 +361,8 @@ macro_rules! unzip {
         $crate::linalg::zip::Zip($head, $crate::unzip!($($tail)*))
     };
 }
-
 #[macro_export]
 #[doc(hidden)]
-
 macro_rules! __transpose_impl {
     ([$([$($col:expr),*])*] $($v:expr;)*) => {
         [$([$($col,)*],)* [$($v,)*]]
@@ -432,45 +371,30 @@ macro_rules! __transpose_impl {
         $crate::__transpose_impl!([$([$($col),*])* [$($v0),*]] $($($v),*;)*)
     };
 }
-
 /// creates a [`Mat`] containing the arguments.
 ///
 /// ```
 /// use faer::mat;
-///
 /// let matrix = mat![
 /// 	[1.0, 5.0, 9.0], //
 /// 	[2.0, 6.0, 10.0],
 /// 	[3.0, 7.0, 11.0],
 /// 	[4.0, 8.0, 12.0f64],
 /// ];
-///
 /// assert_eq!(matrix[(0, 0)], 1.0);
-///
 /// assert_eq!(matrix[(1, 0)], 2.0);
-///
 /// assert_eq!(matrix[(2, 0)], 3.0);
-///
 /// assert_eq!(matrix[(3, 0)], 4.0);
-///
 /// assert_eq!(matrix[(0, 1)], 5.0);
-///
 /// assert_eq!(matrix[(1, 1)], 6.0);
-///
 /// assert_eq!(matrix[(2, 1)], 7.0);
-///
 /// assert_eq!(matrix[(3, 1)], 8.0);
-///
 /// assert_eq!(matrix[(0, 2)], 9.0);
-///
 /// assert_eq!(matrix[(1, 2)], 10.0);
-///
 /// assert_eq!(matrix[(2, 2)], 11.0);
-///
 /// assert_eq!(matrix[(3, 2)], 12.0);
 /// ```
 #[macro_export]
-
 macro_rules! mat {
     () => {
         { compile_error!("number of columns in the matrix is ambiguous"); }
@@ -483,31 +407,31 @@ macro_rules! mat {
         __data[j] [i]).read()) } }
     };
     (
-        @ alloc unsafe ($stack:ident) ($var:pat) (uninit::<$ty:ty >, $($arg:expr),+
+        @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (uninit::<$ty:ty >, $($arg:expr),+
         $(,)?)
     ) => {
-        let (mut __mat__, $stack) = unsafe { $crate::linalg::temp_mat_uninit::<$ty, _, _
+        let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_uninit::<$ty, _, _
+        > ($($arg,)* $stack,) }; let $var = __mat__.as_mat_mut();
+    };
+    (
+        @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (zero::<$ty:ty >, $($arg:expr),+
+        $(,)?)
+    ) => {
+        let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_zeroed::<$ty, _, _
         > ($($arg,)* $stack,) }; let $var = __mat__.as_mat_mut();
     };
 }
-
 /// creates a [`col::Col`] containing the arguments
 ///
 /// ```
 /// use faer::col;
-///
 /// let col_vec = col![3.0, 5.0, 7.0, 9.0];
-///
 /// assert_eq!(col_vec[0], 3.0);
-///
 /// assert_eq!(col_vec[1], 5.0);
-///
 /// assert_eq!(col_vec[2], 7.0);
-///
 /// assert_eq!(col_vec[3], 9.0);
 /// ```
 #[macro_export]
-
 macro_rules! col {
     ($($v:expr),* $(,)?) => {
         { let __data = ::core::mem::ManuallyDrop::new([$($v,)*]); let __data = &* __data;
@@ -516,31 +440,32 @@ macro_rules! col {
         } }
     };
     (
-        @ alloc unsafe ($stack:ident) ($var:pat) (uninit::<$ty:ty >, $($arg:expr),+
+        @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (uninit::<$ty:ty >, $($arg:expr),+
         $(,)?)
     ) => {
-        let (mut __mat__, $stack) = unsafe { $crate::linalg::temp_mat_uninit::<$ty, _, _
+        let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_uninit::<$ty, _, _
+        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0);
+    };
+
+    (
+        @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (zero::<$ty:ty >, $($arg:expr),+
+        $(,)?)
+    ) => {
+        let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_zeroed::<$ty, _, _
         > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0);
     };
 }
-
 /// creates a [`row::Row`] containing the arguments
 ///
 /// ```
 /// use faer::row;
-///
 /// let row_vec = row![3.0, 5.0, 7.0, 9.0];
-///
 /// assert_eq!(row_vec[0], 3.0);
-///
 /// assert_eq!(row_vec[1], 5.0);
-///
 /// assert_eq!(row_vec[2], 7.0);
-///
 /// assert_eq!(row_vec[3], 9.0);
 /// ```
 #[macro_export]
-
 macro_rules! row {
     ($($v:expr),* $(,)?) => {
         { let __data = ::core::mem::ManuallyDrop::new([$($v,)*]); let __data = &* __data;
@@ -549,15 +474,21 @@ macro_rules! row {
         } }
     };
     (
-        @ alloc unsafe ($stack:ident) ($var:pat) (uninit::<$ty:ty >, $($arg:expr),+
+        @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (uninit::<$ty:ty >, $($arg:expr),+
         $(,)?)
     ) => {
-        let (mut __mat__, $stack) = unsafe { $crate::linalg::temp_mat_uninit::<$ty, _, _
-        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0)
-        .transpose_mut();
+        let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_uninit::<$ty, _, _
+        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0).transpose_mut();
+    };
+
+    (
+        @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (zero::<$ty:ty >, $($arg:expr),+
+        $(,)?)
+    ) => {
+        let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_zeroed::<$ty, _, _
+        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0).transpose_mut();
     };
 }
-
 /// convenience function to concatenate a nested list of matrices into a single
 /// big ['Mat']. concatonation pattern follows the numpy.block convention that
 /// each sub-list must have an equal number of columns (net) but the boundaries
@@ -570,26 +501,19 @@ macro_rules! row {
 /// is perfectly acceptable
 #[doc(hidden)]
 #[track_caller]
-
 pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) -> mat::Mat<T> {
 	#[inline(always)]
-
 	fn count_total_columns<T: ComplexField>(block_row: &[(mat::MatRef<'_, T>, Conj)]) -> usize {
 		let mut out: usize = 0;
-
 		for (elem, _) in block_row.iter() {
 			out += elem.ncols();
 		}
-
 		out
 	}
-
 	#[inline(always)]
 	#[track_caller]
-
 	fn count_rows<T: ComplexField>(block_row: &[(mat::MatRef<'_, T>, Conj)]) -> usize {
 		let mut out: usize = 0;
-
 		for (i, (e, _)) in block_row.iter().enumerate() {
 			if i == 0 {
 				out = e.nrows();
@@ -597,55 +521,39 @@ pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) ->
 				assert!(e.nrows() == out);
 			}
 		}
-
 		out
 	}
-
 	let mut n: usize = 0;
-
 	let mut m: usize = 0;
-
 	for row in blocks.iter() {
 		n += count_rows(row);
 	}
-
 	for (i, row) in blocks.iter().enumerate() {
 		let cols = count_total_columns(row);
-
 		if i == 0 {
 			m = cols;
 		} else {
 			assert!(cols == m);
 		}
 	}
-
 	let mut mat = mat::Mat::<T>::zeros(n, m);
-
 	let mut ni: usize = 0;
-
 	let mut mj: usize;
-
 	for row in blocks.iter() {
 		mj = 0;
-
 		for (elem, conj) in row.iter() {
 			let mut dst = mat.as_mut().submatrix_mut(ni, mj, elem.nrows(), elem.ncols());
-
 			if *conj == Conj::No {
 				dst.copy_from(elem);
 			} else {
 				dst.copy_from(elem.conjugate());
 			}
-
 			mj += elem.ncols();
 		}
-
 		ni += row[0].0.nrows();
 	}
-
 	mat
 }
-
 /// concatenates the matrices in each row horizontally,
 /// then concatenates the results vertically
 ///
@@ -654,7 +562,6 @@ pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) ->
 /// [a0 | a1 | a2][b0 | b1]
 /// ```
 #[macro_export]
-
 macro_rules! concat {
     () => {
         { compile_error!("number of columns in the matrix is ambiguous"); }
@@ -663,7 +570,6 @@ macro_rules! concat {
         { $crate::concat_impl(& [$(& [$(($v).as_ref().__canonicalize(),)*],)*]) }
     };
 }
-
 /// column vector
 pub mod col;
 /// diagonal matrix
@@ -685,135 +591,84 @@ mod serde;
 pub mod sparse;
 /// helper utilities
 pub mod utils;
-
 /// native unsigned integer type
-
 pub trait Index: traits::IndexCore + traits::Index + seal::Seal {}
-
 impl<T: faer_traits::Index<Signed: seal::Seal> + seal::Seal> Index for T {}
-
 mod seal {
-
 	pub trait Seal {}
-
 	impl<T: faer_traits::Seal> Seal for T {}
-
 	impl Seal for crate::utils::bound::Dim<'_> {}
-
 	impl<I: crate::Index> Seal for crate::utils::bound::Idx<'_, I> {}
-
 	impl<I: crate::Index> Seal for crate::utils::bound::IdxInc<'_, I> {}
-
 	impl<I: crate::Index> Seal for crate::utils::bound::MaybeIdx<'_, I> {}
-
 	impl<I: crate::Index> Seal for crate::utils::bound::IdxIncOne<I> {}
-
 	impl<I: crate::Index> Seal for crate::utils::bound::MaybeIdxOne<I> {}
-
 	impl Seal for crate::utils::bound::One {}
-
 	impl Seal for crate::utils::bound::Zero {}
-
 	impl Seal for crate::ContiguousFwd {}
-
 	impl Seal for crate::ContiguousBwd {}
 }
-
 /// sealed trait for types that can be created from "unbound" values, as long as their
 /// struct preconditions are upheld
-
 pub trait Unbind<I = usize>: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
 	/// creates new value
 	/// # safety
 	/// safety invariants must be upheld
-
 	unsafe fn new_unbound(idx: I) -> Self;
-
 	/// returns the unbound value, unconstrained by safety invariants
-
 	fn unbound(self) -> I;
 }
-
 /// type that can be used to index into a range
-
 pub type Idx<Dim, I = usize> = <Dim as ShapeIdx>::Idx<I>;
-
 /// type that can be used to partition a range
-
 pub type IdxInc<Dim, I = usize> = <Dim as ShapeIdx>::IdxInc<I>;
-
 /// either an index or a negative value
-
 pub type MaybeIdx<Dim, I = usize> = <Dim as ShapeIdx>::MaybeIdx<I>;
-
 /// base trait for [`Shape`]
-
 pub trait ShapeIdx {
 	/// type that can be used to index into a range
-
 	type Idx<I: Index>: Unbind<I> + Ord + Eq;
-
 	/// type that can be used to partition a range
-
 	type IdxInc<I: Index>: Unbind<I> + Ord + Eq + From<Idx<Self, I>>;
-
 	/// either an index or a negative value
-
 	type MaybeIdx<I: Index>: Unbind<I::Signed> + Ord + Eq;
 }
-
 /// matrix dimension
-
 pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>, IdxInc<usize>: Ord + Eq + PartialOrd<Self>> {
 	/// whether the types involved have any safety invariants
-
 	const IS_BOUND: bool = true;
-
 	/// bind the current value using a invariant lifetime guard
 	#[inline]
-
 	fn bind<'n>(self, guard: generativity::Guard<'n>) -> utils::bound::Dim<'n> {
 		utils::bound::Dim::new(self.unbound(), guard)
 	}
-
 	/// cast a slice of bound values to unbound values
 	#[inline]
-
 	fn cast_idx_slice<I: Index>(slice: &[Idx<Self, I>]) -> &[I] {
 		unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
 	}
-
 	/// cast a slice of bound values to unbound values
 	#[inline]
-
 	fn cast_idx_inc_slice<I: Index>(slice: &[IdxInc<Self, I>]) -> &[I] {
 		unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
 	}
-
 	/// returns the index `0`, which is always valid
 	#[inline(always)]
-
 	fn start() -> IdxInc<Self> {
 		unsafe { IdxInc::<Self>::new_unbound(0) }
 	}
-
 	/// returns the incremented value, as an inclusive index
 	#[inline(always)]
-
 	fn next(idx: Idx<Self>) -> IdxInc<Self> {
 		unsafe { IdxInc::<Self>::new_unbound(idx.unbound() + 1) }
 	}
-
 	/// returns the last value, equal to the dimension
 	#[inline(always)]
-
 	fn end(self) -> IdxInc<Self> {
 		unsafe { IdxInc::<Self>::new_unbound(self.unbound()) }
 	}
-
 	/// checks if the index is valid, returning `Some(_)` in that case
 	#[inline(always)]
-
 	fn idx(self, idx: usize) -> Option<Idx<Self>> {
 		if idx < self.unbound() {
 			Some(unsafe { Idx::<Self>::new_unbound(idx) })
@@ -821,10 +676,8 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 			None
 		}
 	}
-
 	/// checks if the index is valid, returning `Some(_)` in that case
 	#[inline(always)]
-
 	fn idx_inc(self, idx: usize) -> Option<IdxInc<Self>> {
 		if idx <= self.unbound() {
 			Some(unsafe { IdxInc::<Self>::new_unbound(idx) })
@@ -832,50 +685,36 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 			None
 		}
 	}
-
 	/// checks if the index is valid, and panics otherwise
 	#[inline(always)]
-
 	fn checked_idx(self, idx: usize) -> Idx<Self> {
 		equator::assert!(idx < self.unbound());
-
 		unsafe { Idx::<Self>::new_unbound(idx) }
 	}
-
 	/// checks if the index is valid, and panics otherwise
 	#[inline(always)]
-
 	fn checked_idx_inc(self, idx: usize) -> IdxInc<Self> {
 		equator::assert!(idx <= self.unbound());
-
 		unsafe { IdxInc::<Self>::new_unbound(idx) }
 	}
-
 	/// assumes the index is valid
 	/// # safety
 	/// the index must be valid
 	#[inline(always)]
-
 	unsafe fn unchecked_idx(self, idx: usize) -> Idx<Self> {
 		equator::debug_assert!(idx < self.unbound());
-
 		unsafe { Idx::<Self>::new_unbound(idx) }
 	}
-
 	/// assumes the index is valid
 	/// # safety
 	/// the index must be valid
 	#[inline(always)]
-
 	unsafe fn unchecked_idx_inc(self, idx: usize) -> IdxInc<Self> {
 		equator::debug_assert!(idx <= self.unbound());
-
 		unsafe { IdxInc::<Self>::new_unbound(idx) }
 	}
-
 	/// returns an iterator over the indices between `from` and `to`
 	#[inline(always)]
-
 	fn indices(from: IdxInc<Self>, to: IdxInc<Self>) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<Self>> {
 		(from.unbound()..to.unbound()).map(
 			#[inline(always)]
@@ -883,108 +722,81 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 		)
 	}
 }
-
 impl<T: Send + Sync + Copy + core::fmt::Debug + faer_traits::Seal> Unbind<T> for T {
 	#[inline(always)]
-
 	unsafe fn new_unbound(idx: T) -> Self {
 		idx
 	}
 
 	#[inline(always)]
-
 	fn unbound(self) -> T {
 		self
 	}
 }
-
 impl ShapeIdx for usize {
 	type Idx<I: Index> = I;
 	type IdxInc<I: Index> = I;
 	type MaybeIdx<I: Index> = I::Signed;
 }
-
 impl Shape for usize {
 	const IS_BOUND: bool = false;
 }
-
 /// stride distance between two consecutive elements along a given dimension
-
 pub trait Stride: seal::Seal + core::fmt::Debug + Copy + Send + Sync + 'static {
 	/// the reversed stride type
-
 	type Rev: Stride<Rev = Self>;
-
 	/// returns the reversed stride
-
 	fn rev(self) -> Self::Rev;
-
 	/// returns the stride in elements
-
 	fn element_stride(self) -> isize;
 }
-
 impl Stride for isize {
 	type Rev = Self;
 
 	#[inline(always)]
-
 	fn rev(self) -> Self::Rev {
 		-self
 	}
 
 	#[inline(always)]
-
 	fn element_stride(self) -> isize {
 		self
 	}
 }
-
 /// contiguous stride equal to `+1`
 #[derive(Copy, Clone, Debug)]
-
 pub struct ContiguousFwd;
-
 /// contiguous stride equal to `-1`
 #[derive(Copy, Clone, Debug)]
-
 pub struct ContiguousBwd;
-
 impl Stride for ContiguousFwd {
 	type Rev = ContiguousBwd;
 
 	#[inline(always)]
-
 	fn rev(self) -> Self::Rev {
 		ContiguousBwd
 	}
 
 	#[inline(always)]
-
 	fn element_stride(self) -> isize {
 		1
 	}
 }
-
 impl Stride for ContiguousBwd {
 	type Rev = ContiguousFwd;
 
 	#[inline(always)]
-
 	fn rev(self) -> Self::Rev {
 		ContiguousFwd
 	}
 
 	#[inline(always)]
-
 	fn element_stride(self) -> isize {
 		-1
 	}
 }
-
 /// memory allocation error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-
 pub enum TryReserveError {
 	///rRequired allocation does not fit within `isize` bytes
 	CapacityOverflow,
@@ -994,55 +806,44 @@ pub enum TryReserveError {
 		layout: core::alloc::Layout,
 	},
 }
-
 /// determines whether the input should be implicitly conjugated or not
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-
 pub enum Conj {
 	/// no implicit conjugation
 	No,
 	/// implicit conjugation
 	Yes,
 }
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-
 pub(crate) enum DiagStatus {
 	Unit,
 	Generic,
 }
-
 /// determines whether to replace or add to the result of a matmul operatio
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-
 pub enum Accum {
 	/// overwrites the output buffer
 	Replace,
 	/// adds the result to the output buffer
 	Add,
 }
-
 /// determines which side of a self-adjoint matrix should be accessed
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-
 pub enum Side {
 	/// lower triangular half
 	Lower,
 	/// upper triangular half
 	Upper,
 }
-
 impl Conj {
 	/// returns `self == Conj::Yes`
 	#[inline]
-
 	pub const fn is_conj(self) -> bool {
 		matches!(self, Conj::Yes)
 	}
 
 	/// returns the composition of `self` and `other`
 	#[inline]
-
 	pub const fn compose(self, other: Self) -> Self {
 		match (self, other) {
 			(Conj::No, Conj::No) => Conj::No,
@@ -1054,16 +855,13 @@ impl Conj {
 
 	/// returns `Conj::No` if `T` is the canonical representation, otherwise `Conj::Yes`
 	#[inline]
-
 	pub const fn get<T: Conjugate>() -> Self {
 		if T::IS_CANONICAL { Self::No } else { Self::Yes }
 	}
 
 	#[inline]
-
 	pub(crate) fn apply<T: Conjugate>(value: &T) -> T::Canonical {
 		let value = unsafe { &*(value as *const T as *const T::Canonical) };
-
 		if try_const! {
 			matches!(Self::get::< T > (), Conj::Yes)
 		} {
@@ -1074,15 +872,12 @@ impl Conj {
 	}
 
 	#[inline]
-
 	pub(crate) fn apply_rt<T: ComplexField>(self, value: &T) -> T {
 		if self.is_conj() { T::conj_impl(value) } else { T::copy_impl(value) }
 	}
 }
-
 /// determines the parallelization configuration
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-
 pub enum Par {
 	/// sequential, non portable across different platforms
 	Seq,
@@ -1090,13 +885,11 @@ pub enum Par {
 	#[cfg(feature = "rayon")]
 	Rayon(NonZeroUsize),
 }
-
 impl Par {
 	/// returns `Par::Rayon(nthreads)` if `nthreads` is non-zero, or
 	/// `Par::Rayon(rayon::current_num_threads())` otherwise
 	#[inline]
 	#[cfg(feature = "rayon")]
-
 	pub fn rayon(nthreads: usize) -> Self {
 		if nthreads == 0 {
 			Self::Rayon(NonZeroUsize::new(rayon::current_num_threads()).unwrap())
@@ -1107,61 +900,41 @@ impl Par {
 
 	/// the number of threads that should ideally execute an operation with the given parallelism
 	#[inline]
-
 	pub fn degree(&self) -> usize {
 		utils::thread::parallelism_degree(*self)
 	}
 }
-
 #[allow(non_camel_case_types)]
 /// `Complex<f32>`
-
 pub type c32 = traits::c32;
-
 #[allow(non_camel_case_types)]
 /// `Complex<f64>`
-
 pub type c64 = traits::c64;
-
 #[allow(non_camel_case_types)]
 /// `Complex<f64>`
-
 pub type cx128 = traits::cx128;
-
 #[allow(non_camel_case_types)]
 /// `Complex<f64>`
-
 pub type fx128 = traits::fx128;
-
 pub use col::{Col, ColMut, ColRef};
 pub use mat::{Mat, MatMut, MatRef};
 pub use row::{Row, RowMut, RowRef};
-
 #[allow(unused_imports, dead_code)]
-
 mod internal_prelude {
-
 	pub trait DivCeil: Sized {
 		fn msrv_div_ceil(self, rhs: Self) -> Self;
-
 		fn msrv_next_multiple_of(self, rhs: Self) -> Self;
-
 		fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self>;
 	}
-
 	impl DivCeil for usize {
 		#[inline]
-
 		fn msrv_div_ceil(self, rhs: Self) -> Self {
 			let d = self / rhs;
-
 			let r = self % rhs;
-
 			if r > 0 { d + 1 } else { d }
 		}
 
 		#[inline]
-
 		fn msrv_next_multiple_of(self, rhs: Self) -> Self {
 			match self % rhs {
 				0 => self,
@@ -1170,7 +943,6 @@ mod internal_prelude {
 		}
 
 		#[inline]
-
 		fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self> {
 			{
 				match self.checked_rem(rhs)? {
@@ -1180,7 +952,6 @@ mod internal_prelude {
 			}
 		}
 	}
-
 	pub(crate) use crate::col::{Col, ColMut, ColRef};
 	pub(crate) use crate::diag::{Diag, DiagMut, DiagRef};
 	pub(crate) use crate::hacks::transmute;
@@ -1202,13 +973,10 @@ mod internal_prelude {
 	pub(crate) use std::dbg;
 	#[cfg(test)]
 	pub(crate) use {alloc::boxed::Box, alloc::vec, alloc::vec::Vec};
-
 	#[inline]
-
 	pub fn simd_align(i: usize) -> usize {
 		i.wrapping_neg()
 	}
-
 	pub use crate::make_guard;
 	pub(crate) use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzip, zip};
 	pub use dyn_stack::{MemStack, StackReq, alloc as alloca};
@@ -1216,11 +984,8 @@ mod internal_prelude {
 	pub use reborrow::*;
 	pub use {unzip as uz, zip as z};
 }
-
 #[allow(unused_imports)]
-
 pub(crate) mod internal_prelude_sp {
-
 	pub(crate) use crate::internal_prelude::*;
 	pub(crate) use crate::sparse::{
 		FaerError, NONE, Pair, SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
@@ -1231,11 +996,8 @@ pub(crate) mod internal_prelude_sp {
 	pub(crate) use core::iter;
 	pub(crate) use dyn_stack::MemBuffer;
 }
-
 /// useful imports for general usage of the library
-
 pub mod prelude {
-
 	#[cfg(feature = "linalg")]
 	pub use super::linalg::solvers::{DenseSolve, Solve, SolveLstsq};
 	#[cfg(feature = "sparse")]
@@ -1245,90 +1007,69 @@ pub mod prelude {
 	pub use mat::{Mat, MatMut, MatRef};
 	pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 	pub use row::{Row, RowMut, RowRef};
-
 	/// see [`Default`]
 	#[inline]
-
 	pub fn default<T: Default>() -> T {
 		Default::default()
 	}
 }
-
 #[cfg(feature = "sparse")]
-
 mod prelude_sp {
-
 	use crate::sparse;
 	pub use sparse::{SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef};
 }
-
 /// scaling factor for multiplying matrices.
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-
 pub struct Scale<T>(pub T);
-
 impl<T> Scale<T> {
 	/// create a reference to a scaling factor from a reference to a value.
 	#[inline(always)]
-
 	pub fn from_ref(value: &T) -> &Self {
 		unsafe { &*(value as *const T as *const Self) }
 	}
 
 	/// create a mutable reference to a scaling factor from a mutable reference to a value.
 	#[inline(always)]
-
 	pub fn from_mut(value: &mut T) -> &mut Self {
 		unsafe { &mut *(value as *mut T as *mut Self) }
 	}
 }
-
 /// 0: disabled
 /// 1: `Seq`
 /// n >= 2: `Rayon(n - 2)`
 ///
 /// default: `Rayon(0)`
-
 static GLOBAL_PARALLELISM: AtomicUsize = {
 	#[cfg(all(not(miri), feature = "rayon"))]
 	{
 		AtomicUsize::new(2)
 	}
-
 	#[cfg(not(all(not(miri), feature = "rayon")))]
 	{
 		AtomicUsize::new(1)
 	}
 };
-
 /// causes functions that access global parallelism settings to panic.
-
 pub fn disable_global_parallelism() {
 	GLOBAL_PARALLELISM.store(0, core::sync::atomic::Ordering::Relaxed);
 }
-
 /// sets the global parallelism settings.
-
 pub fn set_global_parallelism(par: Par) {
 	let value = match par {
 		Par::Seq => 1,
 		#[cfg(feature = "rayon")]
 		Par::Rayon(n) => n.get().saturating_add(2),
 	};
-
 	GLOBAL_PARALLELISM.store(value, core::sync::atomic::Ordering::Relaxed);
 }
-
 /// gets the global parallelism settings.
 ///
 /// # panics
 /// panics if global parallelism is disabled.
 #[track_caller]
-
 pub fn get_global_parallelism() -> Par {
 	let value = GLOBAL_PARALLELISM.load(core::sync::atomic::Ordering::Relaxed);
-
 	match value {
 		0 => panic!("Global parallelism is disabled."),
 		1 => Par::Seq,
@@ -1338,80 +1079,59 @@ pub fn get_global_parallelism() -> Par {
 		_ => unreachable!(),
 	}
 }
-
 #[doc(hidden)]
 pub mod hacks;
 /// statistics and randomness functionality
 pub mod stats;
-
 mod non_exhaustive {
-
 	#[doc(hidden)]
 	#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 	#[repr(transparent)]
-
 	pub struct NonExhaustive(pub(crate) ());
 }
-
 pub(crate) use non_exhaustive::NonExhaustive;
-
 /// like `Default`, but with an extra type parameter so that algorithm hyperparameters can be tuned
 /// per scalar type.
-
 pub trait Auto<T> {
 	/// returns the default value for the type `T`
-
 	fn auto() -> Self;
 }
-
 /// implements [`Default`] based on `Config`'s [`Auto`] implementation for the type `T`.
-
 pub struct Spec<Config, T> {
 	/// wrapped config value
 	pub config: Config,
 	__marker: core::marker::PhantomData<fn() -> T>,
 }
-
 impl<Config, T> core::ops::Deref for Spec<Config, T> {
 	type Target = Config;
 
 	#[inline]
-
 	fn deref(&self) -> &Self::Target {
 		&self.config
 	}
 }
-
 impl<Config, T> core::ops::DerefMut for Spec<Config, T> {
 	#[inline]
-
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.config
 	}
 }
-
 impl<Config: Copy, T> Copy for Spec<Config, T> {}
-
 impl<Config: Clone, T> Clone for Spec<Config, T> {
 	#[inline]
-
 	fn clone(&self) -> Self {
 		Self::new(self.config.clone())
 	}
 }
-
 impl<Config: core::fmt::Debug, T> core::fmt::Debug for Spec<Config, T> {
 	#[inline]
-
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.config.fmt(f)
 	}
 }
-
 impl<Config, T> Spec<Config, T> {
 	/// wraps the given config value
 	#[inline]
-
 	pub fn new(config: Config) -> Self {
 		Spec {
 			config,
@@ -1419,10 +1139,8 @@ impl<Config, T> Spec<Config, T> {
 		}
 	}
 }
-
 impl<T, Config> From<Config> for Spec<Config, T> {
 	#[inline]
-
 	fn from(config: Config) -> Self {
 		Spec {
 			config,
@@ -1430,10 +1148,8 @@ impl<T, Config> From<Config> for Spec<Config, T> {
 		}
 	}
 }
-
 impl<T, Config: Auto<T>> Default for Spec<Config, T> {
 	#[inline]
-
 	fn default() -> Self {
 		Spec {
 			config: Auto::<T>::auto(),
@@ -1441,60 +1157,46 @@ impl<T, Config: Auto<T>> Default for Spec<Config, T> {
 		}
 	}
 }
-
 mod into_range {
-
 	use super::*;
-
 	pub trait IntoRange<I> {
 		type Len<N: Shape>: Shape;
-
 		fn into_range(self, min: I, max: I) -> core::ops::Range<I>;
 	}
-
 	impl<I> IntoRange<I> for core::ops::Range<I> {
 		type Len<N: Shape> = usize;
 
 		#[inline]
-
 		fn into_range(self, _: I, _: I) -> core::ops::Range<I> {
 			self
 		}
 	}
-
 	impl<I> IntoRange<I> for core::ops::RangeFrom<I> {
 		type Len<N: Shape> = usize;
 
 		#[inline]
-
 		fn into_range(self, _: I, max: I) -> core::ops::Range<I> {
 			self.start..max
 		}
 	}
-
 	impl<I> IntoRange<I> for core::ops::RangeTo<I> {
 		type Len<N: Shape> = usize;
 
 		#[inline]
-
 		fn into_range(self, min: I, _: I) -> core::ops::Range<I> {
 			min..self.end
 		}
 	}
-
 	impl<I> IntoRange<I> for core::ops::RangeFull {
 		type Len<N: Shape> = N;
 
 		#[inline]
-
 		fn into_range(self, min: I, max: I) -> core::ops::Range<I> {
 			min..max
 		}
 	}
 }
-
 mod sort;
-
 pub extern crate dyn_stack;
 pub extern crate faer_traits as traits;
 #[doc(hidden)]

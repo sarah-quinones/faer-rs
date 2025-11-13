@@ -2,7 +2,6 @@ use super::*;
 use crate::internal_prelude::*;
 use crate::into_range::IntoRange;
 use crate::{Idx, IdxInc, assert, debug_assert};
-
 impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>>
 	MatIndex<RowRange, ColRange> for MatRef<'a, T, R, C, Rs, Cs>
 {
@@ -10,49 +9,36 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 
 	#[track_caller]
 	#[inline]
-
 	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
 		let row = row.into_range(R::start(), this.nrows().end());
-
 		let col = col.into_range(C::start(), this.ncols().end());
-
 		assert!(all(
 			row.start <= row.end,
 			row.end <= this.nrows(),
 			col.start <= col.end,
 			col.end <= this.ncols(),
 		));
-
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
-
 		this.submatrix(row.start, col.start, nrows, ncols)
 	}
 
 	#[track_caller]
 	#[inline]
-
 	unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
 		let row = row.into_range(R::start(), this.nrows().end());
-
 		let col = col.into_range(C::start(), this.ncols().end());
-
 		debug_assert!(all(
 			row.start <= row.end,
 			row.end <= this.nrows(),
 			col.start <= col.end,
 			col.end <= this.ncols(),
 		));
-
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
-
 		this.submatrix(row.start, col.start, nrows, ncols)
 	}
 }
-
 impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxInc<R>, Len<R>: 'a>, ColRange: IntoRange<IdxInc<C>, Len<C>: 'a>>
 	MatIndex<RowRange, ColRange> for MatMut<'a, T, R, C, Rs, Cs>
 {
@@ -60,49 +46,36 @@ impl<'a, R: Shape, C: Shape, T, Rs: Stride, Cs: Stride, RowRange: IntoRange<IdxI
 
 	#[track_caller]
 	#[inline]
-
 	fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target {
 		let row = row.into_range(R::start(), this.nrows().end());
-
 		let col = col.into_range(C::start(), this.ncols().end());
-
 		assert!(all(
 			row.start <= row.end,
 			row.end <= this.nrows(),
 			col.start <= col.end,
 			col.end <= this.ncols(),
 		));
-
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
-
 		this.submatrix_mut(row.start, col.start, nrows, ncols)
 	}
 
 	#[track_caller]
 	#[inline]
-
 	unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
 		let row = row.into_range(R::start(), this.nrows().end());
-
 		let col = col.into_range(C::start(), this.ncols().end());
-
 		debug_assert!(all(
 			row.start <= row.end,
 			row.end <= this.nrows(),
 			col.start <= col.end,
 			col.end <= this.ncols(),
 		));
-
 		let nrows = unsafe { RowRange::Len::<R>::new_unbound(row.end.unbound() - row.start.unbound()) };
-
 		let ncols = unsafe { ColRange::Len::<C>::new_unbound(col.end.unbound() - col.start.unbound()) };
-
 		this.submatrix_mut(row.start, col.start, nrows, ncols)
 	}
 }
-
 macro_rules! row_impl {
     ($R:ty $(,$tt:tt)?) => {
         impl <'a $(, $tt)?, C : Shape, T, Rs : Stride, Cs : Stride, ColRange : IntoRange
@@ -134,7 +107,6 @@ macro_rules! row_impl {
         .start, ncols).row_mut(row) } }
     };
 }
-
 macro_rules! col_impl {
     ($C:ty $(,$tt:tt)?) => {
         impl <'a $(, $tt)?, R : Shape, T, Rs : Stride, Cs : Stride, RowRange : IntoRange
@@ -165,7 +137,6 @@ macro_rules! col_impl {
         .start.unbound()) }; this.subrows_mut(row.start, nrows).col_mut(col) } }
     };
 }
-
 macro_rules! idx_impl {
     (($R:ty $(,$Rtt:tt)?), ($C:ty $(,$Ctt:tt)?)) => {
         impl <'a $(, $Rtt)? $(, $Ctt)?, T, Rs : Stride, Cs : Stride > MatIndex < Idx <$R
@@ -181,19 +152,11 @@ macro_rules! idx_impl {
         col : Idx <$C >) -> Self::Target { this.at_mut_unchecked(row, col) } }
     };
 }
-
 row_impl!(usize);
-
 row_impl!(Dim <'N >, 'N);
-
 col_impl!(usize);
-
 col_impl!(Dim <'N >, 'N);
-
 idx_impl!((usize), (usize));
-
 idx_impl!((usize), (Dim <'N >, 'N));
-
 idx_impl!((Dim <'M >, 'M), (usize));
-
 idx_impl!((Dim <'M >, 'M), (Dim <'N >, 'N));

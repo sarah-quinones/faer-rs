@@ -5,16 +5,13 @@ use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use syn::visit_mut::{self, VisitMut};
 use syn::{Expr, ExprCall, ExprParen, ExprPath, ExprReference, Ident, Macro, Path, PathSegment};
-
 struct MigrationCtx(HashMap<&'static str, &'static str>);
-
 impl visit_mut::VisitMut for MigrationCtx {
 	fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
 		if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
 			for expr in expr.iter_mut() {
 				self.visit_expr_mut(expr);
 			}
-
 			*i = Macro {
 				path: i.path.clone(),
 				bang_token: i.bang_token,
@@ -26,7 +23,6 @@ impl visit_mut::VisitMut for MigrationCtx {
 
 	fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
 		visit_mut::visit_expr_mut(self, i);
-
 		match i {
 			Expr::MethodCall(call) if call.method == "faer_add" => {
 				*i = Expr::Binary(syn::ExprBinary {
@@ -35,7 +31,6 @@ impl visit_mut::VisitMut for MigrationCtx {
 					op: syn::BinOp::Add(Default::default()),
 					right: Box::new(call.args[0].clone()),
 				});
-
 				*i = Expr::Paren(ExprParen {
 					attrs: vec![],
 					paren_token: Default::default(),
@@ -49,7 +44,6 @@ impl visit_mut::VisitMut for MigrationCtx {
 					op: syn::BinOp::Sub(Default::default()),
 					right: Box::new(call.args[0].clone()),
 				});
-
 				*i = Expr::Paren(ExprParen {
 					attrs: vec![],
 					paren_token: Default::default(),
@@ -63,7 +57,6 @@ impl visit_mut::VisitMut for MigrationCtx {
 					op: syn::BinOp::Mul(Default::default()),
 					right: Box::new(call.args[0].clone()),
 				});
-
 				*i = Expr::Paren(ExprParen {
 					attrs: vec![],
 					paren_token: Default::default(),
@@ -77,7 +70,6 @@ impl visit_mut::VisitMut for MigrationCtx {
 					op: syn::BinOp::Div(Default::default()),
 					right: Box::new(call.args[0].clone()),
 				});
-
 				*i = Expr::Paren(ExprParen {
 					attrs: vec![],
 					paren_token: Default::default(),
@@ -90,7 +82,6 @@ impl visit_mut::VisitMut for MigrationCtx {
 					op: syn::UnOp::Neg(Default::default()),
 					expr: call.receiver.clone(),
 				});
-
 				*i = Expr::Paren(ExprParen {
 					attrs: vec![],
 					paren_token: Default::default(),
@@ -111,9 +102,7 @@ impl visit_mut::VisitMut for MigrationCtx {
 		}
 	}
 }
-
 struct MathCtx;
-
 fn ident_expr(ident: &syn::Ident) -> Expr {
 	Expr::Path(ExprPath {
 		attrs: vec![],
@@ -127,14 +116,12 @@ fn ident_expr(ident: &syn::Ident) -> Expr {
 		},
 	})
 }
-
 impl visit_mut::VisitMut for MathCtx {
 	fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
 		if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
 			for expr in expr.iter_mut() {
 				self.visit_expr_mut(expr);
 			}
-
 			*i = Macro {
 				path: i.path.clone(),
 				bang_token: i.bang_token,
@@ -146,7 +133,6 @@ impl visit_mut::VisitMut for MathCtx {
 
 	fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
 		visit_mut::visit_expr_mut(self, i);
-
 		match i {
 			Expr::Unary(unary) => match unary.op {
 				syn::UnOp::Neg(minus) => {
@@ -176,7 +162,6 @@ impl visit_mut::VisitMut for MathCtx {
 					syn::BinOp::Div(star) => Some(Ident::new("div", star.span)),
 					_ => None,
 				};
-
 				if let Some(func) = func {
 					*i = Expr::Call(ExprCall {
 						attrs: vec![],
@@ -200,7 +185,6 @@ impl visit_mut::VisitMut for MathCtx {
 			Expr::Call(call) => match &*call.func {
 				Expr::Path(e) if e.path.get_ident().is_some() => {
 					let name = &*e.path.get_ident().unwrap().to_string();
-
 					if matches!(
 						name,
 						"sqrt"
@@ -232,7 +216,6 @@ impl visit_mut::VisitMut for MathCtx {
 		}
 	}
 }
-
 fn math_expr<'a>(method: &Ident, args: impl Iterator<Item = &'a Expr>) -> Expr {
 	Expr::Call(ExprCall {
 		attrs: vec![],
@@ -242,30 +225,21 @@ fn math_expr<'a>(method: &Ident, args: impl Iterator<Item = &'a Expr>) -> Expr {
 		func: Box::new(ident_expr(method)),
 	})
 }
-
 #[proc_macro_attribute]
-
 pub fn math(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let Ok(mut item) = syn::parse::<syn::ItemFn>(item.clone()) else {
 		return item;
 	};
-
 	let mut rust_ctx = MathCtx;
-
 	rust_ctx.visit_item_fn_mut(&mut item);
-
 	let item = quote! { #item };
-
 	item.into()
 }
-
 #[proc_macro_attribute]
-
 pub fn migrate(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let Ok(mut item) = syn::parse::<syn::ItemFn>(item.clone()) else {
 		return item;
 	};
-
 	let mut rust_ctx = MigrationCtx(
 		[
 			//
@@ -286,14 +260,9 @@ pub fn migrate(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> pro
 		.into_iter()
 		.collect(),
 	);
-
 	rust_ctx.visit_item_fn_mut(&mut item);
-
 	let mut rust_ctx = MathCtx;
-
 	rust_ctx.visit_item_fn_mut(&mut item);
-
 	let item = quote! { #item };
-
 	item.into()
 }

@@ -3,27 +3,19 @@ use super::gen_hessenberg::{make_givens, rot};
 use crate::internal_prelude::*;
 use equator::assert;
 use linalg::matmul::matmul;
-
 fn copy_sign<T: RealField>(a: T, b: T) -> T {
 	if b >= zero() { a } else { -a }
 }
-
 #[inline]
-
 fn rot_rows<T: RealField>(c: T, s: T, A: MatMut<'_, T>, i: usize, j: usize) {
 	let (x, y) = A.two_rows_mut(i, j);
-
 	rot(c, s, x, y)
 }
-
 #[inline]
-
 fn rot_cols<T: RealField>(c: T, s: T, A: MatMut<'_, T>, i: usize, j: usize) {
 	let (x, y) = A.two_cols_mut(i, j);
-
 	rot(c, s, x.transpose_mut(), y.transpose_mut())
 }
-
 fn solve_sylvester_single_block<T: RealField>(
 	A: MatRef<'_, T>,
 	B: MatRef<'_, T>,
@@ -34,201 +26,109 @@ fn solve_sylvester_single_block<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let n1 = A.nrows();
-
 	let n2 = B.nrows();
-
 	let nz = n1 * n2 * 2;
-
 	let (mut z, stack) = linalg::temp_mat_zeroed::<T, _, _>(nz, nz, stack);
-
 	let mut z = z.as_mat_mut();
-
 	let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(nz, 1, stack);
-
 	let rhs = rhs.as_mat_mut();
-
 	let (row_perm_fwd, stack) = unsafe { stack.make_raw::<usize>(nz) };
-
 	let (row_perm_inv, stack) = unsafe { stack.make_raw::<usize>(nz) };
-
 	let (col_perm_fwd, stack) = unsafe { stack.make_raw::<usize>(nz) };
-
 	let (col_perm_inv, stack) = unsafe { stack.make_raw::<usize>(nz) };
-
 	let stack = stack;
-
 	let mut rhs = rhs.col_mut(0);
-
 	{
 		if n1 == 1 && n2 == 1 {
 			z[(1, 1)] = A[(0, 0)].copy();
-
 			z[(2, 1)] = D[(0, 0)].copy();
-
 			z[(1, 2)] = -&B[(0, 0)];
-
 			z[(2, 2)] = -&E[(0, 0)];
-
 			rhs[0] = C[(0, 0)].copy();
-
 			rhs[1] = F[(0, 0)].copy();
 		} else if n1 == 1 && n2 == 2 {
 			z[(0, 0)] = A[(0, 0)].copy();
-
 			z[(1, 0)] = zero();
-
 			z[(2, 0)] = D[(0, 0)].copy();
-
 			z[(3, 0)] = zero();
-
 			z[(0, 1)] = zero();
-
 			z[(1, 1)] = A[(0, 0)].copy();
-
 			z[(2, 1)] = zero();
-
 			z[(3, 1)] = D[(0, 0)].copy();
-
 			z[(0, 2)] = -&B[(0, 0)];
-
 			z[(1, 2)] = -&B[(0, 1)];
-
 			z[(2, 2)] = -&E[(0, 0)];
-
 			z[(3, 2)] = -&E[(0, 1)];
-
 			z[(0, 3)] = -&B[(1, 0)];
-
 			z[(1, 3)] = -&B[(1, 1)];
-
 			z[(2, 3)] = zero();
-
 			z[(3, 3)] = -&E[(1, 1)];
-
 			rhs[0] = C[(0, 0)].copy();
-
 			rhs[1] = C[(0, 1)].copy();
-
 			rhs[2] = F[(0, 0)].copy();
-
 			rhs[3] = F[(0, 1)].copy();
 		} else if n1 == 2 && n2 == 1 {
 			z[(0, 0)] = A[(0, 0)].copy();
-
 			z[(1, 0)] = A[(1, 0)].copy();
-
 			z[(2, 0)] = D[(0, 0)].copy();
-
 			z[(3, 0)] = zero();
-
 			z[(0, 1)] = A[(0, 1)].copy();
-
 			z[(1, 1)] = A[(1, 1)].copy();
-
 			z[(2, 1)] = D[(0, 1)].copy();
-
 			z[(3, 1)] = D[(1, 1)].copy();
-
 			z[(0, 2)] = -&B[(0, 0)];
-
 			z[(1, 2)] = zero();
-
 			z[(2, 2)] = -&E[(0, 0)];
-
 			z[(3, 2)] = zero();
-
 			z[(0, 3)] = zero();
-
 			z[(1, 3)] = -&B[(0, 0)];
-
 			z[(2, 3)] = zero();
-
 			z[(3, 3)] = -&E[(0, 0)];
-
 			rhs[0] = C[(0, 0)].copy();
-
 			rhs[1] = C[(1, 0)].copy();
-
 			rhs[2] = F[(0, 0)].copy();
-
 			rhs[3] = F[(1, 0)].copy();
 		} else if n1 == 2 && n2 == 2 {
 			z[(0, 0)] = A[(0, 0)].copy();
-
 			z[(1, 0)] = A[(1, 0)].copy();
-
 			z[(4, 0)] = D[(0, 0)].copy();
-
 			z[(0, 1)] = A[(0, 1)].copy();
-
 			z[(1, 1)] = A[(1, 1)].copy();
-
 			z[(4, 1)] = D[(0, 1)].copy();
-
 			z[(5, 1)] = D[(1, 1)].copy();
-
 			z[(2, 2)] = A[(0, 0)].copy();
-
 			z[(3, 2)] = A[(1, 0)].copy();
-
 			z[(6, 2)] = D[(0, 0)].copy();
-
 			z[(2, 3)] = A[(0, 1)].copy();
-
 			z[(3, 3)] = A[(1, 1)].copy();
-
 			z[(6, 3)] = D[(0, 1)].copy();
-
 			z[(7, 3)] = D[(1, 1)].copy();
-
 			z[(0, 4)] = -&B[(0, 0)];
-
 			z[(2, 4)] = -&B[(0, 1)];
-
 			z[(4, 4)] = -&E[(0, 0)];
-
 			z[(6, 4)] = -&E[(0, 1)];
-
 			z[(1, 5)] = -&B[(0, 0)];
-
 			z[(3, 5)] = -&B[(0, 1)];
-
 			z[(5, 5)] = -&E[(0, 0)];
-
 			z[(7, 5)] = -&E[(0, 1)];
-
 			z[(0, 6)] = -&B[(1, 0)];
-
 			z[(2, 6)] = -&B[(1, 1)];
-
 			z[(6, 6)] = -&E[(1, 1)];
-
 			z[(1, 7)] = -&B[(1, 0)];
-
 			z[(3, 7)] = -&B[(1, 1)];
-
 			z[(7, 7)] = -&E[(1, 1)];
-
 			rhs[0] = C[(0, 0)].copy();
-
 			rhs[1] = C[(1, 0)].copy();
-
 			rhs[2] = C[(0, 1)].copy();
-
 			rhs[3] = C[(1, 1)].copy();
-
 			rhs[4] = F[(0, 0)].copy();
-
 			rhs[5] = F[(1, 0)].copy();
-
 			rhs[6] = F[(0, 1)].copy();
-
 			rhs[7] = F[(1, 1)].copy();
 		} else {
 			unreachable!();
 		}
 	}
-
 	let (_, row_perm, col_perm) = linalg::lu::full_pivoting::factor::lu_in_place(
 		z.rb_mut(),
 		row_perm_fwd,
@@ -239,189 +139,114 @@ fn solve_sylvester_single_block<T: RealField>(
 		stack,
 		Default::default(),
 	);
-
 	linalg::lu::full_pivoting::solve::solve_in_place(z.rb(), z.rb(), row_perm, col_perm, rhs.rb_mut().as_mat_mut(), Par::Seq, stack);
-
 	if n1 == 1 && n2 == 1 {
 		C[(0, 0)] = rhs[0].copy();
-
 		F[(0, 0)] = rhs[1].copy();
 	} else if n1 == 1 && n2 == 2 {
 		C[(0, 0)] = rhs[0].copy();
-
 		C[(0, 1)] = rhs[1].copy();
-
 		F[(0, 0)] = rhs[2].copy();
-
 		F[(0, 1)] = rhs[3].copy();
 	} else if n1 == 2 && n2 == 1 {
 		C[(0, 0)] = rhs[0].copy();
-
 		C[(1, 0)] = rhs[1].copy();
-
 		F[(0, 0)] = rhs[2].copy();
-
 		F[(1, 0)] = rhs[3].copy();
 	} else if n1 == 2 && n2 == 2 {
 		C[(0, 0)] = rhs[0].copy();
-
 		C[(1, 0)] = rhs[1].copy();
-
 		C[(0, 1)] = rhs[2].copy();
-
 		C[(1, 1)] = rhs[3].copy();
-
 		F[(0, 0)] = rhs[4].copy();
-
 		F[(1, 0)] = rhs[5].copy();
-
 		F[(0, 1)] = rhs[6].copy();
-
 		F[(1, 1)] = rhs[7].copy();
 	} else {
 		unreachable!();
 	}
 }
-
 fn svd_triu_2x2<T: RealField>(f: T, g: T, h: T) -> (T, T, T, T, T, T) {
 	let ref half = from_f64::<T>(0.5);
-
 	let ref two = from_f64::<T>(2.0);
-
 	let ref four = from_f64::<T>(4.0);
-
 	let ref eps = eps::<T>();
-
 	let mut ft = f.copy();
-
 	let mut fa = ft.abs();
-
 	let mut ht = h.copy();
-
 	let mut ha = h.abs();
-
 	let mut pmax = 1;
-
 	let swap = ha > fa;
-
 	if swap {
 		pmax = 3;
-
 		let temp = ft;
-
 		ft = ht;
-
 		ht = temp;
-
 		let temp = fa;
-
 		fa = ha;
-
 		ha = temp;
 	}
-
 	let ref fa = fa;
-
 	let ref ha = ha;
-
 	let ref ft = ft;
-
 	let ref ht = ht;
-
 	let ref gt = g.copy();
-
 	let ref ga = gt.abs();
-
 	let mut ssmin = zero::<T>();
-
 	let mut ssmax = zero::<T>();
-
 	let mut clt = zero::<T>();
-
 	let mut crt = zero::<T>();
-
 	let mut slt = zero::<T>();
-
 	let mut srt = zero::<T>();
-
 	if *ga == zero() {
 		ssmin = ha.copy();
-
 		ssmax = fa.copy();
-
 		clt = one();
-
 		crt = one();
-
 		slt = zero();
-
 		srt = zero();
 	} else {
 		let mut gasmal = true;
-
 		if ga > fa {
 			pmax = 2;
-
 			if fa / ga < *eps {
 				gasmal = false;
-
 				ssmax = ga.copy();
-
 				if *ha > one() {
 					ssmin = fa / (ga / ha);
 				} else {
 					ssmin = (fa / ga) * ha;
 				}
-
 				clt = one();
-
 				slt = ht / gt;
-
 				srt = one();
-
 				crt = ft / gt;
 			}
 		}
-
 		if gasmal {
 			let ref d = fa - ha;
-
 			let l;
-
 			if d == fa {
 				l = one();
 			} else {
 				l = d / fa;
 			}
-
 			let ref m = gt / ft;
-
 			let mut t = two - &l;
-
 			let ref mm = m * m;
-
 			let ref tt = &t * &t;
-
 			let ref s = (tt + mm).sqrt();
-
 			let ref l = l;
-
 			let r;
-
 			if *l == zero() {
 				r = m.abs();
 			} else {
 				r = (l * l + mm).sqrt();
 			}
-
 			let ref r = r;
-
 			let ref a = half * (s + r);
-
 			ssmin = ha / a;
-
 			ssmax = fa * a;
-
 			if *mm == zero() {
 				if *l == zero() {
 					t = copy_sign(two.copy(), ft.copy()) * copy_sign(one(), gt.copy());
@@ -431,322 +256,201 @@ fn svd_triu_2x2<T: RealField>(f: T, g: T, h: T) -> (T, T, T, T, T, T) {
 			} else {
 				t = (m / (s + t) + m / (r + l)) * (one::<T>() + a);
 			}
-
 			let ref t = t;
-
 			let ref l = (t * t + four).sqrt();
-
 			crt = two / l;
-
 			srt = t / l;
-
 			clt = (&crt + &srt * m) / a;
-
 			slt = (ht / ft) * &srt / a;
 		}
 	}
-
 	let csl;
-
 	let csr;
-
 	let snl;
-
 	let snr;
-
 	if swap {
 		csl = srt;
-
 		snl = crt;
-
 		csr = slt;
-
 		snr = clt;
 	} else {
 		csl = clt;
-
 		snl = slt;
-
 		csr = crt;
-
 		snr = srt;
 	}
-
 	let mut tsign = zero::<T>();
-
 	let sign = copy_sign;
-
 	if pmax == 1 {
 		tsign = sign(one(), csr.copy()) * sign(one(), csl.copy()) * sign(one(), f.copy());
 	}
-
 	if pmax == 2 {
 		tsign = sign(one(), snr.copy()) * sign(one(), csl.copy()) * sign(one(), g.copy());
 	}
-
 	if pmax == 3 {
 		tsign = sign(one(), snr.copy()) * sign(one(), snl.copy()) * sign(one(), h.copy());
 	}
-
 	ssmax = sign(ssmax, tsign.copy());
-
 	ssmin = sign(ssmin, tsign * sign(one(), f) * sign(one(), h));
-
 	(ssmin, ssmax, snr, csr, snl, csl)
 }
-
 pub(super) fn generalized_eigval_2x2<T: RealField>(
 	(ref a11, ref a12, ref a21, ref a22): (T, T, T, T),
 	(b11, ref b12, ref b21, b22): (T, T, T, T),
 ) -> (T, T, T, T, T) {
 	let ref safety = from_f64::<T>(128.0);
-
 	let ref safmin = min_positive::<T>() * safety;
-
 	let ref safmax = safmin.recip();
-
 	let ref rtmin = safmin.sqrt();
-
 	let ref rtmax = rtmin.recip();
-
 	let ref half = from_f64::<T>(0.5);
-
 	let zero = zero::<T>;
-
 	let one = one::<T>;
-
 	let ref anorm = safmin.fmax(a11.abs() + a21.abs()).fmax(a12.abs() + a22.abs());
-
 	let ref ascale = one() / anorm;
-
 	let ref a11 = a11 * ascale;
-
 	let ref a12 = a12 * ascale;
-
 	let ref a21 = a21 * ascale;
-
 	let ref a22 = a22 * ascale;
-
 	let mut b11 = b11;
-
 	let b12 = b12;
-
 	let _ = b21;
-
 	let mut b22 = b22;
-
 	let ref bmin = rtmin * b11.abs().fmax(b12.abs()).fmax(b22.abs()).fmax(rtmin);
-
 	if b11.abs() < *bmin {
 		b11 = copy_sign(bmin.copy(), b11);
 	}
-
 	if b22.abs() < *bmin {
 		b22 = copy_sign(bmin.copy(), b22);
 	}
-
 	let bnorm = safmin.fmax(b11.abs()).fmax(b12.abs() + b22.abs());
-
 	let ref bsize = b11.abs().fmax(b22.abs());
-
 	let ref bscale = one() / bsize;
-
 	let ref b11 = b11 * bscale;
-
 	let ref b12 = b12 * bscale;
-
 	let ref b22 = b22 * bscale;
-
 	let ref binv11 = one() / b11;
-
 	let ref binv22 = one() / b22;
-
 	let ref s1 = a11 * binv11;
-
 	let ref s2 = a22 * binv22;
-
 	let as11;
-
 	let as12;
-
 	let as22;
-
 	let ss;
-
 	let abi22;
-
 	let pp;
-
 	let shift;
-
 	if s1.abs() <= s2.abs() {
 		as12 = a12 - s1 * b12;
-
 		as22 = a22 - s1 * b22;
-
 		ss = a21 * (binv11 * binv22);
-
 		abi22 = as22 * binv22 - &ss * b12;
-
 		pp = half * &abi22;
-
 		shift = s1;
 	} else {
 		as12 = a12 - s2 * b12;
-
 		as11 = a11 - s2 * b11;
-
 		ss = a21 * (binv11 * binv22);
-
 		abi22 = -&ss * b12;
-
 		pp = half * (as11 * binv11 + &abi22);
-
 		shift = s2;
 	}
-
 	let qq = &ss * as12;
-
 	let discr;
-
 	let r;
-
 	let ref pp = pp;
-
 	let ref abi22 = abi22;
-
 	if (pp * rtmin).abs() >= one() {
 		discr = (pp * rtmin).abs2() + qq * safmin;
-
 		r = discr.abs().sqrt() * rtmax;
 	} else {
 		if pp.abs2() + qq.abs() <= *safmin {
 			discr = (rtmax * pp).abs2() + qq * safmax;
-
 			r = discr.abs().sqrt() * rtmin;
 		} else {
 			discr = pp.abs2() + qq;
-
 			r = discr.abs().sqrt();
 		}
 	}
-
 	let (mut wr1, mut wr2, mut wi);
-
 	if discr >= zero() || r == zero() {
 		let sum = pp + copy_sign(r.copy(), pp.copy());
-
 		let diff = pp - copy_sign(r.copy(), pp.copy());
-
 		let wbig = shift + sum;
-
 		let mut wsmall = shift + diff;
-
 		if wbig.abs() * half > safmin.fmax(wsmall.abs()) {
 			let wdet = (a11 * a22 - a12 * a21) * (binv11 * binv22);
-
 			wsmall = wdet / &wbig;
 		}
-
 		if pp > abi22 {
 			wr1 = wbig.fmin(&wsmall);
-
 			wr2 = wbig.fmax(&wsmall);
 		} else {
 			wr1 = wbig.fmax(&wsmall);
-
 			wr2 = wbig.fmin(&wsmall);
 		}
-
 		wi = zero();
 	} else {
 		wr1 = shift + pp;
-
 		wr2 = wr1.copy();
-
 		wi = r;
 	}
-
 	let ref c1 = bsize * (safmin * ascale.fmax(one()));
-
 	let ref c2 = safmin * bnorm.fmax(one());
-
 	let ref c3 = bsize * safmin;
-
 	let c4;
-
 	let c5;
-
 	if *ascale <= one() && *bsize <= one() {
 		c4 = one().fmin((ascale / safmin) * bsize);
 	} else {
 		c4 = one();
 	}
-
 	if *ascale <= one() || *bsize <= one() {
 		c5 = one().fmin(ascale * bsize);
 	} else {
 		c5 = one();
 	}
-
 	let ref fuzzy1 = from_f64::<T>(1.00001);
-
 	let ref wabs = wr1.abs() + wi.abs();
-
 	let ref wsize = safmin.fmax(c1.fmax((fuzzy1 * (wabs * c2 + c3)).fmax(c4.fmin(c5.fmax(wabs).mul_pow2(half)))));
-
 	let scale1: T;
-
 	let mut scale2: T = one();
-
 	if *wsize != one() {
 		let ref wscale = one() / wsize;
-
 		if *wsize > one() {
 			scale1 = (ascale.fmax(bsize) * wscale) * ascale.fmin(bsize);
 		} else {
 			scale1 = (ascale.fmin(bsize) * wscale) * ascale.fmax(bsize);
 		}
-
 		wr1 = wr1 * wscale;
-
 		if wi != zero() {
 			wi = wi * wscale;
-
 			wr2 = wr1.copy();
-
 			scale2 = scale1.copy();
 		}
 	} else {
 		scale1 = ascale * bsize;
-
 		scale2 = scale1.copy();
 	}
-
 	if wi == zero() {
 		let ref wsize = safmin
 			.fmax(c1)
 			.fmax(fuzzy1 * (wr2.abs() * c2 + c3))
 			.fmax(c4.fmin(wr2.abs().fmax(c5).mul_pow2(half)));
-
 		if *wsize != one() {
 			let ref wscale = one() / wsize;
-
 			if *wsize > one() {
 				scale2 = (ascale.fmax(bsize) * wscale) * ascale.fmin(bsize);
 			} else {
 				scale2 = (ascale.fmin(bsize) * wscale) * ascale.fmax(bsize);
 			}
-
 			wr2 = wr2 * wscale;
 		} else {
 			scale2 = ascale * bsize;
 		}
 	}
-
 	(scale1, scale2, wr1, wr2, wi)
 }
-
 fn hessenberg_to_qz_unblocked<T: RealField>(
 	ilo: usize,
 	ihi: usize,
@@ -760,97 +464,59 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 	eigvals_only: bool,
 ) {
 	let mut H = A;
-
 	let mut T = B;
-
 	let mut Q = Q;
-
 	let mut Z = Z;
-
 	let mut alphar = alphar;
-
 	let mut alphai = alphai;
-
 	let mut beta = beta;
-
 	let n = H.nrows();
-
 	let one = one::<T>;
-
 	let zero = zero::<T>;
-
 	let half = from_f64::<T>(0.5);
-
 	let ulp = eps::<T>();
-
 	let safmin = min_positive::<T>();
-
 	let safmax = one() / &safmin;
-
 	for j in ihi + 1..n {
 		if T[(j, j)] < zero() {
 			if !eigvals_only {
 				zip!(T.rb_mut().col_mut(j).get_mut(..j + 1)).for_each(|unzip!(x)| *x = -&*x);
-
 				zip!(H.rb_mut().col_mut(j).get_mut(..j + 1)).for_each(|unzip!(x)| *x = -&*x);
 			} else {
 				T[(j, j)] = -&T[(j, j)];
-
 				H[(j, j)] = -&H[(j, j)];
 			}
-
 			if let Some(mut Z) = Z.rb_mut() {
 				zip!(Z.rb_mut().col_mut(j)).for_each(|unzip!(x)| *x = -&*x);
 			}
 		}
-
 		alphar[j] = H[(j, j)].copy();
-
 		alphai[j] = zero();
-
 		beta[j] = T[(j, j)].copy();
 	}
-
 	if ihi >= ilo {
 		let mut ifirst: usize;
-
 		let mut ilast = ihi;
-
 		let mut ifrstm;
-
 		let mut ilastm;
-
 		if !eigvals_only {
 			ifrstm = 0;
-
 			ilastm = n - 1;
 		} else {
 			ifrstm = ilo;
-
 			ilastm = ihi;
 		}
-
 		let mut iiter = 0;
-
 		let maxit = 30 * (ihi + 1 - ilo);
-
 		let mut eshift = zero();
-
 		let anorm = H.rb().get(ilo..ihi + 1, ilo..ihi + 1).norm_max();
-
 		let bnorm = T.rb().get(ilo..ihi + 1, ilo..ihi + 1).norm_max();
-
 		let atol = safmin.fmax(&ulp * &anorm);
-
 		let btol = safmin.fmax(&ulp * &bnorm);
-
 		let ascale = safmin.fmax(&anorm).recip();
-
 		let bscale = safmin.fmax(&bnorm).recip();
-
 		'main_loop: for iter in 0..maxit {
 			_ = iter;
-
 			'goto110: {
 				'goto80: {
 					'goto70: {
@@ -859,240 +525,158 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 						} else {
 							if H[(ilast, ilast - 1)].abs() <= safmin.fmax(&ulp * (H[(ilast, ilast)].abs() + H[(ilast - 1, ilast - 1)].abs())) {
 								H[(ilast, ilast - 1)] = zero();
-
 								break 'goto80;
 							}
 						}
-
 						if T[(ilast, ilast)].abs() <= btol {
 							T[(ilast, ilast)] = zero();
-
 							break 'goto70;
 						}
-
 						for j in (ilo..ilast).rev() {
 							let ilazro: bool;
-
 							let mut ilazr2: bool;
-
 							if j == ilo {
 								ilazro = true;
 							} else if H[(j, j - 1)].abs() <= safmin.fmax(&ulp * (H[(j, j)].abs() + H[(j - 1, j - 1)].abs())) {
 								H[(j, j - 1)] = zero();
-
 								ilazro = true;
 							} else {
 								ilazro = false;
 							}
-
 							if T[(j, j)].abs() < btol {
 								T[(j, j)] = zero();
-
 								ilazr2 = false;
-
 								if !ilazro {
 									let mut temp = H[(j, j - 1)].abs();
-
 									let mut temp2 = H[(j, j)].abs();
-
 									let tempr = temp.fmax(&temp2);
-
 									if tempr < one() && tempr != zero() {
 										temp = &temp / &tempr;
-
 										temp2 = &temp2 / &tempr;
 									}
-
 									if &temp * (&ascale * H[(j + 1, j)].abs()) <= &temp2 * (&ascale * &atol) {
 										ilazr2 = true;
 									}
 								}
-
 								if ilazro || ilazr2 {
 									for jch in j..ilast {
 										let (c, s, r) = make_givens(H[(jch, jch)].copy(), H[(jch + 1, jch)].copy());
-
 										H[(jch, jch)] = r;
-
 										H[(jch + 1, jch)] = zero();
-
 										let (x, y) = H.rb_mut().get_mut(.., jch + 1..ilastm + 1).two_rows_mut(jch, jch + 1);
-
 										rot(c.copy(), s.copy(), x, y);
-
 										let (x, y) = T.rb_mut().get_mut(.., jch + 1..ilastm + 1).two_rows_mut(jch, jch + 1);
-
 										rot(c.copy(), s.copy(), x, y);
-
 										if let Some(mut Q) = Q.rb_mut() {
 											let (x, y) = Q.rb_mut().two_cols_mut(jch, jch + 1);
-
 											rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
 										}
-
 										if ilazr2 {
 											H[(jch, jch - 1)] = &H[(jch, jch - 1)] * &c;
 										}
-
 										ilazr2 = false;
-
 										if T[(jch + 1, jch + 1)].abs() >= btol {
 											if jch + 1 >= ilast {
 												break 'goto80;
 											} else {
 												ifirst = jch + 1;
-
 												break 'goto110;
 											}
 										}
-
 										T[(jch + 1, jch + 1)] = zero();
 									}
-
 									break 'goto70;
 								} else {
 									for jch in j..ilast {
 										let (c, s, r) = make_givens(T[(jch, jch + 1)].copy(), T[(jch + 1, jch + 1)].copy());
-
 										T[(jch, jch + 1)] = r;
-
 										T[(jch + 1, jch + 1)] = zero();
-
 										if jch + 1 < ilastm {
 											let (x, y) = T.rb_mut().get_mut(.., jch + 2..ilastm + 1).two_rows_mut(jch, jch + 1);
-
 											rot(c.copy(), s.copy(), x, y);
 										}
-
 										let (x, y) = H.rb_mut().get_mut(.., jch - 1..ilastm + 1).two_rows_mut(jch, jch + 1);
-
 										rot(c.copy(), s.copy(), x, y);
-
 										if let Some(mut Q) = Q.rb_mut() {
 											let (x, y) = Q.rb_mut().two_cols_mut(jch, jch + 1);
-
 											rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
 										}
-
 										let (c, s, r) = make_givens(H[(jch + 1, jch)].copy(), H[(jch + 1, jch - 1)].copy());
-
 										H[(jch + 1, jch)] = r;
-
 										H[(jch + 1, jch - 1)] = zero();
-
 										let (x, y) = H.rb_mut().get_mut(ifrstm..jch + 1, ..).two_cols_mut(jch, jch - 1);
-
 										rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
-
 										let (x, y) = T.rb_mut().get_mut(ifrstm..jch, ..).two_cols_mut(jch, jch - 1);
-
 										rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
-
 										if let Some(mut Z) = Z.rb_mut() {
 											let (x, y) = Z.rb_mut().two_cols_mut(jch, jch - 1);
-
 											rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
 										}
 									}
-
 									break 'goto70;
 								}
 							} else if ilazro {
 								ifirst = j;
-
 								break 'goto110;
 							}
 						}
-
 						unreachable!();
 					}
-
 					let (c, s, r) = make_givens(H[(ilast, ilast)].copy(), H[(ilast, ilast - 1)].copy());
-
 					H[(ilast, ilast)] = r;
-
 					H[(ilast, ilast - 1)] = zero();
-
 					let (x, y) = H.rb_mut().get_mut(ifrstm..ilast, ..).two_cols_mut(ilast, ilast - 1);
-
 					rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
-
 					let (x, y) = T.rb_mut().get_mut(ifrstm..ilast, ..).two_cols_mut(ilast, ilast - 1);
-
 					rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
-
 					if let Some(mut Z) = Z.rb_mut() {
 						let (x, y) = Z.rb_mut().two_cols_mut(ilast, ilast - 1);
-
 						rot(c.copy(), s.copy(), x.transpose_mut(), y.transpose_mut());
 					}
 				}
-
 				if T[(ilast, ilast)] < zero() {
 					if !eigvals_only {
 						for j in ifrstm..ilast + 1 {
 							H[(j, ilast)] = -&H[(j, ilast)];
-
 							T[(j, ilast)] = -&T[(j, ilast)];
 						}
 					} else {
 						H[(ilast, ilast)] = -&H[(ilast, ilast)];
-
 						T[(ilast, ilast)] = -&T[(ilast, ilast)];
 					}
-
 					if let Some(mut Z) = Z.rb_mut() {
 						for j in 0..n {
 							Z[(j, ilast)] = -&Z[(j, ilast)];
 						}
 					}
 				}
-
 				alphar[ilast] = H[(ilast, ilast)].copy();
-
 				alphai[ilast] = zero();
-
 				beta[ilast] = T[(ilast, ilast)].copy();
-
 				ilast = ilast.wrapping_sub(1);
-
 				if ilast == usize::MAX || ilast < ilo {
 					break 'main_loop;
 				}
-
 				iiter = 0;
-
 				eshift = zero();
-
 				if eigvals_only {
 					ilastm = ilast;
-
 					if ifrstm > ilast {
 						ifrstm = ilo;
 					}
 				}
-
 				continue 'main_loop;
 			}
-
 			iiter += 1;
-
 			if eigvals_only {
 				ifrstm = ifirst;
 			}
-
 			let mut wr;
-
 			let mut s1;
-
 			let mut s2: T;
-
 			let mut wr2;
-
 			let mut wi;
-
 			let mut temp;
-
 			'goto200: {
 				if iiter % 10 == 0 {
 					if from_f64::<T>(maxit as f64) * &safmin * H[(ilast, ilast - 1)].abs() < T[(ilast - 1, ilast - 1)].abs() {
@@ -1100,9 +684,7 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 					} else {
 						eshift = &eshift + (&safmin * from_f64::<T>(maxit as f64)).recip();
 					}
-
 					s1 = one();
-
 					wr = eshift.copy();
 				} else {
 					(s1, s2, wr, wr2, wi) = generalized_eigval_2x2(
@@ -1119,142 +701,94 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 							T[(ilast, ilast)].copy(),
 						),
 					);
-
 					(s1.copy(), s2.copy(), wr.copy(), wr2.copy(), wi.copy());
-
 					if ((&wr / &s1) * &T[(ilast, ilast)] - &H[(ilast, ilast)]).abs() > ((&wr2 / &s2) * &T[(ilast, ilast)] - &H[(ilast, ilast)]).abs()
 					{
 						core::mem::swap(&mut wr, &mut wr2);
-
 						core::mem::swap(&mut s1, &mut s2);
 					}
-
 					if wi != zero() {
 						break 'goto200;
 					}
 				}
-
 				let mut scale;
-
 				temp = ascale.fmin(one()) * (&half * &safmax);
-
 				if s1 > temp {
 					scale = &temp / &s1;
 				} else {
 					scale = one();
 				}
-
 				temp = bscale.fmin(one()) * (&half * &safmax);
-
 				if wr.abs() > temp {
 					scale = scale.fmin(&temp / wr.abs());
 				}
-
 				s1 = &scale * &s1;
-
 				wr = &scale * &wr;
-
 				let mut istart;
-
 				'goto130: {
 					for j in (ifirst + 1..ilast).rev() {
 						istart = j;
-
 						temp = (&s1 * &H[(j, j - 1)]).abs();
-
 						let mut temp2 = (&s1 * &H[(j, j)] - &wr * &T[(j, j)]).abs();
-
 						let tempr = temp.fmax(&temp2);
-
 						if tempr < one() && tempr != zero() {
 							temp = &temp / &tempr;
-
 							temp2 = &temp2 / &tempr;
 						}
-
 						if ((&ascale * &H[(j + 1, j)]) * &temp).abs() <= (&ascale * &atol) * &temp2 {
 							break 'goto130;
 						}
 					}
-
 					istart = ifirst;
 				}
-
 				single_shift_sweep(s1, istart, wr, ilast, ilastm, ifrstm, H.rb_mut(), T.rb_mut(), Q.rb_mut(), Z.rb_mut());
-
 				continue 'main_loop;
 			}
-
 			if ifirst + 1 == ilast {
 				let (mut b22, mut b11, mut sr, mut cr, sl, cl) =
 					svd_triu_2x2(T[(ilast - 1, ilast - 1)].copy(), T[(ilast - 1, ilast)].copy(), T[(ilast, ilast)].copy());
-
 				if b11 < zero() {
 					cr = -&cr;
-
 					sr = -&sr;
-
 					b11 = -&b11;
-
 					b22 = -&b22;
 				}
-
 				let (x, y) = H.rb_mut().subcols_mut(ilast - 1, ilastm + 1 - ifirst).two_rows_mut(ilast - 1, ilast);
-
 				rot(cl.copy(), sl.copy(), x, y);
-
 				let (x, y) = H.rb_mut().subrows_mut(ifrstm, ilast + 1 - ifrstm).two_cols_mut(ilast - 1, ilast);
-
 				rot(cr.copy(), sr.copy(), x.transpose_mut(), y.transpose_mut());
-
 				if ilast < ilastm {
 					let (x, y) = T.rb_mut().subcols_mut(ilast + 1, &ilastm - &ilast).two_rows_mut(ilast - 1, ilast);
-
 					rot(cl.copy(), sl.copy(), x, y);
 				}
-
 				if ifrstm + 1 < ilast {
 					let (x, y) = T.rb_mut().subrows_mut(ifrstm, &ifirst - &ifrstm).two_cols_mut(ilast - 1, ilast);
-
 					rot(cr.copy(), sr.copy(), x.transpose_mut(), y.transpose_mut());
 				}
-
 				if let Some(mut Q) = Q.rb_mut() {
 					let (x, y) = Q.rb_mut().two_cols_mut(ilast - 1, ilast);
-
 					rot(cl.copy(), sl.copy(), x.transpose_mut(), y.transpose_mut());
 				}
-
 				if let Some(mut Z) = Z.rb_mut() {
 					let (x, y) = Z.rb_mut().two_cols_mut(ilast - 1, ilast);
-
 					rot(cr.copy(), sr.copy(), x.transpose_mut(), y.transpose_mut());
 				}
-
 				T[(ilast - 1, ilast - 1)] = b11.copy();
-
 				T[(ilast - 1, ilast)] = zero();
-
 				T[(ilast, ilast - 1)] = zero();
-
 				T[(ilast, ilast)] = b22.copy();
-
 				if b22 < zero() {
 					for j in ifrstm..ilast + 1 {
 						H[(j, ilast)] = -&H[(j, ilast)];
-
 						T[(j, ilast)] = -&T[(j, ilast)];
 					}
-
 					if let Some(mut Z) = Z.rb_mut() {
 						for j in 0..n {
 							Z[(j, ilast)] = -&Z[(j, ilast)];
 						}
 					}
-
 					b22 = -&b22;
 				}
-
 				(s1, _, wr, _, wi) = generalized_eigval_2x2(
 					(
 						H[(ilast - 1, ilast - 1)].copy(),
@@ -1269,175 +803,104 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 						T[(ilast, ilast)].copy(),
 					),
 				);
-
 				if wi == zero() {
 					continue 'main_loop;
 				}
-
 				let s1inv = one() / &s1;
-
 				let a11 = H[(ilast - 1, ilast - 1)].copy();
-
 				let a21 = H[(ilast, ilast - 1)].copy();
-
 				let a12 = H[(ilast - 1, ilast)].copy();
-
 				let a22 = H[(ilast, ilast)].copy();
-
 				let c11r = &s1 * &a11 - &wr * &b11;
-
 				let c11i = -&wi * &b11;
-
 				let c12 = &s1 * &a12;
-
 				let c21 = &s1 * &a21;
-
 				let c22r = &s1 * &a22 - &wr * &b22;
-
 				let c22i = -&wi * &b22;
-
 				let mut cz;
-
 				let szr;
-
 				let szi;
-
 				if c11r.abs() + c11i.abs() + c12.abs() > c21.abs() + c22r.abs() + c22i.abs() {
 					let t1 = c12.hypot(c11r.hypot(&c11i));
-
 					cz = &c12 / &t1;
-
 					szr = -&c11r / &t1;
-
 					szi = -&c11i / &t1;
 				} else {
 					cz = c22r.hypot(&c22i);
-
 					if cz <= safmin {
 						cz = zero();
-
 						szr = one();
-
 						szi = zero();
 					} else {
 						let tempr = &c22r / &cz;
-
 						let tempi = &c22i / &cz;
-
 						let t1 = cz.hypot(&c21);
-
 						cz = &cz / &t1;
-
 						szr = -&c21 * &tempr / &t1;
-
 						szi = &c21 * &tempi / &t1;
 					}
 				}
-
 				let an = a11.abs() + a12.abs() + a21.abs() + a22.abs();
-
 				let bn = b11.abs() + b22.abs();
-
 				let wabs = wr.abs() + wi.abs();
-
 				let mut cq;
-
 				let mut sqr;
-
 				let mut sqi;
-
 				if &s1 * &an > &wabs * &bn {
 					cq = &cz * &b11;
-
 					sqr = &szr * &b22;
-
 					sqi = -&szi * &b22;
 				} else {
 					let a1r = &cz * &a11 + &szr * &a12;
-
 					let a1i = &szi * &a12;
-
 					let a2r = &cz * &a21 + &szr * &a22;
-
 					let a2i = &szi * &a22;
-
 					cq = a1r.hypot(&a1i);
-
 					if cq <= safmin {
 						cq = zero();
-
 						sqr = one();
-
 						sqi = zero();
 					} else {
 						let tempr = &a1r / &cq;
-
 						let tempi = &a1i / &cq;
-
 						sqr = &tempr * &a2r + &tempi * &a2i;
-
 						sqi = &tempi * &a2r - &tempr * &a2i;
 					}
 				}
-
 				let t1 = cq.hypot(sqr.hypot(&sqi));
-
 				cq = &cq / &t1;
-
 				sqr = &sqr / &t1;
-
 				sqi = &sqi / &t1;
-
 				let tempr = &sqr * &szr - &sqi * &szi;
-
 				let tempi = &sqr * &szi + &sqi * &szr;
-
 				let b1r = &cq * &cz * &b11 + &tempr * &b22;
-
 				let b1i = &tempi * &b22;
-
 				let b1a = b1r.hypot(&b1i);
-
 				let b2r = &cq * &cz * &b22 + &tempr * &b11;
-
 				let b2i = -&tempi * &b11;
-
 				let b2a = b2r.hypot(&b2i);
-
 				beta[ilast - 1] = b1a.copy();
-
 				if wi != zero() {
 					beta[ilast] = b1a.copy();
 				} else {
 					beta[ilast] = b2a.copy();
 				}
-
 				alphar[ilast - 1] = (&wr * &b1a) * &s1inv;
-
 				alphai[ilast - 1] = (&wi * &b1a) * &s1inv;
-
 				alphar[ilast] = (&wr * &b2a) * &s1inv;
-
 				alphai[ilast] = -(&wi * &b2a) * &s1inv;
-
 				ilast = ifirst.wrapping_sub(1);
-
 				if ilast < ilo || ilast == usize::MAX {
 					break 'main_loop;
 				}
-
 				iiter = 0;
-
 				eshift = zero();
-
 				if eigvals_only {
 					ilastm = ilast;
-
 					if ifrstm > ilast {
 						ifrstm = ilo;
 					}
 				}
-
 				continue 'main_loop;
 			} else {
 				double_shift_sweep(
@@ -1456,32 +919,24 @@ fn hessenberg_to_qz_unblocked<T: RealField>(
 			}
 		}
 	}
-
 	for j in 0..ilo {
 		if T[(j, j)] < zero() {
 			if !eigvals_only {
 				zip!(T.rb_mut().col_mut(j).get_mut(..j + 1)).for_each(|unzip!(x)| *x = -&*x);
-
 				zip!(H.rb_mut().col_mut(j).get_mut(..j + 1)).for_each(|unzip!(x)| *x = -&*x);
 			} else {
 				T[(j, j)] = -&T[(j, j)];
-
 				H[(j, j)] = -&H[(j, j)];
 			}
-
 			if let Some(mut Z) = Z.rb_mut() {
 				zip!(Z.rb_mut().col_mut(j)).for_each(|unzip!(x)| *x = -&*x);
 			}
 		}
-
 		alphar[j] = H[(j, j)].copy();
-
 		alphai[j] = zero();
-
 		beta[j] = T[(j, j)].copy();
 	}
 }
-
 fn double_shift_sweep<T: RealField>(
 	ascale: T,
 	ilast: usize,
@@ -1496,354 +951,207 @@ fn double_shift_sweep<T: RealField>(
 	mut Z: Option<MatMut<'_, T>>,
 ) {
 	let one = one::<T>;
-
 	let zero = zero::<T>;
-
 	let safmin = min_positive::<T>();
-
 	let mut temp;
-
 	let ad11 = (&ascale * &H[(ilast - 1, ilast - 1)]) / (&bscale * &T[(ilast - 1, ilast - 1)]);
-
 	let ad21 = (&ascale * &H[(ilast, ilast - 1)]) / (&bscale * &T[(ilast - 1, ilast - 1)]);
-
 	let ad12 = (&ascale * &H[(ilast - 1, ilast)]) / (&bscale * &T[(ilast, ilast)]);
-
 	let ad22 = (&ascale * &H[(ilast, ilast)]) / (&bscale * &T[(ilast, ilast)]);
-
 	let u12 = &T[(ilast - 1, ilast)] / &T[(ilast, ilast)];
-
 	let ad11l = (&ascale * &H[(ifirst, ifirst)]) / (&bscale * &T[(ifirst, ifirst)]);
-
 	let ad21l = (&ascale * &H[(ifirst + 1, ifirst)]) / (&bscale * &T[(ifirst, ifirst)]);
-
 	let ad12l = (&ascale * &H[(ifirst, ifirst + 1)]) / (&bscale * &T[(ifirst + 1, ifirst + 1)]);
-
 	let ad22l = (&ascale * &H[(ifirst + 1, ifirst + 1)]) / (&bscale * &T[(ifirst + 1, ifirst + 1)]);
-
 	let ad32l = (&ascale * &H[(ifirst + 2, ifirst + 1)]) / (&bscale * &T[(ifirst + 1, ifirst + 1)]);
-
 	let u12l = &T[(ifirst, ifirst + 1)] / &T[(ifirst + 1, ifirst + 1)];
-
 	let mut v_storage = [zero(), zero(), zero()];
-
 	let mut v = ColMut::from_slice_mut(&mut v_storage);
-
 	v[0] = (&ad11 - &ad11l) * (&ad22 - &ad11l) - &ad12 * &ad21 + &ad21 * &u12 * &ad11l + (&ad12l - &ad11l * &u12l) * &ad21l;
-
 	v[1] = ((&ad22l - &ad11l) - &ad21l * &u12l - (&ad11 - &ad11l) - (&ad22 - &ad11l) + &ad21 * &u12) * &ad21l;
-
 	v[2] = &ad32l * &ad21l;
-
 	let mut tau;
-
 	{
 		let (mut head, tail) = v.rb_mut().split_at_row_mut(1);
-
 		tau = linalg::householder::make_householder_in_place(&mut head[0], tail).tau;
-
 		tau = one() / &tau;
-
 		head[0] = one();
 	}
-
 	let istart = ifirst;
-
 	let mut scale;
-
 	let mut u1;
-
 	let mut u2;
-
 	for j in istart..ilast - 1 {
 		if j > istart {
 			v[0] = H[(j, j - 1)].copy();
-
 			v[1] = H[(j + 1, j - 1)].copy();
-
 			v[2] = H[(j + 2, j - 1)].copy();
-
 			{
 				let (mut head, tail) = v.rb_mut().split_at_row_mut(1);
-
 				tau = linalg::householder::make_householder_in_place(&mut head[0], tail).tau;
-
 				tau = one() / &tau;
-
 				H[(j, j - 1)] = head[0].copy();
-
 				head[0] = one();
-
 				H[(j + 1, j - 1)] = zero();
-
 				H[(j + 2, j - 1)] = zero();
 			}
 		}
-
 		let v2 = v[1].copy();
-
 		let v3 = v[2].copy();
-
 		let t2 = &tau * &v2;
-
 		let t3 = &tau * &v3;
-
 		for jc in j..ilastm + 1 {
 			temp = &H[(j, jc)] + &v2 * &H[(j + 1, jc)] + &v3 * &H[(j + 2, jc)];
-
 			H[(j, jc)] = &H[(j, jc)] - &temp * &tau;
-
 			H[(j + 1, jc)] = &H[(j + 1, jc)] - &temp * &t2;
-
 			H[(j + 2, jc)] = &H[(j + 2, jc)] - &temp * &t3;
-
 			let temp2 = &T[(j, jc)] + &v2 * &T[(j + 1, jc)] + &v3 * &T[(j + 2, jc)];
-
 			T[(j, jc)] = &T[(j, jc)] - &temp2 * &tau;
-
 			T[(j + 1, jc)] = &T[(j + 1, jc)] - &temp2 * &t2;
-
 			T[(j + 2, jc)] = &T[(j + 2, jc)] - &temp2 * &t3;
 		}
-
 		if let Some(mut Q) = Q.rb_mut() {
 			for jr in 0..n {
 				temp = &Q[(jr, j)] + &v2 * &Q[(jr, j + 1)] + &v3 * &Q[(jr, j + 2)];
-
 				Q[(jr, j)] = &Q[(jr, j)] - &temp * &tau;
-
 				Q[(jr, j + 1)] = &Q[(jr, j + 1)] - &temp * &t2;
-
 				Q[(jr, j + 2)] = &Q[(jr, j + 2)] - &temp * &t3;
 			}
 		}
-
 		let mut ilpivt = false;
-
 		let temp = T[(j + 1, j + 1)].abs().fmax(T[(j + 1, j + 2)].abs());
-
 		let temp2 = T[(j + 2, j + 1)].abs().fmax(T[(j + 2, j + 2)].abs());
-
 		let mut w11;
-
 		let mut w12;
-
 		let mut w21;
-
 		let mut w22;
-
 		'goto250: {
 			if temp.fmax(&temp2) < safmin {
 				scale = zero();
-
 				u1 = one();
-
 				u2 = zero();
-
 				break 'goto250;
 			} else if temp >= temp2 {
 				w11 = T[(j + 1, j + 1)].copy();
-
 				w21 = T[(j + 2, j + 1)].copy();
-
 				w12 = T[(j + 1, j + 2)].copy();
-
 				w22 = T[(j + 2, j + 2)].copy();
-
 				u1 = T[(j + 1, j)].copy();
-
 				u2 = T[(j + 2, j)].copy();
 			} else {
 				w21 = T[(j + 1, j + 1)].copy();
-
 				w11 = T[(j + 2, j + 1)].copy();
-
 				w22 = T[(j + 1, j + 2)].copy();
-
 				w12 = T[(j + 2, j + 2)].copy();
-
 				u2 = T[(j + 1, j)].copy();
-
 				u1 = T[(j + 2, j)].copy();
 			}
-
 			if w12.abs() > w11.abs() {
 				ilpivt = true;
-
 				let temp = w12;
-
 				let temp2 = w22;
-
 				w12 = w11;
-
 				w22 = w21;
-
 				w11 = temp;
-
 				w21 = temp2;
 			}
-
 			let temp = &w21 / &w11;
-
 			u2 = &u2 - &temp * &u1;
-
 			w22 = &w22 - &temp * &w12;
-
 			scale = one();
-
 			if w22.abs() < safmin {
 				scale = zero();
-
 				u2 = one();
-
 				u1 = -&w12 / &w11;
-
 				break 'goto250;
 			}
-
 			if w22.abs() < u2.abs() {
 				scale = (&w22 / &u2).abs();
 			}
-
 			if w11.abs() < u1.abs() {
 				scale = scale.fmin((&w11 / &u1).abs());
 			}
-
 			u2 = (&scale * &u2) / &w22;
-
 			u1 = (&scale * &u1 - &w12 * &u2) / &w11;
 		}
-
 		if ilpivt {
 			let temp = u2;
-
 			u2 = u1;
-
 			u1 = temp;
 		}
-
 		let t1 = (&scale * &scale + &u1 * &u1 + &u2 * &u2).sqrt();
-
 		tau = one() + &scale / &t1;
-
 		let vs = -one() / (&scale + &t1);
-
 		v[0] = one();
-
 		v[1] = &vs * &u1;
-
 		v[2] = &vs * &u2;
-
 		let v2 = v[1].copy();
-
 		let v3 = v[2].copy();
-
 		let t2 = &tau * &v2;
-
 		let t3 = &tau * &v3;
-
 		for jr in ifrstm..Ord::min(j + 3, ilast) + 1 {
 			let temp = &H[(jr, j)] + &v2 * &H[(jr, j + 1)] + &v3 * &H[(jr, j + 2)];
-
 			H[(jr, j)] = &H[(jr, j)] - &temp * &tau;
-
 			H[(jr, j + 1)] = &H[(jr, j + 1)] - &temp * &t2;
-
 			H[(jr, j + 2)] = &H[(jr, j + 2)] - &temp * &t3;
 		}
-
 		for jr in ifrstm..j + 3 {
 			let temp = &T[(jr, j)] + &v2 * &T[(jr, j + 1)] + &v3 * &T[(jr, j + 2)];
-
 			T[(jr, j)] = &T[(jr, j)] - &temp * &tau;
-
 			T[(jr, j + 1)] = &T[(jr, j + 1)] - &temp * &t2;
-
 			T[(jr, j + 2)] = &T[(jr, j + 2)] - &temp * &t3;
 		}
-
 		if let Some(mut Z) = Z.rb_mut() {
 			for jr in 0..n {
 				let temp = &Z[(jr, j)] + &v2 * &Z[(jr, j + 1)] + &v3 * &Z[(jr, j + 2)];
-
 				Z[(jr, j)] = &Z[(jr, j)] - &temp * &tau;
-
 				Z[(jr, j + 1)] = &Z[(jr, j + 1)] - &temp * &t2;
-
 				Z[(jr, j + 2)] = &Z[(jr, j + 2)] - &temp * &t3;
 			}
 		}
-
 		T[(j + 1, j)] = zero();
-
 		T[(j + 2, j)] = zero();
 	}
-
 	let j = ilast - 1;
-
 	let (c, s, temp) = make_givens(H[(j, j - 1)].copy(), H[(j + 1, j - 1)].copy());
-
 	H[(j, j - 1)] = temp;
-
 	H[(j + 1, j - 1)] = zero();
-
 	for jc in j..ilastm + 1 {
 		let temp = &c * &H[(j, jc)] + &s * &H[(j + 1, jc)];
-
 		H[(j + 1, jc)] = -&s * &H[(j, jc)] + &c * &H[(j + 1, jc)];
-
 		H[(j, jc)] = temp;
-
 		let temp2 = &c * &T[(j, jc)] + &s * &T[(j + 1, jc)];
-
 		T[(j + 1, jc)] = -&s * &T[(j, jc)] + &c * &T[(j + 1, jc)];
-
 		T[(j, jc)] = temp2;
 	}
-
 	if let Some(mut Q) = Q.rb_mut() {
 		for jr in 0..n {
 			let temp = &c * &Q[(jr, j)] + &s * &Q[(jr, j + 1)];
-
 			Q[(jr, j + 1)] = -&s * &Q[(jr, j)] + &c * &Q[(jr, j + 1)];
-
 			Q[(jr, j)] = temp;
 		}
 	}
-
 	let (c, s, temp) = make_givens(T[(j + 1, j + 1)].copy(), T[(j + 1, j)].copy());
-
 	T[(j + 1, j + 1)] = temp;
-
 	T[(j + 1, j)] = zero();
-
 	for jr in ifrstm..ilast + 1 {
 		let temp = &c * &H[(jr, j + 1)] + &s * &H[(jr, j)];
-
 		H[(jr, j)] = -&s * &H[(jr, j + 1)] + &c * &H[(jr, j)];
-
 		H[(jr, j + 1)] = temp;
 	}
-
 	for jr in ifrstm..ilast {
 		let temp = &c * &T[(jr, j + 1)] + &s * &T[(jr, j)];
-
 		T[(jr, j)] = -&s * &T[(jr, j + 1)] + &c * &T[(jr, j)];
-
 		T[(jr, j + 1)] = temp;
 	}
-
 	if let Some(mut Z) = Z.rb_mut() {
 		for jr in 0..n {
 			let temp = &c * &Z[(jr, j + 1)] + &s * &Z[(jr, j)];
-
 			Z[(jr, j)] = -&s * &Z[(jr, j + 1)] + &c * &Z[(jr, j)];
-
 			Z[(jr, j + 1)] = temp;
 		}
 	}
 }
-
 fn single_shift_sweep<T: RealField>(
 	s1: T,
 	istart: usize,
@@ -1857,122 +1165,79 @@ fn single_shift_sweep<T: RealField>(
 	mut Z: Option<MatMut<'_, T>>,
 ) {
 	let zero = zero::<T>;
-
 	let n = H.nrows();
-
 	let mut temp = &s1 * &H[(istart, istart)] - &wr * &T[(istart, istart)];
-
 	let temp2 = &s1 * &H[(istart + 1, istart)];
-
 	let (mut c, mut s, _) = make_givens(temp, temp2);
-
 	for j in istart..ilast {
 		if j > istart {
 			(c, s, temp) = make_givens(H[(j, j - 1)].copy(), H[(j + 1, j - 1)].copy());
-
 			H[(j, j - 1)] = temp;
-
 			H[(j + 1, j - 1)] = zero();
 		}
-
 		for jc in j..ilastm + 1 {
 			temp = &c * &H[(j, jc)] + &s * &H[(j + 1, jc)];
-
 			H[(j + 1, jc)] = -&s * &H[(j, jc)] + &c * &H[(j + 1, jc)];
-
 			H[(j, jc)] = temp;
-
 			let temp2 = &c * &T[(j, jc)] + &s * &T[(j + 1, jc)];
-
 			T[(j + 1, jc)] = -&s * &T[(j, jc)] + &c * &T[(j + 1, jc)];
-
 			T[(j, jc)] = temp2;
 		}
-
 		if let Some(mut Q) = Q.rb_mut() {
 			for jr in 0..n {
 				temp = &c * &Q[(jr, j)] + &s * &Q[(jr, j + 1)];
-
 				Q[(jr, j + 1)] = -&s * &Q[(jr, j)] + &c * &Q[(jr, j + 1)];
-
 				Q[(jr, j)] = temp;
 			}
 		}
-
 		(c, s, temp) = make_givens(T[(j + 1, j + 1)].copy(), T[(j + 1, j)].copy());
-
 		T[(j + 1, j + 1)] = temp;
-
 		T[(j + 1, j)] = zero();
-
 		for jr in ifrstm..Ord::min(j + 2, ilast) + 1 {
 			temp = &c * &H[(jr, j + 1)] + &s * &H[(jr, j)];
-
 			H[(jr, j)] = -&s * &H[(jr, j + 1)] + &c * &H[(jr, j)];
-
 			H[(jr, j + 1)] = temp;
 		}
-
 		for jr in ifrstm..j + 1 {
 			temp = &c * &T[(jr, j + 1)] + &s * &T[(jr, j)];
-
 			T[(jr, j)] = -&s * &T[(jr, j + 1)] + &c * &T[(jr, j)];
-
 			T[(jr, j + 1)] = temp;
 		}
-
 		if let Some(mut Z) = Z.rb_mut() {
 			for jr in 0..n {
 				temp = &c * &Z[(jr, j + 1)] + &s * &Z[(jr, j)];
-
 				Z[(jr, j)] = -&s * &Z[(jr, j + 1)] + &c * &Z[(jr, j)];
-
 				Z[(jr, j + 1)] = temp;
 			}
 		}
 	}
 }
-
 /// computes the layout of the workspace required to compute a real matrix pair's QZ
 /// decomposition, assuming the pair is already in generalized hessenberg form.
-
 pub fn hessenberg_to_qz_scratch<T: RealField>(n: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	hessenberg_to_qz_blocked_scratch::<T>(n, par, params)
 }
-
 fn hessenberg_to_qz_blocked_scratch<T: RealField>(n: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	let nmin = Ord::max(15, params.blocking_threshold);
-
 	if n < nmin {
 		return StackReq::empty();
 	}
-
 	let nw = (n - 3) / 3;
-
 	let nsr = (params.recommended_shift_count)(n, n);
-
 	let rcost = (params.relative_cost_estimate_of_shift_chase_to_matmul)(n, n);
-
 	let itemp1 = (nsr as f64 / (1.0 + 2.0 * (nsr as f64) / (rcost as f64 / 100.0 * n as f64)).sqrt()) as usize;
-
 	let itemp1 = (itemp1.saturating_sub(1) / 4) * 4 + 4;
-
 	let nbr = &nsr + &itemp1;
-
 	let qc_aed = linalg::temp_mat_scratch::<T>(nw, nw);
-
 	let qc_sweep = linalg::temp_mat_scratch::<T>(nbr, nbr);
-
 	StackReq::any_of(&[
 		StackReq::all_of(&[qc_aed, qc_aed, aed_scratch::<T>(n, nw, par, params)]),
 		StackReq::all_of(&[qc_sweep, qc_sweep, multishift_sweep_scratch::<T>(n, nsr)]),
 	])
 }
-
 fn multishift_sweep_scratch<T: RealField>(n: usize, ns: usize) -> StackReq {
 	linalg::temp_mat_scratch::<T>(n, 2 * ns)
 }
-
 fn aed_scratch<T: RealField>(n: usize, nw: usize, par: Par, params: GeneralizedSchurParams) -> StackReq {
 	StackReq::any_of(&[
 		hessenberg_to_qz_blocked_scratch::<T>(nw, par, params),
@@ -1991,7 +1256,6 @@ fn aed_scratch<T: RealField>(n: usize, nw: usize, par: Par, params: GeneralizedS
 		linalg::temp_mat_scratch::<T>(n, nw),
 	])
 }
-
 /// computes a real matrix pair's QZ decomposition, assuming the pair is already in generalized
 /// hessenberg form.
 /// the unitary transformations $Q$ and $Z$ resulting from the QZ decomposition are postmultiplied
@@ -2005,7 +1269,6 @@ fn aed_scratch<T: RealField>(n: usize, nw: usize, par: Par, params: GeneralizedS
 /// `ComputeEigenvectors::No`. note that in this case, the input matrices $A$ and $B$ are still
 /// clobbered, and contain unspecified values on output.
 #[track_caller]
-
 pub fn hessenberg_to_qz<T: RealField>(
 	A: MatMut<'_, T>,
 	B: MatMut<'_, T>,
@@ -2020,13 +1283,9 @@ pub fn hessenberg_to_qz<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let eigvals_only = eigenvectors == linalg::evd::ComputeEigenvectors::No;
-
 	let n = A.nrows();
-
 	let (Q_nrows, Q_ncols) = Q_inout.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
-
 	let (Z_nrows, Z_ncols) = Z_inout.rb().map(|m| (m.nrows(), m.ncols())).unwrap_or((n, n));
-
 	assert!(all(
 		A.nrows() == n,
 		A.ncols() == n,
@@ -2037,14 +1296,11 @@ pub fn hessenberg_to_qz<T: RealField>(
 		Z_nrows == n,
 		Z_ncols == n,
 	));
-
 	if n == 0 {
 		return;
 	}
-
 	hessenberg_to_qz_blocked(0, n - 1, A, B, Q_inout, Z_inout, alphar, alphai, beta, eigvals_only, par, params, stack)
 }
-
 fn hessenberg_to_qz_blocked<T: RealField>(
 	ilo: usize,
 	ihi: usize,
@@ -2061,49 +1317,27 @@ fn hessenberg_to_qz_blocked<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let n = A.nrows();
-
 	let ulp = eps::<T>();
-
 	let safmin = min_positive::<T>();
-
 	let smlnum = &safmin * (from_f64::<T>(n as f64) / &ulp);
-
 	let zero = zero::<T>;
-
 	let one = one::<T>;
-
 	let bnorm = B.rb().get(ilo..ihi + 1, ilo..ihi + 1).norm_max();
-
 	let btol = safmin.fmax(&ulp * &bnorm);
-
 	let mut istart = ilo;
-
 	let mut istop = ihi;
-
 	let maxit = 30 * (ihi + 1 - ilo);
-
 	let mut ld = 0usize;
-
 	let mut eshift = zero();
-
 	let nh = &ihi - &ilo + 1;
-
 	let nmin = Ord::max(15, params.blocking_threshold);
-
 	let nibble = params.nibble_threshold;
-
 	let nwr = (params.recommended_deflation_window)(n, nh);
-
 	let nsr = (params.recommended_shift_count)(n, nh);
-
 	let rcost = (params.relative_cost_estimate_of_shift_chase_to_matmul)(n, nh);
-
 	let itemp1 = (nsr as f64 / (1.0 + 2.0 * (nsr as f64) / (rcost as f64 / 100.0 * n as f64)).sqrt()) as usize;
-
 	let itemp1 = (itemp1.saturating_sub(1) / 4) * 4 + 4;
-
 	let nbr = &nsr + &itemp1;
-
 	if n < nmin {
 		hessenberg_to_qz_unblocked(
 			ilo,
@@ -2117,200 +1351,126 @@ fn hessenberg_to_qz_blocked<T: RealField>(
 			beta.rb_mut(),
 			eigvals_only,
 		);
-
 		return;
 	}
-
 	let nw_max = (n - 3) / 3;
-
 	let nw_max = nw_max + nw_max % 2;
-
 	for iter in 0..maxit {
 		_ = iter;
-
 		if istop == usize::MAX || istart + 1 >= istop {
 			break;
 		}
-
 		if A[(istop - 1, istop - 2)].abs() <= smlnum.fmax(&ulp * (A[(istop - 1, istop - 1)].abs() + A[(istop - 2, istop - 2)].abs())) {
 			A[(istop - 1, istop - 2)] = zero();
-
 			istop -= 2;
-
 			ld = 0;
-
 			eshift = zero();
 		} else if A[(istop, istop - 1)].abs() <= smlnum.fmax(&ulp * (A[(istop, istop)].abs() + A[(istop - 1, istop - 1)].abs())) {
 			istop -= 1;
-
 			ld = 0;
-
 			eshift = zero();
 		}
-
 		if A[(istart + 2, istart + 1)].abs() <= smlnum.fmax(&ulp * (A[(istart + 1, istart + 1)].abs() + A[(istart + 2, istart + 2)].abs())) {
 			A[(istart + 2, istart + 1)] = zero();
-
 			istart = istart + 2;
-
 			ld = 0;
-
 			eshift = zero();
 		} else if A[(istart + 1, istart)].abs() <= smlnum.fmax(&ulp * (A[(istart, istart)].abs() + A[(istart + 1, istart + 1)].abs())) {
 			A[(istart + 1, istart)] = zero();
-
 			istart = istart + 1;
-
 			ld = 0;
-
 			eshift = zero();
 		}
-
 		if istart + 1 >= istop {
 			break;
 		}
-
 		let mut istart2 = istart;
-
 		for k in (istart + 1..istop + 1).rev() {
 			if A[(k, k - 1)].abs() <= smlnum.fmax(&ulp * (A[(k, k)].abs() + A[(k - 1, k - 1)].abs())) {
 				A[(k, k - 1)] = zero();
-
 				istart2 = k;
-
 				break;
 			}
 		}
-
 		let (istartm, istopm);
-
 		if !eigvals_only {
 			istartm = 0;
-
 			istopm = n - 1;
 		} else {
 			istartm = istart2;
-
 			istopm = istop;
 		}
-
 		let mut k = istop + 1;
-
 		while k > istart2 {
 			k -= 1;
-
 			if B[(k, k)].abs() < btol {
 				for k2 in (istart2 + 1..k + 1).rev() {
 					let (c1, s1, temp) = make_givens(B[(k2 - 1, k2)].copy(), B[(k2 - 1, k2 - 1)].copy());
-
 					B[(k2 - 1, k2)] = temp;
-
 					B[(k2 - 1, k2 - 1)] = zero();
-
 					let (x, y) = B.rb_mut().get_mut(istartm..k2 - 1, ..).two_cols_mut(k2, k2 - 1);
-
 					rot(c1.copy(), s1.copy(), x.transpose_mut(), y.transpose_mut());
-
 					let (x, y) = A.rb_mut().get_mut(istartm..Ord::min(istop, k2 + 1) + 1, ..).two_cols_mut(k2, k2 - 1);
-
 					rot(c1.copy(), s1.copy(), x.transpose_mut(), y.transpose_mut());
-
 					if let Some(Z) = Z.rb_mut() {
 						let (x, y) = Z.two_cols_mut(k2, k2 - 1);
-
 						rot(c1.copy(), s1.copy(), x.transpose_mut(), y.transpose_mut());
 					}
-
 					if k2 < istop {
 						let (c1, s1, temp) = make_givens(A[(k2, k2 - 1)].copy(), A[(k2 + 1, k2 - 1)].copy());
-
 						A[(k2, k2 - 1)] = temp;
-
 						A[(k2 + 1, k2 - 1)] = zero();
-
 						let (x, y) = A.rb_mut().get_mut(.., k2..istopm + 1).two_rows_mut(k2, k2 + 1);
-
 						rot(c1.copy(), s1.copy(), x, y);
-
 						let (x, y) = B.rb_mut().get_mut(.., k2..istopm + 1).two_rows_mut(k2, k2 + 1);
-
 						rot(c1.copy(), s1.copy(), x, y);
-
 						B[(k2 + 1, k2)] = zero();
-
 						if let Some(Q) = Q.rb_mut() {
 							let (x, y) = Q.two_cols_mut(k2, k2 + 1);
-
 							rot(c1.copy(), s1.conj(), x.transpose_mut(), y.transpose_mut());
 						}
 					}
 				}
-
 				if istart2 < istop {
 					let (c1, s1, temp) = make_givens(A[(istart2, istart2)].copy(), A[(istart2 + 1, istart2)].copy());
-
 					A[(istart2, istart2)] = temp;
-
 					A[(istart2 + 1, istart2)] = zero();
-
 					let (x, y) = A.rb_mut().get_mut(.., istart2 + 1..istopm + 1).two_rows_mut(istart2, istart2 + 1);
-
 					rot(c1.copy(), s1.copy(), x, y);
-
 					let (x, y) = B.rb_mut().get_mut(.., istart2 + 1..istopm + 1).two_rows_mut(istart2, istart2 + 1);
-
 					rot(c1.copy(), s1.copy(), x, y);
-
 					if let Some(Q) = Q.rb_mut() {
 						let (x, y) = Q.two_cols_mut(istart2, istart2 + 1);
-
 						rot(c1.copy(), s1.conj(), x.transpose_mut(), y.transpose_mut());
 					}
 				}
-
 				istart2 += 1;
 			}
 		}
-
 		if istart2 >= istop {
 			istop = istart2 - 1;
-
 			ld = 0;
-
 			eshift = zero();
-
 			continue;
 		}
-
 		let mut nw = nwr;
-
 		let nshifts = nsr;
-
 		let nblock = nbr;
-
 		if istop + 1 - istart2 < nmin {
 			if istop + 1 - istart < nmin {
 				nw = istop + 1 - istart;
-
 				istart2 = istart;
 			} else {
 				nw = istop + 1 - istart2;
 			}
 		}
-
 		nw = Ord::min(nw, nw_max);
-
 		let (n_undeflated, n_deflated);
-
 		{
 			let (mut QC, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(nw, nw, stack) };
-
 			let mut QC = QC.as_mat_mut();
-
 			let (mut ZC, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(nw, nw, stack) };
-
 			let mut ZC = ZC.as_mat_mut();
-
 			(n_undeflated, n_deflated) = aggressive_early_deflation(
 				eigvals_only,
 				istart2,
@@ -2330,71 +1490,46 @@ fn hessenberg_to_qz_blocked<T: RealField>(
 				stack,
 			);
 		}
-
 		if n_deflated > 0 {
 			istop = istop.wrapping_sub(n_deflated);
-
 			ld = 0;
-
 			eshift = zero();
 		}
-
 		if (100 * n_deflated > &nibble * (&n_deflated + &n_undeflated)) || (istop.wrapping_add(1) - &istart2 < nmin) {
 			continue;
 		}
-
 		ld += 1;
-
 		let mut ns = Ord::min(nshifts, istop.wrapping_sub(istart2));
-
 		ns = Ord::min(ns, n_undeflated);
-
 		let shiftpos = &istop - &n_undeflated + 1;
-
 		for i in (shiftpos..istop - 1).step_by(2) {
 			if alphai[i] != -&alphai[i + 1] {
 				for mut v in [alphar.rb_mut(), alphai.rb_mut(), beta.rb_mut()] {
 					let swap = v[i].copy();
-
 					v[i] = v[i + 1].copy();
-
 					v[i + 1] = v[i + 2].copy();
-
 					v[i + 2] = swap;
 				}
 			}
 		}
-
 		if ld % 6 == 0 {
 			if from_f64::<T>(maxit as f64) * &safmin * A[(istop, istop - 1)].abs() < B[(istop - 1, istop - 1)].abs() {
 				eshift = &A[(istop, istop - 1)] / &B[(istop - 1, istop - 1)];
 			} else {
 				eshift = &eshift + one() / (&safmin * from_f64::<T>(maxit as f64));
 			}
-
 			alphar[shiftpos] = one();
-
 			alphar[shiftpos + 1] = zero();
-
 			alphai[shiftpos] = zero();
-
 			alphai[shiftpos + 1] = zero();
-
 			beta[shiftpos] = eshift.copy();
-
 			beta[shiftpos + 1] = eshift.copy();
-
 			ns = 2;
 		}
-
 		let (mut QC, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(nblock, nblock, stack) };
-
 		let mut QC = QC.as_mat_mut();
-
 		let (mut ZC, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(nblock, nblock, stack) };
-
 		let mut ZC = ZC.as_mat_mut();
-
 		multishift_sweep(
 			istart2,
 			istop,
@@ -2412,7 +1547,6 @@ fn hessenberg_to_qz_blocked<T: RealField>(
 			stack,
 		);
 	}
-
 	hessenberg_to_qz_unblocked(
 		ilo,
 		ihi,
@@ -2426,57 +1560,35 @@ fn hessenberg_to_qz_blocked<T: RealField>(
 		eigvals_only,
 	);
 }
-
 fn laqz1<T: RealField>(A: MatRef<'_, T>, B: MatRef<'_, T>, sr1: T, sr2: T, si: T, beta1: T, beta2: T, mut v: ColMut<'_, T>) {
 	let zero = zero::<T>;
-
 	let one = one::<T>;
-
 	let safmin = min_positive::<T>();
-
 	let safmax = one() / &safmin;
-
 	let mut w1 = &beta1 * &A[(0, 0)] - &sr1 * &B[(0, 0)];
-
 	let mut w2 = &beta1 * &A[(1, 0)] - &sr1 * &B[(1, 0)];
-
 	let scale1 = w1.abs().sqrt() * w2.abs().sqrt();
-
 	if scale1 >= safmin && scale1 <= safmax {
 		w1 = &w1 / &scale1;
-
 		w2 = &w2 / &scale1;
 	}
-
 	w2 = &w2 / &B[(1, 1)];
-
 	w1 = (&w1 - &B[(0, 1)] * &w2) / &B[(0, 0)];
-
 	let scale2 = w1.abs().sqrt() * w2.abs().sqrt();
-
 	if scale2 >= safmin && scale2 <= safmax {
 		w1 = &w1 / &scale2;
-
 		w2 = &w2 / &scale2;
 	}
-
 	v[0] = &beta2 * (&A[(0, 0)] * &w1 + &A[(0, 1)] * &w2) - &sr2 * (&B[(0, 0)] * &w1 + &B[(0, 1)] * &w2);
-
 	v[1] = &beta2 * (&A[(1, 0)] * &w1 + &A[(1, 1)] * &w2) - &sr2 * (&B[(1, 0)] * &w1 + &B[(1, 1)] * &w2);
-
 	v[2] = &beta2 * (&A[(2, 0)] * &w1 + &A[(2, 1)] * &w2) - &sr2 * (&B[(2, 0)] * &w1 + &B[(2, 1)] * &w2);
-
 	v[0] = &v[0] + &si * &si * &B[(0, 0)] / &scale1 / &scale2;
-
 	if v[0].abs() > safmax || v[1].abs() > safmax || v[2].abs() > safmax || v[0].is_nan() || v[1].is_nan() || v[2].is_nan() {
 		v[0] = zero();
-
 		v[1] = zero();
-
 		v[2] = zero();
 	}
 }
-
 fn chase_bulge_2x2<T: RealField>(
 	k: usize,
 	istartm: usize,
@@ -2490,132 +1602,79 @@ fn chase_bulge_2x2<T: RealField>(
 	mut Z: Option<MatMut<'_, T>>,
 ) {
 	let zero = zero::<T>;
-
 	let mut h_storage = [zero(), zero(), zero(), zero(), zero(), zero()];
-
 	let mut h = MatMut::from_column_major_slice_mut(&mut h_storage, 2, 3);
-
 	if k + 2 == ihi {
 		h.copy_from(B.rb().get(ihi - 1..ihi + 1, ihi - 2..ihi + 1));
-
 		let (c1, s1, temp) = make_givens(h[(0, 0)].copy(), h[(1, 0)].copy());
-
 		h[(0, 0)] = temp;
-
 		h[(1, 0)] = zero();
-
 		rot_rows(c1, s1, h.rb_mut().get_mut(.., 1..), 0, 1);
-
 		let (c1, s1, _) = make_givens(h[(1, 2)].copy(), h[(1, 1)].copy());
-
 		rot_cols(c1.copy(), s1.copy(), h.rb_mut().get_mut(..1, ..), 2, 1);
-
 		let (c2, s2, _) = make_givens(h[(0, 1)].copy(), h[(0, 0)].copy());
-
 		for mut M in [A.rb_mut(), B.rb_mut()] {
 			rot_cols(c1.copy(), s1.copy(), M.rb_mut().subrows_mut(istartm, ihi + 1 - istartm), ihi, ihi - 1);
-
 			rot_cols(c2.copy(), s2.copy(), M.rb_mut().subrows_mut(istartm, ihi + 1 - istartm), ihi - 1, ihi - 2);
 		}
-
 		B[(ihi - 1, ihi - 2)] = zero();
-
 		B[(ihi, ihi - 2)] = zero();
-
 		if let Some(mut Z) = Z.rb_mut() {
 			rot_cols(c1.copy(), s1.copy(), Z.rb_mut(), &ihi - &zstart, ihi - 1 - zstart);
-
 			rot_cols(c2.copy(), s2.copy(), Z.rb_mut(), ihi - 1 - zstart, ihi - 2 - zstart);
 		}
-
 		let (c1, s1, temp) = make_givens(A[(ihi - 1, ihi - 2)].copy(), A[(ihi, ihi - 2)].copy());
-
 		A[(ihi - 1, ihi - 2)] = temp;
-
 		A[(ihi, ihi - 2)] = zero();
-
 		for mut M in [A.rb_mut(), B.rb_mut()] {
 			rot_rows(c1.copy(), s1.copy(), M.rb_mut().subcols_mut(ihi - 1, istopm + 2 - ihi), ihi - 1, ihi);
 		}
-
 		if let Some(mut Q) = Q.rb_mut() {
 			rot_cols(c1.copy(), s1.copy(), Q.rb_mut(), ihi - 1 - qstart, &ihi - &qstart);
 		}
-
 		let (c1, s1, temp) = make_givens(B[(ihi, ihi)].copy(), B[(ihi, ihi - 1)].copy());
-
 		B[(ihi, ihi)] = temp;
-
 		B[(ihi, ihi - 1)] = zero();
-
 		rot_cols(c1.copy(), s1.copy(), B.rb_mut().subrows_mut(istartm, &ihi - &istartm), ihi, ihi - 1);
-
 		rot_cols(c1.copy(), s1.copy(), A.rb_mut().subrows_mut(istartm, ihi + 1 - istartm), ihi, ihi - 1);
-
 		if let Some(mut Z) = Z.rb_mut() {
 			rot_cols(c1.copy(), s1.copy(), Z.rb_mut(), &ihi - &zstart, &ihi - &zstart - 1);
 		}
 	} else {
 		h.copy_from(B.rb().get(k + 1..k + 3, k..k + 3));
-
 		let (c1, s1, temp) = make_givens(h[(0, 0)].copy(), h[(1, 0)].copy());
-
 		h[(0, 0)] = temp;
-
 		h[(1, 0)] = zero();
-
 		rot_rows(c1, s1, h.rb_mut(), 0, 1);
-
 		let (c1, s1, _) = make_givens(h[(1, 2)].copy(), h[(1, 1)].copy());
-
 		rot_cols(c1.copy(), s1.copy(), h.rb_mut().get_mut(..1, ..), 2, 1);
-
 		let (c2, s2, _) = make_givens(h[(0, 1)].copy(), h[(0, 0)].copy());
-
 		rot_cols(c1.copy(), s1.copy(), A.rb_mut().subrows_mut(istartm, k + 4 - istartm), k + 2, k + 1);
-
 		rot_cols(c2.copy(), s2.copy(), A.rb_mut().subrows_mut(istartm, k + 4 - istartm), k + 1, k);
-
 		rot_cols(c1.copy(), s1.copy(), B.rb_mut().subrows_mut(istartm, k + 3 - istartm), k + 2, k + 1);
-
 		rot_cols(c2.copy(), s2.copy(), B.rb_mut().subrows_mut(istartm, k + 3 - istartm), k + 1, k);
-
 		if let Some(mut Z) = Z.rb_mut() {
 			rot_cols(c1.copy(), s1.copy(), Z.rb_mut(), k + 2 - zstart, k + 1 - zstart);
-
 			rot_cols(c2.copy(), s2.copy(), Z.rb_mut(), k + 1 - zstart, &k - &zstart);
 		}
-
 		B[(k + 1, k)] = zero();
-
 		B[(k + 2, k)] = zero();
-
 		let (c1, s1, temp) = make_givens(A[(k + 2, k)].copy(), A[(k + 3, k)].copy());
-
 		A[(k + 2, k)] = temp;
-
 		A[(k + 3, k)] = zero();
-
 		let (c2, s2, temp) = make_givens(A[(k + 1, k)].copy(), A[(k + 2, k)].copy());
-
 		A[(k + 1, k)] = temp;
-
 		A[(k + 2, k)] = zero();
-
 		for mut M in [A.rb_mut(), B.rb_mut()] {
 			rot_rows(c1.copy(), s1.copy(), M.rb_mut().subcols_mut(k + 1, &istopm - &k), k + 2, k + 3);
-
 			rot_rows(c2.copy(), s2.copy(), M.rb_mut().subcols_mut(k + 1, &istopm - &k), k + 1, k + 2);
 		}
-
 		if let Some(mut Q) = Q.rb_mut() {
 			rot_cols(c1.copy(), s1.copy(), Q.rb_mut(), k + 2 - qstart, k + 3 - qstart);
-
 			rot_cols(c2.copy(), s2.copy(), Q.rb_mut(), k + 1 - qstart, k + 2 - qstart);
 		}
 	}
 }
-
 fn aggressive_early_deflation<T: RealField>(
 	eigvals_only: bool,
 	ilo: usize,
@@ -2635,57 +1694,37 @@ fn aggressive_early_deflation<T: RealField>(
 	stack: &mut MemStack,
 ) -> (usize, usize) {
 	let n = A.nrows();
-
 	let zero = zero::<T>;
-
 	let one = one::<T>;
-
 	let ulp = eps::<T>();
-
 	let safmin = min_positive::<T>();
-
 	let smlnum = &safmin * (from_f64::<T>(n as f64) / &ulp);
-
 	let jw = Ord::min(nw, ihi + 1 - ilo);
-
 	let kwtop = ihi + 1 - jw;
-
 	let s;
-
 	if kwtop == ilo {
 		s = zero();
 	} else {
 		s = A[(kwtop, kwtop - 1)].copy();
 	};
-
 	let mut ifst: usize;
-
 	let mut ilst: usize;
-
 	if ihi == kwtop {
 		alphar[kwtop] = A[(kwtop, kwtop)].copy();
-
 		alphai[kwtop] = A[(kwtop, kwtop)].copy();
-
 		beta[kwtop] = B[(kwtop, kwtop)].copy();
-
 		if s.abs() <= smlnum.fmax(A[(kwtop, kwtop)].abs() * &ulp) {
 			if kwtop > ilo {
 				A[(kwtop, kwtop - 1)] = zero();
 			}
 		}
 	}
-
 	let mut qc = QC.rb_mut().get_mut(..jw, ..jw);
-
 	let mut zc = ZC.rb_mut().get_mut(..jw, ..jw);
-
 	for mut m in [qc.rb_mut(), zc.rb_mut()] {
 		m.fill(zero());
-
 		m.diagonal_mut().column_vector_mut().fill(one());
 	}
-
 	hessenberg_to_qz_blocked(
 		0,
 		jw - 1,
@@ -2701,39 +1740,28 @@ fn aggressive_early_deflation<T: RealField>(
 		params,
 		stack,
 	);
-
 	let mut kwbot;
-
 	if kwtop == ilo || s == zero() {
 		kwbot = kwtop.wrapping_sub(1);
 	} else {
 		kwbot = ihi;
-
 		let mut k = 0;
-
 		let mut k2 = 0;
-
 		while k < jw {
 			let mut bulge = false;
-
 			if kwbot + 1 - kwtop >= 2 {
 				bulge = A[(kwbot, kwbot - 1)] != zero();
 			}
-
 			if bulge {
 				let mut temp = A[(kwbot, kwbot)].abs() + A[(kwbot, kwbot - 1)].abs().sqrt() * A[(kwbot - 1, kwbot)].abs().sqrt();
-
 				if temp == zero() {
 					temp = s.abs();
 				}
-
 				if (&s * &qc[(0, kwbot - kwtop - 1)]).abs().fmax((&s * &qc[(0, kwbot - kwtop)]).abs()) <= smlnum.fmax(&ulp * &temp) {
 					kwbot -= 2;
 				} else {
 					ifst = &kwbot - &kwtop;
-
 					ilst = k2;
-
 					reorder_qz(
 						A.rb_mut().submatrix_mut(kwtop, kwtop, jw, jw),
 						B.rb_mut().submatrix_mut(kwtop, kwtop, jw, jw),
@@ -2743,25 +1771,19 @@ fn aggressive_early_deflation<T: RealField>(
 						ilst,
 						stack,
 					);
-
 					k2 += 2;
 				}
-
 				k += 2;
 			} else {
 				let mut temp = A[(kwbot, kwbot)].abs();
-
 				if temp == zero() {
 					temp = s.abs();
 				}
-
 				if (&s * &qc[(0, kwbot - kwtop)]).abs() < smlnum.fmax(&ulp * &temp) {
 					kwbot -= 1;
 				} else {
 					ifst = &kwbot - &kwtop;
-
 					ilst = k2;
-
 					reorder_qz(
 						A.rb_mut().submatrix_mut(kwtop, kwtop, jw, jw),
 						B.rb_mut().submatrix_mut(kwtop, kwtop, jw, jw),
@@ -2771,90 +1793,58 @@ fn aggressive_early_deflation<T: RealField>(
 						ilst,
 						stack,
 					);
-
 					k2 += 1;
 				}
-
 				k += 1;
 			}
 		}
 	}
-
 	let nd = &ihi - &kwbot;
-
 	let ns = &jw - &nd;
-
 	let mut k = kwtop;
-
 	while k <= ihi {
 		let mut bulge = false;
-
 		if k < ihi {
 			if A[(k + 1, k)] != zero() {
 				bulge = true;
 			}
 		}
-
 		if bulge {
 			let (scale1, scale2, wr1, wr2, wi) = generalized_eigval_2x2(
 				(A[(k, k)].copy(), A[(k, k + 1)].copy(), A[(k + 1, k)].copy(), A[(k + 1, k + 1)].copy()),
 				(B[(k, k)].copy(), B[(k, k + 1)].copy(), B[(k + 1, k)].copy(), B[(k + 1, k + 1)].copy()),
 			);
-
 			beta[k] = scale1.copy();
-
 			beta[k + 1] = scale2.copy();
-
 			alphar[k] = wr1.copy();
-
 			alphar[k + 1] = wr2.copy();
-
 			alphai[k] = wi.copy();
-
 			alphai[k + 1] = -&wi;
-
 			k += 2;
 		} else {
 			alphar[k] = A[(k, k)].copy();
-
 			alphai[k] = zero();
-
 			beta[k] = B[(k, k)].copy();
-
 			k += 1;
 		}
 	}
-
 	if kwtop != ilo && s != zero() {
 		let scale = A[(kwtop, kwtop - 1)].copy();
-
 		zip!(A.rb_mut().get_mut(kwtop..kwbot + 1, kwtop - 1), qc.rb().get(0, ..jw - nd).transpose()).for_each(|unzip!(dst, src)| *dst = src * &scale);
-
 		for k in (kwtop..kwbot).rev() {
 			let (c1, s1, temp) = make_givens(A[(k, kwtop - 1)].copy(), A[(k + 1, kwtop - 1)].copy());
-
 			A[(k, kwtop - 1)] = temp;
-
 			A[(k + 1, kwtop - 1)] = zero();
-
 			let k2 = Ord::max(kwtop, k - 1);
-
 			rot_rows(c1.copy(), s1.copy(), A.rb_mut().get_mut(.., k2..ihi + 1), k, k + 1);
-
 			rot_rows(c1.copy(), s1.copy(), B.rb_mut().get_mut(.., k - 1..ihi + 1), k, k + 1);
-
 			rot_cols(c1.copy(), s1.copy(), qc.rb_mut(), &k - &kwtop, k + 1 - kwtop);
 		}
-
 		let istartm = kwtop;
-
 		let istopm = ihi;
-
 		let mut k = kwbot;
-
 		while k > kwtop {
 			k -= 1;
-
 			if k >= kwtop + 1 && A[(k + 1, k - 1)] != zero() {
 				for k2 in k - 1..kwbot - 1 {
 					chase_bulge_2x2(
@@ -2870,43 +1860,26 @@ fn aggressive_early_deflation<T: RealField>(
 						Some(zc.rb_mut()),
 					);
 				}
-
 				k -= 1;
 			} else {
 				for k2 in k..kwbot - 1 {
 					let (c1, s1, temp) = make_givens(B[(k2 + 1, k2 + 1)].copy(), B[(k2 + 1, k2)].copy());
-
 					B[(k2 + 1, k2 + 1)] = temp;
-
 					B[(k2 + 1, k2)] = zero();
-
 					rot_cols(c1.copy(), s1.copy(), A.rb_mut().subrows_mut(istartm, k2 + 3 - istartm), k2 + 1, k2);
-
 					rot_cols(c1.copy(), s1.copy(), B.rb_mut().subrows_mut(istartm, k2 + 1 - istartm), k2 + 1, k2);
-
 					rot_cols(c1.copy(), s1.copy(), zc.rb_mut(), k2 + 1 - kwtop, &k2 - &kwtop);
-
 					let (c1, s1, temp) = make_givens(A[(k2 + 1, k2)].copy(), A[(k2 + 2, k2)].copy());
-
 					A[(k2 + 1, k2)] = temp;
-
 					A[(k2 + 2, k2)] = zero();
-
 					rot_rows(c1.copy(), s1.copy(), A.rb_mut().subcols_mut(k2 + 1, &istopm - &k2), k2 + 1, k2 + 2);
-
 					rot_rows(c1.copy(), s1.copy(), B.rb_mut().subcols_mut(k2 + 1, &istopm - &k2), k2 + 1, k2 + 2);
-
 					rot_cols(c1.copy(), s1.copy(), qc.rb_mut(), k2 + 1 - kwtop, k2 + 2 - kwtop);
 				}
-
 				let (c1, s1, temp) = make_givens(B[(kwbot, kwbot)].copy(), B[(kwbot, kwbot - 1)].copy());
-
 				B[(kwbot, kwbot)] = temp;
-
 				B[(kwbot, kwbot - 1)] = zero();
-
 				rot_cols(c1.copy(), s1.copy(), B.rb_mut().subrows_mut(istartm, &kwbot - &istartm), kwbot, kwbot - 1);
-
 				rot_cols(
 					c1.copy(),
 					s1.copy(),
@@ -2914,85 +1887,55 @@ fn aggressive_early_deflation<T: RealField>(
 					kwbot,
 					kwbot - 1,
 				);
-
 				rot_cols(c1.copy(), s1.copy(), zc.rb_mut(), &kwbot - &kwtop, kwbot - 1 - kwtop);
 			}
 		}
 	}
-
 	let istartm;
-
 	let istopm;
-
 	if !eigvals_only {
 		istartm = 0;
-
 		istopm = n - 1;
 	} else {
 		istartm = ilo;
-
 		istopm = ihi;
 	}
-
 	if &istopm - &ihi > 0 {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(jw, &istopm - &ihi, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		for M in [A.rb_mut(), B.rb_mut()] {
 			let M: MatMut<'_, T> = M;
-
 			let mut M = M.submatrix_mut(kwtop, ihi + 1, jw, &istopm - &ihi);
-
 			matmul(work.rb_mut(), Accum::Replace, qc.rb().adjoint(), M.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
 	}
-
 	if let Some(mut Q) = Q.rb_mut() {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, jw, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		let mut M = Q.rb_mut().subcols_mut(kwtop, jw);
-
 		matmul(work.rb_mut(), Accum::Replace, M.rb(), qc.rb(), one(), par);
-
 		M.copy_from(&work);
 	}
-
 	if &kwtop - &istartm > 0 {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(&kwtop - &istartm, jw, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		for M in [A.rb_mut(), B.rb_mut()] {
 			let M: MatMut<'_, T> = M;
-
 			let mut M = M.submatrix_mut(istartm, kwtop, &kwtop - &istartm, jw);
-
 			matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
 	}
-
 	if let Some(mut Z) = Z.rb_mut() {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, jw, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		let mut M = Z.rb_mut().subcols_mut(kwtop, jw);
-
 		matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 		M.copy_from(&work);
 	}
-
 	(ns, nd)
 }
-
 fn swap_qz<T: RealField>(
 	mut A: MatMut<'_, T>,
 	mut B: MatMut<'_, T>,
@@ -3004,116 +1947,65 @@ fn swap_qz<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let n = A.nrows();
-
 	let m = &n1 + &n2;
-
 	let zero = zero::<T>;
-
 	let one = one::<T>;
-
 	if n1 == 1 && n2 == 1 {
 		let mut s11 = A[(start, start)].copy();
-
 		let s12 = A[(start, start + 1)].copy();
-
 		let mut s21 = zero();
-
 		let s22 = A[(start + 1, start + 1)].copy();
-
 		let mut t11 = B[(start, start)].copy();
-
 		let t12 = B[(start, start + 1)].copy();
-
 		let mut t21 = zero();
-
 		let t22 = B[(start + 1, start + 1)].copy();
-
 		let f = &s22 * &t11 - &t22 * &s11;
-
 		let g = &s22 * &t12 - &t22 * &s12;
-
 		let sa = s22.abs() * t11.abs();
-
 		let sb = s11.abs() * t22.abs();
-
 		let (ir12, ir11, _) = make_givens(f, g);
-
 		let ir21 = -&ir12;
-
 		s11 = &s11 * &ir11 + &s12 * &ir21;
-
 		s21 = &s21 * &ir11 + &s22 * &ir21;
-
 		t11 = &t11 * &ir11 + &t12 * &ir21;
-
 		t21 = &t21 * &ir11 + &t22 * &ir21;
-
 		let (li11, li21, _) = if sa >= sb { make_givens(s11, s21) } else { make_givens(t11, t21) };
-
 		rot_cols(ir11.copy(), ir21.copy(), A.rb_mut().subrows_mut(0, start + 2), start, start + 1);
-
 		rot_rows(li11.copy(), li21.copy(), A.rb_mut().subcols_mut(start, &n - &start), start, start + 1);
-
 		rot_cols(ir11.copy(), ir21.copy(), B.rb_mut().subrows_mut(0, start + 2), start, start + 1);
-
 		rot_rows(li11.copy(), li21.copy(), B.rb_mut().subcols_mut(start, &n - &start), start, start + 1);
-
 		A[(start + 1, start)] = zero();
-
 		B[(start + 1, start)] = zero();
-
 		if let Some(mut Z) = Z.rb_mut() {
 			rot_cols(ir11.copy(), ir21.copy(), Z.rb_mut(), start, start + 1);
 		}
-
 		if let Some(mut Q) = Q.rb_mut() {
 			rot_cols(li11.copy(), li21.copy(), Q.rb_mut(), start, start + 1);
 		}
 	} else {
 		let S = A.rb().submatrix(start, start, m, m);
-
 		let T = B.rb().submatrix(start, start, m, m);
-
 		let (S11, S12, _, S22) = S.split_at(n1, n1);
-
 		let (T11, T12, _, T22) = T.split_at(n1, n1);
-
 		let (mut L, stack) = linalg::temp_mat_zeroed::<T, _, _>(&n1 + &n2, n2, stack);
-
 		let mut L = L.as_mat_mut();
-
 		let (mut R, stack) = linalg::temp_mat_zeroed::<T, _, _>(n1, &n1 + &n2, stack);
-
 		let mut R = R.as_mat_mut();
-
 		L.rb_mut().get_mut(..n1, ..).copy_from(T12);
-
 		L.rb_mut().get_mut(n1.., ..).diagonal_mut().column_vector_mut().fill(-one());
-
 		R.rb_mut().get_mut(.., n1..).copy_from(S12);
-
 		R.rb_mut().get_mut(.., ..n1).diagonal_mut().column_vector_mut().fill(one());
-
 		{
 			let mut L = L.rb_mut().get_mut(..n1, ..);
-
 			let mut R = R.rb_mut().get_mut(.., n1..);
-
 			solve_sylvester_single_block(S11, S22, R.rb_mut(), T11, T22, L.rb_mut(), stack);
 		}
-
 		let (mut L_householder, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(1, n2, stack) };
-
 		let mut L_householder = L_householder.as_mat_mut();
-
 		let (mut R_householder, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(1, n1, stack) };
-
 		let mut R_householder = R_householder.as_mat_mut();
-
 		linalg::qr::no_pivoting::factor::qr_in_place(L.rb_mut(), L_householder.rb_mut(), Par::Seq, stack, Default::default());
-
 		let mut RT_rev = R.rb_mut().transpose_mut().reverse_rows_and_cols_mut();
-
 		linalg::qr::no_pivoting::factor::qr_in_place(
 			RT_rev.rb_mut(),
 			R_householder.rb_mut().reverse_cols_mut(),
@@ -3121,123 +2013,82 @@ fn swap_qz<T: RealField>(
 			stack,
 			Default::default(),
 		);
-
 		for j in 0..n2 {
 			let mut l = L.rb_mut().col_mut(j);
-
 			l.rb_mut().get_mut(..j).fill(zero());
-
 			l[j] = one();
 		}
-
 		for j in 0..n1 {
 			let mut r = RT_rev.rb_mut().col_mut(j);
-
 			r.rb_mut().get_mut(..j).fill(zero());
-
 			r[j] = one();
 		}
-
 		let L = L.rb();
-
 		let R = R.rb();
-
 		for mut M in [A.rb_mut(), B.rb_mut()] {
 			for mut m in M.rb_mut().get_mut(start..&start + &m, start..).col_iter_mut() {
 				for j in 0..n2 {
 					let l = L.col(j);
-
 					let tau = L_householder[(0, j)].copy();
-
 					let dot = (l.transpose() * m.rb()) * -tau.recip();
-
 					zip!(m.rb_mut(), l).for_each(|unzip!(dst, src)| *dst += &dot * src);
 				}
 			}
-
 			for mut m in M.rb_mut().get_mut(..&start + &m, start..&start + &m).row_iter_mut() {
 				for j in (0..n1).rev() {
 					let r = R.row(j);
-
 					let tau = R_householder[(0, j)].copy();
-
 					let dot = (m.rb() * r.transpose()) * -tau.recip();
-
 					zip!(m.rb_mut(), r).for_each(|unzip!(dst, src)| *dst += &dot * src);
 				}
 			}
 		}
-
 		if let Some(Q) = Q.rb_mut() {
 			let mut Q = Q.get_mut(.., start..&start + &m);
-
 			for j in 0..n2 {
 				let l = L.col(j);
-
 				let tau = L_householder[(0, j)].copy();
-
 				let (mut dot, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(Q.nrows(), 1, stack) };
-
 				let mut dot = dot.as_mat_mut().col_mut(0);
-
 				matmul(dot.rb_mut(), Accum::Replace, Q.rb(), l, one(), Par::Seq);
-
 				matmul(Q.rb_mut(), Accum::Add, dot.rb(), l.transpose(), -tau.recip(), Par::Seq);
 			}
 		}
-
 		if let Some(Z) = Z.rb_mut() {
 			let mut Z = Z.get_mut(.., start..&start + &m);
-
 			for j in (0..n1).rev() {
 				let r = R.row(j).transpose();
-
 				let tau = R_householder[(0, j)].copy();
-
 				let (mut dot, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(Z.nrows(), 1, stack) };
-
 				let mut dot = dot.as_mat_mut().col_mut(0);
-
 				matmul(dot.rb_mut(), Accum::Replace, Z.rb(), r, one(), Par::Seq);
-
 				matmul(Z.rb_mut(), Accum::Add, dot.rb(), r.transpose(), -tau.recip(), Par::Seq);
 			}
 		}
-
 		{
 			let mut start = start;
-
 			for nx in [n2, n1] {
 				if nx == 2 {
 					let mut A = A.rb_mut().get_mut(start..start + 2, start..);
-
 					let mut B = B.rb_mut().get_mut(start..start + 2, start..);
-
 					let (c, s, _) = make_givens(B[(0, 0)].copy(), B[(1, 0)].copy());
-
 					rot_rows(c.copy(), s.copy(), B.rb_mut(), 0, 1);
-
 					rot_rows(c.copy(), s.copy(), A.rb_mut(), 0, 1);
-
 					if let Some(Q) = Q.rb_mut() {
 						rot_cols(c.copy(), s.copy(), Q, start, start + 1);
 					}
 				}
-
 				start += nx;
 			}
 		}
-
 		for j in 0..m {
 			for i in j + 1..m {
 				B[(start + i, start + j)] = zero();
 			}
 		}
-
 		A.rb_mut().get_mut(&start + &n2..&start + &n2 + &n1, start..&start + &n2).fill(zero());
 	}
 }
-
 fn reorder_qz<T: RealField>(
 	mut A: MatMut<'_, T>,
 	mut B: MatMut<'_, T>,
@@ -3248,66 +2099,50 @@ fn reorder_qz<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let zero = zero::<T>;
-
 	let n = A.nrows();
-
 	if ifst > 0 {
 		if A[(ifst, ifst - 1)] != zero() {
 			ifst -= 1;
 		}
 	}
-
 	let mut nbf = 1;
-
 	if ifst < n - 1 {
 		if A[(ifst + 1, ifst)] != zero() {
 			nbf = 2;
 		}
 	}
-
 	if ilst > 0 {
 		if A[(ilst, ilst - 1)] != zero() {
 			ilst = ilst - 1;
 		}
 	}
-
 	let mut nbl = 1;
-
 	if ilst < n - 1 {
 		if A[(ilst + 1, ilst)] != zero() {
 			nbl = 2;
 		}
 	}
-
 	if ifst == ilst {
 		return;
 	}
-
 	if ifst < ilst {
 		if nbf == 2 && nbl == 1 {
 			ilst -= 1;
 		}
-
 		if nbf == 1 && nbl == 2 {
 			ilst += 1;
 		}
-
 		let mut here = ifst;
-
 		loop {
 			if nbf == 1 || nbf == 2 {
 				let mut nbnext = 1;
-
 				if &here + &nbf + 1 <= n - 1 {
 					if A[(here + nbf + 1, here + nbf)] != zero() {
 						nbnext = 2;
 					}
 				}
-
 				swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, nbf, nbnext, stack);
-
 				here += nbnext;
-
 				if nbf == 2 {
 					if A[(here + 1, here)] == zero() {
 						nbf = 3;
@@ -3315,61 +2150,46 @@ fn reorder_qz<T: RealField>(
 				}
 			} else {
 				let mut nbnext = 1;
-
 				if here + 3 <= n - 1 {
 					if A[(here + 3, here + 2)] != zero() {
 						nbnext = 2;
 					}
 				}
-
 				swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here + 1, 1, nbnext, stack);
-
 				if nbnext == 1 {
 					swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, 1, 1, stack);
-
 					here += 1;
 				} else {
 					if A[(here + 2, here + 1)] == zero() {
 						nbnext = 1;
 					}
-
 					if nbnext == 2 {
 						swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, 1, nbnext, stack);
-
 						here += 2;
 					} else {
 						swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, 1, 1, stack);
-
 						here += 1;
-
 						swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, 1, 1, stack);
-
 						here += 1;
 					}
 				}
 			}
-
 			if here >= ilst {
 				break;
 			}
 		}
 	} else {
 		let mut here = ifst;
-
 		loop {
 			if nbf == 1 || nbf == 2 {
 				let mut nbnext = 1;
-
 				if here >= 2 {
 					if A[(here - 1, here - 2)] != zero() {
 						nbnext = 2;
 					}
 				}
-
 				swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), &here - &nbnext, nbnext, nbf, stack);
-
 				here -= nbnext;
-
 				if nbf == 2 {
 					if A[(here + 1, here)] == zero() {
 						nbf = 3;
@@ -3377,47 +2197,36 @@ fn reorder_qz<T: RealField>(
 				}
 			} else {
 				let mut nbnext = 1;
-
 				if here >= 2 {
 					if A[(here - 1, here - 2)] != zero() {
 						nbnext = 2;
 					}
 				}
-
 				swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), &here - &nbnext, nbnext, 1, stack);
-
 				if nbnext == 1 {
 					swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, nbnext, 1, stack);
-
 					here -= 1;
 				} else {
 					if A[(here, here - 1)] == zero() {
 						nbnext = 1;
 					}
-
 					if nbnext == 2 {
 						swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here - 1, 2, 1, stack);
-
 						here -= 2;
 					} else {
 						swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, 1, 1, stack);
-
 						here -= 1;
-
 						swap_qz(A.rb_mut(), B.rb_mut(), Q.rb_mut(), Z.rb_mut(), here, 1, 1, stack);
-
 						here -= 1;
 					}
 				}
 			}
-
 			if here <= ilst {
 				break;
 			}
 		}
 	}
 }
-
 fn multishift_sweep<T: RealField>(
 	ilo: usize,
 	ihi: usize,
@@ -3435,69 +2244,45 @@ fn multishift_sweep<T: RealField>(
 	stack: &mut MemStack,
 ) {
 	let zero = zero::<T>;
-
 	let one = one::<T>;
-
 	let n = A.nrows();
-
 	let nshifts = sr.nrows();
-
 	if nshifts < 2 {
 		return;
 	}
-
 	if ilo >= ihi {
 		return;
 	}
-
 	let istartm;
-
 	let istopm;
-
 	if !eigvals_only {
 		istartm = 0;
-
 		istopm = n - 1;
 	} else {
 		istartm = ilo;
-
 		istopm = ihi;
 	}
-
 	let nblock_desired = QC.ncols();
-
 	for i in (0..nshifts - 2).step_by(2) {
 		if si[i] != -&si[i + 1] {
 			for mut v in [sr.rb_mut(), si.rb_mut(), ss.rb_mut()] {
 				let swap = v[i].copy();
-
 				v[i] = v[i + 1].copy();
-
 				v[i + 1] = v[i + 2].copy();
-
 				v[i + 2] = swap;
 			}
 		}
 	}
-
 	let ns = nshifts / 2 * 2;
-
 	let npos = Ord::max(&nblock_desired - &ns, 1);
-
 	let mut qc = QC.rb_mut().get_mut(..ns + 1, ..ns + 1);
-
 	let mut zc = ZC.rb_mut().get_mut(..ns, ..ns);
-
 	let mut v_storage = [zero(), zero(), zero()];
-
 	let mut v = ColMut::from_slice_mut(&mut v_storage);
-
 	for mut m in [qc.rb_mut(), zc.rb_mut()] {
 		m.fill(zero());
-
 		m.diagonal_mut().column_vector_mut().fill(one());
 	}
-
 	for i in (0..ns).step_by(2) {
 		laqz1(
 			A.rb().submatrix(ilo, ilo, 3, 3),
@@ -3509,33 +2294,19 @@ fn multishift_sweep<T: RealField>(
 			ss[i + 1].copy(),
 			v.rb_mut(),
 		);
-
 		let v1 = v[0].copy();
-
 		let mut v2 = v[1].copy();
-
 		let v3 = v[2].copy();
-
 		let (c1, s1, temp) = make_givens(v2, v3);
-
 		v2 = temp;
-
 		let (c2, s2, _) = make_givens(v1, v2);
-
 		rot_rows(c1.copy(), s1.copy(), A.rb_mut().subcols_mut(ilo, ns), ilo + 1, ilo + 2);
-
 		rot_rows(c2.copy(), s2.copy(), A.rb_mut().subcols_mut(ilo, ns), ilo + 0, ilo + 1);
-
 		rot_rows(c1.copy(), s1.copy(), B.rb_mut().subcols_mut(ilo, ns), ilo + 1, ilo + 2);
-
 		rot_rows(c2.copy(), s2.copy(), B.rb_mut().subcols_mut(ilo, ns), ilo + 0, ilo + 1);
-
 		rot_cols(c1.copy(), s1.copy(), qc.rb_mut(), 1, 2);
-
 		rot_cols(c2.copy(), s2.copy(), qc.rb_mut(), 0, 1);
-
 		let i = i + 1;
-
 		for j in 0..&ns - &i - 1 {
 			chase_bulge_2x2(
 				j,
@@ -3551,90 +2322,56 @@ fn multishift_sweep<T: RealField>(
 			);
 		}
 	}
-
 	let sheight = ns + 1;
-
 	let swidth = (istopm + 1).saturating_sub(&ilo + &ns);
-
 	if swidth > 0 {
 		{
 			let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(sheight, swidth, stack) };
-
 			let mut work = work.as_mat_mut();
-
 			for M in [A.rb_mut(), B.rb_mut()] {
 				let mut M = M.submatrix_mut(ilo, &ilo + &ns, sheight, swidth);
-
 				matmul(work.rb_mut(), Accum::Replace, qc.rb().adjoint(), M.rb(), one(), par);
-
 				M.copy_from(&work);
 			}
 		}
 	}
-
 	if let Some(mut Q) = Q.rb_mut() {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, sheight, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		let mut M = Q.rb_mut().get_mut(.., ilo..&ilo + &sheight);
-
 		matmul(work.rb_mut(), Accum::Replace, M.rb(), qc.rb(), one(), par);
-
 		M.copy_from(&work);
 	}
-
 	let sheight = ilo.saturating_sub(istartm);
-
 	let swidth = ns;
-
 	if sheight > 0 {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(sheight, swidth, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		for M in [A.rb_mut(), B.rb_mut()] {
 			let mut M = M.submatrix_mut(istartm, ilo, sheight, swidth);
-
 			matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
 	}
-
 	if let Some(mut Z) = Z.rb_mut() {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, swidth, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		let mut M = Z.rb_mut().get_mut(.., ilo..&ilo + &swidth);
-
 		matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 		M.copy_from(&work);
 	}
-
 	let mut k = ilo;
-
 	while k < &ihi - &ns {
 		let np = Ord::min(&ihi - &ns - &k, npos);
-
 		let nblock = &ns + &np;
-
 		let istartb = k + 1;
-
 		let istopb = &k + &nblock - 1;
-
 		let mut qc = QC.rb_mut().get_mut(..nblock, ..nblock);
-
 		let mut zc = ZC.rb_mut().get_mut(..nblock, ..nblock);
-
 		for mut m in [qc.rb_mut(), zc.rb_mut()] {
 			m.fill(zero());
-
 			m.diagonal_mut().column_vector_mut().fill(one());
 		}
-
 		for i in (0..ns).rev().step_by(2) {
 			for j in 0..np {
 				chase_bulge_2x2(
@@ -3651,87 +2388,54 @@ fn multishift_sweep<T: RealField>(
 				);
 			}
 		}
-
 		let sheight = &ns + &np;
-
 		let swidth = (istopm + 1).saturating_sub(&k + &ns + &np);
-
 		if swidth > 0 {
 			let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(sheight, swidth, stack) };
-
 			let mut work = work.as_mat_mut();
-
 			for M in [A.rb_mut(), B.rb_mut()] {
 				let mut M = M.get_mut(k + 1..k + 1 + sheight, &k + &ns + &np..&k + &ns + &np + &swidth);
-
 				matmul(work.rb_mut(), Accum::Replace, qc.rb().adjoint(), M.rb(), one(), par);
-
 				M.copy_from(&work);
 			}
 		}
-
 		if let Some(mut Q) = Q.rb_mut() {
 			let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, sheight, stack) };
-
 			let mut work = work.as_mat_mut();
-
 			let mut M = Q.rb_mut().get_mut(.., k + 1..k + 1 + sheight);
-
 			matmul(work.rb_mut(), Accum::Replace, M.rb(), qc.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
-
 		let sheight = (k + 1).saturating_sub(istartm);
-
 		let swidth = nblock;
-
 		if sheight > 0 {
 			let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(sheight, swidth, stack) };
-
 			let mut work = work.as_mat_mut();
-
 			for M in [A.rb_mut(), B.rb_mut()] {
 				let mut M = M.get_mut(istartm..&istartm + &sheight, k..&k + &swidth);
-
 				matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 				M.copy_from(&work);
 			}
 		}
-
 		if let Some(mut Z) = Z.rb_mut() {
 			let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, swidth, stack) };
-
 			let mut work = work.as_mat_mut();
-
 			let mut M = Z.rb_mut().get_mut(.., k..&k + &swidth);
-
 			matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
-
 		k += np;
 	}
-
 	let mut qc = QC.rb_mut().get_mut(..ns, ..ns);
-
 	let mut zc = ZC.rb_mut().get_mut(..ns + 1, ..ns + 1);
-
 	let istartb = ihi + 1 - ns;
-
 	let istopb = ihi;
-
 	for mut m in [qc.rb_mut(), zc.rb_mut()] {
 		m.fill(zero());
-
 		m.diagonal_mut().column_vector_mut().fill(one());
 	}
-
 	for i in (0..ns).step_by(2) {
 		let i = i + 1;
-
 		for ishift in &ihi - &i - 1..ihi - 1 {
 			chase_bulge_2x2(
 				ishift,
@@ -3747,72 +2451,45 @@ fn multishift_sweep<T: RealField>(
 			);
 		}
 	}
-
 	let sheight = ns;
-
 	let swidth = istopm.saturating_sub(ihi);
-
 	if swidth > 0 {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(sheight, swidth, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		for M in [A.rb_mut(), B.rb_mut()] {
 			let mut M = M.submatrix_mut(ihi + 1 - ns, ihi + 1, sheight, swidth);
-
 			matmul(work.rb_mut(), Accum::Replace, qc.rb().adjoint(), M.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
 	}
-
 	if let Some(mut Q) = Q.rb_mut() {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, sheight, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		let mut M = Q.rb_mut().get_mut(.., &ihi - &ns + 1..ihi + 1);
-
 		matmul(work.rb_mut(), Accum::Replace, M.rb(), qc.rb(), one(), par);
-
 		M.copy_from(&work);
 	}
-
 	let sheight = (ihi + 1).saturating_sub(&ns + &istartm);
-
 	let swidth = ns + 1;
-
 	if sheight > 0 {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(sheight, swidth, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		for M in [A.rb_mut(), B.rb_mut()] {
 			let mut M = M.submatrix_mut(istartm, &ihi - &ns, sheight, swidth);
-
 			matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 			M.copy_from(&work);
 		}
 	}
-
 	if let Some(mut Z) = Z.rb_mut() {
 		let (mut work, _) = unsafe { linalg::temp_mat_uninit::<T, _, _>(n, swidth, stack) };
-
 		let mut work = work.as_mat_mut();
-
 		let mut M = Z.rb_mut().get_mut(.., &ihi - &ns..ihi + 1);
-
 		matmul(work.rb_mut(), Accum::Replace, M.rb(), zc.rb(), one(), par);
-
 		M.copy_from(&work);
 	}
 }
-
 #[cfg(test)]
-
 mod tests {
-
 	use super::super::gen_hessenberg::{GeneralizedHessenbergParams, generalized_hessenberg, generalized_hessenberg_scratch};
 	use super::*;
 	use crate::utils::approx::*;
@@ -3820,70 +2497,49 @@ mod tests {
 	use dyn_stack::MemBuffer;
 	use equator::assert;
 	use stats::prelude::*;
-
 	fn make_pair(rng: &mut dyn RngCore, ns: &[usize]) -> (Mat<f64>, Mat<f64>) {
 		let dist = StandardNormal;
-
 		let n = ns.iter().sum::<usize>();
-
 		let mut A = Mat::zeros(n, n);
-
 		let mut B = Mat::zeros(n, n);
-
 		let mut pos = 0;
-
 		for &nx in ns {
 			equator::assert!(any(nx == 1, nx == 2));
-
 			for j in 0..nx {
 				for i in 0..pos + nx {
 					A[(i, pos + j)] = dist.sample(rng);
 				}
 			}
-
 			for j in 0..nx {
 				for i in 0..pos + j + 1 {
 					B[(i, pos + j)] = dist.sample(rng);
 				}
 			}
-
 			pos += nx;
 		}
-
 		(A, B)
 	}
-
 	fn geigval_2x2(A: MatRef<'_, f64>, B: MatRef<'_, f64>) -> (f64, f64, f64, f64) {
 		let (s1, s2, wr1, wr2, wi) =
 			generalized_eigval_2x2((A[(0, 0)], A[(0, 1)], A[(1, 0)], A[(1, 1)]), (B[(0, 0)], B[(0, 1)], B[(1, 0)], B[(1, 1)]));
-
 		let mut wr1 = wr1 / s1;
-
 		let mut wr2 = wr2 / s2;
-
 		let wi = wi / s1;
-
 		if wr2 < wr1 {
 			core::mem::swap(&mut wr1, &mut wr2);
 		}
-
 		(wr1, wi, wr2, -wi)
 	}
-
 	fn geigval_1x1(A: MatRef<'_, f64>, B: MatRef<'_, f64>) -> f64 {
 		A[(0, 0)] / B[(0, 0)]
 	}
-
 	#[test]
-
 	fn test_swap_qz_random() {
 		let approx_eq = crate::utils::approx::ApproxEq::<f64> {
 			abs_tol: 1e-10,
 			rel_tol: 1e-10,
 		};
-
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		for (n1, n2) in [(1, 1), (1, 2), (2, 1), (2, 2)] {
 			for (ns, j) in [
 				([n1, n2].as_slice(), 0),
@@ -3895,18 +2551,12 @@ mod tests {
 				([1, n1, n2].as_slice(), 1),
 			] {
 				let n = ns.iter().sum::<usize>();
-
 				for _ in 0..10 {
 					let (A, B) = make_pair(rng, ns);
-
 					let mut A_swap = A.clone();
-
 					let mut B_swap = B.clone();
-
 					let mut Q = Mat::identity(n, n);
-
 					let mut Z = Mat::identity(n, n);
-
 					swap_qz(
 						A_swap.as_mut(),
 						B_swap.as_mut(),
@@ -3917,79 +2567,53 @@ mod tests {
 						n2,
 						MemStack::new(&mut [core::mem::MaybeUninit::new(0u8); 16 * 1024]),
 					);
-
 					let A1 = A.get(j..j + n1, j..j + n1);
-
 					let A2 = A.get(j + n1..j + n1 + n2, j + n1..j + n1 + n2);
-
 					let B1 = B.get(j..j + n1, j..j + n1);
-
 					let B2 = B.get(j + n1..j + n1 + n2, j + n1..j + n1 + n2);
-
 					let A1_swap = A_swap.get(j..j + n2, j..j + n2);
-
 					let A2_swap = A_swap.get(j + n2..j + n2 + n1, j + n2..j + n2 + n1);
-
 					let B1_swap = B_swap.get(j..j + n2, j..j + n2);
-
 					let B2_swap = B_swap.get(j + n2..j + n2 + n1, j + n2..j + n2 + n1);
-
 					if n1 == 1 {
 						let w1 = geigval_1x1(A1, B1);
-
 						let w2_swap = geigval_1x1(A2_swap, B2_swap);
-
 						assert!(w1 ~ w2_swap);
 					} else {
 						let w1 = geigval_2x2(A1, B1);
-
 						let w2_swap = geigval_2x2(A2_swap, B2_swap);
-
 						assert!(
 							all(w1.0 ~ w2_swap.0, w1.1 ~ w2_swap.1, w1.2 ~ w2_swap.2, w1
 							.3 ~ w2_swap.3,)
 						);
 					}
-
 					if n2 == 1 {
 						let w1 = geigval_1x1(A2, B2);
-
 						let w2_swap = geigval_1x1(A1_swap, B1_swap);
-
 						assert!(w1 ~ w2_swap);
 					} else {
 						let w1 = geigval_2x2(A2, B2);
-
 						let w2_swap = geigval_2x2(A1_swap, B1_swap);
-
 						assert!(
 							all(w1.0 ~ w2_swap.0, w1.1 ~ w2_swap.1, w1.2 ~ w2_swap.2, w1
 							.3 ~ w2_swap.3,)
 						);
 					}
-
 					let approx_eq = CwiseMat(approx_eq);
-
 					let A_old = &Q * &A_swap * &Z.transpose();
-
 					let B_old = &Q * &B_swap * &Z.transpose();
-
 					assert!(all(A_old ~ A, B_old ~ B));
 				}
 			}
 		}
 	}
-
 	#[test]
-
 	fn test_swap_qz_edge_case() {
 		let approx_eq = ApproxEq::<f64> {
 			abs_tol: 1e-10,
 			rel_tol: 1e-10,
 		};
-
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		for (n1, n2) in [(1, 1), (2, 2)] {
 			for (ns, j) in [
 				([n1, n2].as_slice(), 0),
@@ -4001,26 +2625,16 @@ mod tests {
 				([1, n1, n2].as_slice(), 1),
 			] {
 				let n = ns.iter().sum::<usize>();
-
 				for _ in 0..10 {
 					let (mut A, mut B) = make_pair(rng, ns);
-
 					let A1 = A.get(j..j + n1, j..j + n1).to_owned();
-
 					let B1 = B.get(j..j + n1, j..j + n1).to_owned();
-
 					A.get_mut(j + n1..j + n1 + n2, j + n1..j + n1 + n2).copy_from(A1);
-
 					B.get_mut(j + n1..j + n1 + n2, j + n1..j + n1 + n2).copy_from(B1);
-
 					let mut A_swap = A.clone();
-
 					let mut B_swap = B.clone();
-
 					let mut Q = Mat::identity(n, n);
-
 					let mut Z = Mat::identity(n, n);
-
 					swap_qz(
 						A_swap.as_mut(),
 						B_swap.as_mut(),
@@ -4031,93 +2645,62 @@ mod tests {
 						n2,
 						MemStack::new(&mut [core::mem::MaybeUninit::new(0u8); 16 * 1024]),
 					);
-
 					let A1 = A.get(j..j + n1, j..j + n1);
-
 					let A2 = A.get(j + n1..j + n1 + n2, j + n1..j + n1 + n2);
-
 					let B1 = B.get(j..j + n1, j..j + n1);
-
 					let B2 = B.get(j + n1..j + n1 + n2, j + n1..j + n1 + n2);
-
 					let A1_swap = A_swap.get(j..j + n2, j..j + n2);
-
 					let A2_swap = A_swap.get(j + n2..j + n2 + n1, j + n2..j + n2 + n1);
-
 					let B1_swap = B_swap.get(j..j + n2, j..j + n2);
-
 					let B2_swap = B_swap.get(j + n2..j + n2 + n1, j + n2..j + n2 + n1);
-
 					if n1 == 1 {
 						let w1 = geigval_1x1(A1, B1);
-
 						let w2_swap = geigval_1x1(A2_swap, B2_swap);
-
 						assert!(w1 ~ w2_swap);
 					} else {
 						let w1 = geigval_2x2(A1, B1);
-
 						let w2_swap = geigval_2x2(A2_swap, B2_swap);
-
 						assert!(
 							all(w1.0 ~ w2_swap.0, w1.1 ~ w2_swap.1, w1.2 ~ w2_swap.2, w1
 							.3 ~ w2_swap.3,)
 						);
 					}
-
 					if n2 == 1 {
 						let w1 = geigval_1x1(A2, B2);
-
 						let w2_swap = geigval_1x1(A1_swap, B1_swap);
-
 						assert!(w1 ~ w2_swap);
 					} else {
 						let w1 = geigval_2x2(A2, B2);
-
 						let w2_swap = geigval_2x2(A1_swap, B1_swap);
-
 						assert!(
 							all(w1.0 ~ w2_swap.0, w1.1 ~ w2_swap.1, w1.2 ~ w2_swap.2, w1
 							.3 ~ w2_swap.3,)
 						);
 					}
-
 					let approx_eq = CwiseMat(approx_eq);
-
 					let A_old = &Q * &A_swap * &Z.transpose();
-
 					let B_old = &Q * &B_swap * &Z.transpose();
-
 					assert!(all(A_old ~ A, B_old ~ B));
 				}
 			}
 		}
 	}
-
 	#[test]
-
 	fn test_qz_real_unblocked() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		for n in [6, 12, 53, 102] {
 			let rand = stats::CwiseMatDistribution {
 				nrows: n,
 				ncols: n,
 				dist: StandardNormal,
 			};
-
 			let mut sample = || -> Mat<f64> { rand.sample(rng) };
-
 			let A = sample();
-
 			let mut B = sample();
-
 			zip!(&mut B).for_each_triangular_lower(linalg::zip::Diag::Skip, |unzip!(x)| {
 				*x = 0.0;
 			});
-
 			let B = B;
-
 			let mut mem = MemBuffer::new(generalized_hessenberg_scratch::<f64>(
 				n,
 				GeneralizedHessenbergParams {
@@ -4125,15 +2708,10 @@ mod tests {
 					..auto!(f64)
 				},
 			));
-
 			let mut Q = Mat::identity(n, n);
-
 			let mut Z = Mat::identity(n, n);
-
 			let mut A_clone = A.clone();
-
 			let mut B_clone = B.clone();
-
 			generalized_hessenberg(
 				A_clone.as_mut(),
 				B_clone.as_mut(),
@@ -4146,13 +2724,9 @@ mod tests {
 					..auto!(f64)
 				},
 			);
-
 			let mut alphar = Col::zeros(n);
-
 			let mut alphai = Col::zeros(n);
-
 			let mut beta = Col::zeros(n);
-
 			hessenberg_to_qz_unblocked(
 				0,
 				n - 1,
@@ -4165,47 +2739,36 @@ mod tests {
 				beta.as_mut(),
 				false,
 			);
-
 			assert!((&Q * &A_clone * Z.adjoint() - &A).norm_max() < 1e-13);
-
 			assert!((&Q * &B_clone * Z.adjoint() - &B).norm_max() < 1e-13);
-
 			for j in 0..n {
 				for i in j + 1..n {
 					assert!(B_clone[(i, j)] == 0.0);
 				}
 			}
-
 			let mut successive = false;
-
 			for j in 0..n {
 				if j + 1 < n {
 					if A_clone[(j + 1, j)] != 0.0 {
 						assert!(!successive);
-
 						successive = true;
 					} else {
 						successive = false;
 					}
 				}
-
 				for i in j + 2..n {
 					assert!(B_clone[(i, j)] == 0.0);
 				}
 			}
 		}
 	}
-
 	#[test]
-
 	fn test_qz_real_blocked() {
 		let rng = &mut StdRng::seed_from_u64(0);
-
 		let approx_eq = CwiseMat(ApproxEq::<f64> {
 			abs_tol: 1e-10,
 			rel_tol: 1e-10,
 		});
-
 		for n in [102, 251] {
 			for _ in 0..10 {
 				let rand = stats::CwiseMatDistribution {
@@ -4213,19 +2776,13 @@ mod tests {
 					ncols: n,
 					dist: StandardNormal,
 				};
-
 				let mut sample = || -> Mat<f64> { rand.sample(rng) };
-
 				let A = sample();
-
 				let mut B = sample();
-
 				zip!(&mut B).for_each_triangular_lower(linalg::zip::Diag::Skip, |unzip!(x)| {
 					*x = 0.0;
 				});
-
 				let B = B;
-
 				let mut mem = MemBuffer::new(generalized_hessenberg_scratch::<f64>(
 					n,
 					GeneralizedHessenbergParams {
@@ -4233,15 +2790,10 @@ mod tests {
 						..auto!(f64)
 					},
 				));
-
 				let mut Q = Mat::identity(n, n);
-
 				let mut Z = Mat::identity(n, n);
-
 				let mut A_clone = A.clone();
-
 				let mut B_clone = B.clone();
-
 				generalized_hessenberg(
 					A_clone.as_mut(),
 					B_clone.as_mut(),
@@ -4254,13 +2806,9 @@ mod tests {
 						..auto!(f64)
 					},
 				);
-
 				let mut alphar = Col::zeros(n);
-
 				let mut alphai = Col::zeros(n);
-
 				let mut beta = Col::zeros(n);
-
 				hessenberg_to_qz_blocked(
 					0,
 					n - 1,
@@ -4276,30 +2824,23 @@ mod tests {
 					auto!(f64),
 					MemStack::new(&mut MemBuffer::new(hessenberg_to_qz_scratch::<f64>(n, Par::Seq, auto!(f64)))),
 				);
-
 				assert!(& Q * & A_clone * Z.adjoint() ~ A);
-
 				assert!(& Q * & B_clone * Z.adjoint() ~ B);
-
 				for j in 0..n {
 					for i in j + 1..n {
 						assert!(B_clone[(i, j)] == 0.0);
 					}
 				}
-
 				let mut successive = false;
-
 				for j in 0..n {
 					if j + 1 < n {
 						if A_clone[(j + 1, j)] != 0.0 {
 							assert!(!successive);
-
 							successive = true;
 						} else {
 							successive = false;
 						}
 					}
-
 					for i in j + 2..n {
 						assert!(B_clone[(i, j)] == 0.0);
 					}

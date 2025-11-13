@@ -2,7 +2,6 @@
 //! $$A = L L^H$$
 //! where $L$ is a lower triangular matrix
 #![allow(missing_docs)]
-
 pub mod factor;
 pub mod inverse;
 pub mod reconstruct;
