@@ -73,12 +73,21 @@ fn faer(bencher: Bencher, PlotArg(n): PlotArg) {
 	let perm_inv = &mut *vec![0usize; n];
 	let par = Par::Seq;
 	let params = default();
-	let scratch = lblt::factor::cholesky_in_place_scratch::<usize, f64>(n, par, params);
+	let scratch =
+		lblt::factor::cholesky_in_place_scratch::<usize, f64>(n, par, params);
 	let mut mem = MemBuffer::new(scratch);
 	let stack = MemStack::new(&mut mem);
 	bencher.bench(|| {
 		lblt.copy_from_triangular_lower(&A);
-		lblt::factor::cholesky_in_place(lblt.rb_mut(), subdiag.rb_mut(), perm, perm_inv, par, stack, params);
+		lblt::factor::cholesky_in_place(
+			lblt.rb_mut(),
+			subdiag.rb_mut(),
+			perm,
+			perm_inv,
+			par,
+			stack,
+			params,
+		);
 	});
 }
 fn main() -> eyre::Result<()> {
@@ -88,7 +97,10 @@ fn main() -> eyre::Result<()> {
 		{
 			let f = list![faer];
 			#[cfg(any(openblas, mkl, blis))]
-			let f = diol::variadics::Cons { head: lapack, tail: f };
+			let f = diol::variadics::Cons {
+				head: lapack,
+				tail: f,
+			};
 			f
 		},
 		[64, 96, 128, 192, 256, 1024, 2048, 4096, 8192].map(PlotArg),

@@ -4,17 +4,37 @@ use crate::{MatRef, assert};
 use linalg::matmul::triangular::BlockStructure;
 pub fn has_spicy_matmul<T: ComplexField>() -> bool {
 	#[cfg(all(target_arch = "x86_64", feature = "std"))]
-	if const { T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32 } {
-		if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+	if const {
+		T::IS_NATIVE_F64
+			|| T::IS_NATIVE_F32
+			|| T::IS_NATIVE_C64
+			|| T::IS_NATIVE_C32
+	} {
+		if std::is_x86_feature_detected!("avx2")
+			&& std::is_x86_feature_detected!("fma")
+		{
 			return true;
 		}
 	}
 	false
 }
-pub fn spicy_matmul_scratch<T: ComplexField>(nrows: usize, ncols: usize, depth: usize, gather: bool, diag: bool) -> StackReq {
+pub fn spicy_matmul_scratch<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	depth: usize,
+	gather: bool,
+	diag: bool,
+) -> StackReq {
 	#[cfg(all(target_arch = "x86_64", feature = "std"))]
-	if const { T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32 } {
-		if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+	if const {
+		T::IS_NATIVE_F64
+			|| T::IS_NATIVE_F32
+			|| T::IS_NATIVE_C64
+			|| T::IS_NATIVE_C32
+	} {
+		if std::is_x86_feature_detected!("avx2")
+			&& std::is_x86_feature_detected!("fma")
+		{
 			return StackReq::EMPTY;
 		}
 	}
@@ -49,7 +69,9 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 	if nrows == 0 || ncols == 0 {
 		return;
 	}
-	let par = if (nrows * ncols).saturating_mul(depth) > 32usize * 32usize * 32usize {
+	let par = if (nrows * ncols).saturating_mul(depth)
+		> 32usize * 32usize * 32usize
+	{
 		par
 	} else {
 		Par::Seq
@@ -65,11 +87,18 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 		}
 	}
 	#[cfg(all(target_arch = "x86_64", feature = "std"))]
-	if const { T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32 } {
+	if const {
+		T::IS_NATIVE_F64
+			|| T::IS_NATIVE_F32
+			|| T::IS_NATIVE_C64
+			|| T::IS_NATIVE_C32
+	} {
 		use private_gemm_x86::*;
 		let feat = if std::arch::is_x86_feature_detected!("avx512f") {
 			Some(InstrSet::Avx512)
-		} else if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+		} else if std::arch::is_x86_feature_detected!("avx2")
+			&& std::arch::is_x86_feature_detected!("fma")
+		{
 			Some(InstrSet::Avx256)
 		} else {
 			None
@@ -80,7 +109,11 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			let mut B = B;
 			let mut row_idx = row_idx;
 			let mut col_idx = col_idx;
-			if matches!(C_block, BlockStructure::StrictTriangularLower | BlockStructure::UnitTriangularLower) {
+			if matches!(
+				C_block,
+				BlockStructure::StrictTriangularLower
+					| BlockStructure::UnitTriangularLower
+			) {
 				if nrows == 0 {
 					return;
 				}
@@ -91,7 +124,11 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 					C = C.get_mut(1.., ..);
 				}
 			}
-			if matches!(C_block, BlockStructure::StrictTriangularUpper | BlockStructure::UnitTriangularUpper) {
+			if matches!(
+				C_block,
+				BlockStructure::StrictTriangularUpper
+					| BlockStructure::UnitTriangularUpper
+			) {
 				if ncols == 0 {
 					return;
 				}
@@ -131,8 +168,10 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 					C.as_ptr_mut() as _,
 					C.row_stride(),
 					C.col_stride(),
-					row_idx.map(|idx| idx.as_ptr()).unwrap_or(core::ptr::null()) as _,
-					col_idx.map(|idx| idx.as_ptr()).unwrap_or(core::ptr::null()) as _,
+					row_idx.map(|idx| idx.as_ptr()).unwrap_or(core::ptr::null())
+						as _,
+					col_idx.map(|idx| idx.as_ptr()).unwrap_or(core::ptr::null())
+						as _,
 					match C_block {
 						BlockStructure::Rectangular => DstKind::Full,
 						BlockStructure::TriangularLower => DstKind::Lower,
@@ -150,7 +189,8 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 					A.row_stride(),
 					A.col_stride(),
 					conj_A == Conj::Yes,
-					D.map(|D| D.column_vector().as_ptr() as _).unwrap_or(core::ptr::null()),
+					D.map(|D| D.column_vector().as_ptr() as _)
+						.unwrap_or(core::ptr::null()),
 					D.map(|D| D.column_vector().row_stride()).unwrap_or(0),
 					B.as_ptr() as _,
 					B.row_stride(),
@@ -163,15 +203,32 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			}
 		}
 	}
-	let (mut out, stack) = unsafe { temp_mat_uninit::<T, _, _>(nrows, if row_idx.is_some() || col_idx.is_some() { ncols } else { 0 }, stack) };
+	let (mut out, stack) = unsafe {
+		temp_mat_uninit::<T, _, _>(
+			nrows,
+			if row_idx.is_some() || col_idx.is_some() {
+				ncols
+			} else {
+				0
+			},
+			stack,
+		)
+	};
 	let mut out = out.as_mat_mut();
-	let (mut scaled, stack) = unsafe { temp_mat_uninit::<T, _, _>(nrows, if D.is_some() { depth } else { 0 }, stack) };
+	let (mut scaled, stack) = unsafe {
+		temp_mat_uninit::<T, _, _>(
+			nrows,
+			if D.is_some() { depth } else { 0 },
+			stack,
+		)
+	};
 	let mut scaled = scaled.as_mat_mut();
 	let _ = stack;
 	let A = if let Some(D) = D {
 		for k in 0..depth {
 			let ref d = D[k].real();
-			zip!(scaled.rb_mut().col_mut(k), A.col(k)).for_each(|unzip!(x, y)| *x = y.mul_real(d));
+			zip!(scaled.rb_mut().col_mut(k), A.col(k))
+				.for_each(|unzip!(x, y)| *x = y.mul_real(d));
 		}
 		scaled.rb()
 	} else {
@@ -188,7 +245,11 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			linalg::matmul::triangular::matmul_with_conj(
 				C,
 				C_block,
-				if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+				if row_idx.is_some() || col_idx.is_some() {
+					Accum::Replace
+				} else {
+					beta
+				},
 				A,
 				BlockStructure::Rectangular,
 				conj_A,
@@ -202,7 +263,11 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			linalg::matmul::triangular::matmul_with_conj(
 				C.rb_mut().get_mut(..size, ..size),
 				C_block,
-				if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+				if row_idx.is_some() || col_idx.is_some() {
+					Accum::Replace
+				} else {
+					beta
+				},
 				A.get(..size, ..),
 				BlockStructure::Rectangular,
 				conj_A,
@@ -215,7 +280,11 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			if C_block.is_lower() && nrows > ncols {
 				linalg::matmul::matmul_with_conj(
 					C.rb_mut().get_mut(size.., ..size),
-					if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+					if row_idx.is_some() || col_idx.is_some() {
+						Accum::Replace
+					} else {
+						beta
+					},
 					A.get(size.., ..),
 					conj_A,
 					B.get(.., ..size),
@@ -226,7 +295,11 @@ pub fn spicy_matmul<I: Index, T: ComplexField>(
 			} else if ncols > nrows {
 				linalg::matmul::matmul_with_conj(
 					C.rb_mut().get_mut(..size, size..),
-					if row_idx.is_some() || col_idx.is_some() { Accum::Replace } else { beta },
+					if row_idx.is_some() || col_idx.is_some() {
+						Accum::Replace
+					} else {
+						beta
+					},
 					A.get(..size, ..),
 					conj_A,
 					B.get(.., size..),

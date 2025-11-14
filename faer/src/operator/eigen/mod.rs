@@ -33,7 +33,15 @@ impl Default for PartialEigenParams {
 		}
 	}
 }
-fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMut<'_, T>, start: usize, end: usize, par: Par, stack: &mut MemStack) {
+fn iterate_arnoldi<T: ComplexField>(
+	A: &dyn LinOp<T>,
+	H: MatMut<'_, T>,
+	V: MatMut<'_, T>,
+	start: usize,
+	end: usize,
+	par: Par,
+	stack: &mut MemStack,
+) {
 	let mut V = V;
 	let mut H = H;
 	for j in start..end + 1 {
@@ -42,22 +50,30 @@ fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMu
 		let (V, Vnext) = V.rb_mut().split_at_col_mut(j);
 		let V = V.rb();
 		let mut Vnext = Vnext.col_mut(0);
-		A.apply(Vnext.rb_mut().as_mat_mut(), V.col(j - 1).as_mat(), par, stack);
+		A.apply(
+			Vnext.rb_mut().as_mat_mut(),
+			V.col(j - 1).as_mat(),
+			par,
+			stack,
+		);
 		let (mut converged, _) = stack.collect(core::iter::repeat_n(false, j));
 		let mut h = H.rb_mut().get_mut(..j);
 		for i in 0..j {
 			let r = V.col(i).adjoint() * Vnext.rb();
-			zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y -= &r * x);
+			zip!(Vnext.rb_mut(), V.col(i))
+				.for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y -= &r * x);
 			h[i] = r;
 		}
-		let ref f = from_f64::<T::Real>(Ord::max(j, 8) as f64) * eps::<T::Real>();
+		let ref f =
+			from_f64::<T::Real>(Ord::max(j, 8) as f64) * eps::<T::Real>();
 		loop {
 			let mut all_true = true;
 			for i in 0..j {
 				if !converged[i] {
 					all_true = false;
 					let ref r = V.col(i).adjoint() * Vnext.rb();
-					zip!(Vnext.rb_mut(), V.col(i)).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y -= r * x);
+					zip!(Vnext.rb_mut(), V.col(i))
+						.for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y -= r * x);
 					h[i] += r;
 					converged[i] = r.abs() < f * Vnext.norm_l2();
 				}
@@ -74,15 +90,34 @@ fn iterate_arnoldi<T: ComplexField>(A: &dyn LinOp<T>, H: MatMut<'_, T>, V: MatMu
 		H[j] = norm.to_cplx();
 	}
 }
-fn schur_swap<T: ComplexField>(a: MatMut<T>, q: Option<MatMut<T>>, j0: usize, n1: usize, n2: usize) -> isize {
+fn schur_swap<T: ComplexField>(
+	a: MatMut<T>,
+	q: Option<MatMut<T>>,
+	j0: usize,
+	n1: usize,
+	n2: usize,
+) -> isize {
 	if const { T::IS_REAL } {
-		unsafe { schur::real_schur::schur_swap::<T::Real>(core::mem::transmute(a), core::mem::transmute(q), j0, n1, n2) }
+		unsafe {
+			schur::real_schur::schur_swap::<T::Real>(
+				core::mem::transmute(a),
+				core::mem::transmute(q),
+				j0,
+				n1,
+				n2,
+			)
+		}
 	} else {
 		assert!(all(n1 == 1, n2 == 1));
 		schur::complex_schur::schur_swap(a, q, j0)
 	}
 }
-fn reorder_schur<T: ComplexField>(mut A: MatMut<'_, T>, mut Q: Option<MatMut<'_, T>>, mut ifst: usize, mut ilst: usize) {
+fn reorder_schur<T: ComplexField>(
+	mut A: MatMut<'_, T>,
+	mut Q: Option<MatMut<'_, T>>,
+	mut ifst: usize,
+	mut ilst: usize,
+) {
 	let zero = zero::<T>();
 	let n = A.nrows();
 	let mut nbf = 1;
@@ -238,7 +273,8 @@ fn partial_schur_real_imp<T: RealField>(
 	stack: &mut MemStack,
 ) -> usize {
 	let n = A.nrows();
-	let (mut H, stack) = temp_mat_zeroed::<T, _, _>(max_dim + 1, max_dim, stack);
+	let (mut H, stack) =
+		temp_mat_zeroed::<T, _, _>(max_dim + 1, max_dim, stack);
 	let mut H = H.as_mat_mut();
 	let (mut V, stack) = temp_mat_zeroed::<T, _, _>(n, max_dim + 1, stack);
 	let mut V = V.as_mat_mut();
@@ -250,19 +286,26 @@ fn partial_schur_real_imp<T: RealField>(
 	let mut tmp = tmp.as_mat_mut();
 	let mut active = 0usize;
 	if max_dim < n {
-		let (mut Q, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
+		let (mut Q, stack) =
+			temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
 		let mut Q = Q.as_mat_mut();
-		let (mut residual, stack) = temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
+		let (mut residual, stack) =
+			temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
 		let mut residual = residual.as_mat_mut().col_mut(0);
 		let (mut w, stack) = temp_mat_zeroed::<T, _, _>(max_dim, 2, stack);
 		let mut w = w.as_mat_mut();
-		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(max_dim, max_dim);
-		let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, max_dim, stack);
+		let block_size =
+			linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+				max_dim, max_dim,
+			);
+		let (mut householder, stack) =
+			temp_mat_zeroed::<T, _, _>(block_size, max_dim, stack);
 		let mut householder = householder.as_mat_mut();
 		let f = v0.norm_l2();
 		if f > min_positive() {
 			let ref f = f.recip();
-			zip!(V.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = f * x);
+			zip!(V.rb_mut().col_mut(0), v0)
+				.for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = f * x);
 		} else {
 			let n0 = n as u32;
 			let n1 = (n >> 32) as u32;
@@ -274,19 +317,40 @@ fn partial_schur_real_imp<T: RealField>(
 		let mut k = min_dim;
 		for iter in 0..restarts {
 			_ = iter;
-			iterate_arnoldi(A, H.as_mut(), V.as_mut(), k + 1, max_dim, par, stack);
+			iterate_arnoldi(
+				A,
+				H.as_mut(),
+				V.as_mut(),
+				k + 1,
+				max_dim,
+				par,
+				stack,
+			);
 			let ref Hmm = H[(max_dim, max_dim - 1)].abs();
 			let n = max_dim - active;
-			let (mut w_re, mut w_im) = w.rb_mut().get_mut(active..max_dim, ..).two_cols_mut(0, 1);
+			let (mut w_re, mut w_im) =
+				w.rb_mut().get_mut(active..max_dim, ..).two_cols_mut(0, 1);
 			Q.fill(zero());
 			Q.rb_mut().diagonal_mut().fill(one());
-			let mut Q_slice = Q.rb_mut().get_mut(active..max_dim, active..max_dim);
-			let mut H_slice = H.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut Q_slice =
+				Q.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut H_slice =
+				H.rb_mut().get_mut(active..max_dim, active..max_dim);
 			{
 				let n = max_dim - active;
-				let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
-				let mut householder = householder.rb_mut().get_mut(..block_size, ..n - 1);
-				linalg::evd::hessenberg::hessenberg_in_place(H_slice.rb_mut(), householder.rb_mut(), par, stack, default());
+				let block_size =
+					linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+						n, n,
+					);
+				let mut householder =
+					householder.rb_mut().get_mut(..block_size, ..n - 1);
+				linalg::evd::hessenberg::hessenberg_in_place(
+					H_slice.rb_mut(),
+					householder.rb_mut(),
+					par,
+					stack,
+					default(),
+				);
 				linalg::householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
 					H_slice.rb().submatrix(1, 0, n - 1, n - 1),
 					householder.rb(),
@@ -320,7 +384,11 @@ fn partial_schur_real_imp<T: RealField>(
 				let mut max = zero::<T>();
 				while i < n {
 					let cplx = i + 1 < n && H_slice[(i + 1, i)] != zero::<T>();
-					let (v, bs) = if cplx { (w_re[i].hypot(&w_im[i]), 2) } else { (w_re[i].abs(), 1) };
+					let (v, bs) = if cplx {
+						(w_re[i].hypot(&w_im[i]), 2)
+					} else {
+						(w_re[i].abs(), 1)
+					};
 					if v > max {
 						max = v;
 						idx = i;
@@ -331,9 +399,22 @@ fn partial_schur_real_imp<T: RealField>(
 				let cplx = i + 1 < n && H_slice[(i + 1, i)] != zero::<T>();
 				let bs = if cplx { 2 } else { 1 };
 				if i != j {
-					reorder_schur(H_slice.rb_mut(), Some(Q_slice.rb_mut()), i, j);
-					let x_re = w_re.rb_mut().try_as_col_major_mut().unwrap().as_slice_mut();
-					let x_im = w_im.rb_mut().try_as_col_major_mut().unwrap().as_slice_mut();
+					reorder_schur(
+						H_slice.rb_mut(),
+						Some(Q_slice.rb_mut()),
+						i,
+						j,
+					);
+					let x_re = w_re
+						.rb_mut()
+						.try_as_col_major_mut()
+						.unwrap()
+						.as_slice_mut();
+					let x_im = w_im
+						.rb_mut()
+						.try_as_col_major_mut()
+						.unwrap()
+						.as_slice_mut();
 					for x in [x_re, x_im] {
 						x[j..i + bs].rotate_right(bs)
 					}
@@ -341,12 +422,31 @@ fn partial_schur_real_imp<T: RealField>(
 				j += bs;
 			}
 			let mut X = X.rb_mut().get_mut(..n, ..n);
-			linalg::evd::evd_from_real_schur_imp(H_slice.rb(), X.as_mut(), par, auto!(T));
+			linalg::evd::evd_from_real_schur_imp(
+				H_slice.rb(),
+				X.as_mut(),
+				par,
+				auto!(T),
+			);
 			let mut vecs = vecs.rb_mut().get_mut(..n, ..n);
-			matmul(vecs.rb_mut(), Accum::Replace, Q_slice.rb(), X.rb(), one(), par);
+			matmul(
+				vecs.rb_mut(),
+				Accum::Replace,
+				Q_slice.rb(),
+				X.rb(),
+				one(),
+				par,
+			);
 			let vecs = vecs.rb();
 			let mut H_tmp = tmp.rb_mut().get_mut(..active, ..);
-			matmul(H_tmp.rb_mut(), Accum::Replace, H.rb().get(..active, ..), Q.rb(), one(), par);
+			matmul(
+				H_tmp.rb_mut(),
+				Accum::Replace,
+				H.rb().get(..active, ..),
+				Q.rb(),
+				one(),
+				par,
+			);
 			H.rb_mut().get_mut(..active, ..).copy_from(&H_tmp);
 			let mut j = 0usize;
 			while j < n {
@@ -412,7 +512,12 @@ fn partial_schur_real_imp<T: RealField>(
 				let bs = if cplx { 2 } else { 1 };
 				match groups[hi] {
 					Group::Lock => {
-						reorder_schur(H.rb_mut().get_mut(..max_dim, ..max_dim), Some(Q.as_mut()), hi, lo);
+						reorder_schur(
+							H.rb_mut().get_mut(..max_dim, ..max_dim),
+							Some(Q.as_mut()),
+							hi,
+							lo,
+						);
 						for k in 0..bs {
 							residual[lo + k] = residual[hi + k].copy();
 						}
@@ -421,7 +526,12 @@ fn partial_schur_real_imp<T: RealField>(
 						hi += bs;
 					},
 					Group::Retain => {
-						reorder_schur(H.rb_mut().get_mut(..max_dim, ..max_dim), Some(Q.as_mut()), hi, mi);
+						reorder_schur(
+							H.rb_mut().get_mut(..max_dim, ..max_dim),
+							Some(Q.as_mut()),
+							hi,
+							mi,
+						);
 						mi += bs;
 						hi += bs;
 					},
@@ -441,7 +551,14 @@ fn partial_schur_real_imp<T: RealField>(
 			);
 			V.rb_mut().get_mut(.., purge..k).copy_from(&V_tmp);
 			let mut b_tmp = tmp.rb_mut().get_mut(0, ..);
-			matmul(b_tmp.rb_mut(), Accum::Replace, H.rb().get(max_dim, ..), Q.rb(), one(), par);
+			matmul(
+				b_tmp.rb_mut(),
+				Accum::Replace,
+				H.rb().get(max_dim, ..),
+				Q.rb(),
+				one(),
+				par,
+			);
 			H.rb_mut().get_mut(max_dim, ..).copy_from(b_tmp);
 			let (mut x, y) = V.rb_mut().two_cols_mut(k, max_dim);
 			x.copy_from(&y);
@@ -460,12 +577,23 @@ fn partial_schur_real_imp<T: RealField>(
 		A.apply(H.rb_mut(), V.rb(), par, stack);
 		let (mut w, stack) = temp_mat_zeroed::<T, _, _>(n, 2, stack);
 		let mut w = w.as_mat_mut();
-		let (mut w_re, mut w_im) = w.rb_mut().get_mut(active..max_dim, ..).two_cols_mut(0, 1);
+		let (mut w_re, mut w_im) =
+			w.rb_mut().get_mut(active..max_dim, ..).two_cols_mut(0, 1);
 		{
-			let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
-			let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, n - 1, stack);
+			let block_size =
+				linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+					n, n,
+				);
+			let (mut householder, stack) =
+				temp_mat_zeroed::<T, _, _>(block_size, n - 1, stack);
 			let mut householder = householder.as_mat_mut();
-			linalg::evd::hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, default());
+			linalg::evd::hessenberg::hessenberg_in_place(
+				H.rb_mut(),
+				householder.rb_mut(),
+				par,
+				stack,
+				default(),
+			);
 			linalg::householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
 				H.rb().submatrix(1, 0, n - 1, n - 1),
 				householder.rb(),
@@ -551,21 +679,32 @@ fn partial_schur_real_imp<T: RealField>(
 			eigvals[idx] = Complex::new(re.copy(), im);
 			if idx + 1 < limit {
 				let (ej, ej1) = eigvecs.rb_mut().two_cols_mut(idx, idx + 1);
-				zip!(ej, ej1, v_re, v_im).for_each(|unzip!(y0, y1, re, im): Zip!(&mut Complex<T>, &mut Complex<T>, &T, &T)| {
-					*y0 = Complex::new(re.copy(), im.copy());
-					*y1 = Complex::new(re.copy(), -im);
-				});
+				zip!(ej, ej1, v_re, v_im).for_each(
+					|unzip!(y0, y1, re, im): Zip!(
+						&mut Complex<T>,
+						&mut Complex<T>,
+						&T,
+						&T
+					)| {
+						*y0 = Complex::new(re.copy(), im.copy());
+						*y1 = Complex::new(re.copy(), -im);
+					},
+				);
 			} else {
 				let ej = eigvecs.rb_mut().col_mut(idx);
-				zip!(ej, v_re, v_im).for_each(|unzip!(y0, re, im): Zip!(&mut Complex<T>, &T, &T)| {
-					*y0 = Complex::new(re.copy(), im.copy());
-				});
+				zip!(ej, v_re, v_im).for_each(
+					|unzip!(y0, re, im): Zip!(&mut Complex<T>, &T, &T)| {
+						*y0 = Complex::new(re.copy(), im.copy());
+					},
+				);
 			}
 		} else {
 			eigvals[idx] = Complex::new(re.copy(), zero());
-			zip!(eigvecs.rb_mut().col_mut(idx), v_re).for_each(|unzip!(y, x): Zip!(&mut Complex<T>, &T)| {
-				*y = Complex::new(x.copy(), zero());
-			});
+			zip!(eigvecs.rb_mut().col_mut(idx), v_re).for_each(
+				|unzip!(y, x): Zip!(&mut Complex<T>, &T)| {
+					*y = Complex::new(x.copy(), zero());
+				},
+			);
 		}
 		idx += bs;
 	}
@@ -585,7 +724,8 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 	stack: &mut MemStack,
 ) -> usize {
 	let n = A.nrows();
-	let (mut H, stack) = temp_mat_zeroed::<T, _, _>(max_dim + 1, max_dim, stack);
+	let (mut H, stack) =
+		temp_mat_zeroed::<T, _, _>(max_dim + 1, max_dim, stack);
 	let mut H = H.as_mat_mut();
 	let (mut V, stack) = temp_mat_zeroed::<T, _, _>(n, max_dim + 1, stack);
 	let mut V = V.as_mat_mut();
@@ -599,17 +739,24 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 	if max_dim < n {
 		let (mut w, stack) = temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
 		let mut w = w.as_mat_mut().col_mut(0);
-		let (mut residual, stack) = temp_mat_zeroed::<T::Real, _, _>(max_dim, 1, stack);
+		let (mut residual, stack) =
+			temp_mat_zeroed::<T::Real, _, _>(max_dim, 1, stack);
 		let mut residual = residual.as_mat_mut().col_mut(0);
-		let (mut Q, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
+		let (mut Q, stack) =
+			temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
 		let mut Q = Q.as_mat_mut();
-		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(max_dim, max_dim);
-		let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, max_dim, stack);
+		let block_size =
+			linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+				max_dim, max_dim,
+			);
+		let (mut householder, stack) =
+			temp_mat_zeroed::<T, _, _>(block_size, max_dim, stack);
 		let mut householder = householder.as_mat_mut();
 		let f = v0.norm_l2();
 		if f > min_positive() {
 			let f = f.recip();
-			zip!(V.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = x.mul_real(&f));
+			zip!(V.rb_mut().col_mut(0), v0)
+				.for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y = x.mul_real(&f));
 		} else {
 			let n0 = n as u32;
 			let n1 = (n >> 32) as u32;
@@ -621,19 +768,39 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let mut k = min_dim;
 		for iter in 0..restarts {
 			_ = iter;
-			iterate_arnoldi(A, H.as_mut(), V.as_mut(), k + 1, max_dim, par, stack);
+			iterate_arnoldi(
+				A,
+				H.as_mut(),
+				V.as_mut(),
+				k + 1,
+				max_dim,
+				par,
+				stack,
+			);
 			let ref Hmm = H[(max_dim, max_dim - 1)].copy();
 			let n = max_dim - active;
 			let mut w = w.rb_mut().get_mut(active..max_dim);
 			Q.fill(zero());
 			Q.rb_mut().diagonal_mut().fill(one());
-			let mut Q_slice = Q.rb_mut().get_mut(active..max_dim, active..max_dim);
-			let mut H_slice = H.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut Q_slice =
+				Q.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut H_slice =
+				H.rb_mut().get_mut(active..max_dim, active..max_dim);
 			{
 				let n = max_dim - active;
-				let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
-				let mut householder = householder.rb_mut().get_mut(..block_size, ..n - 1);
-				linalg::evd::hessenberg::hessenberg_in_place(H_slice.rb_mut(), householder.rb_mut(), par, stack, default());
+				let block_size =
+					linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+						n, n,
+					);
+				let mut householder =
+					householder.rb_mut().get_mut(..block_size, ..n - 1);
+				linalg::evd::hessenberg::hessenberg_in_place(
+					H_slice.rb_mut(),
+					householder.rb_mut(),
+					par,
+					stack,
+					default(),
+				);
 				linalg::householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
 					H_slice.rb().submatrix(1, 0, n - 1, n - 1),
 					householder.rb(),
@@ -648,7 +815,17 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 					}
 				}
 			}
-			schur::complex_schur::multishift_qr(true, H_slice.rb_mut(), Some(Q_slice.rb_mut()), w.rb_mut(), 0, n, par, stack, auto!(T));
+			schur::complex_schur::multishift_qr(
+				true,
+				H_slice.rb_mut(),
+				Some(Q_slice.rb_mut()),
+				w.rb_mut(),
+				0,
+				n,
+				par,
+				stack,
+				auto!(T),
+			);
 			for j in 0..n {
 				let mut idx = j;
 				let mut max = zero::<T::Real>();
@@ -661,21 +838,49 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 				}
 				let i = idx;
 				if i != j {
-					reorder_schur(H_slice.rb_mut(), Some(Q_slice.rb_mut()), i, j);
-					w.rb_mut().try_as_col_major_mut().unwrap().as_slice_mut()[j..i + 1].rotate_right(1);
+					reorder_schur(
+						H_slice.rb_mut(),
+						Some(Q_slice.rb_mut()),
+						i,
+						j,
+					);
+					w.rb_mut().try_as_col_major_mut().unwrap().as_slice_mut()
+						[j..i + 1]
+						.rotate_right(1);
 				}
 			}
 			let mut X = X.rb_mut().get_mut(..n, ..n);
-			linalg::evd::evd_from_cplx_schur_imp(H_slice.rb(), Conj::No, X.as_mut(), par, auto!(T));
+			linalg::evd::evd_from_cplx_schur_imp(
+				H_slice.rb(),
+				Conj::No,
+				X.as_mut(),
+				par,
+				auto!(T),
+			);
 			let mut vecs = vecs.rb_mut().get_mut(..n, ..n);
-			matmul(vecs.rb_mut(), Accum::Replace, Q_slice.rb(), X.rb(), one(), par);
+			matmul(
+				vecs.rb_mut(),
+				Accum::Replace,
+				Q_slice.rb(),
+				X.rb(),
+				one(),
+				par,
+			);
 			let vecs = vecs.rb();
 			let mut H_tmp = tmp.rb_mut().get_mut(..active, ..);
-			matmul(H_tmp.rb_mut(), Accum::Replace, H.rb().get(..active, ..), Q.rb(), one(), par);
+			matmul(
+				H_tmp.rb_mut(),
+				Accum::Replace,
+				H.rb().get(..active, ..),
+				Q.rb(),
+				one(),
+				par,
+			);
 			H.rb_mut().get_mut(..active, ..).copy_from(&H_tmp);
 			let ref Hmm_abs = Hmm.abs();
 			for j in 0..n {
-				residual[active + j] = Hmm_abs * vecs[(max_dim - active - 1, j)].abs();
+				residual[active + j] =
+					Hmm_abs * vecs[(max_dim - active - 1, j)].abs();
 			}
 			#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 			enum Group {
@@ -716,14 +921,24 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 			while hi < max_dim {
 				match groups[hi] {
 					Group::Lock => {
-						reorder_schur(H.rb_mut().get_mut(..max_dim, ..max_dim), Some(Q.as_mut()), hi, lo);
+						reorder_schur(
+							H.rb_mut().get_mut(..max_dim, ..max_dim),
+							Some(Q.as_mut()),
+							hi,
+							lo,
+						);
 						residual[lo] = residual[hi].copy();
 						lo += 1;
 						mi += 1;
 						hi += 1;
 					},
 					Group::Retain => {
-						reorder_schur(H.rb_mut().get_mut(..max_dim, ..max_dim), Some(Q.as_mut()), hi, mi);
+						reorder_schur(
+							H.rb_mut().get_mut(..max_dim, ..max_dim),
+							Some(Q.as_mut()),
+							hi,
+							mi,
+						);
 						mi += 1;
 						hi += 1;
 					},
@@ -743,7 +958,14 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 			);
 			V.rb_mut().get_mut(.., purge..k).copy_from(&V_tmp);
 			let mut b_tmp = tmp.rb_mut().get_mut(0, ..);
-			matmul(b_tmp.rb_mut(), Accum::Replace, H.rb().get(max_dim, ..), Q.rb(), one(), par);
+			matmul(
+				b_tmp.rb_mut(),
+				Accum::Replace,
+				H.rb().get(max_dim, ..),
+				Q.rb(),
+				one(),
+				par,
+			);
 			H.rb_mut().get_mut(max_dim, ..).copy_from(b_tmp);
 			let (mut x, y) = V.rb_mut().two_cols_mut(k, max_dim);
 			x.copy_from(&y);
@@ -763,10 +985,20 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let (mut w, stack) = temp_mat_zeroed::<T, _, _>(n, 1, stack);
 		let mut w = w.as_mat_mut();
 		{
-			let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
-			let (mut householder, stack) = temp_mat_zeroed::<T, _, _>(block_size, n - 1, stack);
+			let block_size =
+				linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+					n, n,
+				);
+			let (mut householder, stack) =
+				temp_mat_zeroed::<T, _, _>(block_size, n - 1, stack);
 			let mut householder = householder.as_mat_mut();
-			linalg::evd::hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, default());
+			linalg::evd::hessenberg::hessenberg_in_place(
+				H.rb_mut(),
+				householder.rb_mut(),
+				par,
+				stack,
+				default(),
+			);
 			linalg::householder::apply_block_householder_sequence_on_the_right_in_place_with_conj(
 				H.rb().submatrix(1, 0, n - 1, n - 1),
 				householder.rb(),
@@ -781,14 +1013,30 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 				}
 			}
 		}
-		schur::complex_schur::multishift_qr(true, H.rb_mut(), Some(V.rb_mut()), w.rb_mut().col_mut(0), 0, n, par, stack, auto!(T));
+		schur::complex_schur::multishift_qr(
+			true,
+			H.rb_mut(),
+			Some(V.rb_mut()),
+			w.rb_mut().col_mut(0),
+			0,
+			n,
+			par,
+			stack,
+			auto!(T),
+		);
 		active = n;
 	}
 	let n = active;
 	let H = H.rb().get(..n, ..n);
 	let V = V.rb().get(.., ..n);
 	let mut X = X.rb_mut().get_mut(..n, ..n);
-	linalg::evd::evd_from_cplx_schur_imp(H, Conj::No, X.as_mut(), par, auto!(T));
+	linalg::evd::evd_from_cplx_schur_imp(
+		H,
+		Conj::No,
+		X.as_mut(),
+		par,
+		auto!(T),
+	);
 	let mut vecs = tmp.rb_mut().get_mut(.., ..n);
 	matmul(vecs.rb_mut(), Accum::Replace, V, X.rb(), one(), par);
 	let V = vecs.rb();
@@ -813,22 +1061,33 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 		let w = &H[(j, j)];
 		let v = V.col(j);
 		eigvals[idx] = Complex::new(w.real(), w.imag());
-		zip!(eigvecs.rb_mut().col_mut(idx), v).for_each(|unzip!(y, x): Zip!(&mut Complex<T::Real>, &T)| {
-			*y = Complex::new(x.real(), x.imag());
-		});
+		zip!(eigvecs.rb_mut().col_mut(idx), v).for_each(
+			|unzip!(y, x): Zip!(&mut Complex<T::Real>, &T)| {
+				*y = Complex::new(x.real(), x.imag());
+			},
+		);
 	}
 	limit
 }
-/// computes the layout of required workspace for computing the `n_eigval` eigenvalues
-/// (and corresponding eigenvectors) of $A$ with the largest magnitude.
-pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize, par: Par, params: PartialEigenParams) -> StackReq {
+/// computes the layout of required workspace for computing the `n_eigval`
+/// eigenvalues (and corresponding eigenvectors) of $A$ with the largest
+/// magnitude.
+pub fn partial_eigen_scratch<T: ComplexField>(
+	A: &dyn LinOp<T>,
+	n_eigval: usize,
+	par: Par,
+	params: PartialEigenParams,
+) -> StackReq {
 	let n = A.nrows();
 	assert!(A.ncols() == n);
 	if n == 0 {
 		return StackReq::EMPTY;
 	}
 	let n_eigval = Ord::min(n_eigval, n);
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
+	let max_dim = Ord::min(
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)),
+		n,
+	);
 	let w = temp_mat_scratch::<T>(max_dim, if T::IS_REAL { 2 } else { 1 });
 	let residual = temp_mat_scratch::<T::Real>(max_dim, 1);
 	let H = temp_mat_scratch::<T>(max_dim + 1, max_dim);
@@ -837,12 +1096,26 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize,
 	let X = Q;
 	let vecs = Q;
 	let tmp = temp_mat_scratch::<T>(n, max_dim);
-	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(max_dim, max_dim);
+	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+		max_dim, max_dim,
+	);
 	let householder = temp_mat_scratch::<T>(block_size, max_dim);
 	let arnoldi = A.apply_scratch(1, par).or(StackReq::new::<bool>(max_dim));
-	let hess = linalg::evd::hessenberg::hessenberg_in_place_scratch::<T>(max_dim, block_size, par, default());
+	let hess = linalg::evd::hessenberg::hessenberg_in_place_scratch::<T>(
+		max_dim,
+		block_size,
+		par,
+		default(),
+	);
 	let apply_house = linalg::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(max_dim - 1, block_size, max_dim - 1);
-	let schur = schur::multishift_qr_scratch::<T>(max_dim, max_dim, true, true, par, auto!(T));
+	let schur = schur::multishift_qr_scratch::<T>(
+		max_dim,
+		max_dim,
+		true,
+		true,
+		par,
+		auto!(T),
+	);
 	StackReq::all_of(&[
 		w,
 		residual,
@@ -856,9 +1129,9 @@ pub fn partial_eigen_scratch<T: ComplexField>(A: &dyn LinOp<T>, n_eigval: usize,
 		StackReq::any_of(&[hess, apply_house, schur, arnoldi]),
 	])
 }
-/// computes an estimate of the eigenvalues (and corresponding eigenvectors) of $A$ with the largest
-/// magnitude until the provided outputs are full or the maximum number of algorithm restarts is
-/// reached.
+/// computes an estimate of the eigenvalues (and corresponding eigenvectors) of
+/// $A$ with the largest magnitude until the provided outputs are full or the
+/// maximum number of algorithm restarts is reached.
 pub fn partial_eigen<T: ComplexField>(
 	eigvecs: MatMut<'_, Complex<T::Real>>,
 	eigvals: &mut [Complex<T::Real>],
@@ -884,8 +1157,12 @@ pub fn partial_eigen<T: ComplexField>(
 			non_exhaustive: NonExhaustive(()),
 		};
 	}
-	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
+	let min_dim =
+		Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+	let max_dim = Ord::min(
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)),
+		n,
+	);
 	let n_eigval = if const { T::IS_REAL } {
 		partial_schur_real_imp::<T::Real>(
 			eigvecs,
@@ -920,9 +1197,10 @@ pub fn partial_eigen<T: ComplexField>(
 		non_exhaustive: NonExhaustive(()),
 	}
 }
-/// computes an estimate of the eigenvalues (and corresponding eigenvectors) of $A$ with the largest
-/// magnitude, assuming $A$ is self-adjoint, until the provided outputs are full or the maximum
-/// number of algorithm restarts is reached.
+/// computes an estimate of the eigenvalues (and corresponding eigenvectors) of
+/// $A$ with the largest magnitude, assuming $A$ is self-adjoint, until the
+/// provided outputs are full or the maximum number of algorithm restarts is
+/// reached.
 pub fn partial_self_adjoint_eigen<T: ComplexField>(
 	eigvecs: MatMut<'_, T>,
 	eigvals: &mut [T],
@@ -948,8 +1226,12 @@ pub fn partial_self_adjoint_eigen<T: ComplexField>(
 			non_exhaustive: NonExhaustive(()),
 		};
 	}
-	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
+	let min_dim =
+		Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+	let max_dim = Ord::min(
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)),
+		n,
+	);
 	let n_eigval = {
 		super::self_adjoint_eigen::partial_self_adjoint_eigen_imp(
 			eigvecs,
@@ -970,9 +1252,9 @@ pub fn partial_self_adjoint_eigen<T: ComplexField>(
 		non_exhaustive: NonExhaustive(()),
 	}
 }
-/// computes an estimate of the singular values (and corresponding singular vectors) of $A$ with the
-/// largest magnitude, until the provided outputs are full or the maximum number of algorithm
-/// restarts is reached.
+/// computes an estimate of the singular values (and corresponding singular
+/// vectors) of $A$ with the largest magnitude, until the provided outputs are
+/// full or the maximum number of algorithm restarts is reached.
 pub fn partial_svd<T: ComplexField>(
 	left_singular_vecs: MatMut<'_, T>,
 	right_singular_vecs: MatMut<'_, T>,
@@ -1001,8 +1283,12 @@ pub fn partial_svd<T: ComplexField>(
 			non_exhaustive: NonExhaustive(()),
 		};
 	}
-	let min_dim = Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
-	let max_dim = Ord::min(Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)), n);
+	let min_dim =
+		Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+	let max_dim = Ord::min(
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)),
+		n,
+	);
 	let n_eigval = {
 		super::svd::partial_svd_imp(
 			left_singular_vecs,
@@ -1223,10 +1509,24 @@ mod tests {
 		let A = A.as_ref();
 		let v0 = v0.as_ref();
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, n_eigval, par, default()));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(
+			&A,
+			n_eigval,
+			par,
+			default(),
+		));
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
-		let info = partial_eigen(V.rb_mut(), &mut w, &A, v0, f64::EPSILON * 128.0, par, MemStack::new(mem), default());
+		let info = partial_eigen(
+			V.rb_mut(),
+			&mut w,
+			&A,
+			v0,
+			f64::EPSILON * 128.0,
+			par,
+			MemStack::new(mem),
+			default(),
+		);
 		assert!(w.iter().map(|x| x.norm()).is_sorted_by(|x, y| x >= y));
 		let A = &zip!(A).map(|unzip!(x)| Complex::from(*x));
 		for j in 0..info.n_converged_eigen {
@@ -1253,10 +1553,24 @@ mod tests {
 		let A = A.as_ref();
 		let v0 = v0.as_ref();
 		let par = Par::Seq;
-		let mem = &mut MemBuffer::new(partial_eigen_scratch(&A, n_eigval, par, default()));
+		let mem = &mut MemBuffer::new(partial_eigen_scratch(
+			&A,
+			n_eigval,
+			par,
+			default(),
+		));
 		let mut V = Mat::zeros(n, n_eigval);
 		let mut w = vec![c64::ZERO; n_eigval];
-		let info = partial_eigen(V.rb_mut(), &mut w, &A, v0, f64::EPSILON * 128.0, par, MemStack::new(mem), default());
+		let info = partial_eigen(
+			V.rb_mut(),
+			&mut w,
+			&A,
+			v0,
+			f64::EPSILON * 128.0,
+			par,
+			MemStack::new(mem),
+			default(),
+		);
 		assert!(w.iter().map(|x| x.norm()).is_sorted_by(|x, y| x >= y));
 		let A = &zip!(A).map(|unzip!(x)| Complex::from(*x));
 		for j in 0..info.n_converged_eigen {

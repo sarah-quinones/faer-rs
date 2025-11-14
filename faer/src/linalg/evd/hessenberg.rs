@@ -23,9 +23,14 @@ impl<T: ComplexField> Auto<T> for HessenbergParams {
 		}
 	}
 }
-/// computes the layout of the workspace required to compute a matrix's hessenberg
-/// decomposition
-pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, block_size: usize, par: Par, params: Spec<HessenbergParams, T>) -> StackReq {
+/// computes the layout of the workspace required to compute a matrix's
+/// hessenberg decomposition
+pub fn hessenberg_in_place_scratch<T: ComplexField>(
+	dim: usize,
+	block_size: usize,
+	par: Par,
+	params: Spec<HessenbergParams, T>,
+) -> StackReq {
 	let params = params.config;
 	let _ = par;
 	let n = dim;
@@ -39,7 +44,10 @@ pub fn hessenberg_in_place_scratch<T: ComplexField>(dim: usize, block_size: usiz
 			temp_mat_scratch::<T>(n, block_size),
 			temp_mat_scratch::<T>(block_size, 1),
 			StackReq::any_of(&[
-				StackReq::all_of(&[temp_mat_scratch::<T>(n, 1), temp_mat_scratch::<T>(n, par.degree())]),
+				StackReq::all_of(&[
+					temp_mat_scratch::<T>(n, 1),
+					temp_mat_scratch::<T>(n, par.degree()),
+				]),
 				temp_mat_scratch::<T>(n, block_size),
 			]),
 		])
@@ -128,7 +136,11 @@ fn hessenberg_fused_op_simd<T: ComplexField>(
 						simd.write(A.rb_mut(), i0, a0);
 						acc0 = simd.conj_mul_add(simd.read(l_in, i0), a0, acc0);
 						let tmp = simd.read(r_out.rb(), i0);
-						simd.write(r_out.rb_mut(), i0, simd.mul_add(a0, r_in, tmp));
+						simd.write(
+							r_out.rb_mut(),
+							i0,
+							simd.mul_add(a0, r_in, tmp),
+						);
 					}
 					{
 						let mut a1 = simd.read(A.rb(), i1);
@@ -137,7 +149,11 @@ fn hessenberg_fused_op_simd<T: ComplexField>(
 						simd.write(A.rb_mut(), i1, a1);
 						acc1 = simd.conj_mul_add(simd.read(l_in, i1), a1, acc1);
 						let tmp = simd.read(r_out.rb(), i1);
-						simd.write(r_out.rb_mut(), i1, simd.mul_add(a1, r_in, tmp));
+						simd.write(
+							r_out.rb_mut(),
+							i1,
+							simd.mul_add(a1, r_in, tmp),
+						);
 					}
 					{
 						let mut a2 = simd.read(A.rb(), i2);
@@ -146,7 +162,11 @@ fn hessenberg_fused_op_simd<T: ComplexField>(
 						simd.write(A.rb_mut(), i2, a2);
 						acc2 = simd.conj_mul_add(simd.read(l_in, i2), a2, acc2);
 						let tmp = simd.read(r_out.rb(), i2);
-						simd.write(r_out.rb_mut(), i2, simd.mul_add(a2, r_in, tmp));
+						simd.write(
+							r_out.rb_mut(),
+							i2,
+							simd.mul_add(a2, r_in, tmp),
+						);
 					}
 					{
 						let mut a3 = simd.read(A.rb(), i3);
@@ -155,7 +175,11 @@ fn hessenberg_fused_op_simd<T: ComplexField>(
 						simd.write(A.rb_mut(), i3, a3);
 						acc3 = simd.conj_mul_add(simd.read(l_in, i3), a3, acc3);
 						let tmp = simd.read(r_out.rb(), i3);
-						simd.write(r_out.rb_mut(), i3, simd.mul_add(a3, r_in, tmp));
+						simd.write(
+							r_out.rb_mut(),
+							i3,
+							simd.mul_add(a3, r_in, tmp),
+						);
 					}
 				}
 				for i0 in body1.clone() {
@@ -215,10 +239,38 @@ fn hessenberg_fused_op_fallback<T: ComplexField>(
 	r1: RowRef<'_, T>,
 ) {
 	let mut A = A;
-	matmul(A.rb_mut(), Accum::Add, l0.as_mat(), r0.as_mat(), -one::<T>(), Par::Seq);
-	matmul(A.rb_mut(), Accum::Add, l1.as_mat(), r1.as_mat().conjugate(), -one::<T>(), Par::Seq);
-	matmul(r_out.as_mat_mut(), Accum::Replace, A.rb(), r_in.as_mat(), one(), Par::Seq);
-	matmul(l_out.as_mat_mut(), Accum::Replace, l_in.as_mat().conjugate(), A.rb(), one(), Par::Seq);
+	matmul(
+		A.rb_mut(),
+		Accum::Add,
+		l0.as_mat(),
+		r0.as_mat(),
+		-one::<T>(),
+		Par::Seq,
+	);
+	matmul(
+		A.rb_mut(),
+		Accum::Add,
+		l1.as_mat(),
+		r1.as_mat().conjugate(),
+		-one::<T>(),
+		Par::Seq,
+	);
+	matmul(
+		r_out.as_mat_mut(),
+		Accum::Replace,
+		A.rb(),
+		r_in.as_mat(),
+		one(),
+		Par::Seq,
+	);
+	matmul(
+		l_out.as_mat_mut(),
+		Accum::Replace,
+		l_in.as_mat().conjugate(),
+		A.rb(),
+		one(),
+		Par::Seq,
+	);
 }
 fn hessenberg_fused_op<T: ComplexField>(
 	A: MatMut<'_, T>,
@@ -234,9 +286,7 @@ fn hessenberg_fused_op<T: ComplexField>(
 ) {
 	let mut A = A;
 	let mut r_out = r_out;
-	if try_const! {
-		T::SIMD_CAPABILITIES.is_simd()
-	} {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(A), Some(r_out), Some(l_in), Some(l0), Some(l1)) = (
 			A.rb_mut().try_as_col_major_mut(),
 			r_out.rb_mut().try_as_col_major_mut(),
@@ -244,16 +294,31 @@ fn hessenberg_fused_op<T: ComplexField>(
 			l0.try_as_col_major(),
 			l1.try_as_col_major(),
 		) {
-			hessenberg_fused_op_simd(A, l_out, r_out, l_in, r_in, l0, l1, r0, r1, align);
+			hessenberg_fused_op_simd(
+				A, l_out, r_out, l_in, r_in, l0, l1, r0, r1, align,
+			);
 		} else {
-			hessenberg_fused_op_fallback(A, l_out, r_out, l_in, r_in, l0, l1, r0, r1);
+			hessenberg_fused_op_fallback(
+				A, l_out, r_out, l_in, r_in, l0, l1, r0, r1,
+			);
 		}
 	} else {
-		hessenberg_fused_op_fallback(A, l_out, r_out, l_in, r_in, l0, l1, r0, r1);
+		hessenberg_fused_op_fallback(
+			A, l_out, r_out, l_in, r_in, l0, l1, r0, r1,
+		);
 	}
 }
-fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: HessenbergParams) {
-	assert!(all(A.nrows() == A.ncols(), H.ncols() == A.ncols().saturating_sub(1)));
+fn hessenberg_rearranged_unblocked<T: ComplexField>(
+	A: MatMut<'_, T>,
+	H: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+	params: HessenbergParams,
+) {
+	assert!(all(
+		A.nrows() == A.ncols(),
+		H.ncols() == A.ncols().saturating_sub(1)
+	));
 	let n = A.nrows();
 	let b = H.nrows();
 	if n == 0 {
@@ -278,9 +343,12 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 			let mut A12 = A12.row_mut(0);
 			let mut A21 = A21.col_mut(0);
 			let A11 = &mut A11[(0, 0)];
-			let (y1, mut y2) = y.rb_mut().split_at_col_mut(k).1.split_at_col_mut(1);
-			let (z1, mut z2) = z.rb_mut().split_at_row_mut(k).1.split_at_row_mut(1);
-			let (_, mut v2) = v.rb_mut().split_at_col_mut(k).1.split_at_col_mut(1);
+			let (y1, mut y2) =
+				y.rb_mut().split_at_col_mut(k).1.split_at_col_mut(1);
+			let (z1, mut z2) =
+				z.rb_mut().split_at_row_mut(k).1.split_at_row_mut(1);
+			let (_, mut v2) =
+				v.rb_mut().split_at_col_mut(k).1.split_at_col_mut(1);
 			let (mut w0, w12) = w.rb_mut().split_at_row_mut(k);
 			let (_, mut w2) = w12.split_at_row_mut(1);
 			if k > 0 {
@@ -290,10 +358,14 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 				let p = k - 1;
 				let u2 = A20.rb().col(p);
 				*A11 -= &y1 + &z1;
-				z!(&mut A12, &y2, u2.rb().transpose()).for_each(|uz!(a, y, u): Zip!(&mut T, &T, &T)| {
-					*a -= y + &z1 * u.conj();
-				});
-				z!(&mut A21, &u2, &z2).for_each(|uz!(a, u, z): Zip!(&mut T, &T, &T)| *a -= u * &y1 + z);
+				z!(&mut A12, &y2, u2.rb().transpose()).for_each(
+					|uz!(a, y, u): Zip!(&mut T, &T, &T)| {
+						*a -= y + &z1 * u.conj();
+					},
+				);
+				z!(&mut A21, &u2, &z2).for_each(
+					|uz!(a, u, z): Zip!(&mut T, &T, &T)| *a -= u * &y1 + z,
+				);
 			}
 			{
 				let n = n - k - 1;
@@ -309,7 +381,8 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 			{
 				let (mut A11, mut A21) = A21.rb_mut().split_at_row_mut(1);
 				let A11 = &mut A11[0];
-				let HouseholderInfo { tau, .. } = householder::make_householder_in_place(A11, A21.rb_mut());
+				let HouseholderInfo { tau, .. } =
+					householder::make_householder_in_place(A11, A21.rb_mut());
 				tau_inv = tau.recip();
 				beta = A11.copy();
 				*A11 = one();
@@ -334,22 +407,53 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 				y2.copy_from(v2.rb());
 				z2.copy_from(w2.rb().col(0));
 			} else {
-				matmul(z2.rb_mut().as_mat_mut(), Accum::Replace, A22.rb(), x2.as_mat(), one(), par);
-				matmul(y2.rb_mut().as_mat_mut(), Accum::Replace, x2.adjoint().as_mat(), A22.rb(), one(), par);
+				matmul(
+					z2.rb_mut().as_mat_mut(),
+					Accum::Replace,
+					A22.rb(),
+					x2.as_mat(),
+					one(),
+					par,
+				);
+				matmul(
+					y2.rb_mut().as_mat_mut(),
+					Accum::Replace,
+					x2.adjoint().as_mat(),
+					A22.rb(),
+					one(),
+					par,
+				);
 			}
 			let u2 = x2;
-			let ref b = dot::inner_prod(u2.rb().transpose(), Conj::Yes, z2.rb(), Conj::No)
-				.mul_pow2(from_f64::<T::Real>(0.5))
-				.mul_real(&tau_inv);
-			z!(&mut y2, u2.transpose()).for_each(|uz!(y, u): Zip!(&mut T, &T)| {
-				*y = (&*y - b * u.conj()).mul_real(&tau_inv);
-			});
+			let ref b = dot::inner_prod(
+				u2.rb().transpose(),
+				Conj::Yes,
+				z2.rb(),
+				Conj::No,
+			)
+			.mul_pow2(from_f64::<T::Real>(0.5))
+			.mul_real(&tau_inv);
+			z!(&mut y2, u2.transpose()).for_each(
+				|uz!(y, u): Zip!(&mut T, &T)| {
+					*y = (&*y - b * u.conj()).mul_real(&tau_inv);
+				},
+			);
 			z!(&mut z2, u2).for_each(|uz!(z, u): Zip!(&mut T, &T)| {
 				*z = (&*z - b * u).mul_real(&tau_inv);
 			});
-			let ref dot = dot::inner_prod(A12.rb(), Conj::No, u2.rb(), Conj::No).mul_real(&tau_inv);
-			z!(&mut A12, u2.transpose()).for_each(|uz!(a, u): Zip!(&mut T, &T)| *a -= dot * u.conj());
-			matmul(w0.rb_mut().col_mut(0).as_mat_mut(), Accum::Replace, A02.rb(), u2.as_mat(), one(), par);
+			let ref dot =
+				dot::inner_prod(A12.rb(), Conj::No, u2.rb(), Conj::No)
+					.mul_real(&tau_inv);
+			z!(&mut A12, u2.transpose())
+				.for_each(|uz!(a, u): Zip!(&mut T, &T)| *a -= dot * u.conj());
+			matmul(
+				w0.rb_mut().col_mut(0).as_mat_mut(),
+				Accum::Replace,
+				A02.rb(),
+				u2.as_mat(),
+				one(),
+				par,
+			);
 			matmul(
 				A02.rb_mut(),
 				Accum::Add,
@@ -372,7 +476,13 @@ fn hessenberg_rearranged_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<
 			for k in 0..b {
 				H[(k, k)] = H[(0, k)].copy();
 			}
-			householder::upgrade_householder_factor(H.rb_mut(), A.submatrix(j, j, n - j, b), b, 1, par);
+			householder::upgrade_householder_factor(
+				H.rb_mut(),
+				A.submatrix(j, j, n - j, b),
+				b,
+				1,
+				par,
+			);
 			j += b;
 		}
 	}
@@ -411,8 +521,19 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 		let (U00, U10) = U0.split_at_row(k);
 		let (U10, U20) = U10.split_first_row().unwrap();
 		x0.copy_from(U10.adjoint());
-		triangular_solve::solve_upper_triangular_in_place(T00, x0.rb_mut().as_mat_mut(), par);
-		matmul::matmul(A1.rb_mut().as_mat_mut(), Accum::Add, Z0, x0.rb().as_mat(), -one::<T>(), par);
+		triangular_solve::solve_upper_triangular_in_place(
+			T00,
+			x0.rb_mut().as_mat_mut(),
+			par,
+		);
+		matmul::matmul(
+			A1.rb_mut().as_mat_mut(),
+			Accum::Add,
+			Z0,
+			x0.rb().as_mat(),
+			-one::<T>(),
+			par,
+		);
 		let (mut A01, A11) = A1.rb_mut().split_at_row_mut(k);
 		let (mut A11, mut A21) = A11.split_at_row_mut(1);
 		let A11 = &mut A11[0];
@@ -428,11 +549,23 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 				one(),
 				par,
 			);
-			z!(x0.rb_mut(), U10.transpose()).for_each(|uz!(x, u): Zip!(&mut T, &T)| *x += &*A11 * u.conj());
-			matmul::matmul(x0.rb_mut().as_mat_mut(), Accum::Add, U20.adjoint(), A21.rb().as_mat(), one(), par);
+			z!(x0.rb_mut(), U10.transpose())
+				.for_each(|uz!(x, u): Zip!(&mut T, &T)| *x += &*A11 * u.conj());
+			matmul::matmul(
+				x0.rb_mut().as_mat_mut(),
+				Accum::Add,
+				U20.adjoint(),
+				A21.rb().as_mat(),
+				one(),
+				par,
+			);
 		}
 		{
-			triangular_solve::solve_lower_triangular_in_place(T00.adjoint(), x0.rb_mut().as_mat_mut(), par);
+			triangular_solve::solve_lower_triangular_in_place(
+				T00.adjoint(),
+				x0.rb_mut().as_mat_mut(),
+				par,
+			);
 		}
 		{
 			matmul::triangular::matmul(
@@ -447,28 +580,52 @@ fn hessenberg_gqvdg_unblocked<T: ComplexField>(
 				par,
 			);
 			*A11 -= dot::inner_prod(U10, Conj::No, x0.rb(), Conj::No);
-			matmul::matmul(A21.rb_mut().as_mat_mut(), Accum::Add, U20, x0.rb().as_mat(), -one::<T>(), par);
+			matmul::matmul(
+				A21.rb_mut().as_mat_mut(),
+				Accum::Add,
+				U20,
+				x0.rb().as_mat(),
+				-one::<T>(),
+				par,
+			);
 		}
 		if k + 1 < n {
 			let (mut A11, mut A21) = A21.rb_mut().split_at_row_mut(1);
 			let A11 = &mut A11[0];
-			let HouseholderInfo { tau, .. } = householder::make_householder_in_place(A11, A21.rb_mut());
+			let HouseholderInfo { tau, .. } =
+				householder::make_householder_in_place(A11, A21.rb_mut());
 			beta[k] = A11.copy();
 			*A11 = one();
 			*T11 = tau.to_cplx();
 		} else {
 			*T11 = infinity();
 		}
-		matmul::matmul(Z1.rb_mut().as_mat_mut(), Accum::Replace, A2.rb(), A21.rb().as_mat(), one(), par);
-		matmul::matmul(T01.rb_mut().as_mat_mut(), Accum::Replace, U20.adjoint(), A21.rb().as_mat(), one(), par);
+		matmul::matmul(
+			Z1.rb_mut().as_mat_mut(),
+			Accum::Replace,
+			A2.rb(),
+			A21.rb().as_mat(),
+			one(),
+			par,
+		);
+		matmul::matmul(
+			T01.rb_mut().as_mat_mut(),
+			Accum::Replace,
+			U20.adjoint(),
+			A21.rb().as_mat(),
+			one(),
+			par,
+		);
 	}
 }
 /// computes a matrix $A$'s hessenberg decomposition such that $A = Q H Q^H$
 ///
-/// $H$ is a hessenberg matrix stored in the upper triangular half of $A$ (plus the subdiagonal)
+/// $H$ is a hessenberg matrix stored in the upper triangular half of $A$ (plus
+/// the subdiagonal)
 ///
-/// $Q$ is a sequence of householder reflections stored in the unit lower triangular half of $A$
-/// (excluding the diagonal), with the householder coefficients being stored in `householder`
+/// $Q$ is a sequence of householder reflections stored in the unit lower
+/// triangular half of $A$ (excluding the diagonal), with the householder
+/// coefficients being stored in `householder`
 #[track_caller]
 pub fn hessenberg_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
@@ -478,7 +635,10 @@ pub fn hessenberg_in_place<T: ComplexField>(
 	params: Spec<HessenbergParams, T>,
 ) {
 	let params = params.config;
-	assert!(all(A.nrows() == A.ncols(), householder.ncols() == A.ncols().saturating_sub(1)));
+	assert!(all(
+		A.nrows() == A.ncols(),
+		householder.ncols() == A.ncols().saturating_sub(1)
+	));
 	let n = A.nrows().unbound();
 	if n * n < params.blocking_threshold {
 		hessenberg_rearranged_unblocked(A, householder, par, stack, params);
@@ -486,7 +646,13 @@ pub fn hessenberg_in_place<T: ComplexField>(
 		hessenberg_gqvdg_blocked(A, householder, par, stack, params);
 	}
 }
-fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: HessenbergParams) {
+fn hessenberg_gqvdg_blocked<T: ComplexField>(
+	A: MatMut<'_, T>,
+	H: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+	params: HessenbergParams,
+) {
 	let n = A.nrows();
 	let b = H.nrows();
 	let mut A = A;
@@ -504,7 +670,15 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 			{
 				let A11 = A.rb_mut().submatrix_mut(j, j, n - j, n - j);
 				let Z1 = Z.rb_mut().submatrix_mut(j, 0, n - j, bs);
-				hessenberg_gqvdg_unblocked(A11, Z1, T11.rb_mut(), beta.rb_mut(), par, stack, params);
+				hessenberg_gqvdg_unblocked(
+					A11,
+					Z1,
+					T11.rb_mut(),
+					beta.rb_mut(),
+					par,
+					stack,
+					params,
+				);
 			}
 			let (mut X, _) = unsafe { temp_mat_uninit(n, bs_u, stack) };
 			let mut X = X.as_mat_mut();
@@ -530,7 +704,11 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 				par,
 			);
 			matmul::matmul(X0.rb_mut(), Accum::Add, A02.rb(), U2, one(), par);
-			triangular_solve::solve_lower_triangular_in_place(T1.transpose(), X0.rb_mut().transpose_mut(), par);
+			triangular_solve::solve_lower_triangular_in_place(
+				T1.transpose(),
+				X0.rb_mut().transpose_mut(),
+				par,
+			);
 			matmul::triangular::matmul(
 				A01.rb_mut(),
 				BlockStructure::Rectangular,
@@ -542,11 +720,40 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 				-one::<T>(),
 				par,
 			);
-			matmul::matmul(A02.rb_mut(), Accum::Add, X0.rb(), U2.adjoint(), -one::<T>(), par);
-			triangular_solve::solve_lower_triangular_in_place(T1.transpose(), Z1.rb_mut().transpose_mut(), par);
-			triangular_solve::solve_lower_triangular_in_place(T1.transpose(), Z2.rb_mut().transpose_mut(), par);
-			matmul::matmul(A12.rb_mut(), Accum::Add, Z1.rb(), U2.adjoint(), -one::<T>(), par);
-			matmul::matmul(A22.rb_mut(), Accum::Add, Z2.rb(), U2.adjoint(), -one::<T>(), par);
+			matmul::matmul(
+				A02.rb_mut(),
+				Accum::Add,
+				X0.rb(),
+				U2.adjoint(),
+				-one::<T>(),
+				par,
+			);
+			triangular_solve::solve_lower_triangular_in_place(
+				T1.transpose(),
+				Z1.rb_mut().transpose_mut(),
+				par,
+			);
+			triangular_solve::solve_lower_triangular_in_place(
+				T1.transpose(),
+				Z2.rb_mut().transpose_mut(),
+				par,
+			);
+			matmul::matmul(
+				A12.rb_mut(),
+				Accum::Add,
+				Z1.rb(),
+				U2.adjoint(),
+				-one::<T>(),
+				par,
+			);
+			matmul::matmul(
+				A22.rb_mut(),
+				Accum::Add,
+				Z2.rb(),
+				U2.adjoint(),
+				-one::<T>(),
+				par,
+			);
 			let mut X = X2.rb_mut().transpose_mut();
 			matmul::triangular::matmul(
 				X.rb_mut(),
@@ -559,8 +766,19 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 				one(),
 				par,
 			);
-			matmul::matmul(X.rb_mut(), Accum::Add, U2.adjoint(), A22.rb(), one(), par);
-			triangular_solve::solve_lower_triangular_in_place(T1.adjoint(), X.rb_mut(), par);
+			matmul::matmul(
+				X.rb_mut(),
+				Accum::Add,
+				U2.adjoint(),
+				A22.rb(),
+				one(),
+				par,
+			);
+			triangular_solve::solve_lower_triangular_in_place(
+				T1.adjoint(),
+				X.rb_mut(),
+				par,
+			);
 			matmul::triangular::matmul(
 				A12.rb_mut(),
 				BlockStructure::Rectangular,
@@ -572,7 +790,14 @@ fn hessenberg_gqvdg_blocked<T: ComplexField>(A: MatMut<'_, T>, H: MatMut<'_, T>,
 				-one::<T>(),
 				par,
 			);
-			matmul::matmul(A22.rb_mut(), Accum::Add, U2, X.rb(), -one::<T>(), par);
+			matmul::matmul(
+				A22.rb_mut(),
+				Accum::Add,
+				U2,
+				X.rb(),
+				-one::<T>(),
+				par,
+			);
 		}
 		let n = n - j;
 		let mut A = A.rb_mut().submatrix_mut(j, j, n, bs);
@@ -616,7 +841,11 @@ mod tests {
 			let mut A = A.clone();
 			let mut A = A.as_mut();
 			for iter in 0..2 {
-				let mut A = if iter == 0 { A.rb_mut() } else { A.rb_mut().transpose_mut() };
+				let mut A = if iter == 0 {
+					A.rb_mut()
+				} else {
+					A.rb_mut().transpose_mut()
+				};
 				let n = n - 1;
 				let V = V.rb().submatrix(1, 0, n, n);
 				let mut A = A.rb_mut().subrows_mut(1, n);
@@ -651,7 +880,10 @@ mod tests {
 				let A = CwiseMatDistribution {
 					nrows: n,
 					ncols: n,
-					dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+					dist: ComplexDistribution::new(
+						StandardNormal,
+						StandardNormal,
+					),
 				}
 				.rand::<Mat<c64>>(rng);
 				let b = 3;
@@ -672,7 +904,11 @@ mod tests {
 				let mut A = A.clone();
 				let mut A = A.as_mut();
 				for iter in 0..2 {
-					let mut A = if iter == 0 { A.rb_mut() } else { A.rb_mut().transpose_mut() };
+					let mut A = if iter == 0 {
+						A.rb_mut()
+					} else {
+						A.rb_mut().transpose_mut()
+					};
 					let n = n - 1;
 					let V = V.rb().submatrix(1, 0, n, n);
 					let mut A = A.rb_mut().subrows_mut(1, n);
@@ -709,7 +945,10 @@ mod tests {
 				let A = CwiseMatDistribution {
 					nrows: n,
 					ncols: n,
-					dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+					dist: ComplexDistribution::new(
+						StandardNormal,
+						StandardNormal,
+					),
 				}
 				.rand::<Mat<c64, _, _>>(rng);
 				let mut H = Mat::zeros(b, n - 1);
@@ -729,7 +968,11 @@ mod tests {
 				let mut A = A.clone();
 				let mut A = A.as_mut();
 				for iter in 0..2 {
-					let mut A = if iter == 0 { A.rb_mut() } else { A.rb_mut().transpose_mut() };
+					let mut A = if iter == 0 {
+						A.rb_mut()
+					} else {
+						A.rb_mut().transpose_mut()
+					};
 					let n = n - 1;
 					let V = V.rb().submatrix(1, 0, n, n);
 					let mut A = A.rb_mut().subrows_mut(1, n);

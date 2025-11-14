@@ -1,21 +1,36 @@
 use crate::internal_prelude_sp::*;
 use crate::{assert, debug_assert};
-/// assuming `tril` is a lower triangular matrix, solves the equation `tril * x = rhs`, and
-/// stores the result in `rhs`, implicitly conjugating `tril` if needed
+/// assuming `tril` is a lower triangular matrix, solves the equation `tril * x
+/// = rhs`, and stores the result in `rhs`, implicitly conjugating `tril` if
+/// needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the first stored element in each column.
+/// the diagonal element is assumed to be the first stored element in each
+/// column.
 #[track_caller]
-pub fn solve_lower_triangular_in_place<I: Index, T: ComplexField>(tril: SparseColMatRef<'_, I, T>, conj_tril: Conj, rhs: MatMut<'_, T>, par: Par) {
-	solve_lower_triangular_in_place_impl(tril, conj_tril, DiagStatus::Generic, rhs, par)
+pub fn solve_lower_triangular_in_place<I: Index, T: ComplexField>(
+	tril: SparseColMatRef<'_, I, T>,
+	conj_tril: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+) {
+	solve_lower_triangular_in_place_impl(
+		tril,
+		conj_tril,
+		DiagStatus::Generic,
+		rhs,
+		par,
+	)
 }
-/// assuming `tril` is a lower triangular matrix, solves the equation `tril * x = rhs`, and
-/// stores the result in `rhs`, implicitly conjugating `tril` if needed
+/// assuming `tril` is a lower triangular matrix, solves the equation `tril * x
+/// = rhs`, and stores the result in `rhs`, implicitly conjugating `tril` if
+/// needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the first stored element in each column.
+/// the diagonal element is assumed to be the first stored element in each
+/// column.
 #[track_caller]
 pub fn solve_unit_lower_triangular_in_place<I: Index, T: ComplexField>(
 	tril: SparseColMatRef<'_, I, T>,
@@ -23,14 +38,22 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, T: ComplexField>(
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
-	solve_lower_triangular_in_place_impl(tril, conj_tril, DiagStatus::Unit, rhs, par)
+	solve_lower_triangular_in_place_impl(
+		tril,
+		conj_tril,
+		DiagStatus::Unit,
+		rhs,
+		par,
+	)
 }
-/// assuming `tril` is a lower triangular matrix, solves the equation `tril.transpose() * x =
-/// rhs`, and stores the result in `rhs`, implicitly conjugating `tril` if needed
+/// assuming `tril` is a lower triangular matrix, solves the equation
+/// `tril.transpose() * x = rhs`, and stores the result in `rhs`, implicitly
+/// conjugating `tril` if needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the first stored element in each column.
+/// the diagonal element is assumed to be the first stored element in each
+/// column.
 #[track_caller]
 pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 	tril: SparseColMatRef<'_, I, T>,
@@ -38,39 +61,71 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
-	solve_lower_triangular_transpose_in_place_impl(tril, conj_tril, DiagStatus::Generic, rhs, par)
+	solve_lower_triangular_transpose_in_place_impl(
+		tril,
+		conj_tril,
+		DiagStatus::Generic,
+		rhs,
+		par,
+	)
 }
-/// assuming `tril` is a lower triangular matrix, solves the equation `tril.transpose() * x =
-/// rhs`, and stores the result in `rhs`, implicitly conjugating `tril` if needed
+/// assuming `tril` is a lower triangular matrix, solves the equation
+/// `tril.transpose() * x = rhs`, and stores the result in `rhs`, implicitly
+/// conjugating `tril` if needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the first stored element in each column.
+/// the diagonal element is assumed to be the first stored element in each
+/// column.
 #[track_caller]
-pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, T: ComplexField>(
+pub fn solve_unit_lower_triangular_transpose_in_place<
+	I: Index,
+	T: ComplexField,
+>(
 	tril: SparseColMatRef<'_, I, T>,
 	conj_tril: Conj,
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
-	solve_lower_triangular_transpose_in_place_impl(tril, conj_tril, DiagStatus::Unit, rhs, par)
+	solve_lower_triangular_transpose_in_place_impl(
+		tril,
+		conj_tril,
+		DiagStatus::Unit,
+		rhs,
+		par,
+	)
 }
-/// assuming `triu` is an upper triangular matrix, solves the equation `triu * x = rhs`, and
-/// stores the result in `rhs`, implicitly conjugating `triu` if needed
+/// assuming `triu` is an upper triangular matrix, solves the equation `triu * x
+/// = rhs`, and stores the result in `rhs`, implicitly conjugating `triu` if
+/// needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the last stored element in each column.
+/// the diagonal element is assumed to be the last stored element in each
+/// column.
 #[track_caller]
-pub fn solve_upper_triangular_in_place<I: Index, T: ComplexField>(triu: SparseColMatRef<'_, I, T>, conj_triu: Conj, rhs: MatMut<'_, T>, par: Par) {
-	solve_upper_triangular_in_place_impl(triu, conj_triu, DiagStatus::Generic, rhs, par)
+pub fn solve_upper_triangular_in_place<I: Index, T: ComplexField>(
+	triu: SparseColMatRef<'_, I, T>,
+	conj_triu: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+) {
+	solve_upper_triangular_in_place_impl(
+		triu,
+		conj_triu,
+		DiagStatus::Generic,
+		rhs,
+		par,
+	)
 }
-/// assuming `triu` is an upper triangular matrix, solves the equation `triu * x = rhs`, and
-/// stores the result in `rhs`, implicitly conjugating `triu` if needed
+/// assuming `triu` is an upper triangular matrix, solves the equation `triu * x
+/// = rhs`, and stores the result in `rhs`, implicitly conjugating `triu` if
+/// needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the last stored element in each column.
+/// the diagonal element is assumed to be the last stored element in each
+/// column.
 #[track_caller]
 pub fn solve_unit_upper_triangular_in_place<I: Index, T: ComplexField>(
 	triu: SparseColMatRef<'_, I, T>,
@@ -78,14 +133,22 @@ pub fn solve_unit_upper_triangular_in_place<I: Index, T: ComplexField>(
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
-	solve_upper_triangular_in_place_impl(triu, conj_triu, DiagStatus::Unit, rhs, par)
+	solve_upper_triangular_in_place_impl(
+		triu,
+		conj_triu,
+		DiagStatus::Unit,
+		rhs,
+		par,
+	)
 }
-/// assuming `triu` is an upper triangular matrix, solves the equation `triu.transpose() * x =
-/// rhs`, and stores the result in `rhs`, implicitly conjugating `triu` if needed
+/// assuming `triu` is an upper triangular matrix, solves the equation
+/// `triu.transpose() * x = rhs`, and stores the result in `rhs`, implicitly
+/// conjugating `triu` if needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the first stored element in each column.
+/// the diagonal element is assumed to be the first stored element in each
+/// column.
 #[track_caller]
 pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 	triu: SparseColMatRef<'_, I, T>,
@@ -93,22 +156,39 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
-	solve_upper_triangular_transpose_in_place_impl(triu, conj_triu, DiagStatus::Generic, rhs, par)
+	solve_upper_triangular_transpose_in_place_impl(
+		triu,
+		conj_triu,
+		DiagStatus::Generic,
+		rhs,
+		par,
+	)
 }
-/// assuming `triu` is an upper triangular matrix, solves the equation `triu.transpose() * x =
-/// rhs`, and stores the result in `rhs`, implicitly conjugating `triu` if needed
+/// assuming `triu` is an upper triangular matrix, solves the equation
+/// `triu.transpose() * x = rhs`, and stores the result in `rhs`, implicitly
+/// conjugating `triu` if needed
 ///
 /// # note
 /// the matrix indices need not be sorted, but
-/// the diagonal element is assumed to be the first stored element in each column.
+/// the diagonal element is assumed to be the first stored element in each
+/// column.
 #[track_caller]
-pub fn solve_unit_upper_triangular_transpose_in_place<I: Index, T: ComplexField>(
+pub fn solve_unit_upper_triangular_transpose_in_place<
+	I: Index,
+	T: ComplexField,
+>(
 	triu: SparseColMatRef<'_, I, T>,
 	conj_triu: Conj,
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
-	solve_upper_triangular_transpose_in_place_impl(triu, conj_triu, DiagStatus::Unit, rhs, par)
+	solve_upper_triangular_transpose_in_place_impl(
+		triu,
+		conj_triu,
+		DiagStatus::Unit,
+		rhs,
+		par,
+	)
 }
 #[track_caller]
 fn solve_lower_triangular_in_place_impl<I: Index, T: ComplexField>(
@@ -119,7 +199,10 @@ fn solve_lower_triangular_in_place_impl<I: Index, T: ComplexField>(
 	par: Par,
 ) {
 	let _ = par;
-	assert!(all(tril.nrows() == tril.ncols(), rhs.nrows() == tril.nrows()));
+	assert!(all(
+		tril.nrows() == tril.ncols(),
+		rhs.nrows() == tril.nrows()
+	));
 	with_dim!(N, rhs.nrows());
 	with_dim!(K, rhs.ncols());
 	let mut x = rhs.as_shape_mut(N, K);
@@ -132,7 +215,9 @@ fn solve_lower_triangular_in_place_impl<I: Index, T: ComplexField>(
 		match (k1, k2, k3) {
 			(Some(_), Some(_), Some(k3)) => {
 				let mut x = x.rb_mut().get_mut(.., k..k3.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) = (x.next(), x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+					(x.next(), x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices() {
@@ -174,7 +259,9 @@ fn solve_lower_triangular_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(_), Some(k2), _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k2.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2)) =
+					(x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices() {
@@ -211,7 +298,9 @@ fn solve_lower_triangular_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(k1), _, _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
+				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+					panic!()
+				};
 				for j in N.indices() {
 					let mut l = iter::zip(l.row_idx_of_col(j), l.val_of_col(j));
 					let (i, d) = l.next().unwrap();
@@ -267,14 +356,20 @@ fn solve_lower_triangular_in_place_impl<I: Index, T: ComplexField>(
 	}
 }
 #[track_caller]
-pub(crate) fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
+pub(crate) fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place_impl<
+	I: Index,
+	T: ComplexField,
+>(
 	tril: SparseColMatRef<'_, I, T>,
 	conj_tril: Conj,
 	rhs: MatMut<'_, T>,
 	par: Par,
 ) {
 	let _ = par;
-	assert!(all(tril.nrows() == tril.ncols(), rhs.nrows() == tril.nrows()));
+	assert!(all(
+		tril.nrows() == tril.ncols(),
+		rhs.nrows() == tril.nrows()
+	));
 	with_dim!(N, rhs.nrows());
 	with_dim!(K, rhs.ncols());
 	let mut x = rhs.as_shape_mut(N, K);
@@ -287,7 +382,9 @@ pub(crate) fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place_impl<I: 
 		match (k1, k2, k3) {
 			(Some(_), Some(_), Some(k3)) => {
 				let mut x = x.rb_mut().get_mut(.., k..k3.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) = (x.next(), x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+					(x.next(), x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices().rev() {
@@ -317,7 +414,9 @@ pub(crate) fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place_impl<I: 
 			},
 			(Some(_), Some(k2), _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k2.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2)) =
+					(x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices().rev() {
@@ -344,7 +443,9 @@ pub(crate) fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place_impl<I: 
 			},
 			(Some(k1), _, _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
+				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+					panic!()
+				};
 				for j in N.indices().rev() {
 					let mut li = l.row_idx_of_col(j);
 					let mut lv = l.val_of_col(j).iter();
@@ -394,7 +495,10 @@ fn solve_lower_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 	par: Par,
 ) {
 	let _ = par;
-	assert!(all(tril.nrows() == tril.ncols(), rhs.nrows() == tril.nrows()));
+	assert!(all(
+		tril.nrows() == tril.ncols(),
+		rhs.nrows() == tril.nrows()
+	));
 	with_dim!(N, rhs.nrows());
 	with_dim!(K, rhs.ncols());
 	let mut x = rhs.as_shape_mut(N, K);
@@ -407,7 +511,9 @@ fn solve_lower_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 		match (k1, k2, k3) {
 			(Some(_), Some(_), Some(k3)) => {
 				let mut x = x.rb_mut().get_mut(.., k..k3.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) = (x.next(), x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+					(x.next(), x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices().rev() {
@@ -450,7 +556,9 @@ fn solve_lower_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(_), Some(k2), _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k2.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2)) =
+					(x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices().rev() {
@@ -488,7 +596,9 @@ fn solve_lower_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(k1), _, _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
+				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+					panic!()
+				};
 				for j in N.indices().rev() {
 					let mut li = l.row_idx_of_col(j);
 					let mut lv = l.val_of_col(j).iter();
@@ -554,7 +664,10 @@ fn solve_upper_triangular_in_place_impl<I: Index, T: ComplexField>(
 	par: Par,
 ) {
 	let _ = par;
-	assert!(all(triu.nrows() == triu.ncols(), rhs.nrows() == triu.nrows()));
+	assert!(all(
+		triu.nrows() == triu.ncols(),
+		rhs.nrows() == triu.nrows()
+	));
 	with_dim!(N, rhs.nrows());
 	with_dim!(K, rhs.ncols());
 	let mut x = rhs.as_shape_mut(N, K);
@@ -567,11 +680,16 @@ fn solve_upper_triangular_in_place_impl<I: Index, T: ComplexField>(
 		match (k1, k2, k3) {
 			(Some(_), Some(_), Some(k3)) => {
 				let mut x = x.rb_mut().get_mut(.., k..k3.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) = (x.next(), x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+					(x.next(), x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j).rev(), u.val_of_col(j).iter().rev());
+					let mut u = iter::zip(
+						u.row_idx_of_col(j).rev(),
+						u.val_of_col(j).iter().rev(),
+					);
 					let (i, d) = u.next().unwrap();
 					debug_assert!(i == j);
 					let x0j;
@@ -609,11 +727,16 @@ fn solve_upper_triangular_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(_), Some(k2), _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k2.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2)) =
+					(x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j).rev(), u.val_of_col(j).iter().rev());
+					let mut u = iter::zip(
+						u.row_idx_of_col(j).rev(),
+						u.val_of_col(j).iter().rev(),
+					);
 					let (i, d) = u.next().unwrap();
 					debug_assert!(i == j);
 					let x0j;
@@ -646,9 +769,14 @@ fn solve_upper_triangular_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(k1), _, _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
+				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+					panic!()
+				};
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j).rev(), u.val_of_col(j).iter().rev());
+					let mut u = iter::zip(
+						u.row_idx_of_col(j).rev(),
+						u.val_of_col(j).iter().rev(),
+					);
 					let (i, d) = u.next().unwrap();
 					debug_assert!(i == j);
 					let x0j;
@@ -677,7 +805,10 @@ fn solve_upper_triangular_in_place_impl<I: Index, T: ComplexField>(
 			(_, _, _) => {
 				let mut x0 = x.rb_mut().get_mut(.., k0);
 				for j in N.indices().rev() {
-					let mut u = iter::zip(u.row_idx_of_col(j).rev(), u.val_of_col(j).iter().rev());
+					let mut u = iter::zip(
+						u.row_idx_of_col(j).rev(),
+						u.val_of_col(j).iter().rev(),
+					);
 					let (i, d) = u.next().unwrap();
 					debug_assert!(i == j);
 					let x0j;
@@ -710,7 +841,10 @@ fn solve_upper_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 	par: Par,
 ) {
 	let _ = par;
-	assert!(all(triu.nrows() == triu.ncols(), rhs.nrows() == triu.nrows()));
+	assert!(all(
+		triu.nrows() == triu.ncols(),
+		rhs.nrows() == triu.nrows()
+	));
 	with_dim!(N, rhs.nrows());
 	with_dim!(K, rhs.ncols());
 	let mut x = rhs.as_shape_mut(N, K);
@@ -723,7 +857,9 @@ fn solve_upper_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 		match (k1, k2, k3) {
 			(Some(_), Some(_), Some(k3)) => {
 				let mut x = x.rb_mut().get_mut(.., k..k3.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) = (x.next(), x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2), Some(mut x3)) =
+					(x.next(), x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices() {
@@ -766,7 +902,9 @@ fn solve_upper_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(_), Some(k2), _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k2.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1), Some(mut x2)) = (x.next(), x.next(), x.next()) else {
+				let (Some(mut x0), Some(mut x1), Some(mut x2)) =
+					(x.next(), x.next(), x.next())
+				else {
 					panic!()
 				};
 				for j in N.indices() {
@@ -804,7 +942,9 @@ fn solve_upper_triangular_transpose_in_place_impl<I: Index, T: ComplexField>(
 			},
 			(Some(k1), _, _) => {
 				let mut x = x.rb_mut().get_mut(.., k..k1.next()).col_iter_mut();
-				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else { panic!() };
+				let (Some(mut x0), Some(mut x1)) = (x.next(), x.next()) else {
+					panic!()
+				};
 				for j in N.indices() {
 					let mut ui = u.row_idx_of_col(j);
 					let mut uv = u.val_of_col(j).iter();

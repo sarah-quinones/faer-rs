@@ -1,7 +1,10 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
-pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
+pub fn inverse_scratch<I: Index, T: ComplexField>(
+	dim: usize,
+	par: Par,
+) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim)
 }
@@ -28,7 +31,11 @@ pub fn inverse<I: Index, T: ComplexField>(
 	let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 	let mut tmp = tmp.as_mat_mut();
 	let mut out = out;
-	linalg::triangular_inverse::invert_unit_lower_triangular(out.rb_mut(), L, par);
+	linalg::triangular_inverse::invert_unit_lower_triangular(
+		out.rb_mut(),
+		L,
+		par,
+	);
 	linalg::triangular_inverse::invert_upper_triangular(out.rb_mut(), U, par);
 	linalg::matmul::triangular::matmul(
 		tmp.rb_mut(),
@@ -42,7 +49,10 @@ pub fn inverse<I: Index, T: ComplexField>(
 		par,
 	);
 	with_dim!(N, n);
-	let (row_perm, col_perm) = (col_perm.as_shape(N).bound_arrays().1, row_perm.as_shape(N).bound_arrays().1);
+	let (row_perm, col_perm) = (
+		col_perm.as_shape(N).bound_arrays().1,
+		row_perm.as_shape(N).bound_arrays().1,
+	);
 	let tmp = tmp.rb().as_shape(N, N);
 	let mut out = out.rb_mut().as_shape_mut(N, N);
 	for j in N.indices() {
@@ -81,7 +91,14 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(n, n, Par::Seq, default())) }),
+			MemStack::new(&mut {
+				MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(
+					n,
+					n,
+					Par::Seq,
+					default(),
+				))
+			}),
 			default(),
 		);
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
@@ -93,7 +110,10 @@ mod tests {
 			row_perm,
 			col_perm,
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<usize, c64>(n, Par::Seq))),
+			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<
+				usize,
+				c64,
+			>(n, Par::Seq))),
 		);
 		assert!(& A_inv * & A ~ Mat::identity(n, n));
 	}

@@ -1,13 +1,14 @@
 //! sparse matrix data structures
 //!
-//! most sparse matrix algorithms accept matrices in sparse column-oriented format.
-//! this format represents each column of the matrix by storing the row indices of its non-zero
-//! elements, as well as their values
+//! most sparse matrix algorithms accept matrices in sparse column-oriented
+//! format. this format represents each column of the matrix by storing the row
+//! indices of its non-zero elements, as well as their values
 //!
-//! the indices and the values are each stored in a contiguous slice (or group of slices for
-//! arbitrary values). in order to specify where each column starts and ends, a slice of size
-//! `ncols + 1` stores the start of each column, with the last element being equal to the total
-//! number of non-zeros (or the capacity in uncompressed mode)
+//! the indices and the values are each stored in a contiguous slice (or group
+//! of slices for arbitrary values). in order to specify where each column
+//! starts and ends, a slice of size `ncols + 1` stores the start of each
+//! column, with the last element being equal to the total number of non-zeros
+//! (or the capacity in uncompressed mode)
 //!
 //! # example
 //!
@@ -30,16 +31,19 @@ mod csc;
 mod csr;
 pub(crate) const NONE: usize = usize::MAX;
 /// sparse linear algebra module.
-/// contains low level routines and the implementation of their corresponding high level wrappers
+/// contains low level routines and the implementation of their corresponding
+/// high level wrappers
 pub mod linalg;
 /// sparse matrix binary and ternary operation implementations
 pub mod ops;
 use crate::internal_prelude_sp::Index;
 pub use csc::{
-	SparseColMat, SparseColMatMut, SparseColMatRef, SymbolicSparseColMat, SymbolicSparseColMatRef, numeric as csc_numeric, symbolic as csc_symbolic,
+	SparseColMat, SparseColMatMut, SparseColMatRef, SymbolicSparseColMat,
+	SymbolicSparseColMatRef, numeric as csc_numeric, symbolic as csc_symbolic,
 };
 pub use csr::{
-	SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef, numeric as csr_numeric, symbolic as csr_symbolic,
+	SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseRowMat,
+	SymbolicSparseRowMatRef, numeric as csr_numeric, symbolic as csr_symbolic,
 };
 use reborrow::*;
 extern crate alloc;
@@ -81,7 +85,8 @@ impl<Row, Col, T> Triplet<Row, Col, T> {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
 pub enum FaerError {
-	/// an index exceeding the maximum value (`I::Signed::MAX` for a given index type `I`)
+	/// an index exceeding the maximum value (`I::Signed::MAX` for a given index
+	/// type `I`)
 	IndexOverflow,
 	/// memory allocation failed
 	OutOfMemory,
@@ -134,7 +139,9 @@ impl core::fmt::Display for CreationError {
 }
 impl core::error::Error for CreationError {}
 #[inline(always)]
-pub(crate) fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
+pub(crate) fn windows2<I>(
+	slice: &[I],
+) -> impl DoubleEndedIterator<Item = &[I; 2]> {
 	slice.windows(2).map(
 		#[inline(always)]
 		|window| unsafe { &*(window.as_ptr() as *const [I; 2]) },
@@ -142,7 +149,9 @@ pub(crate) fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2
 }
 #[inline]
 #[track_caller]
-pub(crate) fn try_zeroed<I: bytemuck::Pod>(n: usize) -> Result<alloc::vec::Vec<I>, FaerError> {
+pub(crate) fn try_zeroed<I: bytemuck::Pod>(
+	n: usize,
+) -> Result<alloc::vec::Vec<I>, FaerError> {
 	let mut v = alloc::vec::Vec::new();
 	v.try_reserve_exact(n).map_err(|_| FaerError::OutOfMemory)?;
 	unsafe {
@@ -153,16 +162,21 @@ pub(crate) fn try_zeroed<I: bytemuck::Pod>(n: usize) -> Result<alloc::vec::Vec<I
 }
 #[inline]
 #[track_caller]
-pub(crate) fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I::Item>, FaerError> {
+pub(crate) fn try_collect<I: IntoIterator>(
+	iter: I,
+) -> Result<alloc::vec::Vec<I::Item>, FaerError> {
 	let iter = iter.into_iter();
 	let mut v = alloc::vec::Vec::new();
-	v.try_reserve_exact(iter.size_hint().0).map_err(|_| FaerError::OutOfMemory)?;
+	v.try_reserve_exact(iter.size_hint().0)
+		.map_err(|_| FaerError::OutOfMemory)?;
 	v.extend(iter);
 	Ok(v)
 }
-/// the order values should be read in, when constructing/filling from indices and values
+/// the order values should be read in, when constructing/filling from indices
+/// and values
 ///
-/// allows separately creating the symbolic structure and filling the numerical values
+/// allows separately creating the symbolic structure and filling the numerical
+/// values
 #[derive(Debug, Clone)]
 pub struct Argsort<I> {
 	idx: alloc::vec::Vec<I>,
@@ -171,7 +185,9 @@ pub struct Argsort<I> {
 }
 /// algorithmic primitives for sparse matrices
 pub mod utils;
-impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMatRef<'_, I, T> {
+impl<I: Index, T> core::ops::Index<(usize, usize)>
+	for SparseColMatRef<'_, I, T>
+{
 	type Output = T;
 
 	#[track_caller]
@@ -179,7 +195,9 @@ impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMatRef<'_, I, T>
 		self.get(row, col).unwrap()
 	}
 }
-impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMatRef<'_, I, T> {
+impl<I: Index, T> core::ops::Index<(usize, usize)>
+	for SparseRowMatRef<'_, I, T>
+{
 	type Output = T;
 
 	#[track_caller]
@@ -187,7 +205,9 @@ impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMatRef<'_, I, T>
 		self.get(row, col).unwrap()
 	}
 }
-impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMatMut<'_, I, T> {
+impl<I: Index, T> core::ops::Index<(usize, usize)>
+	for SparseColMatMut<'_, I, T>
+{
 	type Output = T;
 
 	#[track_caller]
@@ -195,7 +215,9 @@ impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseColMatMut<'_, I, T>
 		self.rb().get(row, col).unwrap()
 	}
 }
-impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMatMut<'_, I, T> {
+impl<I: Index, T> core::ops::Index<(usize, usize)>
+	for SparseRowMatMut<'_, I, T>
+{
 	type Output = T;
 
 	#[track_caller]
@@ -203,13 +225,17 @@ impl<I: Index, T> core::ops::Index<(usize, usize)> for SparseRowMatMut<'_, I, T>
 		self.rb().get(row, col).unwrap()
 	}
 }
-impl<I: Index, T> core::ops::IndexMut<(usize, usize)> for SparseColMatMut<'_, I, T> {
+impl<I: Index, T> core::ops::IndexMut<(usize, usize)>
+	for SparseColMatMut<'_, I, T>
+{
 	#[track_caller]
 	fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
 		self.rb_mut().get_mut(row, col).unwrap()
 	}
 }
-impl<I: Index, T> core::ops::IndexMut<(usize, usize)> for SparseRowMatMut<'_, I, T> {
+impl<I: Index, T> core::ops::IndexMut<(usize, usize)>
+	for SparseRowMatMut<'_, I, T>
+{
 	#[track_caller]
 	fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
 		self.rb_mut().get_mut(row, col).unwrap()
@@ -271,7 +297,9 @@ mod tests {
 			Triplet::new(3, 3usize, 7.0_f64),
 		];
 		{
-			let mat = SymbolicSparseColMat::try_new_from_indices(nrows, ncols, indices);
+			let mat = SymbolicSparseColMat::try_new_from_indices(
+				nrows, ncols, indices,
+			);
 			assert!(mat.is_ok());
 			let (mat, order) = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -279,11 +307,14 @@ mod tests {
 			assert!(mat.col_ptr() == &[0, 1, 3, 4, 5]);
 			assert!(mat.col_nnz() == None);
 			assert!(mat.row_idx() == &[0, 0, 1, 1, 3]);
-			let mat = SparseColMat::<_, f64>::new_from_argsort(mat, &order, values).unwrap();
+			let mat =
+				SparseColMat::<_, f64>::new_from_argsort(mat, &order, values)
+					.unwrap();
 			assert!(mat.val() == &[1.0 + 3.0, 5.0, 4.0, 2.0, 6.0 + 7.0]);
 		}
 		{
-			let mat = SparseColMat::try_new_from_triplets(nrows, ncols, triplets);
+			let mat =
+				SparseColMat::try_new_from_triplets(nrows, ncols, triplets);
 			assert!(mat.is_ok());
 			let mat = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -294,7 +325,9 @@ mod tests {
 			assert!(mat.val() == &[1.0 + 3.0, 5.0, 4.0, 2.0, 6.0 + 7.0]);
 		}
 		{
-			let mat = SymbolicSparseRowMat::try_new_from_indices(nrows, ncols, indices);
+			let mat = SymbolicSparseRowMat::try_new_from_indices(
+				nrows, ncols, indices,
+			);
 			assert!(mat.is_ok());
 			let (mat, order) = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -302,11 +335,14 @@ mod tests {
 			assert!(mat.row_ptr() == &[0, 2, 4, 4, 5, 5]);
 			assert!(mat.row_nnz() == None);
 			assert!(mat.col_idx() == &[0, 1, 1, 2, 3]);
-			let mat = SparseRowMat::<_, f64>::new_from_argsort(mat, &order, values).unwrap();
+			let mat =
+				SparseRowMat::<_, f64>::new_from_argsort(mat, &order, values)
+					.unwrap();
 			assert!(mat.val() == &[1.0 + 3.0, 5.0, 4.0, 2.0, 6.0 + 7.0]);
 		}
 		{
-			let mat = SparseRowMat::try_new_from_triplets(nrows, ncols, triplets);
+			let mat =
+				SparseRowMat::try_new_from_triplets(nrows, ncols, triplets);
 			assert!(mat.is_ok());
 			let mat = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -333,7 +369,18 @@ mod tests {
 			Pair::new(3, 3),
 			Pair::new(3, 3isize),
 		];
-		let values = &[1.0, 2.0, 3.0, 4.0, 5.0, f64::NAN, f64::NAN, f64::NAN, 6.0, 7.0f64];
+		let values = &[
+			1.0,
+			2.0,
+			3.0,
+			4.0,
+			5.0,
+			f64::NAN,
+			f64::NAN,
+			f64::NAN,
+			6.0,
+			7.0f64,
+		];
 		let triplets = &[
 			Triplet::new(0, 0, 1.0),
 			Triplet::new(1, 2, 2.0),
@@ -347,7 +394,10 @@ mod tests {
 			Triplet::new(3, 3isize, 7.0_f64),
 		];
 		{
-			let mat = SymbolicSparseColMat::<usize>::try_new_from_nonnegative_indices(nrows, ncols, indices);
+			let mat =
+				SymbolicSparseColMat::<usize>::try_new_from_nonnegative_indices(
+					nrows, ncols, indices,
+				);
 			assert!(mat.is_ok());
 			let (mat, order) = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -355,11 +405,16 @@ mod tests {
 			assert!(mat.col_ptr() == &[0, 1, 3, 4, 5]);
 			assert!(mat.col_nnz() == None);
 			assert!(mat.row_idx() == &[0, 0, 1, 1, 3]);
-			let mat = SparseColMat::<_, f64>::new_from_argsort(mat, &order, values).unwrap();
+			let mat =
+				SparseColMat::<_, f64>::new_from_argsort(mat, &order, values)
+					.unwrap();
 			assert!(mat.val() == &[1.0 + 3.0, 5.0, 4.0, 2.0, 6.0 + 7.0]);
 		}
 		{
-			let mat = SparseColMat::<usize, _>::try_new_from_nonnegative_triplets(nrows, ncols, triplets);
+			let mat =
+				SparseColMat::<usize, _>::try_new_from_nonnegative_triplets(
+					nrows, ncols, triplets,
+				);
 			assert!(mat.is_ok());
 			let mat = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -370,7 +425,10 @@ mod tests {
 			assert!(mat.val() == &[1.0 + 3.0, 5.0, 4.0, 2.0, 6.0 + 7.0]);
 		}
 		{
-			let mat = SymbolicSparseRowMat::<usize>::try_new_from_nonnegative_indices(nrows, ncols, indices);
+			let mat =
+				SymbolicSparseRowMat::<usize>::try_new_from_nonnegative_indices(
+					nrows, ncols, indices,
+				);
 			assert!(mat.is_ok());
 			let (mat, order) = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -378,11 +436,16 @@ mod tests {
 			assert!(mat.row_ptr() == &[0, 2, 4, 4, 5, 5]);
 			assert!(mat.row_nnz() == None);
 			assert!(mat.col_idx() == &[0, 1, 1, 2, 3]);
-			let mat = SparseRowMat::<_, f64>::new_from_argsort(mat, &order, values).unwrap();
+			let mat =
+				SparseRowMat::<_, f64>::new_from_argsort(mat, &order, values)
+					.unwrap();
 			assert!(mat.val() == &[1.0 + 3.0, 5.0, 4.0, 2.0, 6.0 + 7.0]);
 		}
 		{
-			let mat = SparseRowMat::<usize, _>::try_new_from_nonnegative_triplets(nrows, ncols, triplets);
+			let mat =
+				SparseRowMat::<usize, _>::try_new_from_nonnegative_triplets(
+					nrows, ncols, triplets,
+				);
 			assert!(mat.is_ok());
 			let mat = mat.unwrap();
 			assert!(mat.nrows() == nrows);
@@ -407,7 +470,8 @@ mod tests {
 			Pair::new(3, 3),
 			Pair::new(5, 3usize),
 		];
-		let err = SymbolicSparseColMat::try_new_from_indices(nrows, ncols, indices);
+		let err =
+			SymbolicSparseColMat::try_new_from_indices(nrows, ncols, indices);
 		assert!(err.is_err());
 		let err = err.unwrap_err();
 		assert!(err == CreationError::OutOfBounds { row: 5, col: 3 });
@@ -426,7 +490,8 @@ mod tests {
 			Pair::new(3, 3),
 			Pair::new(2, 4usize),
 		];
-		let err = SymbolicSparseColMat::try_new_from_indices(nrows, ncols, indices);
+		let err =
+			SymbolicSparseColMat::try_new_from_indices(nrows, ncols, indices);
 		assert!(err.is_err());
 		let err = err.unwrap_err();
 		assert!(err == CreationError::OutOfBounds { row: 2, col: 4 });

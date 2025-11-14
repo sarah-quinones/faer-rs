@@ -21,7 +21,13 @@ fn eigen(bencher: Bencher, PlotArg(n): PlotArg) {
 	let n_eigval = 5;
 	let mut V = Mat::zeros(n, n_eigval);
 	let mut w = vec![c64::ZERO; n_eigval];
-	let mut mem = MemBuffer::new(faer::matrix_free::eigen::partial_eigen_scratch(&A, n_eigval, Par::Seq, default()));
+	let mut mem =
+		MemBuffer::new(faer::matrix_free::eigen::partial_eigen_scratch(
+			&A,
+			n_eigval,
+			Par::Seq,
+			default(),
+		));
 	bencher.bench(|| {
 		faer::matrix_free::eigen::partial_eigen(
 			V.rb_mut(),
@@ -37,7 +43,11 @@ fn eigen(bencher: Bencher, PlotArg(n): PlotArg) {
 }
 fn main() -> eyre::Result<()> {
 	let bench = Bench::from_args()?;
-	bench.register_many("eigensolver", list![eigen], [512, 1024, 2048].map(PlotArg));
+	bench.register_many(
+		"eigensolver",
+		list![eigen],
+		[512, 1024, 2048].map(PlotArg),
+	);
 	bench.run()?;
 	Ok(())
 }

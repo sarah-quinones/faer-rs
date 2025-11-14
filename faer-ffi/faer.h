@@ -29,6 +29,46 @@
 #include <stddef.h>
 
 
+typedef enum FaerV0_23_PivotingStrategy {
+  /**
+   * searches for the k-th pivot in the k-th column
+   */
+  FaerV0_23_PivotingStrategy_Partial,
+  /**
+   * searches for the k-th pivot in the k-th column, as well as the tail
+   * of the diagonal of the matrix
+   */
+  FaerV0_23_PivotingStrategy_PartialDiag,
+  /**
+   * searches for pivots that are locally optimal
+   */
+  FaerV0_23_PivotingStrategy_Rook,
+  /**
+   * searches for pivots that are locally optimal, as well as the tail of
+   * the diagonal of the matrix
+   */
+  FaerV0_23_PivotingStrategy_RookDiag,
+  /**
+   * searches for pivots that are globally optimal
+   */
+  FaerV0_23_PivotingStrategy_Full,
+} FaerV0_23_PivotingStrategy;
+
+typedef enum FaerV0_23_Conj {
+  FaerV0_23_Conj_No,
+  FaerV0_23_Conj_Yes,
+} FaerV0_23_Conj;
+
+typedef enum FaerV0_23_ParTag {
+  FaerV0_23_ParTag_Seq,
+  FaerV0_23_ParTag_Rayon,
+} FaerV0_23_ParTag;
+
+typedef enum FaerV0_23_ComputeEigenvectors {
+  FaerV0_23_ComputeEigenvectors_No,
+  FaerV0_23_ComputeEigenvectors_Yes,
+} FaerV0_23_ComputeEigenvectors;
+
 typedef enum FaerV0_23_Accum {
   FaerV0_23_Accum_Replace,
   FaerV0_23_Accum_Add,
@@ -44,51 +84,11 @@ typedef enum FaerV0_23_Block {
   FaerV0_23_Block_UnitTriangularUpper,
 } FaerV0_23_Block;
 
-typedef enum FaerV0_23_ComputeEigenvectors {
-  FaerV0_23_ComputeEigenvectors_No,
-  FaerV0_23_ComputeEigenvectors_Yes,
-} FaerV0_23_ComputeEigenvectors;
-
 typedef enum FaerV0_23_ComputeSvdVectors {
   FaerV0_23_ComputeSvdVectors_No,
   FaerV0_23_ComputeSvdVectors_Thin,
   FaerV0_23_ComputeSvdVectors_Full,
 } FaerV0_23_ComputeSvdVectors;
-
-typedef enum FaerV0_23_Conj {
-  FaerV0_23_Conj_No,
-  FaerV0_23_Conj_Yes,
-} FaerV0_23_Conj;
-
-typedef enum FaerV0_23_ParTag {
-  FaerV0_23_ParTag_Seq,
-  FaerV0_23_ParTag_Rayon,
-} FaerV0_23_ParTag;
-
-typedef enum FaerV0_23_PivotingStrategy {
-  /**
-   * searches for the k-th pivot in the k-th column
-   */
-  FaerV0_23_PivotingStrategy_Partial,
-  /**
-   * searches for the k-th pivot in the k-th column, as well as the tail of the diagonal of
-   * the matrix
-   */
-  FaerV0_23_PivotingStrategy_PartialDiag,
-  /**
-   * searches for pivots that are locally optimal
-   */
-  FaerV0_23_PivotingStrategy_Rook,
-  /**
-   * searches for pivots that are locally optimal, as well as the tail of the diagonal of the
-   * matrix
-   */
-  FaerV0_23_PivotingStrategy_RookDiag,
-  /**
-   * searches for pivots that are globally optimal
-   */
-  FaerV0_23_PivotingStrategy_Full,
-} FaerV0_23_PivotingStrategy;
 
 typedef struct FaerV0_23_Real FaerV0_23_Real;
 

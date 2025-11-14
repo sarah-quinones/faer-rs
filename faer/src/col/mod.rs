@@ -1,7 +1,8 @@
 use crate::internal_prelude::*;
 use crate::utils::bound::{One, Zero};
 use core::ptr::NonNull;
-/// represents a type that can be used to slice a column, such as an index or a range of indices
+/// represents a type that can be used to slice a column, such as an index or a
+/// range of indices
 pub trait ColIndex<RowRange> {
 	/// sliced view type
 	type Target;
@@ -30,32 +31,36 @@ pub use colmut::Mut;
 pub use colown::Own;
 pub use colref::Ref;
 use mat::AsMat;
-/// immutable view over a column vector, similar to an immutable reference to a strided
-/// [prim@slice]
+/// immutable view over a column vector, similar to an immutable reference to a
+/// strided [prim@slice]
 ///
 /// # note
 ///
-/// unlike a slice, the data pointed to by `ColRef<'_, T>` is allowed to be partially or fully
-/// uninitialized under certain conditions. in this case, care must be taken to not perform any
-/// operations that read the uninitialized values, or form references to them, either directly or
-/// indirectly through any of the numerical library routines, unless it is explicitly permitted
-pub type ColRef<'a, T, Rows = usize, RStride = isize> = generic::Col<Ref<'a, T, Rows, RStride>>;
-/// mutable view over a column vector, similar to a mutable reference to a strided
-/// [prim@slice]
+/// unlike a slice, the data pointed to by `ColRef<'_, T>` is allowed to be
+/// partially or fully uninitialized under certain conditions. in this case,
+/// care must be taken to not perform any operations that read the uninitialized
+/// values, or form references to them, either directly or indirectly through
+/// any of the numerical library routines, unless it is explicitly permitted
+pub type ColRef<'a, T, Rows = usize, RStride = isize> =
+	generic::Col<Ref<'a, T, Rows, RStride>>;
+/// mutable view over a column vector, similar to a mutable reference to a
+/// strided [prim@slice]
 ///
 /// # note
 ///
-/// unlike a slice, the data pointed to by `ColMut<'_, T>` is allowed to be partially or fully
-/// uninitialized under certain conditions. in this case, care must be taken to not perform any
-/// operations that read the uninitialized values, or form references to them, either directly or
-/// indirectly through any of the numerical library routines, unless it is explicitly permitted
-pub type ColMut<'a, T, Rows = usize, RStride = isize> = generic::Col<Mut<'a, T, Rows, RStride>>;
+/// unlike a slice, the data pointed to by `ColMut<'_, T>` is allowed to be
+/// partially or fully uninitialized under certain conditions. in this case,
+/// care must be taken to not perform any operations that read the uninitialized
+/// values, or form references to them, either directly or indirectly through
+/// any of the numerical library routines, unless it is explicitly permitted
+pub type ColMut<'a, T, Rows = usize, RStride = isize> =
+	generic::Col<Mut<'a, T, Rows, RStride>>;
 /// heap allocated resizable column vector.
 ///
 /// # note
 ///
-/// the memory layout of `Col` is guaranteed to be column-major, meaning that it has a row stride
-/// of `1`.
+/// the memory layout of `Col` is guaranteed to be column-major, meaning that it
+/// has a row stride of `1`.
 pub type Col<T, Rows = usize> = generic::Col<Own<T, Rows>>;
 
 #[doc(hidden)]
@@ -126,8 +131,15 @@ pub mod generic {
 			Col(self.0.into_const())
 		}
 	}
-	impl<T, Rows: Shape, RStride: Stride, Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Rows, RStride>>> Index<Idx<Rows>>
-		for Col<Inner>
+	impl<
+		T,
+		Rows: Shape,
+		RStride: Stride,
+		Inner: for<'short> Reborrow<
+				'short,
+				Target = super::Ref<'short, T, Rows, RStride>,
+			>,
+	> Index<Idx<Rows>> for Col<Inner>
 	{
 		type Output = T;
 
@@ -141,8 +153,13 @@ pub mod generic {
 		T,
 		Rows: Shape,
 		RStride: Stride,
-		Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Rows, RStride>>
-			+ for<'short> ReborrowMut<'short, Target = super::Mut<'short, T, Rows, RStride>>,
+		Inner: for<'short> Reborrow<
+				'short,
+				Target = super::Ref<'short, T, Rows, RStride>,
+			> + for<'short> ReborrowMut<
+				'short,
+				Target = super::Mut<'short, T, Rows, RStride>,
+			>,
 	> IndexMut<Idx<Rows>> for Col<Inner>
 	{
 		#[inline]
@@ -210,7 +227,10 @@ impl<T, Rows: Shape> AsMatRef for Col<T, Rows> {
 impl<T, Rows: Shape, Rs: Stride> AsMatMut for ColMut<'_, T, Rows, Rs> {
 	#[inline]
 	fn as_mat_mut(&mut self) -> MatMut<'_, Self::T, Self::Rows, Self::Cols> {
-		self.rb_mut().as_dyn_stride_mut().as_mat_mut().as_col_shape_mut(One)
+		self.rb_mut()
+			.as_dyn_stride_mut()
+			.as_mat_mut()
+			.as_col_shape_mut(One)
 	}
 }
 impl<T, Rows: Shape> AsMatMut for Col<T, Rows> {

@@ -1,7 +1,8 @@
-//! low level implementation of the eigenvalue decomposition of a square diagonalizable matrix.
+//! low level implementation of the eigenvalue decomposition of a square
+//! diagonalizable matrix.
 //!
-//! the eigenvalue decomposition of a square matrix $A$ of shape $(n, n)$ is a decomposition into
-//! two components $U$, $S$:
+//! the eigenvalue decomposition of a square matrix $A$ of shape $(n, n)$ is a
+//! decomposition into two components $U$, $S$:
 //!
 //! - $U$ has shape $(n, n)$ and is invertible
 //! - $S$ has shape $(n, n)$ and is a diagonal matrix
@@ -9,7 +10,8 @@
 //!
 //! $$A = U S U^{-1}$$
 //!
-//! if $A$ is self-adjoint, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued
+//! if $A$ is self-adjoint, then $U$ can be made unitary ($U^{-1} = U^H$), and
+//! $S$ is real valued
 /// hessenberg decomposition
 pub mod hessenberg;
 #[doc(hidden)]
@@ -94,8 +96,8 @@ pub enum ComputeEigenvectors {
 	/// compute eigenvectors
 	Yes,
 }
-/// computes the layout of the workspace required to compute a self-adjoint matrix's
-/// eigendecomposition
+/// computes the layout of the workspace required to compute a self-adjoint
+/// matrix's eigendecomposition
 pub fn self_adjoint_evd_scratch<T: ComplexField>(
 	dim: usize,
 	compute_u: ComputeEigenvectors,
@@ -107,7 +109,11 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 	let prologue = StackReq::all_of(&[
 		temp_mat_scratch::<T>(n, n),
 		temp_mat_scratch::<T>(bs, n),
-		StackReq::any_of(&[tridiag::tridiag_in_place_scratch::<T>(n, par, params.tridiag.into())]),
+		StackReq::any_of(&[tridiag::tridiag_in_place_scratch::<T>(
+			n,
+			par,
+			params.tridiag.into(),
+		)]),
 		temp_mat_scratch::<T::Real>(n, 1).array(2),
 	]);
 	if compute_u == ComputeEigenvectors::No {
@@ -117,7 +123,7 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 		prologue,
 		temp_mat_scratch::<T::Real>(
 			n,
-			if try_const! {
+			if const {
 				T::IS_REAL
 			} {
 				0
@@ -137,10 +143,11 @@ pub fn self_adjoint_evd_scratch<T: ComplexField>(
 		]),
 	])
 }
-/// computes the matrix $A$'s eigendecomposition, assuming it is tridiagonal and self-adjoint
+/// computes the matrix $A$'s eigendecomposition, assuming it is tridiagonal and
+/// self-adjoint
 ///
-/// the eigenvalues are stored in $S$, and the eigenvectors in $U$ such that the eigenvalues are
-/// sorted in nondecreasing order
+/// the eigenvalues are stored in $S$, and the eigenvectors in $U$ such that the
+/// eigenvalues are sorted in nondecreasing order
 pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
 	diag: DiagRef<'_, T>,
 	subdiag: DiagRef<'_, T>,
@@ -151,16 +158,24 @@ pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
 	params: Spec<SelfAdjointEvdParams, T>,
 ) -> Result<(), EvdError> {
 	let n = diag.dim();
-	let (mut real_diag, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
-	let (mut real_offdiag, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
-	let mut real_diag = real_diag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-	let mut real_offdiag = real_offdiag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+	let (mut real_diag, stack) =
+		unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+	let (mut real_offdiag, stack) =
+		unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+	let mut real_diag = real_diag
+		.as_mat_mut()
+		.col_mut(0)
+		.try_as_col_major_mut()
+		.unwrap();
+	let mut real_offdiag = real_offdiag
+		.as_mat_mut()
+		.col_mut(0)
+		.try_as_col_major_mut()
+		.unwrap();
 	for i in 0..n {
 		real_diag[i] = diag[i].real();
 		if i + 1 < n {
-			if try_const! {
-				T::IS_REAL
-			} {
+			if const { T::IS_REAL } {
 				real_offdiag[i] = subdiag[i].real();
 			} else {
 				real_offdiag[i] = subdiag[i].abs();
@@ -173,24 +188,36 @@ pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
 	let mut u = match u {
 		Some(u) => u,
 		None => {
-			tridiag_evd::qr_algorithm(real_diag.rb_mut(), real_offdiag.rb_mut(), None)?;
+			tridiag_evd::qr_algorithm(
+				real_diag.rb_mut(),
+				real_offdiag.rb_mut(),
+				None,
+			)?;
 			for i in 0..n {
 				s[i] = real_diag[i].to_cplx();
 			}
 			return Ok(());
 		},
 	};
-	let (mut u_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, if T::IS_REAL { 0 } else { n }, stack) };
+	let (mut u_real, stack) = unsafe {
+		temp_mat_uninit::<T::Real, _, _>(
+			n,
+			if T::IS_REAL { 0 } else { n },
+			stack,
+		)
+	};
 	let mut u_real = u_real.as_mat_mut();
-	let mut u_evd = if try_const! {
-		T::IS_REAL
-	} {
+	let mut u_evd = if const { T::IS_REAL } {
 		unsafe { core::mem::transmute(u.rb_mut()) }
 	} else {
 		u_real.rb_mut()
 	};
 	if n < params.recursion_threshold {
-		tridiag_evd::qr_algorithm(real_diag.rb_mut(), real_offdiag.rb_mut(), Some(u_evd.rb_mut()))?;
+		tridiag_evd::qr_algorithm(
+			real_diag.rb_mut(),
+			real_offdiag.rb_mut(),
+			Some(u_evd.rb_mut()),
+		)?;
 	} else {
 		tridiag_evd::divide_and_conquer::<T::Real>(
 			real_diag.rb_mut(),
@@ -201,14 +228,20 @@ pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
 			params.recursion_threshold,
 		)?;
 	}
-	if try_const! {
-		! T::IS_REAL
-	} {
+	if const { !T::IS_REAL } {
 		let normalized = |x: T| {
-			if x == zero() { one() } else { x.mul_real(x.abs().recip()) }
+			if x == zero() {
+				one()
+			} else {
+				x.mul_real(x.abs().recip())
+			}
 		};
 		let (mut scale, _) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
-		let mut scale = scale.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+		let mut scale = scale
+			.as_mat_mut()
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
 		let mut x = one::<T>();
 		scale[0] = one();
 		for i in 1..n {
@@ -216,9 +249,11 @@ pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
 			scale[i] = x.copy();
 		}
 		for j in 0..n {
-			z!(u.rb_mut().col_mut(j), u_real.rb().col(j), scale.rb()).for_each(|uz!(u, real, scale)| {
-				*u = scale.mul_real(real);
-			});
+			z!(u.rb_mut().col_mut(j), u_real.rb().col(j), scale.rb()).for_each(
+				|uz!(u, real, scale)| {
+					*u = scale.mul_real(real);
+				},
+			);
 		}
 	}
 	for i in 0..n {
@@ -228,8 +263,8 @@ pub fn tridiagonal_self_adjoint_evd<T: ComplexField>(
 }
 /// computes the matrix $A$'s eigendecomposition, assuming it is self-adjoint
 ///
-/// the eigenvalues are stored in $S$, and the eigenvectors in $U$ such that the eigenvalues are
-/// sorted in nondecreasing order
+/// the eigenvalues are stored in $S$, and the eigenvectors in $U$ such that the
+/// eigenvalues are sorted in nondecreasing order
 ///
 /// only the lower triangular half of $A$ is accessed
 pub fn self_adjoint_evd<T: ComplexField>(
@@ -251,7 +286,9 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	}
 	#[cfg(feature = "perf-warn")]
 	if let Some(matrix) = u.rb() {
-		if matrix.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(QR_WARN) {
+		if matrix.row_stride().unsigned_abs() != 1
+			&& crate::__perf_warn!(QR_WARN)
+		{
 			if matrix.col_stride().unsigned_abs() == 1 {
 				log::warn!(
 					target : "faer_perf",
@@ -269,22 +306,33 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	let mut trid = trid.as_mat_mut();
 	trid.copy_from_triangular_lower(A);
 	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
-	let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
+	let (mut householder, stack) =
+		unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
 	let mut householder = householder.as_mat_mut();
 	{
-		tridiag::tridiag_in_place(trid.rb_mut(), householder.rb_mut(), par, stack, params.tridiag.into());
+		tridiag::tridiag_in_place(
+			trid.rb_mut(),
+			householder.rb_mut(),
+			par,
+			stack,
+			params.tridiag.into(),
+		);
 	}
 	let trid = trid.rb();
-	let (mut diag, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
-	let (mut offdiag, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+	let (mut diag, stack) =
+		unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+	let (mut offdiag, stack) =
+		unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
 	let mut diag = diag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-	let mut offdiag = offdiag.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+	let mut offdiag = offdiag
+		.as_mat_mut()
+		.col_mut(0)
+		.try_as_col_major_mut()
+		.unwrap();
 	for i in 0..n {
 		diag[i] = trid[(i, i)].real();
 		if i + 1 < n {
-			if try_const! {
-				T::IS_REAL
-			} {
+			if const { T::IS_REAL } {
 				offdiag[i] = trid[(i + 1, i)].real();
 			} else {
 				offdiag[i] = trid[(i + 1, i)].abs();
@@ -304,28 +352,49 @@ pub fn self_adjoint_evd<T: ComplexField>(
 			return Ok(());
 		},
 	};
-	let (mut u_real, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, if T::IS_REAL { 0 } else { n }, stack) };
+	let (mut u_real, stack) = unsafe {
+		temp_mat_uninit::<T::Real, _, _>(
+			n,
+			if T::IS_REAL { 0 } else { n },
+			stack,
+		)
+	};
 	let mut u_real = u_real.as_mat_mut();
-	let mut u_evd = if try_const! {
-		T::IS_REAL
-	} {
+	let mut u_evd = if const { T::IS_REAL } {
 		unsafe { core::mem::transmute(u.rb_mut()) }
 	} else {
 		u_real.rb_mut()
 	};
 	if n < params.recursion_threshold {
-		tridiag_evd::qr_algorithm(diag.rb_mut(), offdiag.rb_mut(), Some(u_evd.rb_mut()))?;
+		tridiag_evd::qr_algorithm(
+			diag.rb_mut(),
+			offdiag.rb_mut(),
+			Some(u_evd.rb_mut()),
+		)?;
 	} else {
-		tridiag_evd::divide_and_conquer::<T::Real>(diag.rb_mut(), offdiag.rb_mut(), u_evd.rb_mut(), par, stack, params.recursion_threshold)?;
+		tridiag_evd::divide_and_conquer::<T::Real>(
+			diag.rb_mut(),
+			offdiag.rb_mut(),
+			u_evd.rb_mut(),
+			par,
+			stack,
+			params.recursion_threshold,
+		)?;
 	}
-	if try_const! {
-		! T::IS_REAL
-	} {
+	if const { !T::IS_REAL } {
 		let normalized = |x: T| {
-			if x == zero() { one() } else { x.mul_real(x.abs().recip()) }
+			if x == zero() {
+				one()
+			} else {
+				x.mul_real(x.abs().recip())
+			}
 		};
 		let (mut scale, _) = unsafe { temp_mat_uninit::<T, _, _>(n, 1, stack) };
-		let mut scale = scale.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+		let mut scale = scale
+			.as_mat_mut()
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
 		let mut x = one::<T>();
 		scale[0] = one();
 		for i in 1..n {
@@ -333,9 +402,11 @@ pub fn self_adjoint_evd<T: ComplexField>(
 			scale[i] = x.copy();
 		}
 		for j in 0..n {
-			z!(u.rb_mut().col_mut(j), u_real.rb().col(j), scale.rb()).for_each(|uz!(u, real, scale)| {
-				*u = scale.mul_real(real);
-			});
+			z!(u.rb_mut().col_mut(j), u_real.rb().col(j), scale.rb()).for_each(
+				|uz!(u, real, scale)| {
+					*u = scale.mul_real(real);
+				},
+			);
 		}
 	}
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -351,13 +422,17 @@ pub fn self_adjoint_evd<T: ComplexField>(
 	}
 	Ok(())
 }
-/// computes the layout of the workspace required to compute a self-adjoint matrix's
-/// pseudoinverse, given the eigendecomposition
-pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
+/// computes the layout of the workspace required to compute a self-adjoint
+/// matrix's pseudoinverse, given the eigendecomposition
+pub fn pseudoinverse_from_self_adjoint_evd_scratch<T: ComplexField>(
+	dim: usize,
+	par: Par,
+) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim).array(2)
 }
-/// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition factors $S$ and $U$
+/// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition
+/// factors $S$ and $U$
 #[track_caller]
 pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(
 	pinv: MatMut<'_, T>,
@@ -366,10 +441,19 @@ pub fn pseudoinverse_from_self_adjoint_evd<T: ComplexField>(
 	par: Par,
 	stack: &mut MemStack,
 ) {
-	pseudoinverse_from_self_adjoint_evd_with_tolerance(pinv, s, u, zero(), eps::<T::Real>() * from_f64::<T::Real>(u.ncols() as f64), par, stack);
+	pseudoinverse_from_self_adjoint_evd_with_tolerance(
+		pinv,
+		s,
+		u,
+		zero(),
+		eps::<T::Real>() * from_f64::<T::Real>(u.ncols() as f64),
+		par,
+		stack,
+	);
 }
-/// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition factors $S$ and
-/// $U$, and tolerance parameters for determining zero eigenvalues
+/// computes a self-adjoint matrix's pseudoinverse, given the eigendecomposition
+/// factors $S$ and $U$, and tolerance parameters for determining zero
+/// eigenvalues
 #[track_caller]
 pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 	pinv: MatMut<'_, T>,
@@ -386,7 +470,8 @@ pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 	assert!(all(u.nrows() == n, u.ncols() == n, s.nrows() == n));
 	let smax = s.norm_max();
 	let tol = abs_tol.fmax(rel_tol * smax);
-	let (mut u_trunc, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
+	let (mut u_trunc, stack) =
+		unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 	let (mut up_trunc, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 	let mut u_trunc = u_trunc.as_mat_mut();
 	let mut up_trunc = up_trunc.as_mat_mut();
@@ -396,7 +481,8 @@ pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 		if x > tol {
 			let ref p = s[j].real().recip();
 			u_trunc.rb_mut().col_mut(len).copy_from(u.col(j));
-			z!(up_trunc.rb_mut().col_mut(len), u.col(j)).for_each(|uz!(dst, src)| *dst = src.mul_real(p));
+			z!(up_trunc.rb_mut().col_mut(len), u.col(j))
+				.for_each(|uz!(dst, src)| *dst = src.mul_real(p));
 			len += 1;
 		}
 	}
@@ -419,7 +505,11 @@ pub fn pseudoinverse_from_self_adjoint_evd_with_tolerance<T: ComplexField>(
 		}
 	}
 }
-fn dot2x1<T: RealField>(lhs0: RowRef<'_, T>, lhs1: RowRef<'_, T>, rhs: ColRef<'_, T>) -> (T, T) {
+fn dot2x1<T: RealField>(
+	lhs0: RowRef<'_, T>,
+	lhs1: RowRef<'_, T>,
+	rhs: ColRef<'_, T>,
+) -> (T, T) {
 	let n = rhs.nrows();
 	assert!(all(lhs0.ncols() == n, lhs1.ncols() == n));
 	let mut acc00 = zero::<T>();
@@ -442,7 +532,12 @@ fn dot2x1<T: RealField>(lhs0: RowRef<'_, T>, lhs1: RowRef<'_, T>, rhs: ColRef<'_
 	}
 	(acc00 + acc01, acc10 + acc11)
 }
-fn dot2x2<T: RealField>(lhs0: RowRef<'_, T>, lhs1: RowRef<'_, T>, rhs0: ColRef<'_, T>, rhs1: ColRef<'_, T>) -> (T, T, T, T) {
+fn dot2x2<T: RealField>(
+	lhs0: RowRef<'_, T>,
+	lhs1: RowRef<'_, T>,
+	rhs0: ColRef<'_, T>,
+	rhs1: ColRef<'_, T>,
+) -> (T, T, T, T) {
 	let n = rhs0.nrows();
 	assert!(all(lhs0.ncols() == n, lhs1.ncols() == n));
 	let mut acc0 = zero::<T>();
@@ -459,7 +554,12 @@ fn dot2x2<T: RealField>(lhs0: RowRef<'_, T>, lhs1: RowRef<'_, T>, rhs0: ColRef<'
 	}
 	(acc0, acc1, acc2, acc3)
 }
-pub(crate) fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<'_, T>, par: Par, params: EvdFromSchurParams) {
+pub(crate) fn evd_from_real_schur_imp<T: RealField>(
+	A: MatRef<'_, T>,
+	V: MatMut<'_, T>,
+	par: Par,
+	params: EvdFromSchurParams,
+) {
 	let one = one::<T>;
 	let zero = zero::<T>;
 	let mut V = V;
@@ -519,7 +619,13 @@ pub(crate) fn evd_from_real_schur_imp<T: RealField>(A: MatRef<'_, T>, V: MatMut<
 		}
 	}
 }
-pub(crate) fn evd_from_cplx_schur_imp<T: ComplexField>(A: MatRef<'_, T>, conj_A: Conj, V: MatMut<'_, T>, par: Par, params: EvdFromSchurParams) {
+pub(crate) fn evd_from_cplx_schur_imp<T: ComplexField>(
+	A: MatRef<'_, T>,
+	conj_A: Conj,
+	V: MatMut<'_, T>,
+	par: Par,
+	params: EvdFromSchurParams,
+) {
 	let one = one::<T>;
 	let mut V = V;
 	let n = A.nrows();
@@ -535,7 +641,11 @@ pub(crate) fn evd_from_cplx_schur_imp<T: ComplexField>(A: MatRef<'_, T>, conj_A:
 			break;
 		}
 		k -= 1;
-		let ref p = if conj_A == Conj::Yes { A[(k, k)].conj() } else { A[(k, k)].copy() };
+		let ref p = if conj_A == Conj::Yes {
+			A[(k, k)].conj()
+		} else {
+			A[(k, k)].copy()
+		};
 		V[(k, k)] = one();
 		if conj_A == Conj::Yes {
 			for i in 0..k {
@@ -580,7 +690,12 @@ fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(
 			}
 			i -= 1;
 			if i == 0 || A[(i, i - 1)] == zero() {
-				let dot = linalg::matmul::dot::inner_prod(A.row(i).subcols(i + 1, n - i - 1), Conj::No, x.rb().subrows(i + 1, n - i - 1), Conj::No);
+				let dot = linalg::matmul::dot::inner_prod(
+					A.row(i).subcols(i + 1, n - i - 1),
+					Conj::No,
+					x.rb().subrows(i + 1, n - i - 1),
+					Conj::No,
+				);
 				x[i] -= dot;
 				let mut z = &A[(i, i)] - p;
 				if z.abs() < eps * norm {
@@ -603,7 +718,8 @@ fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(
 				let ref r0 = x[i - 1];
 				let ref r1 = x[i];
 				let ref inv_det = (a.abs2() - b * c).recip();
-				(x[i - 1], x[i]) = ((a * r0 - b * r1) * inv_det, (a * r1 - c * r0) * inv_det);
+				(x[i - 1], x[i]) =
+					((a * r0 - b * r1) * inv_det, (a * r1 - c * r0) * inv_det);
 				i -= 1;
 			}
 		}
@@ -614,9 +730,30 @@ fn solve_real_shifted_upper_quasi_triangular_system<T: RealField>(
 		}
 		let (A00, A01, _, A11) = A.split_at(mid, mid);
 		let (mut x0, mut x1) = x.rb_mut().split_at_row_mut(mid);
-		solve_real_shifted_upper_quasi_triangular_system(A11, p.copy(), x1.rb_mut(), norm.copy(), par, params);
-		linalg::matmul::matmul(x0.rb_mut().as_mat_mut(), Accum::Add, A01, x1.rb().as_mat(), -one(), par);
-		solve_real_shifted_upper_quasi_triangular_system(A00, p.copy(), x0.rb_mut(), norm.copy(), par, params);
+		solve_real_shifted_upper_quasi_triangular_system(
+			A11,
+			p.copy(),
+			x1.rb_mut(),
+			norm.copy(),
+			par,
+			params,
+		);
+		linalg::matmul::matmul(
+			x0.rb_mut().as_mat_mut(),
+			Accum::Add,
+			A01,
+			x1.rb().as_mat(),
+			-one(),
+			par,
+		);
+		solve_real_shifted_upper_quasi_triangular_system(
+			A00,
+			p.copy(),
+			x0.rb_mut(),
+			norm.copy(),
+			par,
+			params,
+		);
 	}
 }
 fn solve_cplx_shifted_upper_quasi_triangular_system<T: RealField>(
@@ -714,9 +851,32 @@ fn solve_cplx_shifted_upper_quasi_triangular_system<T: RealField>(
 		}
 		let (A00, A01, _, A11) = A.split_at(mid, mid);
 		let (mut x0, mut x1) = x.rb_mut().split_at_row_mut(mid);
-		solve_cplx_shifted_upper_quasi_triangular_system(A11, p.copy(), q.copy(), x1.rb_mut(), norm.copy(), par, params);
-		linalg::matmul::matmul(x0.rb_mut(), Accum::Add, A01, x1.rb(), -one(), par);
-		solve_cplx_shifted_upper_quasi_triangular_system(A00, p.copy(), q.copy(), x0.rb_mut(), norm.copy(), par, params);
+		solve_cplx_shifted_upper_quasi_triangular_system(
+			A11,
+			p.copy(),
+			q.copy(),
+			x1.rb_mut(),
+			norm.copy(),
+			par,
+			params,
+		);
+		linalg::matmul::matmul(
+			x0.rb_mut(),
+			Accum::Add,
+			A01,
+			x1.rb(),
+			-one(),
+			par,
+		);
+		solve_cplx_shifted_upper_quasi_triangular_system(
+			A00,
+			p.copy(),
+			q.copy(),
+			x0.rb_mut(),
+			norm.copy(),
+			par,
+			params,
+		);
 	}
 }
 fn solve_shifted_upper_triangular_system<T: ComplexField>(
@@ -742,9 +902,18 @@ fn solve_shifted_upper_triangular_system<T: ComplexField>(
 				break;
 			}
 			i -= 1;
-			let dot = linalg::matmul::dot::inner_prod(A.row(i).subcols(i + 1, n - i - 1), conj_A, x.rb().subrows(i + 1, n - i - 1), Conj::No);
+			let dot = linalg::matmul::dot::inner_prod(
+				A.row(i).subcols(i + 1, n - i - 1),
+				conj_A,
+				x.rb().subrows(i + 1, n - i - 1),
+				Conj::No,
+			);
 			x[i] -= dot;
-			let mut z = if conj_A == Conj::Yes { A[(i, i)].conj() } else { A[(i, i)].copy() } - p;
+			let mut z = if conj_A == Conj::Yes {
+				A[(i, i)].conj()
+			} else {
+				A[(i, i)].copy()
+			} - p;
 			if z.abs() < eps * norm {
 				z = (eps * norm).to_cplx();
 			}
@@ -756,9 +925,34 @@ fn solve_shifted_upper_triangular_system<T: ComplexField>(
 		let mid = n / 2;
 		let (A00, A01, _, A11) = A.split_at(mid, mid);
 		let (mut x0, mut x1) = x.rb_mut().split_at_row_mut(mid);
-		solve_shifted_upper_triangular_system(A11, conj_A, p.copy(), x1.rb_mut(), norm.copy(), par, params);
-		linalg::matmul::matmul_with_conj(x0.rb_mut().as_mat_mut(), Accum::Add, A01, conj_A, x1.rb().as_mat(), Conj::No, -one(), par);
-		solve_shifted_upper_triangular_system(A00, conj_A, p.copy(), x0.rb_mut(), norm.copy(), par, params);
+		solve_shifted_upper_triangular_system(
+			A11,
+			conj_A,
+			p.copy(),
+			x1.rb_mut(),
+			norm.copy(),
+			par,
+			params,
+		);
+		linalg::matmul::matmul_with_conj(
+			x0.rb_mut().as_mat_mut(),
+			Accum::Add,
+			A01,
+			conj_A,
+			x1.rb().as_mat(),
+			Conj::No,
+			-one(),
+			par,
+		);
+		solve_shifted_upper_triangular_system(
+			A00,
+			conj_A,
+			p.copy(),
+			x0.rb_mut(),
+			norm.copy(),
+			par,
+			params,
+		);
 	}
 }
 /// computes the layout of the workspace required to compute a matrix's
@@ -774,8 +968,12 @@ pub fn evd_scratch<T: ComplexField>(
 	if n == 0 {
 		return StackReq::EMPTY;
 	}
-	let compute_eigen = eigen_left == ComputeEigenvectors::Yes || eigen_right == ComputeEigenvectors::Yes;
-	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n - 1, n - 1);
+	let compute_eigen = eigen_left == ComputeEigenvectors::Yes
+		|| eigen_right == ComputeEigenvectors::Yes;
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+		n - 1,
+		n - 1,
+	);
 	let H = temp_mat_scratch::<T>(n, n);
 	let X = H;
 	let Z = temp_mat_scratch::<T>(n, if compute_eigen { n } else { 0 });
@@ -785,8 +983,23 @@ pub fn evd_scratch<T: ComplexField>(
 		H,
 		Z,
 		StackReq::any_of(&[
-			householder.and(hessenberg::hessenberg_in_place_scratch::<T>(n, bs, par, params.hessenberg.into()).or(apply)),
-			schur::multishift_qr_scratch::<T>(n, n, compute_eigen, compute_eigen, par, params.schur),
+			householder.and(
+				hessenberg::hessenberg_in_place_scratch::<T>(
+					n,
+					bs,
+					par,
+					params.hessenberg.into(),
+				)
+				.or(apply),
+			),
+			schur::multishift_qr_scratch::<T>(
+				n,
+				n,
+				compute_eigen,
+				compute_eigen,
+				par,
+				params.schur,
+			),
 			X,
 		]),
 	])
@@ -812,11 +1025,24 @@ fn evd_imp<T: ComplexField>(
 			}
 		}
 	}
-	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n - 1, n - 1);
+	let bs = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(
+		n - 1,
+		n - 1,
+	);
 	let mut s = s;
 	let mut s_im = s_im;
 	let (mut H, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
-	let (mut Z, stack) = unsafe { temp_mat_uninit::<T, _, _>(n, if u_left.is_some() || u_right.is_some() { n } else { 0 }, stack) };
+	let (mut Z, stack) = unsafe {
+		temp_mat_uninit::<T, _, _>(
+			n,
+			if u_left.is_some() || u_right.is_some() {
+				n
+			} else {
+				0
+			},
+			stack,
+		)
+	};
 	let mut H = H.as_mat_mut();
 	let mut Z = if u_left.is_some() || u_right.is_some() {
 		Some(Z.as_mat_mut())
@@ -825,9 +1051,16 @@ fn evd_imp<T: ComplexField>(
 	};
 	H.copy_from(A);
 	{
-		let (mut householder, stack) = unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
+		let (mut householder, stack) =
+			unsafe { temp_mat_uninit::<T, _, _>(bs, n - 1, stack) };
 		let mut householder = householder.as_mat_mut();
-		hessenberg::hessenberg_in_place(H.rb_mut(), householder.rb_mut(), par, stack, params.hessenberg.into());
+		hessenberg::hessenberg_in_place(
+			H.rb_mut(),
+			householder.rb_mut(),
+			par,
+			stack,
+			params.hessenberg.into(),
+		);
 		if let Some(mut Z) = Z.rb_mut() {
 			Z.fill(zero());
 			Z.rb_mut().diagonal_mut().fill(one());
@@ -846,9 +1079,7 @@ fn evd_imp<T: ComplexField>(
 			}
 		}
 	}
-	if try_const! {
-		T::IS_REAL
-	} {
+	if const { T::IS_REAL } {
 		schur::real_schur::multishift_qr::<T::Real>(
 			unsafe { core::mem::transmute(Z.is_some()) },
 			unsafe { core::mem::transmute(H.rb_mut()) },
@@ -862,15 +1093,23 @@ fn evd_imp<T: ComplexField>(
 			params.schur,
 		);
 	} else {
-		schur::complex_schur::multishift_qr::<T>(Z.is_some(), H.rb_mut(), Z.rb_mut(), s.rb_mut(), 0, n, par, stack, params.schur);
+		schur::complex_schur::multishift_qr::<T>(
+			Z.is_some(),
+			H.rb_mut(),
+			Z.rb_mut(),
+			s.rb_mut(),
+			0,
+			n,
+			par,
+			stack,
+			params.schur,
+		);
 	}
 	let H = H.rb();
 	if let (Some(mut u), Some(Z)) = (u_right, Z.rb()) {
 		let (mut X, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 		let mut X = X.as_mat_mut();
-		if try_const! {
-			T::IS_REAL
-		} {
+		if const { T::IS_REAL } {
 			evd_from_real_schur_imp::<T::Real>(
 				unsafe { core::mem::transmute(H) },
 				unsafe { core::mem::transmute(X.rb_mut()) },
@@ -878,7 +1117,13 @@ fn evd_imp<T: ComplexField>(
 				params.evd_from_schur,
 			);
 		} else {
-			evd_from_cplx_schur_imp::<T>(H, Conj::No, X.rb_mut(), par, params.evd_from_schur);
+			evd_from_cplx_schur_imp::<T>(
+				H,
+				Conj::No,
+				X.rb_mut(),
+				par,
+				params.evd_from_schur,
+			);
 		}
 		linalg::matmul::triangular::matmul(
 			u.rb_mut(),
@@ -895,17 +1140,23 @@ fn evd_imp<T: ComplexField>(
 	if let (Some(mut u), Some(Z)) = (u_left, Z.rb()) {
 		let (mut X, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 		let mut X = X.as_mat_mut().reverse_rows_mut();
-		if try_const! {
-			T::IS_REAL
-		} {
+		if const { T::IS_REAL } {
 			evd_from_real_schur_imp::<T::Real>(
-				unsafe { core::mem::transmute(H.transpose().reverse_rows_and_cols()) },
+				unsafe {
+					core::mem::transmute(H.transpose().reverse_rows_and_cols())
+				},
 				unsafe { core::mem::transmute(X.rb_mut()) },
 				par,
 				params.evd_from_schur,
 			);
 		} else {
-			evd_from_cplx_schur_imp::<T>(H.transpose().reverse_rows_and_cols(), Conj::Yes, X.rb_mut(), par, params.evd_from_schur);
+			evd_from_cplx_schur_imp::<T>(
+				H.transpose().reverse_rows_and_cols(),
+				Conj::Yes,
+				X.rb_mut(),
+				par,
+				params.evd_from_schur,
+			);
 		}
 		linalg::matmul::triangular::matmul(
 			u.rb_mut(),
@@ -923,8 +1174,8 @@ fn evd_imp<T: ComplexField>(
 }
 /// computes the matrix $A$'s eigendecomposition
 ///
-/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
-/// $U_R$
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the
+/// right eigenvectors in $U_R$
 #[track_caller]
 pub fn evd_cplx<T: RealField>(
 	A: MatRef<'_, Complex<T>>,
@@ -943,12 +1194,21 @@ pub fn evd_cplx<T: RealField>(
 	if let Some(u) = u_right.rb() {
 		assert!(all(u.nrows() == n, u.ncols() == n));
 	}
-	evd_imp(A, s.column_vector_mut(), None, u_left, u_right, par, stack, params.config)
+	evd_imp(
+		A,
+		s.column_vector_mut(),
+		None,
+		u_left,
+		u_right,
+		par,
+		stack,
+		params.config,
+	)
 }
 /// computes the matrix $A$'s eigendecomposition
 ///
-/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
-/// $U_R$
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the
+/// right eigenvectors in $U_R$
 #[track_caller]
 pub fn evd_real<T: RealField>(
 	A: MatRef<'_, T>,
@@ -961,7 +1221,12 @@ pub fn evd_real<T: RealField>(
 	params: Spec<EvdParams, T>,
 ) -> Result<(), EvdError> {
 	let n = A.nrows();
-	assert!(all(A.nrows() == n, A.ncols() == n, s_re.dim() == n, s_im.dim() == n));
+	assert!(all(
+		A.nrows() == n,
+		A.ncols() == n,
+		s_re.dim() == n,
+		s_im.dim() == n
+	));
 	if let Some(u) = u_left.rb() {
 		assert!(all(u.nrows() == n, u.ncols() == n));
 	}
@@ -1033,7 +1298,8 @@ mod general_tests {
 			},
 			..auto!(f64)
 		});
-		let approx_eq = CwiseMat(ApproxEq::<f64>::eps() * (8.0 * n as f64).sqrt());
+		let approx_eq =
+			CwiseMat(ApproxEq::<f64>::eps() * (8.0 * n as f64).sqrt());
 		let mut s_re = Diag::zeros(n);
 		let mut s_im = Diag::zeros(n);
 		{
@@ -1074,9 +1340,11 @@ mod general_tests {
 					let re = ul.col(i);
 					let im = ul.col(i + 1);
 					let ul = &Col::from_fn(n, |i| c64::new(re[i], im[i]));
-					let mat = &Mat::from_fn(n, n, |i, j| c64::from(mat[(i, j)]));
+					let mat =
+						&Mat::from_fn(n, n, |i, j| c64::from(mat[(i, j)]));
 					let s = Scale(c64::new(s_re[i], s_im[i]));
-					let approx_eq = CwiseMat(ApproxEq::eps() * (8.0 * n as f64).sqrt());
+					let approx_eq =
+						CwiseMat(ApproxEq::eps() * (8.0 * n as f64).sqrt());
 					assert!((ur * s).as_mat() ~ (mat * ur).as_mat());
 					assert!((ul.adjoint() * s).as_mat() ~ (ul.adjoint() * mat).as_mat());
 					i += 2;
@@ -1124,7 +1392,10 @@ mod self_adjoint_tests {
 			recursion_threshold: 8,
 			..auto!(T)
 		});
-		let approx_eq = CwiseMat(ApproxEq::<T::Real>::eps() * from_f64::<T::Real>(8.0 * n as f64).sqrt());
+		let approx_eq = CwiseMat(
+			ApproxEq::<T::Real>::eps()
+				* from_f64::<T::Real>(8.0 * n as f64).sqrt(),
+		);
 		let mut s = Mat::zeros(n, n);
 		{
 			let mut u = Mat::zeros(n, n);
@@ -1133,12 +1404,14 @@ mod self_adjoint_tests {
 				s.as_mut().diagonal_mut(),
 				Some(u.as_mut()),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(self_adjoint_evd_scratch::<T>(
-					n,
-					ComputeEigenvectors::Yes,
-					Par::Seq,
-					params,
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					self_adjoint_evd_scratch::<T>(
+						n,
+						ComputeEigenvectors::Yes,
+						Par::Seq,
+						params,
+					),
+				)),
 				params,
 			)
 			.unwrap();
@@ -1152,12 +1425,14 @@ mod self_adjoint_tests {
 				s2.as_mut().diagonal_mut(),
 				None,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(self_adjoint_evd_scratch::<T>(
-					n,
-					ComputeEigenvectors::No,
-					Par::Seq,
-					params,
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					self_adjoint_evd_scratch::<T>(
+						n,
+						ComputeEigenvectors::No,
+						Par::Seq,
+						params,
+					),
+				)),
 				params,
 			)
 			.unwrap();

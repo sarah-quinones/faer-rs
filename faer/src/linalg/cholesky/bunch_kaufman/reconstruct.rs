@@ -1,7 +1,10 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(
+	dim: usize,
+	par: Par,
+) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(dim, dim)
 }
@@ -47,7 +50,10 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 			for i in 0..n {
 				let xk = &out[(i, j)];
 				let xkp1 = &out[(i, j + 1)];
-				(out[(i, j)], out[(i, j + 1)]) = (xk.mul_real(ak) + xkp1 * akp1k, xkp1.mul_real(akp1) + xk * akp1k.conj());
+				(out[(i, j)], out[(i, j + 1)]) = (
+					xk.mul_real(ak) + xkp1 * akp1k,
+					xkp1.mul_real(akp1) + xk * akp1k.conj(),
+				);
 			}
 			j += 2;
 		}
@@ -68,7 +74,11 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 		let pj = perm_inv[j].zx();
 		for i in j..n {
 			let pi = perm_inv[i].zx();
-			out[(i, j)] = if pi >= pj { tmp[(pi, pj)].copy() } else { tmp[(pj, pi)].conj() };
+			out[(i, j)] = if pi >= pj {
+				tmp[(pi, pj)].copy()
+			} else {
+				tmp[(pj, pi)].conj()
+			};
 		}
 	}
 	for j in 0..n {
@@ -104,7 +114,13 @@ mod tests {
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, default())) }),
+			MemStack::new(&mut {
+				MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(
+					n,
+					Par::Seq,
+					default(),
+				))
+			}),
 			default(),
 		);
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
@@ -116,7 +132,9 @@ mod tests {
 			subdiag.as_ref(),
 			perm,
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq))),
+			MemStack::new(&mut MemBuffer::new(
+				reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq),
+			)),
 		);
 		for j in 0..n {
 			for i in 0..j {

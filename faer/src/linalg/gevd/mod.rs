@@ -1,7 +1,8 @@
-//! low level implementation of the generalized eigenvalue decomposition of a square matrix pair.
+//! low level implementation of the generalized eigenvalue decomposition of a
+//! square matrix pair.
 //!
-//! the generalized eigenvalue decomposition of a matrix pair $(A, B)$ of shape $(n, n)$ is a
-//! decomposition into components $S$, $U$ such that:
+//! the generalized eigenvalue decomposition of a matrix pair $(A, B)$ of shape
+//! $(n, n)$ is a decomposition into components $S$, $U$ such that:
 //!
 //! - $U$ has shape $(n, n)$ and is invertible
 //! - $S$ has shape $(n, n)$ and is a diagonal matrix
@@ -9,12 +10,12 @@
 //!
 //! $$A = B U S U^{-1}$$
 //!
-//! if $A$ is self-adjoint and $B$ is positive definite, then $U$ can be made unitary ($U^{-1} =
-//! U^H$), and $S$ is real valued.
+//! if $A$ is self-adjoint and $B$ is positive definite, then $U$ can be made
+//! unitary ($U^{-1} = U^H$), and $S$ is real valued.
 //!
-//! the implementation can choose to compute the left and/or right generalized eigenvectors
-//! separately, and the generalized eigenvalues (diagonal of $S$) are represented as a ratio $\alpha
-//! / \beta$ to improve numerical stability.
+//! the implementation can choose to compute the left and/or right generalized
+//! eigenvectors separately, and the generalized eigenvalues (diagonal of $S$)
+//! are represented as a ratio $\alpha / \beta$ to improve numerical stability.
 use crate::internal_prelude::*;
 use complex::Complex;
 use equator::assert;
@@ -36,17 +37,29 @@ pub enum SelfAdjointGevdError {
 /// generalized schur decomposition parameters
 #[derive(Clone, Copy, Debug)]
 pub struct GeneralizedSchurParams {
-	/// An estimate of the relative cost of flops within the near-the-diagonal shift chase compared
-	/// to flops within the matmul calls of a QZ sweep.
-	pub relative_cost_estimate_of_shift_chase_to_matmul: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-	/// Function that returns the number of shifts to use for a given matrix size
-	pub recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-	/// Function that returns the deflation window to use for a given matrix size
-	pub recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	/// An estimate of the relative cost of flops within the near-the-diagonal
+	/// shift chase compared to flops within the matmul calls of a QZ sweep.
+	pub relative_cost_estimate_of_shift_chase_to_matmul: extern "C" fn(
+		matrix_dimension: usize,
+		active_block_dimension: usize,
+	)
+		-> usize,
+	/// Function that returns the number of shifts to use for a given matrix
+	/// size
+	pub recommended_shift_count: extern "C" fn(
+		matrix_dimension: usize,
+		active_block_dimension: usize,
+	) -> usize,
+	/// Function that returns the deflation window to use for a given matrix
+	/// size
+	pub recommended_deflation_window: extern "C" fn(
+		matrix_dimension: usize,
+		active_block_dimension: usize,
+	) -> usize,
 	/// Threshold to switch between blocked and unblocked code
 	pub blocking_threshold: usize,
-	/// Threshold of percent of aggressive-early-deflation window that must converge to skip a
-	/// sweep
+	/// Threshold of percent of aggressive-early-deflation window that must
+	/// converge to skip a sweep
 	pub nibble_threshold: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -69,7 +82,10 @@ pub struct GevdParams {
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
-extern "C" fn default_relative_cost_estimate_of_shift_chase_to_matmul(n: usize, nh: usize) -> usize {
+extern "C" fn default_relative_cost_estimate_of_shift_chase_to_matmul(
+	n: usize,
+	nh: usize,
+) -> usize {
 	_ = (n, nh);
 	10
 }
@@ -77,7 +93,8 @@ impl<T: ComplexField> Auto<T> for GeneralizedSchurParams {
 	fn auto() -> Self {
 		let schur: linalg::evd::SchurParams = auto!(T);
 		Self {
-			relative_cost_estimate_of_shift_chase_to_matmul: default_relative_cost_estimate_of_shift_chase_to_matmul,
+			relative_cost_estimate_of_shift_chase_to_matmul:
+				default_relative_cost_estimate_of_shift_chase_to_matmul,
 			recommended_shift_count: schur.recommended_shift_count,
 			recommended_deflation_window: schur.recommended_deflation_window,
 			blocking_threshold: schur.blocking_threshold,
@@ -134,7 +151,14 @@ fn compute_gevd_generic<T: ComplexField>(
 		params: GeneralizedSchurParams,
 		stack: &mut MemStack,
 	),
-	qz_to_gevd: fn(A: MatRef<'_, T>, B: MatRef<'_, T>, Q: Option<MatMut<'_, T>>, Z: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack),
+	qz_to_gevd: fn(
+		A: MatRef<'_, T>,
+		B: MatRef<'_, T>,
+		Q: Option<MatMut<'_, T>>,
+		Z: Option<MatMut<'_, T>>,
+		par: Par,
+		stack: &mut MemStack,
+	),
 ) -> Result<(), GevdError> {
 	let n = A.nrows();
 	assert!(all(
@@ -143,7 +167,11 @@ fn compute_gevd_generic<T: ComplexField>(
 		B.nrows() == n,
 		B.ncols() == n,
 		alpha_re.nrows() == n,
-		if const { T::IS_REAL } { alpha_im.nrows() } else { n } == n,
+		if const { T::IS_REAL } {
+			alpha_im.nrows()
+		} else {
+			n
+		} == n,
 		beta.nrows() == n,
 	));
 	if let Some(u_left) = u_left.rb() {
@@ -159,7 +187,9 @@ fn compute_gevd_generic<T: ComplexField>(
 	{
 		for u in [u_left.rb(), u_right.rb()] {
 			if let Some(matrix) = u.rb() {
-				if matrix.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(GEVD_WARN) {
+				if matrix.row_stride().unsigned_abs() != 1
+					&& crate::__perf_warn!(GEVD_WARN)
+				{
 					if matrix.col_stride().unsigned_abs() == 1 {
 						log::warn!(
 							target : "faer_perf",
@@ -175,7 +205,9 @@ fn compute_gevd_generic<T: ComplexField>(
 			}
 		}
 		for M in [A.rb(), B.rb()] {
-			if M.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(GEVD_WARN) {
+			if M.row_stride().unsigned_abs() != 1
+				&& crate::__perf_warn!(GEVD_WARN)
+			{
 				if M.col_stride().unsigned_abs() == 1 {
 					log::warn!(
 						target : "faer_perf",
@@ -215,10 +247,18 @@ fn compute_gevd_generic<T: ComplexField>(
 		}
 	}
 	{
-		let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
-		let (mut householder, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(block_size, n, stack) };
+		let block_size =
+			linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+		let (mut householder, stack) =
+			unsafe { linalg::temp_mat_uninit::<T, _, _>(block_size, n, stack) };
 		let mut householder = householder.as_mat_mut();
-		linalg::qr::no_pivoting::factor::qr_in_place(B.rb_mut(), householder.rb_mut(), par, stack, default());
+		linalg::qr::no_pivoting::factor::qr_in_place(
+			B.rb_mut(),
+			householder.rb_mut(),
+			par,
+			stack,
+			default(),
+		);
 		linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 			B.rb(),
 			householder.rb(),
@@ -237,9 +277,20 @@ fn compute_gevd_generic<T: ComplexField>(
 				stack,
 			);
 		}
-		zip!(B.rb_mut()).for_each_triangular_lower(linalg::zip::Diag::Skip, |unzip!(x)| *x = zero());
+		zip!(B.rb_mut())
+			.for_each_triangular_lower(linalg::zip::Diag::Skip, |unzip!(x)| {
+				*x = zero()
+			});
 	}
-	gen_hessenberg::generalized_hessenberg(A.rb_mut(), B.rb_mut(), u_left.rb_mut(), u_right.rb_mut(), par, stack, params.hessenberg);
+	gen_hessenberg::generalized_hessenberg(
+		A.rb_mut(),
+		B.rb_mut(),
+		u_left.rb_mut(),
+		u_right.rb_mut(),
+		par,
+		stack,
+		params.hessenberg,
+	);
 	hessenberg_to_qz(
 		A.rb_mut(),
 		B.rb_mut(),
@@ -248,15 +299,33 @@ fn compute_gevd_generic<T: ComplexField>(
 		alpha_re.rb_mut(),
 		alpha_im.rb_mut(),
 		beta.rb_mut(),
-		if need_qz { ComputeEigenvectors::Yes } else { ComputeEigenvectors::No },
+		if need_qz {
+			ComputeEigenvectors::Yes
+		} else {
+			ComputeEigenvectors::No
+		},
 		par,
 		params.schur,
 		stack,
 	);
-	qz_to_gevd(A.rb(), B.rb(), u_left.rb_mut(), u_right.rb_mut(), par, stack);
+	qz_to_gevd(
+		A.rb(),
+		B.rb(),
+		u_left.rb_mut(),
+		u_right.rb_mut(),
+		par,
+		stack,
+	);
 	Ok(())
 }
-fn solve_shifted_1x1<T: ComplexField>(smin: T::Real, ca: T::Real, A: T, d0: T, B: &mut T, w: T) {
+fn solve_shifted_1x1<T: ComplexField>(
+	smin: T::Real,
+	ca: T::Real,
+	A: T,
+	d0: T,
+	B: &mut T,
+	w: T,
+) {
 	let ref safmin = min_positive::<T::Real>();
 	let ref smlnum = safmin + safmin;
 	let ref smin = smin.fmax(smlnum);
@@ -269,7 +338,15 @@ fn solve_shifted_1x1<T: ComplexField>(smin: T::Real, ca: T::Real, A: T, d0: T, B
 	let C = CR.recip();
 	*B *= C;
 }
-fn solve_complex_shifted_1x1<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, ref d0: T, mut B: MatMut<'_, T>, wr: T, wi: T) {
+fn solve_complex_shifted_1x1<T: RealField>(
+	smin: T,
+	ca: T,
+	A: MatRef<'_, T>,
+	ref d0: T,
+	mut B: MatMut<'_, T>,
+	wr: T,
+	wi: T,
+) {
 	let nw = B.ncols();
 	let ref safmin = min_positive::<T>();
 	let ref smlnum = safmin + safmin;
@@ -288,7 +365,8 @@ fn solve_complex_shifted_1x1<T: RealField>(smin: T, ca: T, A: MatRef<'_, T>, ref
 		let (Br, Bi) = B.two_cols_mut(0, 1);
 		let C = Complex { re: CR, im: CI }.recip();
 		zip!(Br, Bi).for_each(|unzip!(re, im)| {
-			(*re, *im) = (&*re * &C.re - &*im * &C.im, &*re * &C.im + &*im * &C.re);
+			(*re, *im) =
+				(&*re * &C.re - &*im * &C.im, &*re * &C.im + &*im * &C.re);
 		});
 	}
 }
@@ -309,7 +387,8 @@ fn solve_complex_shifted_2x2<T: RealField>(
 	let ref smlnum = safmin + safmin;
 	let ref smin = smin.fmax(smlnum);
 	if nw == 1 {
-		let (mut C, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(2, 2, stack) };
+		let (mut C, stack) =
+			unsafe { linalg::temp_mat_uninit::<T, _, _>(2, 2, stack) };
 		let mut C = C.as_mat_mut();
 		let mut row_perm_fwd = [0usize; 2];
 		let mut row_perm_inv = [0usize; 2];
@@ -324,19 +403,29 @@ fn solve_complex_shifted_2x2<T: RealField>(
 			let ref smin_inv = smin.recip();
 			zip!(B.rb_mut()).for_each(|unzip!(x)| *x *= smin_inv);
 		}
-		let (_, row_perm, col_perm) = linalg::lu::full_pivoting::factor::lu_in_place(
-			C.rb_mut(),
-			&mut row_perm_fwd,
-			&mut row_perm_inv,
-			&mut col_perm_fwd,
-			&mut col_perm_inv,
+		let (_, row_perm, col_perm) =
+			linalg::lu::full_pivoting::factor::lu_in_place(
+				C.rb_mut(),
+				&mut row_perm_fwd,
+				&mut row_perm_inv,
+				&mut col_perm_fwd,
+				&mut col_perm_inv,
+				Par::Seq,
+				stack,
+				Default::default(),
+			);
+		linalg::lu::full_pivoting::solve::solve_in_place(
+			C.rb(),
+			C.rb(),
+			row_perm,
+			col_perm,
+			B.rb_mut(),
 			Par::Seq,
 			stack,
-			Default::default(),
 		);
-		linalg::lu::full_pivoting::solve::solve_in_place(C.rb(), C.rb(), row_perm, col_perm, B.rb_mut(), Par::Seq, stack);
 	} else {
-		let (mut C, stack) = unsafe { linalg::temp_mat_uninit::<Complex<T>, _, _>(2, 2, stack) };
+		let (mut C, stack) =
+			unsafe { linalg::temp_mat_uninit::<Complex<T>, _, _>(2, 2, stack) };
 		let mut C = C.as_mat_mut();
 		let mut row_perm_fwd = [0usize; 2];
 		let mut row_perm_inv = [0usize; 2];
@@ -363,19 +452,21 @@ fn solve_complex_shifted_2x2<T: RealField>(
 			let ref smin_inv = smin.recip();
 			zip!(B.rb_mut()).for_each(|unzip!(x)| *x *= smin_inv);
 		}
-		let (_, row_perm, col_perm) = linalg::lu::full_pivoting::factor::lu_in_place(
-			C.rb_mut(),
-			&mut row_perm_fwd,
-			&mut row_perm_inv,
-			&mut col_perm_fwd,
-			&mut col_perm_inv,
-			Par::Seq,
-			stack,
-			Default::default(),
-		);
+		let (_, row_perm, col_perm) =
+			linalg::lu::full_pivoting::factor::lu_in_place(
+				C.rb_mut(),
+				&mut row_perm_fwd,
+				&mut row_perm_inv,
+				&mut col_perm_fwd,
+				&mut col_perm_inv,
+				Par::Seq,
+				stack,
+				Default::default(),
+			);
 		let n = B.nrows();
 		let (Br, Bi) = B.two_cols_mut(0, 1);
-		let (mut B, stack) = unsafe { linalg::temp_mat_uninit::<Complex<T>, _, _>(n, 1, stack) };
+		let (mut B, stack) =
+			unsafe { linalg::temp_mat_uninit::<Complex<T>, _, _>(n, 1, stack) };
 		let mut B = B.as_mat_mut().col_mut(0);
 		zip!(&mut B, &Br, &Bi).for_each(|unzip!(z, re, im)| {
 			*z = Complex {
@@ -383,8 +474,18 @@ fn solve_complex_shifted_2x2<T: RealField>(
 				im: im.copy(),
 			}
 		});
-		linalg::lu::full_pivoting::solve::solve_in_place(C.rb(), C.rb(), row_perm, col_perm, B.rb_mut().as_mat_mut(), Par::Seq, stack);
-		zip!(Br, Bi, &B).for_each(|unzip!(re, im, z)| (*re, *im) = (z.re.copy(), z.im.copy()));
+		linalg::lu::full_pivoting::solve::solve_in_place(
+			C.rb(),
+			C.rb(),
+			row_perm,
+			col_perm,
+			B.rb_mut().as_mat_mut(),
+			Par::Seq,
+			stack,
+		);
+		zip!(Br, Bi, &B).for_each(|unzip!(re, im, z)| {
+			(*re, *im) = (z.re.copy(), z.im.copy())
+		});
 	}
 }
 fn qz_to_gevd_real<T: RealField>(
@@ -446,7 +547,9 @@ fn qz_to_gevd_real<T: RealField>(
 		while je < n {
 			let cplx_eigval = je + 1 < n && A[(je + 1, je)] != zero();
 			let nw = if cplx_eigval { 2 } else { 1 };
-			if !cplx_eigval && A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin {
+			if !cplx_eigval
+				&& A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin
+			{
 				u.rb_mut().col_mut(je).fill(zero());
 				u[(je, je)] = one();
 				je += 1;
@@ -458,10 +561,14 @@ fn qz_to_gevd_real<T: RealField>(
 			let mut bcoefr;
 			let mut bcoefi;
 			let mut xmax;
-			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
+			let (mut rhs, stack) =
+				linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
 			let mut rhs = rhs.as_mat_mut();
 			if !cplx_eigval {
-				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+				let ref temp = safmin.fmax(
+					(A[(je, je)].abs() * ascale)
+						.fmax(B[(je, je)].abs() * bscale),
+				);
 				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
 				let ref sbeta = B[(je, je)].real() * temp * bscale;
 				acoef = sbeta * ascale;
@@ -474,10 +581,15 @@ fn qz_to_gevd_real<T: RealField>(
 					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
 				if lsb {
-					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
+					scale =
+						scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
 				if lsa || lsb {
-					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoefr.abs())));
+					scale = scale.fmin(
+						one()
+							/ (safmin
+								* one().fmax(acoef.abs()).fmax(bcoefr.abs())),
+					);
 					if lsa {
 						acoef = ascale * (&scale * sbeta)
 					} else {
@@ -545,23 +657,33 @@ fn qz_to_gevd_real<T: RealField>(
 					rhs[(je + 1, 0)] = one();
 					rhs[(je + 1, 1)] = zero();
 					let ref temp = &acoef * &A[(je, je + 1)];
-					rhs[(je, 0)] = (&bcoefr * &B[(je + 1, je + 1)] - &acoef * &A[(je + 1, je + 1)]) / temp;
+					rhs[(je, 0)] = (&bcoefr * &B[(je + 1, je + 1)]
+						- &acoef * &A[(je + 1, je + 1)])
+						/ temp;
 					rhs[(je, 1)] = &bcoefi * &B[(je + 1, je + 1)] / temp;
 				}
-				xmax = (rhs[(je, 0)].abs() + rhs[(je, 1)].abs()).fmax(rhs[(je + 1, 0)].abs() + rhs[(je + 1, 1)].abs());
+				xmax = (rhs[(je, 0)].abs() + rhs[(je, 1)].abs())
+					.fmax(rhs[(je + 1, 0)].abs() + rhs[(je + 1, 1)].abs());
 			}
-			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+			let dmin = safmin
+				.fmax(ulp * &acoefa * anorm)
+				.fmax(ulp * &bcoefa * bnorm);
 			let mut j = je + nw;
 			while j < n {
 				let cplx = j + 1 < n && A[(j + 1, j)] != zero();
 				let na = if cplx { 2 } else { 1 };
 				let ref xscale = xmax.recip();
-				let mut temp = acolnorm[j].fmax(&bcolnorm[j]).fmax(&acoefa * &acolnorm[j] + &bcoefa * &bcolnorm[j]);
+				let mut temp = acolnorm[j]
+					.fmax(&bcolnorm[j])
+					.fmax(&acoefa * &acolnorm[j] + &bcoefa * &bcolnorm[j]);
 				let b0 = B[(j, j)].copy();
 				let b1;
 				if cplx {
 					temp = temp
-						.fmax(&acoefa * &acolnorm[j + 1] + &bcoefa * &bcolnorm[j + 1])
+						.fmax(
+							&acoefa * &acolnorm[j + 1]
+								+ &bcoefa * &bcolnorm[j + 1],
+						)
 						.fmax(&acolnorm[j + 1])
 						.fmax(&acolnorm[j + 1]);
 					b1 = B[(j + 1, j + 1)].copy();
@@ -576,26 +698,37 @@ fn qz_to_gevd_real<T: RealField>(
 					}
 					xmax = xmax * xscale;
 				}
-				let (mut sums, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(na, nw, stack) };
+				let (mut sums, stack) = unsafe {
+					linalg::temp_mat_uninit::<T, _, _>(na, nw, stack)
+				};
 				let mut sums = sums.as_mat_mut();
-				let (mut sump, stack) = unsafe { linalg::temp_mat_uninit::<T, _, _>(na, nw, stack) };
+				let (mut sump, stack) = unsafe {
+					linalg::temp_mat_uninit::<T, _, _>(na, nw, stack)
+				};
 				let mut sump = sump.as_mat_mut();
 				for jw in 0..nw {
 					for ja in 0..na {
 						sums[(ja, jw)] = zero();
 						sump[(ja, jw)] = zero();
 						for jr in je..j {
-							sums[(ja, jw)] = &sums[(ja, jw)] + &A[(jr, j + ja)] * &rhs[(jr, jw)];
-							sump[(ja, jw)] = &sump[(ja, jw)] + &B[(jr, j + ja)] * &rhs[(jr, jw)];
+							sums[(ja, jw)] = &sums[(ja, jw)]
+								+ &A[(jr, j + ja)] * &rhs[(jr, jw)];
+							sump[(ja, jw)] = &sump[(ja, jw)]
+								+ &B[(jr, j + ja)] * &rhs[(jr, jw)];
 						}
 					}
 				}
 				for ja in 0..na {
 					if cplx_eigval {
-						rhs[(j + ja, 0)] = -&acoef * &sums[(ja, 0)] + &bcoefr * &sump[(ja, 0)] - &bcoefi * &sump[(ja, 1)];
-						rhs[(j + ja, 1)] = -&acoef * &sums[(ja, 1)] + &bcoefr * &sump[(ja, 1)] + &bcoefi * &sump[(ja, 0)];
+						rhs[(j + ja, 0)] = -&acoef * &sums[(ja, 0)]
+							+ &bcoefr * &sump[(ja, 0)]
+							- &bcoefi * &sump[(ja, 1)];
+						rhs[(j + ja, 1)] = -&acoef * &sums[(ja, 1)]
+							+ &bcoefr * &sump[(ja, 1)]
+							+ &bcoefi * &sump[(ja, 0)];
 					} else {
-						rhs[(j + ja, 0)] = -&acoef * &sums[(ja, 0)] + &bcoefr * &sump[(ja, 0)];
+						rhs[(j + ja, 0)] =
+							-&acoef * &sums[(ja, 0)] + &bcoefr * &sump[(ja, 0)];
 					}
 				}
 				if cplx {
@@ -625,7 +758,14 @@ fn qz_to_gevd_real<T: RealField>(
 			}
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
 			let mut tmp = tmp.as_mat_mut();
-			linalg::matmul::matmul(tmp.rb_mut(), Accum::Replace, u.rb().get(.., je..), rhs.rb().get(je.., ..), one(), par);
+			linalg::matmul::matmul(
+				tmp.rb_mut(),
+				Accum::Replace,
+				u.rb().get(.., je..),
+				rhs.rb().get(je.., ..),
+				one(),
+				par,
+			);
 			let mut u = u.rb_mut().subcols_mut(je, nw);
 			u.copy_from(&tmp);
 			let ref scale = u.norm_l2().recip();
@@ -642,7 +782,9 @@ fn qz_to_gevd_real<T: RealField>(
 			let cplx_eigval = je > 0 && A[(je, je - 1)] != zero();
 			let nw = if cplx_eigval { 2 } else { 1 };
 			je -= nw - 1;
-			if !cplx_eigval && A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin {
+			if !cplx_eigval
+				&& A[(je, je)].abs().fmax(&B[(je, je)].abs()) < *safmin
+			{
 				u.rb_mut().col_mut(je).fill(zero());
 				u[(je, je)] = one();
 				continue;
@@ -652,10 +794,14 @@ fn qz_to_gevd_real<T: RealField>(
 			let mut bcoefa;
 			let mut bcoefr;
 			let mut bcoefi;
-			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
+			let (mut rhs, stack) =
+				linalg::temp_mat_zeroed::<T, _, _>(n, nw, stack);
 			let mut rhs = rhs.as_mat_mut();
 			if !cplx_eigval {
-				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+				let ref temp = safmin.fmax(
+					(A[(je, je)].abs() * ascale)
+						.fmax(B[(je, je)].abs() * bscale),
+				);
 				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
 				let ref sbeta = B[(je, je)].real() * temp * bscale;
 				acoef = sbeta * ascale;
@@ -668,10 +814,15 @@ fn qz_to_gevd_real<T: RealField>(
 					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
 				if lsb {
-					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
+					scale =
+						scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
 				if lsa || lsb {
-					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoefr.abs())));
+					scale = scale.fmin(
+						one()
+							/ (safmin
+								* one().fmax(acoef.abs()).fmax(bcoefr.abs())),
+					);
 					if lsa {
 						acoef = ascale * (&scale * sbeta)
 					} else {
@@ -687,7 +838,8 @@ fn qz_to_gevd_real<T: RealField>(
 				bcoefa = bcoefr.abs();
 				rhs[(je, 0)] = one();
 				for jr in 0..je {
-					rhs[(jr, 0)] = &bcoefr * &B[(jr, je)] - &acoef * &A[(jr, je)];
+					rhs[(jr, 0)] =
+						&bcoefr * &B[(jr, je)] - &acoef * &A[(jr, je)];
 				}
 			} else {
 				let (scale, _, wr, _, wi) = qz_real::generalized_eigval_2x2(
@@ -730,7 +882,8 @@ fn qz_to_gevd_real<T: RealField>(
 					bcoefa = bcoefr.abs() + bcoefi.abs();
 				}
 				let ref temp = &acoef * &A[(je + 1, je)];
-				let ref temp2r = &acoef * &A[(je + 1, je + 1)] - &bcoefr * &B[(je + 1, je + 1)];
+				let ref temp2r = &acoef * &A[(je + 1, je + 1)]
+					- &bcoefr * &B[(je + 1, je + 1)];
 				let ref temp2i = -&bcoefi * &B[(je + 1, je + 1)];
 				if temp.abs() > temp2r.abs() + temp2i.abs() {
 					rhs[(je + 1, 0)] = one();
@@ -741,23 +894,36 @@ fn qz_to_gevd_real<T: RealField>(
 					rhs[(je, 0)] = one();
 					rhs[(je, 1)] = zero();
 					let ref temp = &acoef * &A[(je, je + 1)];
-					rhs[(je + 1, 0)] = (&bcoefr * &B[(je, je)] - &acoef * &A[(je, je)]) / temp;
+					rhs[(je + 1, 0)] =
+						(&bcoefr * &B[(je, je)] - &acoef * &A[(je, je)]) / temp;
 					rhs[(je + 1, 1)] = &bcoefi * &B[(je, je)] / temp;
 				}
 				let ref creala = &acoef * &rhs[(je, 0)];
 				let ref cimaga = &acoef * &rhs[(je, 1)];
-				let ref crealb = &bcoefr * &rhs[(je, 0)] - &bcoefi * &rhs[(je, 1)];
-				let ref cimagb = &bcoefi * &rhs[(je, 0)] + &bcoefr * &rhs[(je, 1)];
+				let ref crealb =
+					&bcoefr * &rhs[(je, 0)] - &bcoefi * &rhs[(je, 1)];
+				let ref cimagb =
+					&bcoefi * &rhs[(je, 0)] + &bcoefr * &rhs[(je, 1)];
 				let ref cre2a = &acoef * &rhs[(je + 1, 0)];
 				let ref cim2a = &acoef * &rhs[(je + 1, 1)];
-				let ref cre2b = &bcoefr * &rhs[(je + 1, 0)] - &bcoefi * &rhs[(je + 1, 1)];
-				let ref cim2b = &bcoefi * &rhs[(je + 1, 0)] + &bcoefr * &rhs[(je + 1, 1)];
+				let ref cre2b =
+					&bcoefr * &rhs[(je + 1, 0)] - &bcoefi * &rhs[(je + 1, 1)];
+				let ref cim2b =
+					&bcoefi * &rhs[(je + 1, 0)] + &bcoefr * &rhs[(je + 1, 1)];
 				for jr in 0..je {
-					rhs[(jr, 0)] = -creala * &A[(jr, je)] + crealb * &B[(jr, je)] - cre2a * &A[(jr, je + 1)] + cre2b * &B[(jr, je + 1)];
-					rhs[(jr, 1)] = -cimaga * &A[(jr, je)] + cimagb * &B[(jr, je)] - cim2a * &A[(jr, je + 1)] + cim2b * &B[(jr, je + 1)];
+					rhs[(jr, 0)] = -creala * &A[(jr, je)]
+						+ crealb * &B[(jr, je)]
+						- cre2a * &A[(jr, je + 1)]
+						+ cre2b * &B[(jr, je + 1)];
+					rhs[(jr, 1)] = -cimaga * &A[(jr, je)]
+						+ cimagb * &B[(jr, je)]
+						- cim2a * &A[(jr, je + 1)]
+						+ cim2b * &B[(jr, je + 1)];
 				}
 			}
-			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+			let dmin = safmin
+				.fmax(ulp * &acoefa * anorm)
+				.fmax(ulp * &bcoefa * bnorm);
 			let mut j = je;
 			while j > 0 {
 				j -= 1;
@@ -798,17 +964,22 @@ fn qz_to_gevd_real<T: RealField>(
 					if cplx_eigval {
 						let ref creala = &acoef * &rhs[(j + ja, 0)];
 						let ref cimaga = &acoef * &rhs[(j + ja, 1)];
-						let ref crealb = &bcoefr * &rhs[(j + ja, 0)] - &bcoefi * &rhs[(j + ja, 1)];
-						let ref cimagb = &bcoefi * &rhs[(j + ja, 0)] + &bcoefr * &rhs[(j + ja, 1)];
+						let ref crealb = &bcoefr * &rhs[(j + ja, 0)]
+							- &bcoefi * &rhs[(j + ja, 1)];
+						let ref cimagb = &bcoefi * &rhs[(j + ja, 0)]
+							+ &bcoefr * &rhs[(j + ja, 1)];
 						for jr in 0..j {
-							rhs[(jr, 0)] -= creala * &A[(jr, j + ja)] - crealb * &B[(jr, j + ja)];
-							rhs[(jr, 1)] -= cimaga * &A[(jr, j + ja)] - cimagb * &B[(jr, j + ja)];
+							rhs[(jr, 0)] -= creala * &A[(jr, j + ja)]
+								- crealb * &B[(jr, j + ja)];
+							rhs[(jr, 1)] -= cimaga * &A[(jr, j + ja)]
+								- cimagb * &B[(jr, j + ja)];
 						}
 					} else {
 						let ref creala = &acoef * &rhs[(j + ja, 0)];
 						let ref crealb = &bcoefr * &rhs[(j + ja, 0)];
 						for jr in 0..j {
-							rhs[(jr, 0)] -= creala * &A[(jr, j + ja)] - crealb * &B[(jr, j + ja)];
+							rhs[(jr, 0)] -= creala * &A[(jr, j + ja)]
+								- crealb * &B[(jr, j + ja)];
 						}
 					}
 				}
@@ -851,9 +1022,11 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 	let ref small = smallnum * ulp.recip();
 	let ref bignum = smallnum.recip();
 	let ref big = small.recip();
-	let (mut acolnorm, stack) = linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
+	let (mut acolnorm, stack) =
+		linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
 	let acolnorm = acolnorm.as_mat_mut();
-	let (mut bcolnorm, stack) = linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
+	let (mut bcolnorm, stack) =
+		linalg::temp_mat_zeroed::<T::Real, _, _>(n, 1, stack);
 	let bcolnorm = bcolnorm.as_mat_mut();
 	let mut acolnorm = acolnorm.col_mut(0);
 	let mut bcolnorm = bcolnorm.col_mut(0);
@@ -889,10 +1062,14 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 			let bcoefa;
 			let mut bcoef;
 			let mut xmax;
-			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+			let (mut rhs, stack) =
+				linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
 			let mut rhs = rhs.as_mat_mut().col_mut(0);
 			{
-				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+				let ref temp = safmin.fmax(
+					(A[(je, je)].abs() * ascale)
+						.fmax(B[(je, je)].abs() * bscale),
+				);
 				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
 				let ref sbeta = B[(je, je)].real() * temp * bscale;
 				acoef = sbeta * ascale;
@@ -904,10 +1081,15 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
 				if lsb {
-					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
+					scale =
+						scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
 				if lsa || lsb {
-					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoef.abs())));
+					scale = scale.fmin(
+						one()
+							/ (safmin
+								* one().fmax(acoef.abs()).fmax(bcoef.abs())),
+					);
 					if lsa {
 						acoef = sbeta * &scale * ascale
 					} else {
@@ -924,11 +1106,15 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 				rhs[je] = one().to_cplx();
 				xmax = one();
 			}
-			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+			let dmin = safmin
+				.fmax(ulp * &acoefa * anorm)
+				.fmax(ulp * &bcoefa * bnorm);
 			let mut j = je + 1;
 			while j < n {
 				let ref xscale = xmax.recip();
-				let ref temp = acolnorm[j].fmax(&bcolnorm[j]).fmax(&acoefa * &acolnorm[j] + &bcoefa * &bcolnorm[j]);
+				let ref temp = acolnorm[j]
+					.fmax(&bcolnorm[j])
+					.fmax(&acoefa * &acolnorm[j] + &bcoefa * &bcolnorm[j]);
 				let b0 = B[(j, j)].copy();
 				if *temp > bignum * xscale {
 					for jr in je..j {
@@ -943,7 +1129,14 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 					sump += B[(jr, j)].conj() * &rhs[jr];
 				}
 				rhs[j] = bcoef.conj() * &sump - sums.mul_real(&acoef);
-				solve_shifted_1x1(dmin.copy(), acoef.copy(), A[(j, j)].conj(), b0.conj(), &mut rhs[j], bcoef.conj());
+				solve_shifted_1x1(
+					dmin.copy(),
+					acoef.copy(),
+					A[(j, j)].conj(),
+					b0.conj(),
+					&mut rhs[j],
+					bcoef.conj(),
+				);
 				j += 1;
 			}
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
@@ -978,10 +1171,14 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 			let acoefa;
 			let bcoefa;
 			let mut bcoefr;
-			let (mut rhs, stack) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
+			let (mut rhs, stack) =
+				linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
 			let mut rhs = rhs.as_mat_mut().col_mut(0);
 			{
-				let ref temp = safmin.fmax((A[(je, je)].abs() * ascale).fmax(B[(je, je)].abs() * bscale));
+				let ref temp = safmin.fmax(
+					(A[(je, je)].abs() * ascale)
+						.fmax(B[(je, je)].abs() * bscale),
+				);
 				let ref salfar = A[(je, je)].mul_real(temp).mul_real(ascale);
 				let ref sbeta = B[(je, je)].real() * temp * bscale;
 				acoef = sbeta * ascale;
@@ -993,10 +1190,15 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 					scale = (small / sbeta.abs()) * anorm.fmin(big);
 				}
 				if lsb {
-					scale = scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
+					scale =
+						scale.fmax((small / salfar.abs()) * bnorm.fmin(big));
 				}
 				if lsa || lsb {
-					scale = scale.fmin(one() / (safmin * one().fmax(acoef.abs()).fmax(bcoefr.abs())));
+					scale = scale.fmin(
+						one()
+							/ (safmin
+								* one().fmax(acoef.abs()).fmax(bcoefr.abs())),
+					);
 					if lsa {
 						acoef = sbeta * &scale * ascale
 					} else {
@@ -1012,19 +1214,30 @@ fn qz_to_gevd_cplx<T: ComplexField>(
 				bcoefa = bcoefr.abs();
 				rhs[je] = one().to_cplx();
 				for jr in 0..je {
-					rhs[jr] = &bcoefr * &B[(jr, je)] - A[(jr, je)].mul_real(&acoef);
+					rhs[jr] =
+						&bcoefr * &B[(jr, je)] - A[(jr, je)].mul_real(&acoef);
 				}
 			}
-			let dmin = safmin.fmax(ulp * &acoefa * anorm).fmax(ulp * &bcoefa * bnorm);
+			let dmin = safmin
+				.fmax(ulp * &acoefa * anorm)
+				.fmax(ulp * &bcoefa * bnorm);
 			let mut j = je;
 			while j > 0 {
 				j -= 1;
 				let b0 = B[(j, j)].copy();
-				solve_shifted_1x1(dmin.copy(), acoef.copy(), A[(j, j)].copy(), b0, &mut rhs[j], bcoefr.copy());
+				solve_shifted_1x1(
+					dmin.copy(),
+					acoef.copy(),
+					A[(j, j)].copy(),
+					b0,
+					&mut rhs[j],
+					bcoefr.copy(),
+				);
 				let ref creala = rhs[j].mul_real(&acoef);
 				let ref crealb = &bcoefr * &rhs[j];
 				for jr in 0..j {
-					rhs[jr] = &rhs[jr] - creala * &A[(jr, j)] + crealb * &B[(jr, j)];
+					rhs[jr] =
+						&rhs[jr] - creala * &A[(jr, j)] + crealb * &B[(jr, j)];
 				}
 			}
 			let (mut tmp, _) = linalg::temp_mat_zeroed::<T, _, _>(n, 1, stack);
@@ -1057,7 +1270,8 @@ pub fn gevd_scratch<T: ComplexField>(
 ) -> StackReq {
 	let _ = (left, right);
 	let n = dim;
-	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
+	let block_size =
+		linalg::qr::no_pivoting::factor::recommended_block_size::<T>(n, n);
 	StackReq::any_of(&[
 		linalg::temp_mat_scratch::<T>(block_size, n).and(
 			linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(n, n, block_size, par, default())
@@ -1073,8 +1287,8 @@ pub fn gevd_scratch<T: ComplexField>(
 }
 /// computes the real matrix pair $(A, B)$'s eigendecomposition
 ///
-/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
-/// $U_R$
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the
+/// right eigenvectors in $U_R$
 ///
 /// the values in $A$ and $B$ after this function is called are unspecified.
 #[track_caller]
@@ -1107,8 +1321,8 @@ pub fn gevd_real<T: RealField>(
 }
 /// computes the complex matrix pair $(A, B)$'s eigendecomposition
 ///
-/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the right eigenvectors in
-/// $U_R$
+/// the eigenvalues are stored in $S$, the left eigenvectors in $U_L$, and the
+/// right eigenvectors in $U_R$
 ///
 /// the values in $A$ and $B$ after this function is called are unspecified.
 #[track_caller]
@@ -1144,7 +1358,20 @@ pub fn gevd_cplx<T: ComplexField>(
 		 eigenvectors: ComputeEigenvectors,
 		 par: Par,
 		 params: GeneralizedSchurParams,
-		 stack: &mut MemStack| qz_cplx::hessenberg_to_qz(A, B, Q, Z, alphar, beta, eigenvectors, par, params, stack),
+		 stack: &mut MemStack| {
+			qz_cplx::hessenberg_to_qz(
+				A,
+				B,
+				Q,
+				Z,
+				alphar,
+				beta,
+				eigenvectors,
+				par,
+				params,
+				stack,
+			)
+		},
 		qz_to_gevd_cplx,
 	)
 }
@@ -1157,7 +1384,9 @@ mod tests {
 	use equator::assert;
 	#[test]
 	fn test_lishen_() {
-		let approx_eq = utils::approx::CwiseMat(utils::approx::ApproxEq::<f64>::eps() * 128.0);
+		let approx_eq = utils::approx::CwiseMat(
+			utils::approx::ApproxEq::<f64>::eps() * 128.0,
+		);
 		let A = &[
 			[
 				0.0000000067116330731078674,
@@ -1196,7 +1425,14 @@ mod tests {
 				-0.0,
 				-0.0,
 			],
-			[-0.00003674235041182116, 0.0002038454538304322, -0.00021213416901900504, -0.0, -1.0, -0.0],
+			[
+				-0.00003674235041182116,
+				0.0002038454538304322,
+				-0.00021213416901900504,
+				-0.0,
+				-1.0,
+				-0.0,
+			],
 			[
 				-0.0000029397921270058582,
 				-0.00021213416901900504,
@@ -1290,7 +1526,9 @@ mod tests {
 	#[test]
 	fn test_cplx() {
 		let rng = &mut StdRng::seed_from_u64(1);
-		let approx_eq = utils::approx::CwiseMat(utils::approx::ApproxEq::<f64>::eps() * 128.0);
+		let approx_eq = utils::approx::CwiseMat(
+			utils::approx::ApproxEq::<f64>::eps() * 128.0,
+		);
 		let n = 20;
 		let A = &CwiseMatDistribution {
 			nrows: n,

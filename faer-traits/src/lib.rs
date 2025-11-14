@@ -21,10 +21,8 @@ pub mod imply {
 use core::ops::*;
 use imply::Imply;
 use math_utils::*;
-use pulp::try_const;
 pub mod math_utils {
 	use crate::{ByRef, ComplexField, RealField, abs_impl};
-	use pulp::try_const;
 	#[inline(always)]
 	#[must_use]
 	pub fn eps<T: RealField>() -> T {
@@ -148,10 +146,11 @@ pub mod math_utils {
 	#[inline(always)]
 	#[must_use]
 	pub fn absmax<T: ComplexField>(value: &T) -> T::Real {
-		if try_const! { T::IS_REAL } {
+		if const { T::IS_REAL } {
 			T::abs1_impl(value)
 		} else {
-			&T::Real::abs1_impl(&real(value)) + &T::Real::abs1_impl(&imag(value))
+			&T::Real::abs1_impl(&real(value))
+				+ &T::Real::abs1_impl(&imag(value))
 		}
 	}
 	#[inline(always)]
@@ -441,12 +440,22 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 
 	#[inline(always)]
 	pub fn splat(&self, value: impl ByRef<T>) -> T::SimdVec<S> {
-		unsafe { core::mem::transmute_copy(&T::simd_splat(&self.0, value.by_ref())) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_splat(&self.0, value.by_ref()))
+		}
 	}
 
 	#[inline(always)]
-	pub fn splat_real(&self, value: impl ByRef<T::Real>) -> RealReg<T::SimdVec<S>> {
-		RealReg(unsafe { core::mem::transmute_copy(&T::simd_splat_real(&self.0, value.by_ref())) })
+	pub fn splat_real(
+		&self,
+		value: impl ByRef<T::Real>,
+	) -> RealReg<T::SimdVec<S>> {
+		RealReg(unsafe {
+			core::mem::transmute_copy(&T::simd_splat_real(
+				&self.0,
+				value.by_ref(),
+			))
+		})
 	}
 
 	#[inline(always)]
@@ -478,27 +487,43 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	#[inline(always)]
 	pub fn abs1(&self, value: T::SimdVec<S>) -> RealReg<T::SimdVec<S>> {
 		let value = unsafe { core::mem::transmute_copy(&value) };
-		RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs1(&self.0, value)) })
+		RealReg(unsafe {
+			core::mem::transmute_copy(&T::simd_abs1(&self.0, value))
+		})
 	}
 
 	#[inline(always)]
 	pub fn abs_max(&self, value: T::SimdVec<S>) -> RealReg<T::SimdVec<S>> {
 		let value = unsafe { core::mem::transmute_copy(&value) };
-		RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs_max(&self.0, value)) })
+		RealReg(unsafe {
+			core::mem::transmute_copy(&T::simd_abs_max(&self.0, value))
+		})
 	}
 
 	#[inline(always)]
-	pub fn mul_real(&self, lhs: T::SimdVec<S>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdVec<S> {
+	pub fn mul_real(
+		&self,
+		lhs: T::SimdVec<S>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> T::SimdVec<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_mul_real(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_mul_real(&self.0, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
-	pub fn mul_pow2(&self, lhs: T::SimdVec<S>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdVec<S> {
+	pub fn mul_pow2(
+		&self,
+		lhs: T::SimdVec<S>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> T::SimdVec<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_mul_pow2(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_mul_pow2(&self.0, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
@@ -509,30 +534,57 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
-	pub fn conj_mul(&self, lhs: T::SimdVec<S>, rhs: T::SimdVec<S>) -> T::SimdVec<S> {
+	pub fn conj_mul(
+		&self,
+		lhs: T::SimdVec<S>,
+		rhs: T::SimdVec<S>,
+	) -> T::SimdVec<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_conj_mul(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_conj_mul(&self.0, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
-	pub fn mul_add(&self, lhs: T::SimdVec<S>, rhs: T::SimdVec<S>, acc: T::SimdVec<S>) -> T::SimdVec<S> {
+	pub fn mul_add(
+		&self,
+		lhs: T::SimdVec<S>,
+		rhs: T::SimdVec<S>,
+		acc: T::SimdVec<S>,
+	) -> T::SimdVec<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
 		let acc = unsafe { core::mem::transmute_copy(&acc) };
-		unsafe { core::mem::transmute_copy(&T::simd_mul_add(&self.0, lhs, rhs, acc)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_mul_add(&self.0, lhs, rhs, acc))
+		}
 	}
 
 	#[inline(always)]
-	pub fn conj_mul_add(&self, lhs: T::SimdVec<S>, rhs: T::SimdVec<S>, acc: T::SimdVec<S>) -> T::SimdVec<S> {
+	pub fn conj_mul_add(
+		&self,
+		lhs: T::SimdVec<S>,
+		rhs: T::SimdVec<S>,
+		acc: T::SimdVec<S>,
+	) -> T::SimdVec<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
 		let acc = unsafe { core::mem::transmute_copy(&acc) };
-		unsafe { core::mem::transmute_copy(&T::simd_conj_mul_add(&self.0, lhs, rhs, acc)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_conj_mul_add(
+				&self.0, lhs, rhs, acc,
+			))
+		}
 	}
 
 	#[inline(always)]
-	pub fn maybe_conj_mul_add<const CONJ: bool>(&self, lhs: T::SimdVec<S>, rhs: T::SimdVec<S>, acc: T::SimdVec<S>) -> T::SimdVec<S> {
+	pub fn maybe_conj_mul_add<const CONJ: bool>(
+		&self,
+		lhs: T::SimdVec<S>,
+		rhs: T::SimdVec<S>,
+		acc: T::SimdVec<S>,
+	) -> T::SimdVec<S> {
 		if const { CONJ } {
 			self.conj_mul_add(lhs, rhs, acc)
 		} else {
@@ -543,32 +595,44 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	#[inline(always)]
 	pub fn abs2(&self, value: T::SimdVec<S>) -> RealReg<T::SimdVec<S>> {
 		let value = unsafe { core::mem::transmute_copy(&value) };
-		RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs2(&self.0, value)) })
+		RealReg(unsafe {
+			core::mem::transmute_copy(&T::simd_abs2(&self.0, value))
+		})
 	}
 
 	#[inline(always)]
-	pub fn abs2_add(&self, value: T::SimdVec<S>, acc: RealReg<T::SimdVec<S>>) -> RealReg<T::SimdVec<S>> {
+	pub fn abs2_add(
+		&self,
+		value: T::SimdVec<S>,
+		acc: RealReg<T::SimdVec<S>>,
+	) -> RealReg<T::SimdVec<S>> {
 		let value = unsafe { core::mem::transmute_copy(&value) };
 		let acc = unsafe { core::mem::transmute_copy(&acc) };
-		RealReg(unsafe { core::mem::transmute_copy(&T::simd_abs2_add(&self.0, value, acc)) })
+		RealReg(unsafe {
+			core::mem::transmute_copy(&T::simd_abs2_add(&self.0, value, acc))
+		})
 	}
 
 	#[inline(always)]
 	pub fn reduce_sum(&self, value: T::SimdVec<S>) -> T {
 		let value = unsafe { core::mem::transmute_copy(&value) };
-		unsafe { core::mem::transmute_copy(&T::simd_reduce_sum(&self.0, value)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_reduce_sum(&self.0, value))
+		}
 	}
 
 	#[inline(always)]
 	pub fn reduce_max(&self, value: RealReg<T::SimdVec<S>>) -> T {
 		let value = unsafe { core::mem::transmute_copy(&value) };
-		unsafe { core::mem::transmute_copy(&T::simd_reduce_max(&self.0, value)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_reduce_max(&self.0, value))
+		}
 	}
 
 	#[inline(always)]
 	pub fn reduce_sum_real(&self, value: RealReg<T::SimdVec<S>>) -> Real<T> {
 		let value = T::simd_reduce_sum(&self.0, value.0);
-		if try_const! { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
+		if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
 			let r = real(&value);
 			let i = imag(&value);
 			&r + &i
@@ -581,7 +645,7 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	pub fn reduce_max_real(&self, value: RealReg<T::SimdVec<S>>) -> Real<T> {
 		use crate::ext::*;
 		let value = T::simd_reduce_max(&self.0, value.0);
-		if try_const! { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
+		if const { T::SIMD_ABS_SPLIT_REAL_IMAG && !S::IS_SCALAR } {
 			value.real().fmax(value.imag())
 		} else {
 			value.real()
@@ -589,7 +653,11 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
-	pub fn max(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> RealReg<T::SimdVec<S>> {
+	pub fn max(
+		&self,
+		lhs: RealReg<T::SimdVec<S>>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> RealReg<T::SimdVec<S>> {
 		let cmp = self.gt(lhs, rhs);
 		RealReg(self.select(cmp, lhs.0, rhs.0))
 	}
@@ -600,62 +668,122 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
-	pub fn lt(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
+	pub fn lt(
+		&self,
+		lhs: RealReg<T::SimdVec<S>>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> T::SimdMask<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_less_than(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_less_than(&self.0, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
-	pub fn gt(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
+	pub fn gt(
+		&self,
+		lhs: RealReg<T::SimdVec<S>>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> T::SimdMask<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_greater_than(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_greater_than(&self.0, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
-	pub fn le(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
+	pub fn le(
+		&self,
+		lhs: RealReg<T::SimdVec<S>>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> T::SimdMask<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_less_than_or_equal(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_less_than_or_equal(
+				&self.0, lhs, rhs,
+			))
+		}
 	}
 
 	#[inline(always)]
-	pub fn ge(&self, lhs: RealReg<T::SimdVec<S>>, rhs: RealReg<T::SimdVec<S>>) -> T::SimdMask<S> {
+	pub fn ge(
+		&self,
+		lhs: RealReg<T::SimdVec<S>>,
+		rhs: RealReg<T::SimdVec<S>>,
+	) -> T::SimdMask<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_greater_than_or_equal(&self.0, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_greater_than_or_equal(
+				&self.0, lhs, rhs,
+			))
+		}
 	}
 
 	#[inline(always)]
-	pub fn select(&self, mask: T::SimdMask<S>, lhs: T::SimdVec<S>, rhs: T::SimdVec<S>) -> T::SimdVec<S> {
+	pub fn select(
+		&self,
+		mask: T::SimdMask<S>,
+		lhs: T::SimdVec<S>,
+		rhs: T::SimdVec<S>,
+	) -> T::SimdVec<S> {
 		let lhs = unsafe { core::mem::transmute_copy(&lhs) };
 		let rhs = unsafe { core::mem::transmute_copy(&rhs) };
-		unsafe { core::mem::transmute_copy(&T::simd_select(&self.0, mask, lhs, rhs)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_select(&self.0, mask, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
-	pub fn iselect(&self, mask: T::SimdMask<S>, lhs: T::SimdIndex<S>, rhs: T::SimdIndex<S>) -> T::SimdIndex<S> {
-		unsafe { core::mem::transmute_copy(&T::simd_index_select(&self.0, mask, lhs, rhs)) }
+	pub fn iselect(
+		&self,
+		mask: T::SimdMask<S>,
+		lhs: T::SimdIndex<S>,
+		rhs: T::SimdIndex<S>,
+	) -> T::SimdIndex<S> {
+		unsafe {
+			core::mem::transmute_copy(&T::simd_index_select(
+				&self.0, mask, lhs, rhs,
+			))
+		}
 	}
 
 	#[inline(always)]
 	pub fn isplat(&self, value: T::Index) -> T::SimdIndex<S> {
-		unsafe { core::mem::transmute_copy(&T::simd_index_splat(&self.0, value)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_index_splat(&self.0, value))
+		}
 	}
 
 	#[inline(always)]
-	pub fn iadd(&self, lhs: T::SimdIndex<S>, rhs: T::SimdIndex<S>) -> T::SimdIndex<S> {
-		unsafe { core::mem::transmute_copy(&T::simd_index_add(&self.0, lhs, rhs)) }
+	pub fn iadd(
+		&self,
+		lhs: T::SimdIndex<S>,
+		rhs: T::SimdIndex<S>,
+	) -> T::SimdIndex<S> {
+		unsafe {
+			core::mem::transmute_copy(&T::simd_index_add(&self.0, lhs, rhs))
+		}
 	}
 
 	#[inline(always)]
-	pub fn or_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
+	pub fn or_mask(
+		&self,
+		lhs: T::SimdMask<S>,
+		rhs: T::SimdMask<S>,
+	) -> T::SimdMask<S> {
 		T::simd_or_mask(&self.0, lhs, rhs)
 	}
 
 	#[inline(always)]
-	pub fn and_mask(&self, lhs: T::SimdMask<S>, rhs: T::SimdMask<S>) -> T::SimdMask<S> {
+	pub fn and_mask(
+		&self,
+		lhs: T::SimdMask<S>,
+		rhs: T::SimdMask<S>,
+	) -> T::SimdMask<S> {
 		T::simd_and_mask(&self.0, lhs, rhs)
 	}
 
@@ -670,12 +798,21 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
-	pub unsafe fn mask_load(&self, mask: T::SimdMemMask<S>, ptr: *const T::SimdVec<S>) -> T::SimdVec<S> {
+	pub unsafe fn mask_load(
+		&self,
+		mask: T::SimdMemMask<S>,
+		ptr: *const T::SimdVec<S>,
+	) -> T::SimdVec<S> {
 		unsafe { T::simd_mask_load(&self.0, mask, ptr) }
 	}
 
 	#[inline(always)]
-	pub unsafe fn mask_store(&self, mask: T::SimdMemMask<S>, ptr: *mut T::SimdVec<S>, value: T::SimdVec<S>) {
+	pub unsafe fn mask_store(
+		&self,
+		mask: T::SimdMemMask<S>,
+		ptr: *mut T::SimdVec<S>,
+		value: T::SimdVec<S>,
+	) {
 		let value = unsafe { core::mem::transmute_copy(&value) };
 		unsafe { T::simd_mask_store(&self.0, mask, ptr, value) }
 	}
@@ -688,10 +825,14 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	#[inline(always)]
 	pub fn store(&self, ptr: &mut T::SimdVec<S>, value: T::SimdVec<S>) {
 		let value = unsafe { core::mem::transmute_copy(&value) };
-		unsafe { core::mem::transmute_copy(&T::simd_store(&self.0, ptr, value)) }
+		unsafe {
+			core::mem::transmute_copy(&T::simd_store(&self.0, ptr, value))
+		}
 	}
 }
-pub unsafe trait Conjugate: Send + Sync + core::fmt::Debug + Imply<Self::Canonical, Is: RefOps> {
+pub unsafe trait Conjugate:
+	Send + Sync + core::fmt::Debug + Imply<Self::Canonical, Is: RefOps>
+{
 	const IS_CANONICAL: bool;
 	type Conj: Conjugate<Conj = Self, Canonical = Self::Canonical>;
 	type Canonical: Conjugate<Canonical = Self::Canonical> + ComplexField;
@@ -891,7 +1032,8 @@ pub trait Index: IndexCore {
 	/// Sum values while checking for overflow.
 	#[inline]
 	fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
-		Self::Signed::sum_nonnegative(bytemuck::cast_slice(slice)).map(Self::from_signed)
+		Self::Signed::sum_nonnegative(bytemuck::cast_slice(slice))
+			.map(Self::from_signed)
 	}
 }
 impl IndexCore for u8 {
@@ -1084,7 +1226,14 @@ where
 		+ core::ops::Div<T, Output = T>,
 {
 }
-pub trait ComplexField: Debug + Clone + Conjugate<Canonical = Self> + PartialEq + RefOps + Imply<Self::Real, Is: RefOps> {
+pub trait ComplexField:
+	Debug
+	+ Clone
+	+ Conjugate<Canonical = Self>
+	+ PartialEq
+	+ RefOps
+	+ Imply<Self::Real, Is: RefOps>
+{
 	const IS_REAL: bool;
 	const SIMD_ABS_SPLIT_REAL_IMAG: bool = false;
 	type Arch: SimdArch;
@@ -1128,100 +1277,270 @@ pub trait ComplexField: Debug + Clone + Conjugate<Canonical = Self> + PartialEq 
 	}
 	fn simd_ctx<S: Simd>(simd: S) -> Self::SimdCtx<S>;
 	fn ctx_from_simd<S: Simd>(ctx: &Self::SimdCtx<S>) -> S;
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S>;
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S>;
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S>;
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>);
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S>;
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S>;
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S>;
-	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self;
-	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self;
-	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S>;
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S>;
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S>;
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S>;
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	);
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S>;
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S>;
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_conj<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
+	fn simd_reduce_sum<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self;
+	fn simd_reduce_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self;
+	fn simd_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S>;
 	fn simd_index_select<S: Simd>(
 		ctx: &Self::SimdCtx<S>,
 		mask: Self::SimdMask<S>,
 		lhs: Self::SimdIndex<S>,
 		rhs: Self::SimdIndex<S>,
 	) -> Self::SimdIndex<S>;
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S>;
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S>;
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S>;
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S>;
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S>;
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S>;
 	#[inline(always)]
-	fn simd_index_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		Self::simd_index_less_than(ctx, rhs, lhs)
 	}
 	#[inline(always)]
-	fn simd_index_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		Self::simd_not_mask(ctx, Self::simd_index_less_than(ctx, rhs, lhs))
 	}
 	#[inline(always)]
-	fn simd_index_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		Self::simd_not_mask(ctx, Self::simd_index_greater_than(ctx, rhs, lhs))
 	}
-	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S>;
-	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S>;
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S>;
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize;
+	fn simd_and_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_or_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S>;
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize;
 	#[inline(always)]
-	fn simd_load<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_load<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		ptr: &Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		let simd = Self::ctx_from_simd(ctx);
-		if try_const! { Self::Unit::IS_NATIVE_F32 } {
+		if const { Self::Unit::IS_NATIVE_F32 } {
 			simd.deinterleave_shfl_f32s(*ptr)
-		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
+		} else if const { Self::Unit::IS_NATIVE_F64 } {
 			simd.deinterleave_shfl_f64s(*ptr)
 		} else {
 			panic!();
 		}
 	}
 	#[inline(always)]
-	fn simd_store<S: Simd>(ctx: &Self::SimdCtx<S>, ptr: &mut Self::SimdVec<S>, value: Self::SimdVec<S>) {
+	fn simd_store<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		ptr: &mut Self::SimdVec<S>,
+		value: Self::SimdVec<S>,
+	) {
 		let simd = Self::ctx_from_simd(ctx);
-		if try_const! { Self::Unit::IS_NATIVE_F32 } {
+		if const { Self::Unit::IS_NATIVE_F32 } {
 			*ptr = simd.interleave_shfl_f32s(value)
-		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
+		} else if const { Self::Unit::IS_NATIVE_F64 } {
 			*ptr = simd.interleave_shfl_f64s(value)
 		} else {
 			panic!();
 		}
 	}
 	#[inline(always)]
-	unsafe fn simd_mask_load<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		let simd = Self::ctx_from_simd(ctx);
 		let value = Self::simd_mask_load_raw(ctx, mask, ptr);
-		if try_const! { Self::Unit::IS_NATIVE_F32 } {
+		if const { Self::Unit::IS_NATIVE_F32 } {
 			simd.deinterleave_shfl_f32s(value)
-		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
+		} else if const { Self::Unit::IS_NATIVE_F64 } {
 			simd.deinterleave_shfl_f64s(value)
 		} else {
 			panic!();
 		}
 	}
 	#[inline(always)]
-	unsafe fn simd_mask_store<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, value: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		value: Self::SimdVec<S>,
+	) {
 		let simd = Self::ctx_from_simd(ctx);
-		if try_const! { Self::Unit::IS_NATIVE_F32 } {
-			Self::simd_mask_store_raw(ctx, mask, ptr, simd.interleave_shfl_f32s(value))
-		} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
-			Self::simd_mask_store_raw(ctx, mask, ptr, simd.interleave_shfl_f64s(value))
+		if const { Self::Unit::IS_NATIVE_F32 } {
+			Self::simd_mask_store_raw(
+				ctx,
+				mask,
+				ptr,
+				simd.interleave_shfl_f32s(value),
+			)
+		} else if const { Self::Unit::IS_NATIVE_F64 } {
+			Self::simd_mask_store_raw(
+				ctx,
+				mask,
+				ptr,
+				simd.interleave_shfl_f64s(value),
+			)
 		} else {
 			panic!();
 		}
@@ -1229,19 +1548,27 @@ pub trait ComplexField: Debug + Clone + Conjugate<Canonical = Self> + PartialEq 
 	#[inline(always)]
 	fn simd_iota<S: Simd>(ctx: &Self::SimdCtx<S>) -> Self::SimdIndex<S> {
 		let simd = Self::ctx_from_simd(ctx);
+		#[repr(transparent)]
 		struct Interleave<T>(T);
 		unsafe impl<T> pulp::Interleave for Interleave<T> {}
 		unsafe {
-			if try_const! { Self::Unit::IS_NATIVE_F32 } {
-				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(&simd.deinterleave_shfl_f32s(Interleave(core::mem::transmute_copy::<
-					_,
-					Self::SimdVec<S>,
-				>(
-					&pulp::iota_32::<Interleave<Self>>()
-				))))
-			} else if try_const! { Self::Unit::IS_NATIVE_F64 } {
+			if const { Self::Unit::IS_NATIVE_F32 } {
 				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
-					&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<_, Self::SimdVec<S>>(&pulp::iota_64::<Interleave<Self>>())),
+					&simd.deinterleave_shfl_f32s(Interleave(
+						core::mem::transmute_copy::<_, Self::SimdVec<S>>(
+							&pulp::iota_32::<Interleave<Self>, 64>(),
+						),
+					)),
+				)
+			} else if const { Self::Unit::IS_NATIVE_F64 } {
+				core::mem::transmute_copy::<_, Self::SimdIndex<S>>(
+					&simd.deinterleave_shfl_f64s(core::mem::transmute_copy::<
+						_,
+						Self::SimdVec<S>,
+					>(&pulp::iota_64::<
+						Interleave<Self>,
+						64,
+					>())),
 				)
 			} else {
 				panic!();
@@ -1249,7 +1576,13 @@ pub trait ComplexField: Debug + Clone + Conjugate<Canonical = Self> + PartialEq 
 		}
 	}
 }
-pub trait RealField: ComplexField<Real = Self, Conj = Self> + PartialOrd + num_traits::NumAssign + num_traits::Num + RefOps {
+pub trait RealField:
+	ComplexField<Real = Self, Conj = Self>
+	+ PartialOrd
+	+ num_traits::NumAssign
+	+ num_traits::Num
+	+ RefOps
+{
 	fn epsilon_impl() -> Self;
 	fn nbits_impl() -> usize;
 	fn min_positive_impl() -> Self;
@@ -1380,118 +1713,205 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		ctx.splat_f32s(*value)
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
 		ctx.splat_f32s(*value)
 	}
 
 	#[inline(always)]
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.add_f32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.sub_f32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.neg_f32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		value
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.abs_f32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f32s(lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f32s(lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_f32s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_f32s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f32s(value, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_f32s(value, value, acc)
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_sum_f32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_max_f32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.equal_f32s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_f32s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.greater_than_f32s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_or_equal_f32s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.greater_than_or_equal_f32s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		ctx.select_f32s_m32s(mask, lhs, rhs)
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		ctx.select_f32s(mask, lhs, rhs)
 	}
 
 	#[inline(always)]
@@ -1501,26 +1921,40 @@ impl ComplexField for f32 {
 		lhs: Self::SimdIndex<S>,
 		rhs: Self::SimdIndex<S>,
 	) -> Self::SimdIndex<S> {
-		ctx.select_u32s_m32s(mask, lhs, rhs)
+		ctx.select_u32s(mask, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		ctx.splat_u32s(value as _)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		ctx.add_u32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_u32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.abs_f32s(value)
 	}
 
@@ -1530,42 +1964,73 @@ impl ComplexField for f32 {
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: Simd>(simd: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: Simd>(
+		simd: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		simd.and_m32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: Simd>(simd: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: Simd>(
+		simd: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		simd.or_m32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		ctx.not_m32s(mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		ctx.first_true_m32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m32s(start as _, end as _)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
 		ctx.mask_between_m32s(start as _, end as _).mask()
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mask_load_ptr_f32s(mask, ptr as _)
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	) {
 		ctx.mask_store_ptr_f32s(mask, ptr as _, values);
 	}
 }
@@ -1718,118 +2183,205 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		ctx.splat_f64s(*value)
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
 		ctx.splat_f64s(*value)
 	}
 
 	#[inline(always)]
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.add_f64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.sub_f64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.neg_f64s(value)
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		value
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.abs_f64s(value)
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f64s(lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f64s(lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_f64s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_f64s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_f64s(value, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_f64s(value, value, acc)
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_sum_f64s(value)
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_max_f64s(value)
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.equal_f64s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_f64s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.greater_than_f64s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_or_equal_f64s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		ctx.greater_than_or_equal_f64s(real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		ctx.select_f64s_m64s(mask, lhs, rhs)
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		ctx.select_f64s(mask, lhs, rhs)
 	}
 
 	#[inline(always)]
@@ -1839,26 +2391,40 @@ impl ComplexField for f64 {
 		lhs: Self::SimdIndex<S>,
 		rhs: Self::SimdIndex<S>,
 	) -> Self::SimdIndex<S> {
-		ctx.select_u64s_m64s(mask, lhs, rhs)
+		ctx.select_u64s(mask, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		ctx.splat_u64s(value as _)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		ctx.add_u64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_u64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.abs_f64s(value)
 	}
 
@@ -1868,22 +2434,36 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: Simd>(simd: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: Simd>(
+		simd: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		simd.and_m64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: Simd>(simd: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: Simd>(
+		simd: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		simd.or_m64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		ctx.not_m64s(mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		ctx.first_true_m64s(value)
 	}
 
@@ -1893,22 +2473,39 @@ impl ComplexField for f64 {
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m64s(start as _, end as _)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
 		ctx.mask_between_m64s(start as _, end as _).mask()
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mask_load_ptr_f64s(mask, ptr as _)
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	) {
 		ctx.mask_store_ptr_f64s(mask, ptr as _, values);
 	}
 }
@@ -2093,7 +2690,10 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_splat(ctx, &value.re),
 			im: T::simd_splat(ctx, &value.im),
@@ -2101,7 +2701,10 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_splat_real(ctx, value),
 			im: T::simd_splat_real(ctx, value),
@@ -2109,7 +2712,11 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_add(ctx, lhs.re, rhs.re),
 			im: T::simd_add(ctx, lhs.im, rhs.im),
@@ -2117,7 +2724,11 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_sub(ctx, lhs.re, rhs.re),
 			im: T::simd_sub(ctx, lhs.im, rhs.im),
@@ -2125,7 +2736,10 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_neg(ctx, value.re),
 			im: T::simd_neg(ctx, value.im),
@@ -2133,7 +2747,10 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: value.re,
 			im: T::simd_neg(ctx, value.im),
@@ -2141,13 +2758,23 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		let v = T::simd_add(ctx, T::simd_abs1(ctx, value.re), T::simd_abs1(ctx, value.im));
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		let v = T::simd_add(
+			ctx,
+			T::simd_abs1(ctx, value.re),
+			T::simd_abs1(ctx, value.im),
+		);
 		Complex { re: v, im: v }
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		let re = T::simd_abs_max(ctx, value.re);
 		let im = T::simd_abs_max(ctx, value.im);
 		let v = T::simd_select(ctx, T::simd_greater_than(ctx, re, im), re, im);
@@ -2155,7 +2782,11 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_mul_real(ctx, lhs.re, real_rhs.re),
 			im: T::simd_mul_real(ctx, lhs.im, real_rhs.re),
@@ -2163,7 +2794,11 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_mul_pow2(ctx, lhs.re, real_rhs.re),
 			im: T::simd_mul_pow2(ctx, lhs.im, real_rhs.re),
@@ -2171,51 +2806,123 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
-			re: T::simd_mul_add(ctx, lhs.re, rhs.re, T::simd_neg(ctx, T::simd_mul(ctx, lhs.im, rhs.im))),
-			im: T::simd_mul_add(ctx, lhs.re, rhs.im, T::simd_mul(ctx, lhs.im, rhs.re)),
+			re: T::simd_mul_add(
+				ctx,
+				lhs.re,
+				rhs.re,
+				T::simd_neg(ctx, T::simd_mul(ctx, lhs.im, rhs.im)),
+			),
+			im: T::simd_mul_add(
+				ctx,
+				lhs.re,
+				rhs.im,
+				T::simd_mul(ctx, lhs.im, rhs.re),
+			),
 		}
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
-			re: T::simd_mul_add(ctx, lhs.re, rhs.re, T::simd_mul(ctx, lhs.im, rhs.im)),
-			im: T::simd_mul_add(ctx, lhs.re, rhs.im, T::simd_neg(ctx, T::simd_mul(ctx, lhs.im, rhs.re))),
+			re: T::simd_mul_add(
+				ctx,
+				lhs.re,
+				rhs.re,
+				T::simd_mul(ctx, lhs.im, rhs.im),
+			),
+			im: T::simd_mul_add(
+				ctx,
+				lhs.re,
+				rhs.im,
+				T::simd_neg(ctx, T::simd_mul(ctx, lhs.im, rhs.re)),
+			),
 		}
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
-			re: T::simd_mul_add(ctx, T::simd_neg(ctx, lhs.im), rhs.im, T::simd_mul_add(ctx, lhs.re, rhs.re, acc.re)),
-			im: T::simd_mul_add(ctx, lhs.re, rhs.im, T::simd_mul_add(ctx, lhs.im, rhs.re, acc.im)),
+			re: T::simd_mul_add(
+				ctx,
+				T::simd_neg(ctx, lhs.im),
+				rhs.im,
+				T::simd_mul_add(ctx, lhs.re, rhs.re, acc.re),
+			),
+			im: T::simd_mul_add(
+				ctx,
+				lhs.re,
+				rhs.im,
+				T::simd_mul_add(ctx, lhs.im, rhs.re, acc.im),
+			),
 		}
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
-			re: T::simd_mul_add(ctx, lhs.im, rhs.im, T::simd_mul_add(ctx, lhs.re, rhs.re, acc.re)),
-			im: T::simd_mul_add(ctx, lhs.re, rhs.im, T::simd_mul_add(ctx, T::simd_neg(ctx, lhs.im), rhs.re, acc.im)),
+			re: T::simd_mul_add(
+				ctx,
+				lhs.im,
+				rhs.im,
+				T::simd_mul_add(ctx, lhs.re, rhs.re, acc.re),
+			),
+			im: T::simd_mul_add(
+				ctx,
+				lhs.re,
+				rhs.im,
+				T::simd_mul_add(ctx, T::simd_neg(ctx, lhs.im), rhs.re, acc.im),
+			),
 		}
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		let v = T::simd_abs2_add(ctx, value.re, T::simd_abs2(ctx, value.im));
 		Complex { re: v, im: v }
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		let v = T::simd_abs2_add(ctx, value.re, T::simd_abs2_add(ctx, value.im, acc.re));
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		let v = T::simd_abs2_add(
+			ctx,
+			value.re,
+			T::simd_abs2_add(ctx, value.im, acc.re),
+		);
 		Complex { re: v, im: v }
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		Complex {
 			re: T::simd_reduce_sum(ctx, value.re),
 			im: T::simd_reduce_sum(ctx, value.im),
@@ -2223,7 +2930,10 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		Complex {
 			re: T::simd_reduce_max(ctx, value.re),
 			im: T::simd_reduce_max(ctx, value.im),
@@ -2231,7 +2941,11 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_and_mask(
 			ctx,
 			T::simd_equal(ctx, real_lhs.re, real_rhs.re),
@@ -2240,27 +2954,48 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_less_than(ctx, real_lhs.re, real_rhs.re)
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_less_than_or_equal(ctx, real_lhs.re, real_rhs.re)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_greater_than(ctx, real_lhs.re, real_rhs.re)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_greater_than_or_equal(ctx, real_lhs.re, real_rhs.re)
 	}
 
 	#[inline(always)]
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
 			re: T::simd_select(ctx, mask, lhs.re, rhs.re),
 			im: T::simd_select(ctx, mask, lhs.im, rhs.im),
@@ -2278,43 +3013,73 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		T::simd_index_splat(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		T::simd_index_add(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_index_less_than(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_and_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_or_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		T::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		T::simd_first_true_mask(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		let n = core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>();
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
+		let n = core::mem::size_of::<Self::SimdVec<S>>()
+			/ core::mem::size_of::<Self>();
 		let start = start.zx() * 2;
 		let end = end.zx() * 2;
 		let mut sa = start.min(n);
@@ -2329,28 +3094,67 @@ impl<T: RealField<Unit: ComplexField>> ComplexField for Complex<T> {
 			sb = 0;
 			eb = 0;
 		}
-		let re = T::simd_mem_mask_between(ctx, T::Index::truncate(sa), T::Index::truncate(ea));
-		let im = T::simd_mem_mask_between(ctx, T::Index::truncate(sb), T::Index::truncate(eb));
+		let re = T::simd_mem_mask_between(
+			ctx,
+			T::Index::truncate(sa),
+			T::Index::truncate(ea),
+		);
+		let im = T::simd_mem_mask_between(
+			ctx,
+			T::Index::truncate(sb),
+			T::Index::truncate(eb),
+		);
 		Complex { re, im }
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
 		T::simd_mask_between(ctx, start, end)
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Complex {
-			re: T::simd_mask_load_raw(ctx, mask.re, core::ptr::addr_of!((*ptr).re)),
-			im: T::simd_mask_load_raw(ctx, mask.im, core::ptr::addr_of!((*ptr).im)),
+			re: T::simd_mask_load_raw(
+				ctx,
+				mask.re,
+				core::ptr::addr_of!((*ptr).re),
+			),
+			im: T::simd_mask_load_raw(
+				ctx,
+				mask.im,
+				core::ptr::addr_of!((*ptr).im),
+			),
 		}
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
-		T::simd_mask_store_raw(ctx, mask.re, core::ptr::addr_of_mut!((*ptr).re), values.re);
-		T::simd_mask_store_raw(ctx, mask.im, core::ptr::addr_of_mut!((*ptr).im), values.im);
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	) {
+		T::simd_mask_store_raw(
+			ctx,
+			mask.re,
+			core::ptr::addr_of_mut!((*ptr).re),
+			values.re,
+		);
+		T::simd_mask_store_raw(
+			ctx,
+			mask.im,
+			core::ptr::addr_of_mut!((*ptr).im),
+			values.im,
+		);
 	}
 }
 #[repr(transparent)]
@@ -2619,40 +3423,71 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		ctx.splat_c32s(value.0)
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
-		ctx.splat_c32s(Complex { re: *value, im: *value })
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
+		ctx.splat_c32s(Complex {
+			re: *value,
+			im: *value,
+		})
 	}
 
 	#[inline(always)]
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.add_c32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.sub_c32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.neg_c32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.conj_c32s(value)
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
 			bytemuck::cast(ctx.abs_f32s(bytemuck::cast(value)))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let v = value.re.abs() + value.im.abs();
 			bytemuck::cast(Complex { re: v, im: v })
@@ -2662,10 +3497,18 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
 			bytemuck::cast(ctx.abs_f32s(bytemuck::cast(value)))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let re = value.re.abs();
 			let im = value.im.abs();
@@ -2677,10 +3520,21 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			bytemuck::cast(ctx.mul_f32s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			bytemuck::cast(
+				ctx.mul_f32s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)),
+			)
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
 			let mut lhs: Complex<f32> = bytemuck::cast(lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
 			lhs *= rhs.re;
@@ -2691,35 +3545,67 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Self::simd_mul_real(ctx, lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_e_c32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.conj_mul_e_c32s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_c32s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.conj_mul_add_e_c32s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			bytemuck::cast(ctx.mul_f32s(bytemuck::cast(value), bytemuck::cast(value)))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			bytemuck::cast(
+				ctx.mul_f32s(bytemuck::cast(value), bytemuck::cast(value)),
+			)
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let v = value.re * value.re + value.im * value.im;
 			bytemuck::cast(Complex { re: v, im: v })
@@ -2729,10 +3615,23 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			bytemuck::cast(ctx.mul_add_f32s(bytemuck::cast(value), bytemuck::cast(value), bytemuck::cast(acc)))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			bytemuck::cast(ctx.mul_add_f32s(
+				bytemuck::cast(value),
+				bytemuck::cast(value),
+				bytemuck::cast(acc),
+			))
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
 			let value: Complex<f32> = bytemuck::cast(value);
 			let acc: Complex<f32> = bytemuck::cast(acc);
 			let v = value.re * value.re + value.im * value.im + acc.re;
@@ -2743,26 +3642,53 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_sum_c32s(value).into()
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_max_c32s(value).into()
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		panic!()
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			ctx.less_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			ctx.less_than_f32s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m32s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re < rhs.re)) }
@@ -2772,11 +3698,28 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			ctx.less_than_or_equal_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			ctx.less_than_or_equal_f32s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m32s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re <= rhs.re)) }
@@ -2786,11 +3729,28 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			ctx.greater_than_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			ctx.greater_than_f32s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m32s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re > rhs.re)) }
@@ -2800,11 +3760,28 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			ctx.greater_than_or_equal_f32s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			ctx.greater_than_or_equal_f32s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m32s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f32> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f32> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re >= rhs.re)) }
@@ -2814,11 +3791,30 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>() } {
-			bytemuck::cast(ctx.select_f32s_m32s(mask, bytemuck::cast(lhs), bytemuck::cast(rhs)))
-		} else if try_const! { core::mem::size_of::<S::c32s>() == core::mem::size_of::<Complex<f32>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m32s>() == core::mem::size_of::<bool>() });
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c32s>() == core::mem::size_of::<S::f32s>()
+		} {
+			bytemuck::cast(ctx.select_f32s(
+				mask,
+				bytemuck::cast(lhs),
+				bytemuck::cast(rhs),
+			))
+		} else if const {
+			core::mem::size_of::<S::c32s>()
+				== core::mem::size_of::<Complex<f32>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m32s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let mask: bool = unsafe { core::mem::transmute_copy(&mask) };
 			let lhs: Complex<f32> = bytemuck::cast(lhs);
 			let rhs: Complex<f32> = bytemuck::cast(rhs);
@@ -2839,57 +3835,100 @@ impl ComplexField for ComplexImpl<f32> {
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		f32::simd_index_splat(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		f32::simd_index_add(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		f32::simd_index_less_than(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		f32::simd_and_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		f32::simd_or_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		f32::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		f32::simd_first_true_mask(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m32s((2 * start) as _, (2 * end) as _)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
-		ctx.mask_between_m32s((2 * start) as _, (2 * end) as _).mask()
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
+		ctx.mask_between_m32s((2 * start) as _, (2 * end) as _)
+			.mask()
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mask_load_ptr_c32s(mask, ptr as _)
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	) {
 		ctx.mask_store_ptr_c32s(mask, ptr as _, values);
 	}
 }
@@ -3051,40 +4090,71 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		ctx.splat_c64s(value.0)
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
-		ctx.splat_c64s(Complex { re: *value, im: *value })
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
+		ctx.splat_c64s(Complex {
+			re: *value,
+			im: *value,
+		})
 	}
 
 	#[inline(always)]
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.add_c64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.sub_c64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.neg_c64s(value)
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.conj_c64s(value)
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
 			bytemuck::cast(ctx.abs_f64s(bytemuck::cast(value)))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let v = value.re.abs() + value.im.abs();
 			bytemuck::cast(Complex { re: v, im: v })
@@ -3094,10 +4164,18 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
 			bytemuck::cast(ctx.abs_f64s(bytemuck::cast(value)))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let re = value.re.abs();
 			let im = value.im.abs();
@@ -3109,10 +4187,21 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			bytemuck::cast(ctx.mul_f64s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			bytemuck::cast(
+				ctx.mul_f64s(bytemuck::cast(lhs), bytemuck::cast(real_rhs)),
+			)
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
 			let mut lhs: Complex<f64> = bytemuck::cast(lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
 			lhs *= rhs.re;
@@ -3123,35 +4212,67 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		Self::simd_mul_real(ctx, lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_e_c64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.conj_mul_e_c64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mul_add_e_c64s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.conj_mul_add_e_c64s(lhs, rhs, acc)
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			bytemuck::cast(ctx.mul_f64s(bytemuck::cast(value), bytemuck::cast(value)))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			bytemuck::cast(
+				ctx.mul_f64s(bytemuck::cast(value), bytemuck::cast(value)),
+			)
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let v = value.re * value.re + value.im * value.im;
 			bytemuck::cast(Complex { re: v, im: v })
@@ -3161,10 +4282,23 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			bytemuck::cast(ctx.mul_add_f64s(bytemuck::cast(value), bytemuck::cast(value), bytemuck::cast(acc)))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			bytemuck::cast(ctx.mul_add_f64s(
+				bytemuck::cast(value),
+				bytemuck::cast(value),
+				bytemuck::cast(acc),
+			))
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
 			let value: Complex<f64> = bytemuck::cast(value);
 			let acc: Complex<f64> = bytemuck::cast(acc);
 			let v = value.re * value.re + value.im * value.im + acc.re;
@@ -3175,26 +4309,53 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_sum_c64s(value).into()
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		ctx.reduce_max_c64s(value).into()
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		panic!()
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			ctx.less_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			ctx.less_than_f64s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m64s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re < rhs.re)) }
@@ -3204,11 +4365,28 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			ctx.less_than_or_equal_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			ctx.less_than_or_equal_f64s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m64s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re <= rhs.re)) }
@@ -3218,11 +4396,28 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			ctx.greater_than_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			ctx.greater_than_f64s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m64s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re > rhs.re)) }
@@ -3232,11 +4427,28 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			ctx.greater_than_or_equal_f64s(bytemuck::cast(real_lhs), bytemuck::cast(real_rhs))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			ctx.greater_than_or_equal_f64s(
+				bytemuck::cast(real_lhs),
+				bytemuck::cast(real_rhs),
+			)
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m64s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let lhs: Complex<f64> = bytemuck::cast(real_lhs);
 			let rhs: Complex<f64> = bytemuck::cast(real_rhs);
 			unsafe { core::mem::transmute_copy(&(lhs.re >= rhs.re)) }
@@ -3246,11 +4458,30 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>() } {
-			bytemuck::cast(ctx.select_f64s_m64s(mask, bytemuck::cast(lhs), bytemuck::cast(rhs)))
-		} else if try_const! { core::mem::size_of::<S::c64s>() == core::mem::size_of::<Complex<f64>>() } {
-			assert!(try_const! { core::mem::size_of::<S::m64s>() == core::mem::size_of::<bool>() });
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		if const {
+			core::mem::size_of::<S::c64s>() == core::mem::size_of::<S::f64s>()
+		} {
+			bytemuck::cast(ctx.select_f64s(
+				mask,
+				bytemuck::cast(lhs),
+				bytemuck::cast(rhs),
+			))
+		} else if const {
+			core::mem::size_of::<S::c64s>()
+				== core::mem::size_of::<Complex<f64>>()
+		} {
+			assert!(
+				const {
+					core::mem::size_of::<S::m64s>()
+						== core::mem::size_of::<bool>()
+				}
+			);
 			let mask: bool = unsafe { core::mem::transmute_copy(&mask) };
 			let lhs: Complex<f64> = bytemuck::cast(lhs);
 			let rhs: Complex<f64> = bytemuck::cast(rhs);
@@ -3271,57 +4502,100 @@ impl ComplexField for ComplexImpl<f64> {
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		f64::simd_index_splat(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		f64::simd_index_add(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		f64::simd_index_less_than(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		f64::simd_and_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		f64::simd_or_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		f64::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		f64::simd_first_true_mask(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
 		ctx.mask_between_m64s((2 * start) as _, (2 * end) as _)
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
-		ctx.mask_between_m64s((2 * start) as _, (2 * end) as _).mask()
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
+		ctx.mask_between_m64s((2 * start) as _, (2 * end) as _)
+			.mask()
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		ctx.mask_load_ptr_c64s(mask, ptr as _)
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	) {
 		ctx.mask_store_ptr_c64s(mask, ptr as _, values);
 	}
 }
@@ -3428,7 +4702,12 @@ impl num_traits::Num for Symbolic {
 impl Symbolic {
 	#[inline]
 	pub fn materialize(len: usize) -> &'static mut [Self] {
-		unsafe { core::slice::from_raw_parts_mut(core::ptr::NonNull::dangling().as_ptr(), len) }
+		unsafe {
+			core::slice::from_raw_parts_mut(
+				core::ptr::NonNull::dangling().as_ptr(),
+				len,
+			)
+		}
 	}
 }
 impl RealField for Symbolic {
@@ -3550,111 +4829,214 @@ impl ComplexField for Symbolic {
 		*simd
 	}
 
-	fn simd_mem_mask_between<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::Index, _: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::Index,
+		_: Self::Index,
+	) -> Self::SimdMemMask<S> {
 		()
 	}
 
-	unsafe fn simd_mask_load_raw<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMemMask<S>, _: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMemMask<S>,
+		_: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	unsafe fn simd_mask_store_raw<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMemMask<S>, _: *mut Self::SimdVec<S>, _: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store_raw<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMemMask<S>,
+		_: *mut Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) {
 		()
 	}
 
-	fn simd_splat<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: &Self,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_splat_real<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: &Self::Real) -> Self::SimdVec<S> {
+	fn simd_splat_real<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: &Self::Real,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_sub<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_neg<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_conj<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_abs1<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs1<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_abs_max<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs_max<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_mul_real<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_real<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_mul_pow2<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_mul<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_conj_mul<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_mul_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_conj_mul_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_abs2<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_abs2_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2_add<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
-	fn simd_reduce_sum<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self {
 		Self
 	}
 
-	fn simd_reduce_max<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+	) -> Self {
 		Self
 	}
 
-	fn simd_equal<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_less_than<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_less_than_or_equal<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than_or_equal<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_greater_than<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_greater_than_or_equal<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than_or_equal<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_select<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdVec<S>, _: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_select<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMask<S>,
+		_: Self::SimdVec<S>,
+		_: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		()
 	}
 
@@ -3667,35 +5049,64 @@ impl ComplexField for Symbolic {
 		()
 	}
 
-	fn simd_index_splat<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::Index,
+	) -> Self::SimdIndex<S> {
 		()
 	}
 
-	fn simd_index_add<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdIndex<S>,
+		_: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		()
 	}
 
-	fn simd_and_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMask<S>,
+		_: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_or_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>, _: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMask<S>,
+		_: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_not_mask<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_first_true_mask<S: pulp::Simd>(_: &Self::SimdCtx<S>, _: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: pulp::Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdMask<S>,
+	) -> usize {
 		0
 	}
 
-	fn simd_mask_between<S: Simd>(_: &Self::SimdCtx<S>, _: Self::Index, _: Self::Index) -> Self::SimdMask<S> {
+	fn simd_mask_between<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::Index,
+		_: Self::Index,
+	) -> Self::SimdMask<S> {
 		()
 	}
 
-	fn simd_index_less_than<S: Simd>(_: &Self::SimdCtx<S>, _: Self::SimdIndex<S>, _: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		_: Self::SimdIndex<S>,
+		_: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		()
 	}
 }
@@ -3824,13 +5235,22 @@ impl ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+	fn simd_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
 		ctx.mask_between_m64s(start as _, end as _).mask()
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
-		let n = (core::mem::size_of::<Self::SimdVec<S>>() / core::mem::size_of::<Self>()) as u64;
+	fn simd_mem_mask_between<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
+		let n = (core::mem::size_of::<Self::SimdVec<S>>()
+			/ core::mem::size_of::<Self>()) as u64;
 		let start = start * 2;
 		let end = end * 2;
 		let mut sa = start.min(n);
@@ -3851,7 +5271,11 @@ impl ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_load_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *const Self::SimdVec<S>) -> Self::SimdVec<S> {
+	unsafe fn simd_mask_load_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *const Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		unsafe {
 			Quad(
 				f64::simd_mask_load_raw(ctx, mask.0, &raw const (*ptr).0),
@@ -3861,97 +5285,174 @@ impl ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	unsafe fn simd_mask_store_raw<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMemMask<S>, ptr: *mut Self::SimdVec<S>, values: Self::SimdVec<S>) {
+	unsafe fn simd_mask_store_raw<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMemMask<S>,
+		ptr: *mut Self::SimdVec<S>,
+		values: Self::SimdVec<S>,
+	) {
 		unsafe {
 			Quad(
-				f64::simd_mask_store_raw(ctx, mask.0, &raw mut (*ptr).0, values.0),
-				f64::simd_mask_store_raw(ctx, mask.1, &raw mut (*ptr).1, values.1),
+				f64::simd_mask_store_raw(
+					ctx,
+					mask.0,
+					&raw mut (*ptr).0,
+					values.0,
+				),
+				f64::simd_mask_store_raw(
+					ctx,
+					mask.1,
+					&raw mut (*ptr).1,
+					values.1,
+				),
 			);
 		}
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		Quad(ctx.splat_f64s(value.0), ctx.splat_f64s(value.1))
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+	fn simd_splat_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
 		Quad(ctx.splat_f64s(value.0), ctx.splat_f64s(value.1))
 	}
 
 	#[inline(always)]
-	fn simd_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::add_estimate(*ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::sub_estimate(*ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::neg(*ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		value
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs1<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::abs(*ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs_max<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::abs(*ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_real<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::mul(*ctx, lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::mul(*ctx, lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::mul(*ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::mul(*ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::add_estimate(*ctx, qd::simd::mul(*ctx, lhs, rhs), acc)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::add_estimate(*ctx, qd::simd::mul(*ctx, lhs, rhs), acc)
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::mul(*ctx, value, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		qd::simd::add_estimate(*ctx, qd::simd::mul(*ctx, value, value), acc)
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		let a = value.0;
 		let b = value.1;
 		let a: &[f64] = bytemuck::cast_slice(core::slice::from_ref(&a));
@@ -3964,7 +5465,10 @@ impl ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: Simd>(_: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: Simd>(
+		_: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		let a = value.0;
 		let b = value.1;
 		let a: &[f64] = bytemuck::cast_slice(core::slice::from_ref(&a));
@@ -3980,33 +5484,61 @@ impl ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		qd::simd::eq(*ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		qd::simd::less_than(*ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		qd::simd::less_than_or_equal(*ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		qd::simd::greater_than(*ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than_or_equal<S: Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than_or_equal<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		qd::simd::greater_than_or_equal(*ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_select<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
-		Quad(ctx.select_f64s_m64s(mask, lhs.0, rhs.0), ctx.select_f64s_m64s(mask, lhs.1, rhs.1))
+	fn simd_select<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
+		Quad(
+			ctx.select_f64s(mask, lhs.0, rhs.0),
+			ctx.select_f64s(mask, lhs.1, rhs.1),
+		)
 	}
 
 	#[inline(always)]
@@ -4016,41 +5548,66 @@ impl ComplexField for fx128 {
 		lhs: Self::SimdIndex<S>,
 		rhs: Self::SimdIndex<S>,
 	) -> Self::SimdIndex<S> {
-		ctx.select_u64s_m64s(mask, lhs, rhs)
+		ctx.select_u64s(mask, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		ctx.splat_u64s(value as u64)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		ctx.add_u64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		ctx.less_than_u64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		ctx.and_m64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		ctx.or_m64s(lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		ctx.not_m64s(mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		ctx.first_true_m64s(value)
 	}
 }
@@ -4160,10 +5717,11 @@ pub mod ext {
 		#[inline(always)]
 		#[must_use]
 		fn absmax(&self) -> Self::Real {
-			if try_const! { Self::IS_REAL } {
+			if const { Self::IS_REAL } {
 				Self::abs1_impl(self)
 			} else {
-				&Self::Real::abs1_impl(&real(self)) + &Self::Real::abs1_impl(&imag(self))
+				&Self::Real::abs1_impl(&real(self))
+					+ &Self::Real::abs1_impl(&imag(self))
 			}
 		}
 		#[inline(always)]

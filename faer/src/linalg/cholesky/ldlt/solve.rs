@@ -1,6 +1,10 @@
 use crate::assert;
 use crate::internal_prelude::*;
-pub fn solve_in_place_scratch<T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> StackReq {
+pub fn solve_in_place_scratch<T: ComplexField>(
+	dim: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> StackReq {
 	_ = (dim, rhs_ncols, par);
 	StackReq::EMPTY
 }
@@ -15,9 +19,19 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
 ) {
 	let n = L.nrows();
 	_ = stack;
-	assert!(all(L.nrows() == n, L.ncols() == n, D.dim() == n, rhs.nrows() == n,));
+	assert!(all(
+		L.nrows() == n,
+		L.ncols() == n,
+		D.dim() == n,
+		rhs.nrows() == n,
+	));
 	let mut rhs = rhs;
-	linalg::triangular_solve::solve_unit_lower_triangular_in_place_with_conj(L, conj_lhs, rhs.rb_mut(), par);
+	linalg::triangular_solve::solve_unit_lower_triangular_in_place_with_conj(
+		L,
+		conj_lhs,
+		rhs.rb_mut(),
+		par,
+	);
 	{
 		with_dim!(N, rhs.nrows());
 		with_dim!(K, rhs.ncols());
@@ -30,7 +44,12 @@ pub fn solve_in_place_with_conj<T: ComplexField>(
 			}
 		}
 	}
-	linalg::triangular_solve::solve_unit_upper_triangular_in_place_with_conj(L.transpose(), conj_lhs.compose(Conj::Yes), rhs.rb_mut(), par);
+	linalg::triangular_solve::solve_unit_upper_triangular_in_place_with_conj(
+		L.transpose(),
+		conj_lhs.compose(Conj::Yes),
+		rhs.rb_mut(),
+		par,
+	);
 }
 #[track_caller]
 pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
@@ -40,7 +59,14 @@ pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
 	par: Par,
 	stack: &mut MemStack,
 ) {
-	solve_in_place_with_conj(L.canonical(), D.canonical(), Conj::get::<C>(), rhs, par, stack);
+	solve_in_place_with_conj(
+		L.canonical(),
+		D.canonical(),
+		Conj::get::<C>(),
+		rhs,
+		par,
+		stack,
+	);
 }
 #[cfg(test)]
 mod tests {
@@ -73,11 +99,13 @@ mod tests {
 				L.as_mut(),
 				Default::default(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(ldlt::factor::cholesky_in_place_scratch::<c64>(
-					n,
-					Par::Seq,
-					default(),
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					ldlt::factor::cholesky_in_place_scratch::<c64>(
+						n,
+						Par::Seq,
+						default(),
+					),
+				)),
 				default(),
 			)
 			.unwrap();
@@ -89,7 +117,13 @@ mod tests {
 					L.diagonal(),
 					X.as_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
+					MemStack::new(&mut MemBuffer::new(
+						ldlt::solve::solve_in_place_scratch::<c64>(
+							n,
+							k,
+							Par::Seq,
+						),
+					)),
 				);
 				assert!(& A * & X ~ B);
 			}
@@ -100,7 +134,13 @@ mod tests {
 					L.conjugate().diagonal(),
 					X.as_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(ldlt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
+					MemStack::new(&mut MemBuffer::new(
+						ldlt::solve::solve_in_place_scratch::<c64>(
+							n,
+							k,
+							Par::Seq,
+						),
+					)),
 				);
 				assert!(A.conjugate() * & X ~ B);
 			}

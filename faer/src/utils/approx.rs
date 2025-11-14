@@ -45,12 +45,15 @@ pub enum CwiseRowError<Cols: Shape, Error> {
 	DimMismatch,
 	Elements(alloc::vec::Vec<(crate::Idx<Cols>, Error)>),
 }
-impl<R: RealField, T: ComplexField<Real = R>> equator::Cmp<T, T> for ApproxEq<R> {
+impl<R: RealField, T: ComplexField<Real = R>> equator::Cmp<T, T>
+	for ApproxEq<R>
+{
 	fn test(&self, lhs: &T, rhs: &T) -> bool {
 		let Self { abs_tol, rel_tol } = self;
 		let diff = (lhs - rhs).abs();
 		let max = lhs.abs().fmax(rhs.abs());
-		(max == zero() && diff <= *abs_tol) || (diff <= *abs_tol || diff <= rel_tol * max)
+		(max == zero() && diff <= *abs_tol)
+			|| (diff <= *abs_tol || diff <= rel_tol * max)
 	}
 }
 impl<

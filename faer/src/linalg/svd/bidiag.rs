@@ -4,10 +4,18 @@ use linalg::householder::*;
 use linalg::matmul::{dot, matmul};
 /// computes the layout of the workspace required to compute a matrix's
 /// bidiagonalization
-pub fn bidiag_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<BidiagParams, T>) -> StackReq {
+pub fn bidiag_in_place_scratch<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+	params: Spec<BidiagParams, T>,
+) -> StackReq {
 	_ = par;
 	_ = params;
-	StackReq::all_of(&[temp_mat_scratch::<T>(nrows, 1), temp_mat_scratch::<T>(ncols, 1)])
+	StackReq::all_of(&[
+		temp_mat_scratch::<T>(nrows, 1),
+		temp_mat_scratch::<T>(ncols, 1),
+	])
 }
 /// bidiagonalization tuning parameters.
 #[derive(Debug, Copy, Clone)]
@@ -29,11 +37,13 @@ impl<T: ComplexField> Auto<T> for BidiagParams {
 ///
 /// $B$ is a bidiagonal matrix stored in $A$'s diagonal and superdiagonal
 ///
-/// $U$ is a sequence of householder reflections stored in the unit lower triangular half of $A$,
-/// with the householder coefficients being stored in `H_left`
+/// $U$ is a sequence of householder reflections stored in the unit lower
+/// triangular half of $A$, with the householder coefficients being stored in
+/// `H_left`
 ///
-/// $V$ is a sequence of householder reflections stored in the unit upper triangular half of $A$
-/// (excluding the diagonal), with the householder coefficients being stored in `H_right`
+/// $V$ is a sequence of householder reflections stored in the unit upper
+/// triangular half of $A$ (excluding the diagonal), with the householder
+/// coefficients being stored in `H_right`
 pub fn bidiag_in_place<T: ComplexField>(
 	A: MatMut<'_, T>,
 	H_left: MatMut<'_, T>,
@@ -70,8 +80,10 @@ pub fn bidiag_in_place<T: ComplexField>(
 			let mut A12 = A12.row_mut(0);
 			let mut A21 = A21.col_mut(0);
 			let a11 = &mut A11[(0, 0)];
-			let (y1, mut y2) = y.rb_mut().split_at_col_mut(k).1.split_at_col_mut(1);
-			let (z1, mut z2) = z.rb_mut().split_at_row_mut(k).1.split_at_row_mut(1);
+			let (y1, mut y2) =
+				y.rb_mut().split_at_col_mut(k).1.split_at_col_mut(1);
+			let (z1, mut z2) =
+				z.rb_mut().split_at_row_mut(k).1.split_at_row_mut(1);
 			if k > 0 {
 				let ref y1 = y1[0].copy();
 				let ref z1 = z1[0].copy();
@@ -80,12 +92,17 @@ pub fn bidiag_in_place<T: ComplexField>(
 				let up = A20.rb().col(k1);
 				let vp = A02.rb().row(k1);
 				*a11 -= up0 * y1 + z1;
-				z!(A21.rb_mut(), up.rb(), z2.rb()).for_each(|uz!(a, u, z): Zip!(&mut T, &T, &T)| *a -= u * y1 + z);
-				z!(A12.rb_mut(), y2.rb(), vp.rb()).for_each(|uz!(a, y, v): Zip!(&mut T, &T, &T)| {
-					*a -= up0 * y + z1 * v;
-				});
+				z!(A21.rb_mut(), up.rb(), z2.rb()).for_each(
+					|uz!(a, u, z): Zip!(&mut T, &T, &T)| *a -= u * y1 + z,
+				);
+				z!(A12.rb_mut(), y2.rb(), vp.rb()).for_each(
+					|uz!(a, y, v): Zip!(&mut T, &T, &T)| {
+						*a -= up0 * y + z1 * v;
+					},
+				);
 			}
-			let HouseholderInfo { tau: tl, .. } = make_householder_in_place(a11, A21.rb_mut());
+			let HouseholderInfo { tau: tl, .. } =
+				make_householder_in_place(a11, A21.rb_mut());
 			let ref tl_inv = tl.recip();
 			Hl[k] = tl.to_cplx();
 			if (m - k - 1) * (n - k - 1) < params.par_threshold {
@@ -96,7 +113,15 @@ pub fn bidiag_in_place<T: ComplexField>(
 				let up = A20.rb().col(k1);
 				let vp = A02.row(k1);
 				match par {
-					Par::Seq => bidiag_fused_op(A22.rb_mut(), A21.rb(), up.rb(), z2.rb(), y2.rb_mut(), vp.rb(), simd_align(k + 1)),
+					Par::Seq => bidiag_fused_op(
+						A22.rb_mut(),
+						A21.rb(),
+						up.rb(),
+						z2.rb(),
+						y2.rb_mut(),
+						vp.rb(),
+						simd_align(k + 1),
+					),
 					#[cfg(feature = "rayon")]
 					Par::Rayon(nthreads) => {
 						use rayon::prelude::*;
@@ -108,13 +133,28 @@ pub fn bidiag_in_place<T: ComplexField>(
 								.zip_eq(y2.rb_mut().par_partition_mut(nthreads))
 								.zip_eq(vp.par_partition(nthreads)),
 							|((A22, y2), vp)| {
-								bidiag_fused_op(A22, A21.rb(), up.rb(), z2.rb(), y2, vp.rb(), simd_align(k + 1));
+								bidiag_fused_op(
+									A22,
+									A21.rb(),
+									up.rb(),
+									z2.rb(),
+									y2,
+									vp.rb(),
+									simd_align(k + 1),
+								);
 							},
 						);
 					},
 				}
 			} else {
-				matmul(y2.rb_mut(), Accum::Replace, A21.rb().adjoint(), A22.rb(), one(), par);
+				matmul(
+					y2.rb_mut(),
+					Accum::Replace,
+					A21.rb().adjoint(),
+					A22.rb(),
+					one(),
+					par,
+				);
 			}
 			z!(y2.rb_mut(), A12.rb_mut()).for_each(|uz!(y, a)| {
 				*y = (&*y + &*a).mul_real(tl_inv);
@@ -125,7 +165,14 @@ pub fn bidiag_in_place<T: ComplexField>(
 			if norm != zero() {
 				z!(A12.rb_mut()).for_each(|uz!(a)| *a = a.mul_real(norm_inv));
 			}
-			matmul(z2.rb_mut(), Accum::Replace, A22.rb(), A12.rb().adjoint(), one(), par);
+			matmul(
+				z2.rb_mut(),
+				Accum::Replace,
+				A22.rb(),
+				A12.rb().adjoint(),
+				one(),
+				par,
+			);
 			if k + 1 == size {
 				break;
 			}
@@ -143,19 +190,29 @@ pub fn bidiag_in_place<T: ComplexField>(
 			Hr[k] = tr.to_cplx();
 			let beta = a12_a.copy();
 			*a12_a = a12_a.mul_real(norm);
-			let ref b = y2_a + dot::inner_prod(y2_b, Conj::No, A12_b.rb().transpose(), Conj::Yes);
+			let ref b = y2_a
+				+ dot::inner_prod(
+					y2_b,
+					Conj::No,
+					A12_b.rb().transpose(),
+					Conj::Yes,
+				);
 			if m != infinity() {
-				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a): Zip!(&mut T, &T, &T)| {
-					let w = &*z - a * beta.conj();
-					let w = w * m.conj();
-					let w = w - u * b;
-					*z = w.mul_real(tr_inv);
-				});
+				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(
+					|uz!(z, u, a): Zip!(&mut T, &T, &T)| {
+						let w = &*z - a * beta.conj();
+						let w = w * m.conj();
+						let w = w - u * b;
+						*z = w.mul_real(tr_inv);
+					},
+				);
 			} else {
-				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(|uz!(z, u, a): Zip!(&mut T, &T, &T)| {
-					let w = a - u * b;
-					*z = w.mul_real(tr_inv);
-				});
+				z!(z2.rb_mut(), A21.rb(), A22_a.rb()).for_each(
+					|uz!(z, u, a): Zip!(&mut T, &T, &T)| {
+						let w = a - u * b;
+						*z = w.mul_real(tr_inv);
+					},
+				);
 			}
 		}
 	}
@@ -166,7 +223,13 @@ pub fn bidiag_in_place<T: ComplexField>(
 		for k in 0..bl {
 			Hl[(k, k)] = Hl[(0, k)].copy();
 		}
-		upgrade_householder_factor(Hl.rb_mut(), A.rb().get(j.., j..j + bl), bl, 1, par);
+		upgrade_householder_factor(
+			Hl.rb_mut(),
+			A.rb().get(j.., j..j + bl),
+			bl,
+			1,
+			par,
+		);
 		j += bl;
 	}
 	if size > 0 {
@@ -180,7 +243,13 @@ pub fn bidiag_in_place<T: ComplexField>(
 			for k in 0..br {
 				Hr[(k, k)] = Hr[(0, k)].copy();
 			}
-			upgrade_householder_factor(Hr.rb_mut(), A.transpose().get(j.., j..j + br), br, 1, par);
+			upgrade_householder_factor(
+				Hr.rb_mut(),
+				A.transpose().get(j.., j..j + br),
+				br,
+				1,
+				par,
+			);
 			j += br;
 		}
 	}
@@ -195,9 +264,7 @@ fn bidiag_fused_op<T: ComplexField>(
 	align: usize,
 ) {
 	let mut A22 = A22;
-	if try_const! {
-		T::SIMD_CAPABILITIES.is_simd()
-	} {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		if let (Some(A22), Some(u), Some(up), Some(z)) = (
 			A22.rb_mut().try_as_col_major_mut(),
 			u.try_as_col_major(),
@@ -224,7 +291,14 @@ fn bidiag_fused_op_fallback<T: ComplexField>(
 	let mut y = y;
 	matmul(A22.rb_mut(), Accum::Add, up, y.rb(), -one::<T>(), Par::Seq);
 	matmul(A22.rb_mut(), Accum::Add, z, vp, -one::<T>(), Par::Seq);
-	matmul(y.rb_mut(), Accum::Replace, u.adjoint(), A22.rb(), one(), Par::Seq);
+	matmul(
+		y.rb_mut(),
+		Accum::Replace,
+		u.adjoint(),
+		A22.rb(),
+		one(),
+		Par::Seq,
+	);
 }
 fn bidiag_fused_op_simd<'M, 'N, T: ComplexField>(
 	A22: MatMut<'_, T, usize, usize, ContiguousFwd>,

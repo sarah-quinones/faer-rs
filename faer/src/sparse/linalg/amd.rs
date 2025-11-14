@@ -63,8 +63,10 @@ fn postorder<'n, 'out, I: Index>(
 	let I = I::Signed::truncate;
 	let zero = I(0);
 	let none = I(NONE);
-	let (ref mut child, stack) = stack.collect(repeat_n!(MaybeIdx::<'_, I>::none(), n));
-	let (ref mut sibling, stack) = stack.collect(repeat_n!(MaybeIdx::<'_, I>::none(), n));
+	let (ref mut child, stack) =
+		stack.collect(repeat_n!(MaybeIdx::<'_, I>::none(), n));
+	let (ref mut sibling, stack) =
+		stack.collect(repeat_n!(MaybeIdx::<'_, I>::none(), n));
 	let (ref mut stack, _) = stack.collect(repeat_n!(I(0), n));
 	let child = Array::from_mut(child, N);
 	let sibling = Array::from_mut(sibling, N);
@@ -317,7 +319,10 @@ fn amd_2<I: Index>(
 										pdst += 1;
 										let lenj = len[j].zx();
 										if lenj > 0 {
-											iw.copy_within(psrc..psrc + lenj - 1, pdst);
+											iw.copy_within(
+												psrc..psrc + lenj - 1,
+												pdst,
+											);
 											psrc += lenj - 1;
 											pdst += lenj - 1;
 										}
@@ -541,7 +546,9 @@ fn amd_2<I: Index>(
 				let r = degme as f64 + ndense.sx() as isize as f64;
 				let lnzme = f * r + (f - 1.0) * f / 2.0;
 				ndiv += lnzme;
-				let s = f * r * r + r * (f - 1.0) * f + (f - 1.0) * f * (2.0 * f - 1.0) / 6.0;
+				let s = f * r * r
+					+ r * (f - 1.0) * f
+					+ (f - 1.0) * f * (2.0 * f - 1.0) / 6.0;
 				nms_lu += s;
 				nms_ldl += (s + lnzme) / 2.0;
 			}
@@ -751,10 +758,14 @@ fn preprocess<'out, I: Index>(
 		}
 	}
 	new_col_ptr[0] = I::from_signed(zero);
-	for (i, [r, r_next]) in iter::zip(N.indices(), windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr)))) {
+	for (i, [r, r_next]) in iter::zip(
+		N.indices(),
+		windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr))),
+	) {
 		r_next.set(r.get() + I::from_signed(w[i]));
 	}
-	w.as_mut().copy_from_slice(bytemuck::cast_slice(&new_col_ptr[..n]));
+	w.as_mut()
+		.copy_from_slice(bytemuck::cast_slice(&new_col_ptr[..n]));
 	flag.as_mut().fill(I(NONE));
 	for j in N.indices() {
 		let j_ = I(*j);
@@ -766,10 +777,22 @@ fn preprocess<'out, I: Index>(
 			}
 		}
 	}
-	unsafe { SymbolicSparseColMatRef::new_unchecked(n, n, &*new_col_ptr, None, &new_row_idx[..new_col_ptr[n].zx()]) }
+	unsafe {
+		SymbolicSparseColMatRef::new_unchecked(
+			n,
+			n,
+			&*new_col_ptr,
+			None,
+			&new_row_idx[..new_col_ptr[n].zx()],
+		)
+	}
 }
 #[allow(clippy::comparison_chain)]
-fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack: &mut MemStack) -> Result<usize, FaerError> {
+fn aat<I: Index>(
+	len: &mut [I::Signed],
+	A: SymbolicSparseColMatRef<'_, I>,
+	stack: &mut MemStack,
+) -> Result<usize, FaerError> {
 	{
 		with_dim!(N, A.nrows());
 		let I = I::Signed::truncate;
@@ -839,8 +862,8 @@ fn aat<I: Index>(len: &mut [I::Signed], A: SymbolicSparseColMatRef<'_, I>, stack
 	let nzaat = I::Signed::sum_nonnegative(len).map(I::from_signed);
 	nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }
-/// computes the layout of required workspace for computing the amd ordering of a sorted
-/// matrix
+/// computes the layout of required workspace for computing the amd ordering of
+/// a sorted matrix
 pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 	let n_scratch = StackReq::new::<I>(n);
 	let nzaat = nnz_upper.checked_mul(2).unwrap_or(usize::MAX);
@@ -859,13 +882,21 @@ pub fn order_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
 		n_scratch,
 	])
 }
-/// computes the layout of required workspace for computing the amd ordering of an
-/// unsorted matrix
-pub fn order_maybe_unsorted_scratch<I: Index>(n: usize, nnz_upper: usize) -> StackReq {
-	StackReq::all_of(&[order_scratch::<I>(n, nnz_upper), StackReq::new::<I>(n + 1), StackReq::new::<I>(nnz_upper)])
+/// computes the layout of required workspace for computing the amd ordering of
+/// an unsorted matrix
+pub fn order_maybe_unsorted_scratch<I: Index>(
+	n: usize,
+	nnz_upper: usize,
+) -> StackReq {
+	StackReq::all_of(&[
+		order_scratch::<I>(n, nnz_upper),
+		StackReq::new::<I>(n + 1),
+		StackReq::new::<I>(nnz_upper),
+	])
 }
-/// computes the approximate minimum degree ordering for reducing the fill-in during the sparse
-/// cholesky factorization of a matrix with the sparsity pattern of $A + A^\top$
+/// computes the approximate minimum degree ordering for reducing the fill-in
+/// during the sparse cholesky factorization of a matrix with the sparsity
+/// pattern of $A + A^\top$
 pub fn order<I: Index>(
 	perm: &mut [I],
 	perm_inv: &mut [I],
@@ -881,7 +912,8 @@ pub fn order<I: Index>(
 			n_mult_subs_lu: 0.0,
 		});
 	}
-	let (ref mut len, stack) = stack.collect(repeat_n!(I::Signed::truncate(0), n));
+	let (ref mut len, stack) =
+		stack.collect(repeat_n!(I::Signed::truncate(0), n));
 	let nzaat = aat(len, A, stack)?;
 	let iwlen = nzaat
 		.checked_add(nzaat / 5)
@@ -897,8 +929,9 @@ pub fn order<I: Index>(
 		stack,
 	))
 }
-/// computes the approximate minimum degree ordering for reducing the fill-in during the sparse
-/// cholesky factorization of a matrix with the sparsity pattern of $A + A^\top$
+/// computes the approximate minimum degree ordering for reducing the fill-in
+/// during the sparse cholesky factorization of a matrix with the sparsity
+/// pattern of $A + A^\top$
 ///
 /// # note
 /// allows unsorted matrices
@@ -940,7 +973,8 @@ impl Default for Control {
 		}
 	}
 }
-/// flop count of the ldlt and lu factorizations if the provided ordering is used
+/// flop count of the ldlt and lu factorizations if the provided ordering is
+/// used
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct FlopCount {
 	/// number of division

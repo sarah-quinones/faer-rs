@@ -151,40 +151,92 @@ fn real<T: RealField>(x: *const Real) -> T {
 }
 impl MatRef {
 	fn faer<'a, T>(self) -> faer::MatRef<'a, T> {
-		unsafe { faer::MatRef::from_raw_parts(self.ptr as *const T, self.nrows, self.ncols, self.row_stride, self.col_stride) }
+		unsafe {
+			faer::MatRef::from_raw_parts(
+				self.ptr as *const T,
+				self.nrows,
+				self.ncols,
+				self.row_stride,
+				self.col_stride,
+			)
+		}
 	}
 }
 impl MatMut {
 	fn faer<'a, T>(self) -> faer::MatMut<'a, T> {
-		unsafe { faer::MatMut::from_raw_parts_mut(self.ptr as *mut T, self.nrows, self.ncols, self.row_stride, self.col_stride) }
+		unsafe {
+			faer::MatMut::from_raw_parts_mut(
+				self.ptr as *mut T,
+				self.nrows,
+				self.ncols,
+				self.row_stride,
+				self.col_stride,
+			)
+		}
 	}
 }
 #[allow(dead_code)]
 impl VecRef {
 	fn diag<'a, T>(self) -> faer::diag::DiagRef<'a, T> {
-		unsafe { faer::diag::DiagRef::from_raw_parts(self.ptr as *const T, self.len, self.stride) }
+		unsafe {
+			faer::diag::DiagRef::from_raw_parts(
+				self.ptr as *const T,
+				self.len,
+				self.stride,
+			)
+		}
 	}
 
 	fn col<'a, T>(self) -> faer::col::ColRef<'a, T> {
-		unsafe { faer::col::ColRef::from_raw_parts(self.ptr as *const T, self.len, self.stride) }
+		unsafe {
+			faer::col::ColRef::from_raw_parts(
+				self.ptr as *const T,
+				self.len,
+				self.stride,
+			)
+		}
 	}
 
 	fn row<'a, T>(self) -> faer::row::RowRef<'a, T> {
-		unsafe { faer::row::RowRef::from_raw_parts(self.ptr as *const T, self.len, self.stride) }
+		unsafe {
+			faer::row::RowRef::from_raw_parts(
+				self.ptr as *const T,
+				self.len,
+				self.stride,
+			)
+		}
 	}
 }
 #[allow(dead_code)]
 impl VecMut {
 	fn diag<'a, T>(self) -> faer::diag::DiagMut<'a, T> {
-		unsafe { faer::diag::DiagMut::from_raw_parts_mut(self.ptr as *mut T, self.len, self.stride) }
+		unsafe {
+			faer::diag::DiagMut::from_raw_parts_mut(
+				self.ptr as *mut T,
+				self.len,
+				self.stride,
+			)
+		}
 	}
 
 	fn col<'a, T>(self) -> faer::col::ColMut<'a, T> {
-		unsafe { faer::col::ColMut::from_raw_parts_mut(self.ptr as *mut T, self.len, self.stride) }
+		unsafe {
+			faer::col::ColMut::from_raw_parts_mut(
+				self.ptr as *mut T,
+				self.len,
+				self.stride,
+			)
+		}
 	}
 
 	fn row<'a, T>(self) -> faer::row::RowMut<'a, T> {
-		unsafe { faer::row::RowMut::from_raw_parts_mut(self.ptr as *mut T, self.len, self.stride) }
+		unsafe {
+			faer::row::RowMut::from_raw_parts_mut(
+				self.ptr as *mut T,
+				self.len,
+				self.stride,
+			)
+		}
 	}
 }
 impl SliceRef {
@@ -442,13 +494,13 @@ pub mod linalg {
 	pub enum PivotingStrategy {
 		/// searches for the k-th pivot in the k-th column
 		Partial,
-		/// searches for the k-th pivot in the k-th column, as well as the tail of the diagonal of
-		/// the matrix
+		/// searches for the k-th pivot in the k-th column, as well as the tail
+		/// of the diagonal of the matrix
 		PartialDiag,
 		/// searches for pivots that are locally optimal
 		Rook,
-		/// searches for pivots that are locally optimal, as well as the tail of the diagonal of the
-		/// matrix
+		/// searches for pivots that are locally optimal, as well as the tail of
+		/// the diagonal of the matrix
 		RookDiag,
 
 		/// searches for pivots that are globally optimal
@@ -457,22 +509,42 @@ pub mod linalg {
 	impl From<PivotingStrategy> for la::cholesky::lblt::factor::PivotingStrategy {
 		fn from(value: PivotingStrategy) -> Self {
 			match value {
-				PivotingStrategy::Partial => la::cholesky::lblt::factor::PivotingStrategy::Partial,
-				PivotingStrategy::PartialDiag => la::cholesky::lblt::factor::PivotingStrategy::PartialDiag,
-				PivotingStrategy::Rook => la::cholesky::lblt::factor::PivotingStrategy::Rook,
-				PivotingStrategy::RookDiag => la::cholesky::lblt::factor::PivotingStrategy::RookDiag,
-				PivotingStrategy::Full => la::cholesky::lblt::factor::PivotingStrategy::Full,
+				PivotingStrategy::Partial => {
+					la::cholesky::lblt::factor::PivotingStrategy::Partial
+				},
+				PivotingStrategy::PartialDiag => {
+					la::cholesky::lblt::factor::PivotingStrategy::PartialDiag
+				},
+				PivotingStrategy::Rook => {
+					la::cholesky::lblt::factor::PivotingStrategy::Rook
+				},
+				PivotingStrategy::RookDiag => {
+					la::cholesky::lblt::factor::PivotingStrategy::RookDiag
+				},
+				PivotingStrategy::Full => {
+					la::cholesky::lblt::factor::PivotingStrategy::Full
+				},
 			}
 		}
 	}
 	impl From<la::cholesky::lblt::factor::PivotingStrategy> for PivotingStrategy {
 		fn from(value: la::cholesky::lblt::factor::PivotingStrategy) -> Self {
 			match value {
-				la::cholesky::lblt::factor::PivotingStrategy::Partial => PivotingStrategy::Partial,
-				la::cholesky::lblt::factor::PivotingStrategy::PartialDiag => PivotingStrategy::PartialDiag,
-				la::cholesky::lblt::factor::PivotingStrategy::Rook => PivotingStrategy::Rook,
-				la::cholesky::lblt::factor::PivotingStrategy::RookDiag => PivotingStrategy::RookDiag,
-				la::cholesky::lblt::factor::PivotingStrategy::Full => PivotingStrategy::Full,
+				la::cholesky::lblt::factor::PivotingStrategy::Partial => {
+					PivotingStrategy::Partial
+				},
+				la::cholesky::lblt::factor::PivotingStrategy::PartialDiag => {
+					PivotingStrategy::PartialDiag
+				},
+				la::cholesky::lblt::factor::PivotingStrategy::Rook => {
+					PivotingStrategy::Rook
+				},
+				la::cholesky::lblt::factor::PivotingStrategy::RookDiag => {
+					PivotingStrategy::RookDiag
+				},
+				la::cholesky::lblt::factor::PivotingStrategy::Full => {
+					PivotingStrategy::Full
+				},
 				_ => PivotingStrategy::Partial,
 			}
 		}
@@ -487,8 +559,13 @@ pub mod linalg {
 		#[ok(faer::linalg::cholesky::llt_pivoting::factor::PivLltInfo)]
 		#[err(faer::linalg::cholesky::llt::factor::LltError)]
 		pub enum PivLltStatus {
-			Ok { rank: usize, transposition_count: usize },
-			NonPositivePivot { index: usize },
+			Ok {
+				rank: usize,
+				transposition_count: usize,
+			},
+			NonPositivePivot {
+				index: usize,
+			},
 		}
 		#[ok(faer::linalg::cholesky::ldlt::factor::LdltInfo)]
 		#[err(faer::linalg::cholesky::ldlt::factor::LdltError)]
@@ -544,7 +621,9 @@ pub mod linalg {
 		fn into(self) -> SvdStatus {
 			match self {
 				Ok(()) => SvdStatus::Ok { padding: 0 },
-				Err(la::svd::SvdError::NoConvergence) => SvdStatus::NoConvergence { padding: 0 },
+				Err(la::svd::SvdError::NoConvergence) => {
+					SvdStatus::NoConvergence { padding: 0 }
+				},
 			}
 		}
 	}
@@ -552,7 +631,9 @@ pub mod linalg {
 		fn into(self) -> EvdStatus {
 			match self {
 				Ok(()) => EvdStatus::Ok { padding: 0 },
-				Err(la::evd::EvdError::NoConvergence) => EvdStatus::NoConvergence { padding: 0 },
+				Err(la::evd::EvdError::NoConvergence) => {
+					EvdStatus::NoConvergence { padding: 0 }
+				},
 			}
 		}
 	}
@@ -560,7 +641,9 @@ pub mod linalg {
 		fn into(self) -> GevdStatus {
 			match self {
 				Ok(()) => GevdStatus::Ok { padding: 0 },
-				Err(la::gevd::GevdError::NoConvergence) => GevdStatus::NoConvergence { padding: 0 },
+				Err(la::gevd::GevdError::NoConvergence) => {
+					GevdStatus::NoConvergence { padding: 0 }
+				},
 			}
 		}
 	}
@@ -629,16 +712,32 @@ pub mod linalg {
 		}
 		#[repr(faer::linalg::evd::schur::SchurParams)]
 		pub struct SchurParams {
-			recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-			recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+			recommended_shift_count: extern "C" fn(
+				matrix_dimension: usize,
+				active_block_dimension: usize,
+			) -> usize,
+			recommended_deflation_window: extern "C" fn(
+				matrix_dimension: usize,
+				active_block_dimension: usize,
+			) -> usize,
 			blocking_threshold: usize,
 			nibble_threshold: usize,
 		}
 		#[repr(faer::linalg::gevd::GeneralizedSchurParams)]
 		pub struct GeneralizedSchurParams {
-			relative_cost_estimate_of_shift_chase_to_matmul: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-			recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-			recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+			relative_cost_estimate_of_shift_chase_to_matmul:
+				extern "C" fn(
+					matrix_dimension: usize,
+					active_block_dimension: usize,
+				) -> usize,
+			recommended_shift_count: extern "C" fn(
+				matrix_dimension: usize,
+				active_block_dimension: usize,
+			) -> usize,
+			recommended_deflation_window: extern "C" fn(
+				matrix_dimension: usize,
+				active_block_dimension: usize,
+			) -> usize,
 			blocking_threshold: usize,
 			nibble_threshold: usize,
 		}
@@ -674,7 +773,9 @@ pub mod linalg {
 	}
 	impl GevdFromSchurParams {
 		#[allow(dead_code)]
-		fn faer<T: ComplexField>(self) -> faer::Spec<la::gevd::GevdFromSchurParams, T> {
+		fn faer<T: ComplexField>(
+			self,
+		) -> faer::Spec<la::gevd::GevdFromSchurParams, T> {
 			<la::gevd::GevdFromSchurParams>::from(self).into()
 		}
 	}
@@ -699,11 +800,17 @@ pub mod linalg {
 		pub dynamic_regularization_epsilon: *const Real,
 	}
 	impl LltRegularization {
-		fn faer<T: RealField>(self) -> faer::linalg::cholesky::llt::factor::LltRegularization<T> {
+		fn faer<T: RealField>(
+			self,
+		) -> faer::linalg::cholesky::llt::factor::LltRegularization<T> {
 			{
 				faer::linalg::cholesky::llt::factor::LltRegularization {
-					dynamic_regularization_delta: real(self.dynamic_regularization_delta),
-					dynamic_regularization_epsilon: real(self.dynamic_regularization_epsilon),
+					dynamic_regularization_delta: real(
+						self.dynamic_regularization_delta,
+					),
+					dynamic_regularization_epsilon: real(
+						self.dynamic_regularization_epsilon,
+					),
 				}
 			}
 		}
@@ -720,12 +827,22 @@ pub mod linalg {
 		pub dynamic_regularization_signs: SliceMut,
 	}
 	impl LdltRegularization {
-		fn faer<'a, T: RealField>(self) -> faer::linalg::cholesky::ldlt::factor::LdltRegularization<'a, T> {
+		fn faer<'a, T: RealField>(
+			self,
+		) -> faer::linalg::cholesky::ldlt::factor::LdltRegularization<'a, T> {
 			{
 				faer::linalg::cholesky::ldlt::factor::LdltRegularization {
-					dynamic_regularization_delta: real(self.dynamic_regularization_delta),
-					dynamic_regularization_epsilon: real(self.dynamic_regularization_epsilon),
-					dynamic_regularization_signs: if self.dynamic_regularization_signs.ptr.is_null() {
+					dynamic_regularization_delta: real(
+						self.dynamic_regularization_delta,
+					),
+					dynamic_regularization_epsilon: real(
+						self.dynamic_regularization_epsilon,
+					),
+					dynamic_regularization_signs: if self
+						.dynamic_regularization_signs
+						.ptr
+						.is_null()
+					{
 						None
 					} else {
 						Some(self.dynamic_regularization_signs.slice())
@@ -735,8 +852,22 @@ pub mod linalg {
 		}
 	}
 	funcs!({
-		pub fn matmul<T>(C: MatMut, accum: Accum, A: MatRef, B: MatRef, alpha: *const Scalar, par: Par) {
-			la::matmul::matmul(C.faer::<T>(), accum.faer(), A.faer::<T>(), B.faer::<T>(), scalar(alpha), par.faer());
+		pub fn matmul<T>(
+			C: MatMut,
+			accum: Accum,
+			A: MatRef,
+			B: MatRef,
+			alpha: *const Scalar,
+			par: Par,
+		) {
+			la::matmul::matmul(
+				C.faer::<T>(),
+				accum.faer(),
+				A.faer::<T>(),
+				B.faer::<T>(),
+				scalar(alpha),
+				par.faer(),
+			);
 		}
 		pub fn matmul_triangular<T>(
 			C: MatMut,
@@ -762,57 +893,191 @@ pub mod linalg {
 			);
 		}
 		// SOLVE
-		pub fn solve_triangular_lower_in_place<T>(L: MatRef, L_conj: Conj, rhs: MatMut, par: Par) {
-			la::triangular_solve::solve_lower_triangular_in_place_with_conj(L.faer::<T>(), L_conj.faer(), rhs.faer(), par.faer());
+		pub fn solve_triangular_lower_in_place<T>(
+			L: MatRef,
+			L_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+		) {
+			la::triangular_solve::solve_lower_triangular_in_place_with_conj(
+				L.faer::<T>(),
+				L_conj.faer(),
+				rhs.faer(),
+				par.faer(),
+			);
 		}
-		pub fn solve_triangular_upper_in_place<T>(U: MatRef, U_conj: Conj, rhs: MatMut, par: Par) {
-			la::triangular_solve::solve_upper_triangular_in_place_with_conj(U.faer::<T>(), U_conj.faer(), rhs.faer(), par.faer());
+		pub fn solve_triangular_upper_in_place<T>(
+			U: MatRef,
+			U_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+		) {
+			la::triangular_solve::solve_upper_triangular_in_place_with_conj(
+				U.faer::<T>(),
+				U_conj.faer(),
+				rhs.faer(),
+				par.faer(),
+			);
 		}
-		pub fn solve_unit_triangular_lower_in_place<T>(L: MatRef, L_conj: Conj, rhs: MatMut, par: Par) {
+		pub fn solve_unit_triangular_lower_in_place<T>(
+			L: MatRef,
+			L_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+		) {
 			la::triangular_solve::solve_unit_lower_triangular_in_place_with_conj(L.faer::<T>(), L_conj.faer(), rhs.faer(), par.faer());
 		}
-		pub fn solve_unit_triangular_upper_in_place<T>(U: MatRef, U_conj: Conj, rhs: MatMut, par: Par) {
+		pub fn solve_unit_triangular_upper_in_place<T>(
+			U: MatRef,
+			U_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+		) {
 			la::triangular_solve::solve_unit_upper_triangular_in_place_with_conj(U.faer::<T>(), U_conj.faer(), rhs.faer(), par.faer());
 		}
 		// INVERSE
-		pub fn inverse_triangular_lower_in_place<T>(L_inv: MatMut, L: MatRef, par: Par) {
-			la::triangular_inverse::invert_lower_triangular(L_inv.faer::<T>(), L.faer(), par.faer());
+		pub fn inverse_triangular_lower_in_place<T>(
+			L_inv: MatMut,
+			L: MatRef,
+			par: Par,
+		) {
+			la::triangular_inverse::invert_lower_triangular(
+				L_inv.faer::<T>(),
+				L.faer(),
+				par.faer(),
+			);
 		}
-		pub fn inverse_triangular_upper_in_place<T>(L_inv: MatMut, L: MatRef, par: Par) {
-			la::triangular_inverse::invert_upper_triangular(L_inv.faer::<T>(), L.faer(), par.faer());
+		pub fn inverse_triangular_upper_in_place<T>(
+			L_inv: MatMut,
+			L: MatRef,
+			par: Par,
+		) {
+			la::triangular_inverse::invert_upper_triangular(
+				L_inv.faer::<T>(),
+				L.faer(),
+				par.faer(),
+			);
 		}
-		pub fn inverse_unit_triangular_lower_in_place<T>(L_inv: MatMut, L: MatRef, par: Par) {
-			la::triangular_inverse::invert_unit_lower_triangular(L_inv.faer::<T>(), L.faer(), par.faer());
+		pub fn inverse_unit_triangular_lower_in_place<T>(
+			L_inv: MatMut,
+			L: MatRef,
+			par: Par,
+		) {
+			la::triangular_inverse::invert_unit_lower_triangular(
+				L_inv.faer::<T>(),
+				L.faer(),
+				par.faer(),
+			);
 		}
-		pub fn inverse_unit_triangular_upper_in_place<T>(L_inv: MatMut, L: MatRef, par: Par) {
-			la::triangular_inverse::invert_unit_upper_triangular(L_inv.faer::<T>(), L.faer(), par.faer());
+		pub fn inverse_unit_triangular_upper_in_place<T>(
+			L_inv: MatMut,
+			L: MatRef,
+			par: Par,
+		) {
+			la::triangular_inverse::invert_unit_upper_triangular(
+				L_inv.faer::<T>(),
+				L.faer(),
+				par.faer(),
+			);
 		}
 		// LLT
-		pub fn llt_factor_in_place_scratch<T>(dim: usize, par: Par, params: LltParams) -> Layout {
-			la::cholesky::llt::factor::cholesky_in_place_scratch::<T>(dim, par.faer(), params.faer()).into()
+		pub fn llt_factor_in_place_scratch<T>(
+			dim: usize,
+			par: Par,
+			params: LltParams,
+		) -> Layout {
+			la::cholesky::llt::factor::cholesky_in_place_scratch::<T>(
+				dim,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn llt_factor_in_place<T>(A: MatMut, regularization: LltRegularization, par: Par, mem: MemAlloc, params: LltParams) -> LltStatus {
-			la::cholesky::llt::factor::cholesky_in_place::<T>(A.faer(), regularization.faer(), par.faer(), mem.faer(), params.faer()).into()
+		pub fn llt_factor_in_place<T>(
+			A: MatMut,
+			regularization: LltRegularization,
+			par: Par,
+			mem: MemAlloc,
+			params: LltParams,
+		) -> LltStatus {
+			la::cholesky::llt::factor::cholesky_in_place::<T>(
+				A.faer(),
+				regularization.faer(),
+				par.faer(),
+				mem.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn llt_solve_in_place_scratch<T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::cholesky::llt::solve::solve_in_place_scratch::<T>(dim, rhs_ncols, par.faer()).into()
+		pub fn llt_solve_in_place_scratch<T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::cholesky::llt::solve::solve_in_place_scratch::<T>(
+				dim,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn llt_solve_in_place<T>(L: MatRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
-			la::cholesky::llt::solve::solve_in_place_with_conj(L.faer::<T>(), A_conj.faer(), rhs.faer(), par.faer(), mem.faer())
+		pub fn llt_solve_in_place<T>(
+			L: MatRef,
+			A_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::cholesky::llt::solve::solve_in_place_with_conj(
+				L.faer::<T>(),
+				A_conj.faer(),
+				rhs.faer(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
 		pub fn llt_reconstruct_scratch<T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::llt::reconstruct::reconstruct_scratch::<T>(dim, par.faer()).into()
+			la::cholesky::llt::reconstruct::reconstruct_scratch::<T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn llt_reconstruct<T>(A: MatMut, L: MatRef, par: Par, mem: MemAlloc) {
-			la::cholesky::llt::reconstruct::reconstruct(A.faer::<T>(), L.faer(), par.faer(), mem.faer())
+		pub fn llt_reconstruct<T>(
+			A: MatMut,
+			L: MatRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::cholesky::llt::reconstruct::reconstruct(
+				A.faer::<T>(),
+				L.faer(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
 		pub fn llt_inverse_scratch<T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::llt::inverse::inverse_scratch::<T>(dim, par.faer()).into()
+			la::cholesky::llt::inverse::inverse_scratch::<T>(dim, par.faer())
+				.into()
 		}
-		pub fn llt_inverse<T>(A_inv: MatMut, L: MatRef, par: Par, mem: MemAlloc) {
-			la::cholesky::llt::inverse::inverse(A_inv.faer::<T>(), L.faer(), par.faer(), mem.faer())
+		pub fn llt_inverse<T>(
+			A_inv: MatMut,
+			L: MatRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::cholesky::llt::inverse::inverse(
+				A_inv.faer::<T>(),
+				L.faer(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
-		pub fn piv_llt_factor_in_place_scratch<I, T>(dim: usize, par: Par, params: PivLltParams) -> Layout {
+		pub fn piv_llt_factor_in_place_scratch<I, T>(
+			dim: usize,
+			par: Par,
+			params: PivLltParams,
+		) -> Layout {
 			la::cholesky::llt_pivoting::factor::cholesky_in_place_scratch::<I, T>(dim, par.faer(), params.faer()).into()
 		}
 		pub fn piv_llt_factor_in_place<I, T>(
@@ -834,71 +1099,204 @@ pub mod linalg {
 			.map(|x| x.0)
 			.into()
 		}
-		pub fn piv_llt_solve_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::cholesky::llt_pivoting::solve::solve_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
+		pub fn piv_llt_solve_in_place_scratch<I, T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::cholesky::llt_pivoting::solve::solve_in_place_scratch::<I, T>(
+				dim,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn piv_llt_solve_in_place<I, T>(L: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
+		pub fn piv_llt_solve_in_place<I, T>(
+			L: MatRef,
+			perm_fwd: SliceRef,
+			perm_bwd: SliceRef,
+			A_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::cholesky::llt_pivoting::solve::solve_in_place_with_conj(
 				L.faer::<T>(),
-				faer::perm::PermRef::<I>::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::<I>::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn piv_llt_reconstruct_scratch<I, T>(dim: usize, par: Par) -> Layout {
+		pub fn piv_llt_reconstruct_scratch<I, T>(
+			dim: usize,
+			par: Par,
+		) -> Layout {
 			la::cholesky::llt_pivoting::reconstruct::reconstruct_scratch::<I, T>(dim, par.faer()).into()
 		}
-		pub fn piv_llt_reconstruct<I, T>(A: MatMut, L: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, par: Par, mem: MemAlloc) {
+		pub fn piv_llt_reconstruct<I, T>(
+			A: MatMut,
+			L: MatRef,
+			perm_fwd: SliceRef,
+			perm_bwd: SliceRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::cholesky::llt_pivoting::reconstruct::reconstruct(
 				A.faer::<T>(),
 				L.faer(),
-				faer::perm::PermRef::<I>::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::<I>::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
 		pub fn piv_llt_inverse_scratch<I, T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::llt_pivoting::inverse::inverse_scratch::<I, T>(dim, par.faer()).into()
+			la::cholesky::llt_pivoting::inverse::inverse_scratch::<I, T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn piv_llt_inverse<I, T>(A_inv: MatMut, L: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, par: Par, mem: MemAlloc) {
+		pub fn piv_llt_inverse<I, T>(
+			A_inv: MatMut,
+			L: MatRef,
+			perm_fwd: SliceRef,
+			perm_bwd: SliceRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::cholesky::llt_pivoting::inverse::inverse(
 				A_inv.faer::<T>(),
 				L.faer(),
-				faer::perm::PermRef::<I>::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::<I>::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
 		// LDLT
-		pub fn ldlt_factor_in_place_scratch<T>(dim: usize, par: Par, params: LdltParams) -> Layout {
-			la::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(dim, par.faer(), params.faer()).into()
+		pub fn ldlt_factor_in_place_scratch<T>(
+			dim: usize,
+			par: Par,
+			params: LdltParams,
+		) -> Layout {
+			la::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(
+				dim,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn ldlt_factor_in_place<T>(A: MatMut, regularization: LdltRegularization, par: Par, mem: MemAlloc, params: LdltParams) -> LdltStatus {
-			la::cholesky::ldlt::factor::cholesky_in_place::<T>(A.faer(), regularization.faer(), par.faer(), mem.faer(), params.faer()).into()
+		pub fn ldlt_factor_in_place<T>(
+			A: MatMut,
+			regularization: LdltRegularization,
+			par: Par,
+			mem: MemAlloc,
+			params: LdltParams,
+		) -> LdltStatus {
+			la::cholesky::ldlt::factor::cholesky_in_place::<T>(
+				A.faer(),
+				regularization.faer(),
+				par.faer(),
+				mem.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn ldlt_solve_in_place_scratch<T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::cholesky::ldlt::solve::solve_in_place_scratch::<T>(dim, rhs_ncols, par.faer()).into()
+		pub fn ldlt_solve_in_place_scratch<T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::cholesky::ldlt::solve::solve_in_place_scratch::<T>(
+				dim,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn ldlt_solve_in_place<T>(L: MatRef, D: VecRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
-			la::cholesky::ldlt::solve::solve_in_place_with_conj(L.faer::<T>(), D.diag(), A_conj.faer(), rhs.faer(), par.faer(), mem.faer())
+		pub fn ldlt_solve_in_place<T>(
+			L: MatRef,
+			D: VecRef,
+			A_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::cholesky::ldlt::solve::solve_in_place_with_conj(
+				L.faer::<T>(),
+				D.diag(),
+				A_conj.faer(),
+				rhs.faer(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
 		pub fn ldlt_reconstruct_scratch<T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::ldlt::reconstruct::reconstruct_scratch::<T>(dim, par.faer()).into()
+			la::cholesky::ldlt::reconstruct::reconstruct_scratch::<T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn ldlt_reconstruct<T>(A: MatMut, L: MatRef, D: VecRef, par: Par, mem: MemAlloc) {
-			la::cholesky::ldlt::reconstruct::reconstruct(A.faer::<T>(), L.faer(), D.diag(), par.faer(), mem.faer())
+		pub fn ldlt_reconstruct<T>(
+			A: MatMut,
+			L: MatRef,
+			D: VecRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::cholesky::ldlt::reconstruct::reconstruct(
+				A.faer::<T>(),
+				L.faer(),
+				D.diag(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
 		pub fn ldlt_inverse_scratch<T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::ldlt::inverse::inverse_scratch::<T>(dim, par.faer()).into()
+			la::cholesky::ldlt::inverse::inverse_scratch::<T>(dim, par.faer())
+				.into()
 		}
-		pub fn ldlt_inverse<T>(A_inv: MatMut, L: MatRef, D: VecRef, par: Par, mem: MemAlloc) {
-			la::cholesky::ldlt::inverse::inverse(A_inv.faer::<T>(), L.faer(), D.diag(), par.faer(), mem.faer())
+		pub fn ldlt_inverse<T>(
+			A_inv: MatMut,
+			L: MatRef,
+			D: VecRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::cholesky::ldlt::inverse::inverse(
+				A_inv.faer::<T>(),
+				L.faer(),
+				D.diag(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
 		// LBLT
-		pub fn lblt_factor_in_place_scratch<I, T>(dim: usize, par: Par, params: LbltParams) -> Layout {
-			la::cholesky::lblt::factor::cholesky_in_place_scratch::<I, T>(dim, par.faer(), params.faer()).into()
+		pub fn lblt_factor_in_place_scratch<I, T>(
+			dim: usize,
+			par: Par,
+			params: LbltParams,
+		) -> Layout {
+			la::cholesky::lblt::factor::cholesky_in_place_scratch::<I, T>(
+				dim,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		pub fn lblt_factor_in_place<I, T>(
 			A: MatMut,
@@ -921,8 +1319,17 @@ pub mod linalg {
 			.0)
 			.into()
 		}
-		pub fn lblt_solve_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::cholesky::lblt::solve::solve_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
+		pub fn lblt_solve_in_place_scratch<I, T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::cholesky::lblt::solve::solve_in_place_scratch::<I, T>(
+				dim,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn lblt_solve_in_place<I, T>(
 			L: MatRef,
@@ -940,14 +1347,22 @@ pub mod linalg {
 				diag.diag(),
 				subdiag.diag(),
 				A_conj.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
 		pub fn lblt_reconstruct_scratch<I, T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::lblt::reconstruct::reconstruct_scratch::<I, T>(dim, par.faer()).into()
+			la::cholesky::lblt::reconstruct::reconstruct_scratch::<I, T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn lblt_reconstruct<I, T>(
 			A: MatMut,
@@ -964,13 +1379,21 @@ pub mod linalg {
 				L.faer(),
 				diag.diag(),
 				subdiag.diag(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
 		pub fn lblt_inverse_scratch<I, T>(dim: usize, par: Par) -> Layout {
-			la::cholesky::lblt::inverse::inverse_scratch::<I, T>(dim, par.faer()).into()
+			la::cholesky::lblt::inverse::inverse_scratch::<I, T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn lblt_inverse<I, T>(
 			A_inv: MatMut,
@@ -987,13 +1410,21 @@ pub mod linalg {
 				L.faer(),
 				diag.diag(),
 				subdiag.diag(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
 		// HOUSEHOLDER
-		pub fn apply_householder_on_the_left_scratch<T>(dim: usize, block_size: usize, rhs_ncols: usize) -> Layout {
+		pub fn apply_householder_on_the_left_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+		) -> Layout {
 			la::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(dim, block_size, rhs_ncols).into()
 		}
 		pub fn apply_householder_on_the_left<T>(
@@ -1013,7 +1444,11 @@ pub mod linalg {
 				mem.faer(),
 			)
 		}
-		pub fn apply_householder_transpose_on_the_left_scratch<T>(dim: usize, block_size: usize, rhs_ncols: usize) -> Layout {
+		pub fn apply_householder_transpose_on_the_left_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+		) -> Layout {
 			la::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(dim, block_size, rhs_ncols).into()
 		}
 		pub fn apply_householder_transpose_on_the_left<T>(
@@ -1033,7 +1468,11 @@ pub mod linalg {
 				mem.faer(),
 			)
 		}
-		pub fn apply_householder_on_the_right_scratch<T>(dim: usize, block_size: usize, rhs_ncols: usize) -> Layout {
+		pub fn apply_householder_on_the_right_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+		) -> Layout {
 			la::householder::apply_block_householder_sequence_on_the_right_in_place_scratch::<T>(dim, block_size, rhs_ncols).into()
 		}
 		pub fn apply_householder_on_the_right<T>(
@@ -1053,7 +1492,11 @@ pub mod linalg {
 				mem.faer(),
 			)
 		}
-		pub fn apply_householder_transpose_on_the_right_scratch<T>(dim: usize, block_size: usize, rhs_ncols: usize) -> Layout {
+		pub fn apply_householder_transpose_on_the_right_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+		) -> Layout {
 			la::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, block_size, rhs_ncols).into()
 		}
 		pub fn apply_householder_transpose_on_the_right<T>(
@@ -1074,13 +1517,37 @@ pub mod linalg {
 			)
 		}
 		// QR
-		pub fn qr_recommended_block_size<T>(nrows: usize, ncols: usize) -> usize {
-			la::qr::no_pivoting::factor::recommended_block_size::<T>(nrows, ncols)
+		pub fn qr_recommended_block_size<T>(
+			nrows: usize,
+			ncols: usize,
+		) -> usize {
+			la::qr::no_pivoting::factor::recommended_block_size::<T>(
+				nrows, ncols,
+			)
 		}
-		pub fn qr_factor_in_place_scratch<T>(nrows: usize, ncols: usize, block_size: usize, par: Par, params: QrParams) -> Layout {
-			la::qr::no_pivoting::factor::qr_in_place_scratch::<T>(nrows, ncols, block_size, par.faer(), params.faer()).into()
+		pub fn qr_factor_in_place_scratch<T>(
+			nrows: usize,
+			ncols: usize,
+			block_size: usize,
+			par: Par,
+			params: QrParams,
+		) -> Layout {
+			la::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
+				nrows,
+				ncols,
+				block_size,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn qr_factor_in_place<T>(A: MatMut, Q_coeff: MatMut, par: Par, mem: MemAlloc, params: QrParams) -> QrStatus {
+		pub fn qr_factor_in_place<T>(
+			A: MatMut,
+			Q_coeff: MatMut,
+			par: Par,
+			mem: MemAlloc,
+			params: QrParams,
+		) -> QrStatus {
 			Ok(la::qr::no_pivoting::factor::qr_in_place::<T>(
 				A.faer(),
 				Q_coeff.faer(),
@@ -1090,10 +1557,29 @@ pub mod linalg {
 			))
 			.into()
 		}
-		pub fn qr_solve_in_place_scratch<T>(dim: usize, block_size: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::qr::no_pivoting::solve::solve_in_place_scratch::<T>(dim, block_size, rhs_ncols, par.faer()).into()
+		pub fn qr_solve_in_place_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::no_pivoting::solve::solve_in_place_scratch::<T>(
+				dim,
+				block_size,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn qr_solve_in_place<T>(Q_basis: MatRef, Q_coeff: MatRef, R: MatRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
+		pub fn qr_solve_in_place<T>(
+			Q_basis: MatRef,
+			Q_coeff: MatRef,
+			R: MatRef,
+			A_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::qr::no_pivoting::solve::solve_in_place_with_conj::<T>(
 				Q_basis.faer(),
 				Q_coeff.faer(),
@@ -1104,10 +1590,29 @@ pub mod linalg {
 				mem.faer(),
 			)
 		}
-		pub fn qr_solve_transpose_in_place_scratch<T>(dim: usize, block_size: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(dim, block_size, rhs_ncols, par.faer()).into()
+		pub fn qr_solve_transpose_in_place_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(
+				dim,
+				block_size,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn qr_solve_transpose_in_place<T>(Q_basis: MatRef, Q_coeff: MatRef, R: MatRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
+		pub fn qr_solve_transpose_in_place<T>(
+			Q_basis: MatRef,
+			Q_coeff: MatRef,
+			R: MatRef,
+			A_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::qr::no_pivoting::solve::solve_transpose_in_place_with_conj::<T>(
 				Q_basis.faer(),
 				Q_coeff.faer(),
@@ -1118,10 +1623,31 @@ pub mod linalg {
 				mem.faer(),
 			)
 		}
-		pub fn qr_solve_lstsq_in_place_scratch<T>(nrows: usize, ncols: usize, block_size: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(nrows, ncols, block_size, rhs_ncols, par.faer()).into()
+		pub fn qr_solve_lstsq_in_place_scratch<T>(
+			nrows: usize,
+			ncols: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(
+				nrows,
+				ncols,
+				block_size,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn qr_solve_lstsq_in_place<T>(Q_basis: MatRef, Q_coeff: MatRef, R: MatRef, A_conj: Conj, rhs: MatMut, par: Par, mem: MemAlloc) {
+		pub fn qr_solve_lstsq_in_place<T>(
+			Q_basis: MatRef,
+			Q_coeff: MatRef,
+			R: MatRef,
+			A_conj: Conj,
+			rhs: MatMut,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj::<T>(
 				Q_basis.faer(),
 				Q_coeff.faer(),
@@ -1132,20 +1658,81 @@ pub mod linalg {
 				mem.faer(),
 			)
 		}
-		pub fn qr_reconstruct_scratch<T>(nrows: usize, ncols: usize, block_size: usize, par: Par) -> Layout {
-			la::qr::no_pivoting::reconstruct::reconstruct_scratch::<T>(nrows, ncols, block_size, par.faer()).into()
+		pub fn qr_reconstruct_scratch<T>(
+			nrows: usize,
+			ncols: usize,
+			block_size: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::no_pivoting::reconstruct::reconstruct_scratch::<T>(
+				nrows,
+				ncols,
+				block_size,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn qr_reconstruct<T>(A: MatMut, Q_basis: MatRef, Q_coeff: MatRef, R: MatRef, par: Par, mem: MemAlloc) {
-			la::qr::no_pivoting::reconstruct::reconstruct::<T>(A.faer(), Q_basis.faer(), Q_coeff.faer(), R.faer(), par.faer(), mem.faer())
+		pub fn qr_reconstruct<T>(
+			A: MatMut,
+			Q_basis: MatRef,
+			Q_coeff: MatRef,
+			R: MatRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::qr::no_pivoting::reconstruct::reconstruct::<T>(
+				A.faer(),
+				Q_basis.faer(),
+				Q_coeff.faer(),
+				R.faer(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
-		pub fn qr_inverse_scratch<T>(dim: usize, block_size: usize, par: Par) -> Layout {
-			la::qr::no_pivoting::inverse::inverse_scratch::<T>(dim, block_size, par.faer()).into()
+		pub fn qr_inverse_scratch<T>(
+			dim: usize,
+			block_size: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::no_pivoting::inverse::inverse_scratch::<T>(
+				dim,
+				block_size,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn qr_inverse<T>(A: MatMut, Q_basis: MatRef, Q_coeff: MatRef, R: MatRef, par: Par, mem: MemAlloc) {
-			la::qr::no_pivoting::inverse::inverse::<T>(A.faer(), Q_basis.faer(), Q_coeff.faer(), R.faer(), par.faer(), mem.faer())
+		pub fn qr_inverse<T>(
+			A: MatMut,
+			Q_basis: MatRef,
+			Q_coeff: MatRef,
+			R: MatRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
+			la::qr::no_pivoting::inverse::inverse::<T>(
+				A.faer(),
+				Q_basis.faer(),
+				Q_coeff.faer(),
+				R.faer(),
+				par.faer(),
+				mem.faer(),
+			)
 		}
-		pub fn colpiv_qr_factor_in_place_scratch<I, T>(nrows: usize, ncols: usize, block_size: usize, par: Par, params: ColPivQrParams) -> Layout {
-			la::qr::col_pivoting::factor::qr_in_place_scratch::<I, T>(nrows, ncols, block_size, par.faer(), params.faer()).into()
+		pub fn colpiv_qr_factor_in_place_scratch<I, T>(
+			nrows: usize,
+			ncols: usize,
+			block_size: usize,
+			par: Par,
+			params: ColPivQrParams,
+		) -> Layout {
+			la::qr::col_pivoting::factor::qr_in_place_scratch::<I, T>(
+				nrows,
+				ncols,
+				block_size,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		pub fn colpiv_qr_factor_in_place<I, T>(
 			A: MatMut,
@@ -1168,8 +1755,19 @@ pub mod linalg {
 			.0)
 			.into()
 		}
-		pub fn colpiv_qr_solve_in_place_scratch<I, T>(dim: usize, block_size: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::qr::col_pivoting::solve::solve_in_place_scratch::<I, T>(dim, block_size, rhs_ncols, par.faer()).into()
+		pub fn colpiv_qr_solve_in_place_scratch<I, T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::col_pivoting::solve::solve_in_place_scratch::<I, T>(
+				dim,
+				block_size,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn colpiv_qr_solve_in_place<I, T>(
 			Q_basis: MatRef,
@@ -1186,14 +1784,23 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn colpiv_qr_solve_transpose_in_place_scratch<I, T>(dim: usize, block_size: usize, rhs_ncols: usize, par: Par) -> Layout {
+		pub fn colpiv_qr_solve_transpose_in_place_scratch<I, T>(
+			dim: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
 			la::qr::col_pivoting::solve::solve_transpose_in_place_scratch::<I, T>(dim, block_size, rhs_ncols, par.faer()).into()
 		}
 		pub fn colpiv_qr_solve_transpose_in_place<I, T>(
@@ -1207,19 +1814,39 @@ pub mod linalg {
 			par: Par,
 			mem: MemAlloc,
 		) {
-			la::qr::col_pivoting::solve::solve_transpose_in_place_with_conj::<I, T>(
+			la::qr::col_pivoting::solve::solve_transpose_in_place_with_conj::<
+				I,
+				T,
+			>(
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn colpiv_qr_solve_lstsq_in_place_scratch<I, T>(nrows: usize, ncols: usize, block_size: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::qr::col_pivoting::solve::solve_lstsq_in_place_scratch::<I, T>(nrows, ncols, block_size, rhs_ncols, par.faer()).into()
+		pub fn colpiv_qr_solve_lstsq_in_place_scratch<I, T>(
+			nrows: usize,
+			ncols: usize,
+			block_size: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::col_pivoting::solve::solve_lstsq_in_place_scratch::<I, T>(
+				nrows,
+				ncols,
+				block_size,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn colpiv_qr_solve_lstsq_in_place<I, T>(
 			Q_basis: MatRef,
@@ -1236,15 +1863,30 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn colpiv_qr_reconstruct_scratch<I, T>(nrows: usize, ncols: usize, block_size: usize, par: Par) -> Layout {
-			la::qr::col_pivoting::reconstruct::reconstruct_scratch::<I, T>(nrows, ncols, block_size, par.faer()).into()
+		pub fn colpiv_qr_reconstruct_scratch<I, T>(
+			nrows: usize,
+			ncols: usize,
+			block_size: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::col_pivoting::reconstruct::reconstruct_scratch::<I, T>(
+				nrows,
+				ncols,
+				block_size,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn colpiv_qr_reconstruct<I, T>(
 			A: MatMut,
@@ -1261,13 +1903,26 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn colpiv_qr_inverse_scratch<I, T>(dim: usize, block_size: usize, par: Par) -> Layout {
-			la::qr::col_pivoting::inverse::inverse_scratch::<I, T>(dim, block_size, par.faer()).into()
+		pub fn colpiv_qr_inverse_scratch<I, T>(
+			dim: usize,
+			block_size: usize,
+			par: Par,
+		) -> Layout {
+			la::qr::col_pivoting::inverse::inverse_scratch::<I, T>(
+				dim,
+				block_size,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn colpiv_qr_inverse<I, T>(
 			A: MatMut,
@@ -1284,14 +1939,29 @@ pub mod linalg {
 				Q_basis.faer(),
 				Q_coeff.faer(),
 				R.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
 		// LU
-		pub fn partial_piv_lu_factor_in_place_scratch<I, T>(dim: usize, block_size: usize, par: Par, params: PartialPivLuParams) -> Layout {
-			la::lu::partial_pivoting::factor::lu_in_place_scratch::<I, T>(dim, block_size, par.faer(), params.faer()).into()
+		pub fn partial_piv_lu_factor_in_place_scratch<I, T>(
+			dim: usize,
+			block_size: usize,
+			par: Par,
+			params: PartialPivLuParams,
+		) -> Layout {
+			la::lu::partial_pivoting::factor::lu_in_place_scratch::<I, T>(
+				dim,
+				block_size,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		pub fn partial_piv_lu_factor_in_place<I, T>(
 			A: MatMut,
@@ -1312,8 +1982,17 @@ pub mod linalg {
 			.0)
 			.into()
 		}
-		pub fn partial_piv_lu_solve_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::lu::partial_pivoting::solve::solve_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
+		pub fn partial_piv_lu_solve_in_place_scratch<I, T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::partial_pivoting::solve::solve_in_place_scratch::<I, T>(
+				dim,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn partial_piv_lu_solve_in_place<I, T>(
 			L: MatRef,
@@ -1328,15 +2007,27 @@ pub mod linalg {
 			la::lu::partial_pivoting::solve::solve_in_place_with_conj::<I, T>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn partial_piv_lu_solve_transpose_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::lu::partial_pivoting::solve::solve_transpose_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
+		pub fn partial_piv_lu_solve_transpose_in_place_scratch<I, T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::partial_pivoting::solve::solve_transpose_in_place_scratch::<
+				I,
+				T,
+			>(dim, rhs_ncols, par.faer())
+			.into()
 		}
 		pub fn partial_piv_lu_solve_transpose_in_place<I, T>(
 			L: MatRef,
@@ -1348,44 +2039,102 @@ pub mod linalg {
 			par: Par,
 			mem: MemAlloc,
 		) {
-			la::lu::partial_pivoting::solve::solve_transpose_in_place_with_conj::<I, T>(
+			la::lu::partial_pivoting::solve::solve_transpose_in_place_with_conj::<
+				I,
+				T,
+			>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn partial_piv_lu_reconstruct_scratch<I, T>(nrows: usize, ncols: usize, par: Par) -> Layout {
-			la::lu::partial_pivoting::reconstruct::reconstruct_scratch::<I, T>(nrows, ncols, par.faer()).into()
+		pub fn partial_piv_lu_reconstruct_scratch<I, T>(
+			nrows: usize,
+			ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::partial_pivoting::reconstruct::reconstruct_scratch::<I, T>(
+				nrows,
+				ncols,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn partial_piv_lu_reconstruct<I, T>(A: MatMut, L: MatRef, U: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, par: Par, mem: MemAlloc) {
+		pub fn partial_piv_lu_reconstruct<I, T>(
+			A: MatMut,
+			L: MatRef,
+			U: MatRef,
+			perm_fwd: SliceRef,
+			perm_bwd: SliceRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::lu::partial_pivoting::reconstruct::reconstruct::<I, T>(
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn partial_piv_lu_inverse_scratch<I, T>(dim: usize, par: Par) -> Layout {
-			la::lu::partial_pivoting::inverse::inverse_scratch::<I, T>(dim, par.faer()).into()
+		pub fn partial_piv_lu_inverse_scratch<I, T>(
+			dim: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::partial_pivoting::inverse::inverse_scratch::<I, T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
-		pub fn partial_piv_lu_inverse<I, T>(A: MatMut, L: MatRef, U: MatRef, perm_fwd: SliceRef, perm_bwd: SliceRef, par: Par, mem: MemAlloc) {
+		pub fn partial_piv_lu_inverse<I, T>(
+			A: MatMut,
+			L: MatRef,
+			U: MatRef,
+			perm_fwd: SliceRef,
+			perm_bwd: SliceRef,
+			par: Par,
+			mem: MemAlloc,
+		) {
 			la::lu::partial_pivoting::inverse::inverse::<I, T>(
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(perm_fwd.slice(), perm_bwd.slice(), Ord::min(perm_fwd.len, perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					perm_fwd.slice(),
+					perm_bwd.slice(),
+					Ord::min(perm_fwd.len, perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn full_piv_lu_factor_in_place_scratch<I, T>(dim: usize, block_size: usize, par: Par, params: FullPivLuParams) -> Layout {
-			la::lu::full_pivoting::factor::lu_in_place_scratch::<I, T>(dim, block_size, par.faer(), params.faer()).into()
+		pub fn full_piv_lu_factor_in_place_scratch<I, T>(
+			dim: usize,
+			block_size: usize,
+			par: Par,
+			params: FullPivLuParams,
+		) -> Layout {
+			la::lu::full_pivoting::factor::lu_in_place_scratch::<I, T>(
+				dim,
+				block_size,
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		pub fn full_piv_lu_factor_in_place<I, T>(
 			A: MatMut,
@@ -1410,8 +2159,17 @@ pub mod linalg {
 			.0)
 			.into()
 		}
-		pub fn full_piv_lu_solve_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
-			la::lu::full_pivoting::solve::solve_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
+		pub fn full_piv_lu_solve_in_place_scratch<I, T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::full_pivoting::solve::solve_in_place_scratch::<I, T>(
+				dim,
+				rhs_ncols,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn full_piv_lu_solve_in_place<I, T>(
 			L: MatRef,
@@ -1428,15 +2186,27 @@ pub mod linalg {
 			la::lu::full_pivoting::solve::solve_in_place_with_conj::<I, T>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					row_perm_fwd.slice(),
+					row_perm_bwd.slice(),
+					Ord::min(row_perm_fwd.len, row_perm_bwd.len),
+				),
+				faer::perm::PermRef::new_unchecked(
+					col_perm_fwd.slice(),
+					col_perm_bwd.slice(),
+					Ord::min(col_perm_fwd.len, col_perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn full_piv_lu_solve_transpose_in_place_scratch<I, T>(dim: usize, rhs_ncols: usize, par: Par) -> Layout {
+		pub fn full_piv_lu_solve_transpose_in_place_scratch<I, T>(
+			dim: usize,
+			rhs_ncols: usize,
+			par: Par,
+		) -> Layout {
 			la::lu::full_pivoting::solve::solve_transpose_in_place_scratch::<I, T>(dim, rhs_ncols, par.faer()).into()
 		}
 		pub fn full_piv_lu_solve_transpose_in_place<I, T>(
@@ -1451,19 +2221,39 @@ pub mod linalg {
 			par: Par,
 			mem: MemAlloc,
 		) {
-			la::lu::full_pivoting::solve::solve_transpose_in_place_with_conj::<I, T>(
+			la::lu::full_pivoting::solve::solve_transpose_in_place_with_conj::<
+				I,
+				T,
+			>(
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					row_perm_fwd.slice(),
+					row_perm_bwd.slice(),
+					Ord::min(row_perm_fwd.len, row_perm_bwd.len),
+				),
+				faer::perm::PermRef::new_unchecked(
+					col_perm_fwd.slice(),
+					col_perm_bwd.slice(),
+					Ord::min(col_perm_fwd.len, col_perm_bwd.len),
+				),
 				A_conj.faer(),
 				rhs.faer(),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn full_piv_lu_reconstruct_scratch<I, T>(nrows: usize, ncols: usize, par: Par) -> Layout {
-			la::lu::full_pivoting::reconstruct::reconstruct_scratch::<I, T>(nrows, ncols, par.faer()).into()
+		pub fn full_piv_lu_reconstruct_scratch<I, T>(
+			nrows: usize,
+			ncols: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::full_pivoting::reconstruct::reconstruct_scratch::<I, T>(
+				nrows,
+				ncols,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn full_piv_lu_reconstruct<I, T>(
 			A: MatMut,
@@ -1480,14 +2270,29 @@ pub mod linalg {
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					row_perm_fwd.slice(),
+					row_perm_bwd.slice(),
+					Ord::min(row_perm_fwd.len, row_perm_bwd.len),
+				),
+				faer::perm::PermRef::new_unchecked(
+					col_perm_fwd.slice(),
+					col_perm_bwd.slice(),
+					Ord::min(col_perm_fwd.len, col_perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
 		}
-		pub fn full_piv_lu_inverse_scratch<I, T>(dim: usize, par: Par) -> Layout {
-			la::lu::full_pivoting::inverse::inverse_scratch::<I, T>(dim, par.faer()).into()
+		pub fn full_piv_lu_inverse_scratch<I, T>(
+			dim: usize,
+			par: Par,
+		) -> Layout {
+			la::lu::full_pivoting::inverse::inverse_scratch::<I, T>(
+				dim,
+				par.faer(),
+			)
+			.into()
 		}
 		pub fn full_piv_lu_inverse<I, T>(
 			A: MatMut,
@@ -1504,8 +2309,16 @@ pub mod linalg {
 				A.faer(),
 				L.faer(),
 				U.faer(),
-				faer::perm::PermRef::new_unchecked(row_perm_fwd.slice(), row_perm_bwd.slice(), Ord::min(row_perm_fwd.len, row_perm_bwd.len)),
-				faer::perm::PermRef::new_unchecked(col_perm_fwd.slice(), col_perm_bwd.slice(), Ord::min(col_perm_fwd.len, col_perm_bwd.len)),
+				faer::perm::PermRef::new_unchecked(
+					row_perm_fwd.slice(),
+					row_perm_bwd.slice(),
+					Ord::min(row_perm_fwd.len, row_perm_bwd.len),
+				),
+				faer::perm::PermRef::new_unchecked(
+					col_perm_fwd.slice(),
+					col_perm_bwd.slice(),
+					Ord::min(col_perm_fwd.len, col_perm_bwd.len),
+				),
 				par.faer(),
 				mem.faer(),
 			)
@@ -1519,20 +2332,71 @@ pub mod linalg {
 			par: Par,
 			params: SvdParams,
 		) -> Layout {
-			la::svd::svd_scratch::<T>(nrows, ncols, compute_U.faer(), compute_V.faer(), par.faer(), params.faer()).into()
+			la::svd::svd_scratch::<T>(
+				nrows,
+				ncols,
+				compute_U.faer(),
+				compute_V.faer(),
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn svd<T>(A: MatRef, U: MatMut, S: VecMut, V: MatMut, par: Par, mem: MemAlloc, params: SvdParams) -> SvdStatus {
+		pub fn svd<T>(
+			A: MatRef,
+			U: MatMut,
+			S: VecMut,
+			V: MatMut,
+			par: Par,
+			mem: MemAlloc,
+			params: SvdParams,
+		) -> SvdStatus {
 			let U = if U.ncols == 0 { None } else { Some(U.faer()) };
 			let V = if V.ncols == 0 { None } else { Some(V.faer()) };
-			la::svd::svd::<T>(A.faer(), S.diag(), U, V, par.faer(), mem.faer(), params.faer()).into()
+			la::svd::svd::<T>(
+				A.faer(),
+				S.diag(),
+				U,
+				V,
+				par.faer(),
+				mem.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		// EVD (self adjoint)
-		pub fn self_adjoint_evd_scratch<T>(dim: usize, compute_U: ComputeEigenvectors, par: Par, params: SelfAdjointEvdParams) -> Layout {
-			la::evd::self_adjoint_evd_scratch::<T>(dim, compute_U.faer(), par.faer(), params.faer()).into()
+		pub fn self_adjoint_evd_scratch<T>(
+			dim: usize,
+			compute_U: ComputeEigenvectors,
+			par: Par,
+			params: SelfAdjointEvdParams,
+		) -> Layout {
+			la::evd::self_adjoint_evd_scratch::<T>(
+				dim,
+				compute_U.faer(),
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn self_adjoint_evd<T>(A: MatRef, U: MatMut, S: VecMut, par: Par, mem: MemAlloc, params: SelfAdjointEvdParams) -> EvdStatus {
+		pub fn self_adjoint_evd<T>(
+			A: MatRef,
+			U: MatMut,
+			S: VecMut,
+			par: Par,
+			mem: MemAlloc,
+			params: SelfAdjointEvdParams,
+		) -> EvdStatus {
 			let U = if U.ncols == 0 { None } else { Some(U.faer()) };
-			la::evd::self_adjoint_evd::<T>(A.faer(), S.diag(), U, par.faer(), mem.faer(), params.faer()).into()
+			la::evd::self_adjoint_evd::<T>(
+				A.faer(),
+				S.diag(),
+				U,
+				par.faer(),
+				mem.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		// EVD (general)
 		pub fn evd_scratch<T>(
@@ -1542,18 +2406,53 @@ pub mod linalg {
 			par: Par,
 			params: EvdParams,
 		) -> Layout {
-			la::evd::evd_scratch::<T>(dim, compute_left.faer(), compute_right.faer(), par.faer(), params.faer()).into()
+			la::evd::evd_scratch::<T>(
+				dim,
+				compute_left.faer(),
+				compute_right.faer(),
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
-		pub fn evd<T>(A: MatRef, UL: MatMut, UR: MatMut, S: VecMut, S_im: VecMut, par: Par, mem: MemAlloc, params: EvdParams) -> EvdStatus {
+		pub fn evd<T>(
+			A: MatRef,
+			UL: MatMut,
+			UR: MatMut,
+			S: VecMut,
+			S_im: VecMut,
+			par: Par,
+			mem: MemAlloc,
+			params: EvdParams,
+		) -> EvdStatus {
 			type R = <T as faer::traits::ComplexField>::Real;
 			if const { <T as faer::traits::ComplexField>::IS_REAL } {
 				let UL = if UL.ncols == 0 { None } else { Some(UL.faer()) };
 				let UR = if UR.ncols == 0 { None } else { Some(UR.faer()) };
-				la::evd::evd_real::<R>(A.faer(), S.diag(), S_im.diag(), UL, UR, par.faer(), mem.faer(), params.faer()).into()
+				la::evd::evd_real::<R>(
+					A.faer(),
+					S.diag(),
+					S_im.diag(),
+					UL,
+					UR,
+					par.faer(),
+					mem.faer(),
+					params.faer(),
+				)
+				.into()
 			} else {
 				let UL = if UL.ncols == 0 { None } else { Some(UL.faer()) };
 				let UR = if UR.ncols == 0 { None } else { Some(UR.faer()) };
-				la::evd::evd_cplx::<R>(A.faer(), S.diag(), UL, UR, par.faer(), mem.faer(), params.faer()).into()
+				la::evd::evd_cplx::<R>(
+					A.faer(),
+					S.diag(),
+					UL,
+					UR,
+					par.faer(),
+					mem.faer(),
+					params.faer(),
+				)
+				.into()
 			}
 		}
 		// EVD (general)
@@ -1564,7 +2463,14 @@ pub mod linalg {
 			par: Par,
 			params: GevdParams,
 		) -> Layout {
-			la::gevd::gevd_scratch::<T>(dim, compute_left.faer(), compute_right.faer(), par.faer(), params.faer()).into()
+			la::gevd::gevd_scratch::<T>(
+				dim,
+				compute_left.faer(),
+				compute_right.faer(),
+				par.faer(),
+				params.faer(),
+			)
+			.into()
 		}
 		pub fn generalized_evd<T>(
 			A: MatMut,
@@ -1635,15 +2541,29 @@ pub extern "C" fn libfaer_v0_23_set_global_par(par: Par) {
 	})
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn libfaer_v0_23_alloc(size: usize, align: usize) -> *mut c_void {
+pub unsafe extern "C" fn libfaer_v0_23_alloc(
+	size: usize,
+	align: usize,
+) -> *mut c_void {
 	unsafe {
-		std::alloc::alloc(match core::alloc::Layout::from_size_align(size, align) {
-			Ok(layout) => layout,
-			Err(_) => return core::ptr::null_mut(),
-		}) as *mut c_void
+		std::alloc::alloc(
+			match core::alloc::Layout::from_size_align(size, align) {
+				Ok(layout) => layout,
+				Err(_) => return core::ptr::null_mut(),
+			},
+		) as *mut c_void
 	}
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn libfaer_v0_23_dealloc(ptr: *mut c_void, size: usize, align: usize) {
-	unsafe { std::alloc::dealloc(ptr as *mut u8, core::alloc::Layout::from_size_align_unchecked(size, align)) }
+pub unsafe extern "C" fn libfaer_v0_23_dealloc(
+	ptr: *mut c_void,
+	size: usize,
+	align: usize,
+) {
+	unsafe {
+		std::alloc::dealloc(
+			ptr as *mut u8,
+			core::alloc::Layout::from_size_align_unchecked(size, align),
+		)
+	}
 }

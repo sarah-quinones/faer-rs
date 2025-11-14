@@ -18,12 +18,20 @@ impl<T: ComplexField> JacobiRotation<T> {
 		T: RealField,
 	{
 		if q == zero::<T>() {
-			let c = if p < zero::<T>() { -one::<T>() } else { one::<T>() };
+			let c = if p < zero::<T>() {
+				-one::<T>()
+			} else {
+				one::<T>()
+			};
 			let s = zero::<T>();
 			Self { c, s }
 		} else if p == zero::<T>() {
 			let c = zero::<T>();
-			let s = if q < zero::<T>() { one::<T>() } else { -one::<T>() };
+			let s = if q < zero::<T>() {
+				one::<T>()
+			} else {
+				-one::<T>()
+			};
 			Self { c, s }
 		} else if p.abs() > q.abs() {
 			let t = q / &p;
@@ -48,9 +56,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	#[doc(hidden)]
 	pub fn rotg(p: T, q: T) -> (Self, T) {
-		if try_const! {
-			T::IS_REAL
-		} {
+		if const { T::IS_REAL } {
 			let p = p.real();
 			let q = q.real();
 			if q == zero::<T::Real>() {
@@ -170,9 +176,16 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	/// apply to the given matrix from the left
 	///
-	/// $$ J \begin{bmatrix} m_{00} & m_{01} \\\\ m_{10} & m_{11} \end{bmatrix} $$
+	/// $$ J \begin{bmatrix} m_{00} & m_{01} \\\\ m_{10} & m_{11} \end{bmatrix}
+	/// $$
 	#[inline]
-	pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
+	pub fn apply_on_the_left_2x2(
+		&self,
+		m00: T,
+		m01: T,
+		m10: T,
+		m11: T,
+	) -> (T, T, T, T) {
 		let Self { c, s } = self;
 		(
 			&m00 * c + &m10 * s,
@@ -184,20 +197,29 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	/// apply to the given matrix from the right
 	///
-	/// $$ \begin{bmatrix} m_{00} & m_{01} \\\\ m_{10} & m_{11} \end{bmatrix} J $$
+	/// $$ \begin{bmatrix} m_{00} & m_{01} \\\\ m_{10} & m_{11} \end{bmatrix} J
+	/// $$
 	#[inline]
-	pub fn apply_on_the_right_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
-		let (r00, r01, r10, r11) = self.transpose().apply_on_the_left_2x2(m00, m10, m01, m11);
+	pub fn apply_on_the_right_2x2(
+		&self,
+		m00: T,
+		m01: T,
+		m10: T,
+		m11: T,
+	) -> (T, T, T, T) {
+		let (r00, r01, r10, r11) =
+			self.transpose().apply_on_the_left_2x2(m00, m10, m01, m11);
 		(r00, r10, r01, r11)
 	}
 
 	#[inline]
-	fn apply_on_the_left_in_place_impl<'N>(&self, (x, y): (RowMut<'_, T, Dim<'N>>, RowMut<'_, T, Dim<'N>>)) {
+	fn apply_on_the_left_in_place_impl<'N>(
+		&self,
+		(x, y): (RowMut<'_, T, Dim<'N>>, RowMut<'_, T, Dim<'N>>),
+	) {
 		let mut x = x;
 		let mut y = y;
-		if try_const! {
-			T::SIMD_CAPABILITIES.is_simd()
-		} {
+		if const { T::SIMD_CAPABILITIES.is_simd() } {
 			struct Impl<'a, 'N, T: ComplexField> {
 				this: &'a JacobiRotation<T>,
 				x: RowMut<'a, T, Dim<'N>, ContiguousFwd>,
@@ -217,7 +239,10 @@ impl<T: ComplexField> JacobiRotation<T> {
 				x = x.reverse_cols_mut();
 				y = y.reverse_cols_mut();
 			}
-			if let (Some(x), Some(y)) = (x.rb_mut().try_as_row_major_mut(), y.rb_mut().try_as_row_major_mut()) {
+			if let (Some(x), Some(y)) = (
+				x.rb_mut().try_as_row_major_mut(),
+				y.rb_mut().try_as_row_major_mut(),
+			) {
 				dispatch!(Impl { this: self, x, y }, Impl, T);
 				return;
 			}
@@ -227,22 +252,36 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	/// apply from the left to $x$ and $y$
 	#[inline]
-	pub fn apply_on_the_left_in_place<N: Shape>(&self, (x, y): (RowMut<'_, T, N>, RowMut<'_, T, N>)) {
+	pub fn apply_on_the_left_in_place<N: Shape>(
+		&self,
+		(x, y): (RowMut<'_, T, N>, RowMut<'_, T, N>),
+	) {
 		with_dim!(N, x.ncols().unbound());
-		self.apply_on_the_left_in_place_impl((x.as_col_shape_mut(N), y.as_col_shape_mut(N)));
+		self.apply_on_the_left_in_place_impl((
+			x.as_col_shape_mut(N),
+			y.as_col_shape_mut(N),
+		));
 	}
 
 	/// apply from the right to $x$ and $y$
 	#[inline]
-	pub fn apply_on_the_right_in_place<N: Shape>(&self, (x, y): (ColMut<'_, T, N>, ColMut<'_, T, N>)) {
+	pub fn apply_on_the_right_in_place<N: Shape>(
+		&self,
+		(x, y): (ColMut<'_, T, N>, ColMut<'_, T, N>),
+	) {
 		with_dim!(N, x.nrows().unbound());
 		let x = x.as_row_shape_mut(N);
 		let y = y.as_row_shape_mut(N);
-		self.transpose().apply_on_the_left_in_place((x.transpose_mut(), y.transpose_mut()));
+		self.transpose()
+			.apply_on_the_left_in_place((x.transpose_mut(), y.transpose_mut()));
 	}
 
 	#[inline(never)]
-	fn apply_on_the_left_in_place_fallback<'N>(&self, x: RowMut<'_, T, Dim<'N>>, y: RowMut<'_, T, Dim<'N>>) {
+	fn apply_on_the_left_in_place_fallback<'N>(
+		&self,
+		x: RowMut<'_, T, Dim<'N>>,
+		y: RowMut<'_, T, Dim<'N>>,
+	) {
 		let Self { c, s } = self;
 		zip!(x, y).for_each(move |unzip!(x, y)| {
 			let x_ = c * &*x - conj(s) * &*y;
@@ -259,8 +298,11 @@ impl<T: ComplexField> JacobiRotation<T> {
 		x: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
 		y: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
 	) {
-		self.transpose()
-			.apply_on_the_left_in_place_with_simd(simd, x.transpose_mut(), y.transpose_mut());
+		self.transpose().apply_on_the_left_in_place_with_simd(
+			simd,
+			x.transpose_mut(),
+			y.transpose_mut(),
+		);
 	}
 
 	#[inline(always)]

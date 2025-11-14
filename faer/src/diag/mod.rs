@@ -6,9 +6,11 @@ pub use diagmut::Mut;
 pub use diagown::Own;
 pub use diagref::Ref;
 /// diagonal matrix view
-pub type DiagRef<'a, T, Dim = usize, Stride = isize> = generic::Diag<Ref<'a, T, Dim, Stride>>;
+pub type DiagRef<'a, T, Dim = usize, Stride = isize> =
+	generic::Diag<Ref<'a, T, Dim, Stride>>;
 /// diagonal mutable matrix view
-pub type DiagMut<'a, T, Dim = usize, Stride = isize> = generic::Diag<Mut<'a, T, Dim, Stride>>;
+pub type DiagMut<'a, T, Dim = usize, Stride = isize> =
+	generic::Diag<Mut<'a, T, Dim, Stride>>;
 /// diagonal matrix
 pub type Diag<T, Dim = usize> = generic::Diag<Own<T, Dim>>;
 
@@ -82,8 +84,15 @@ pub mod generic {
 			Diag(self.0.into_const())
 		}
 	}
-	impl<T, Dim: Shape, Stride: crate::Stride, Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Dim, Stride>>> Index<Idx<Dim>>
-		for Diag<Inner>
+	impl<
+		T,
+		Dim: Shape,
+		Stride: crate::Stride,
+		Inner: for<'short> Reborrow<
+				'short,
+				Target = super::Ref<'short, T, Dim, Stride>,
+			>,
+	> Index<Idx<Dim>> for Diag<Inner>
 	{
 		type Output = T;
 
@@ -97,8 +106,13 @@ pub mod generic {
 		T,
 		Dim: Shape,
 		Stride: crate::Stride,
-		Inner: for<'short> Reborrow<'short, Target = super::Ref<'short, T, Dim, Stride>>
-			+ for<'short> ReborrowMut<'short, Target = super::Mut<'short, T, Dim, Stride>>,
+		Inner: for<'short> Reborrow<
+				'short,
+				Target = super::Ref<'short, T, Dim, Stride>,
+			> + for<'short> ReborrowMut<
+				'short,
+				Target = super::Mut<'short, T, Dim, Stride>,
+			>,
 	> IndexMut<Idx<Dim>> for Diag<Inner>
 	{
 		#[inline]
@@ -122,7 +136,9 @@ pub trait AsDiagRef {
 	/// returns a view over `self`
 	fn as_diag_ref(&self) -> DiagRef<'_, Self::T, Self::Dim>;
 }
-impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef for DiagRef<'_, T, Dim, Stride> {
+impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef
+	for DiagRef<'_, T, Dim, Stride>
+{
 	type Dim = Dim;
 	type T = T;
 
@@ -131,7 +147,9 @@ impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef for DiagRef<'_, T, Dim, Str
 		self.as_dyn_stride()
 	}
 }
-impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef for DiagMut<'_, T, Dim, Stride> {
+impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef
+	for DiagMut<'_, T, Dim, Stride>
+{
 	type Dim = Dim;
 	type T = T;
 
@@ -141,7 +159,9 @@ impl<T, Dim: Shape, Stride: crate::Stride> AsDiagRef for DiagMut<'_, T, Dim, Str
 	}
 }
 
-impl<T, Dim: Shape, Stride: crate::Stride> AsDiagMut for DiagMut<'_, T, Dim, Stride> {
+impl<T, Dim: Shape, Stride: crate::Stride> AsDiagMut
+	for DiagMut<'_, T, Dim, Stride>
+{
 	#[inline]
 	fn as_diag_mut(&mut self) -> DiagMut<'_, Self::T, Self::Dim> {
 		self.rb_mut().as_dyn_stride_mut()

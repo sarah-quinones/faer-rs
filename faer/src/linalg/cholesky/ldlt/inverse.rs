@@ -6,13 +6,29 @@ pub fn inverse_scratch<T: ComplexField>(dim: usize, par: Par) -> StackReq {
 	temp_mat_scratch::<T>(dim, dim)
 }
 #[track_caller]
-pub fn inverse<T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, D: DiagRef<'_, T>, par: Par, stack: &mut MemStack) {
+pub fn inverse<T: ComplexField>(
+	out: MatMut<'_, T>,
+	L: MatRef<'_, T>,
+	D: DiagRef<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+) {
 	let mut out = out;
 	let n = out.nrows();
-	assert!(all(out.nrows() == n, out.ncols() == n, L.nrows() == n, L.ncols() == n, D.dim() == n,));
+	assert!(all(
+		out.nrows() == n,
+		out.ncols() == n,
+		L.nrows() == n,
+		L.ncols() == n,
+		D.dim() == n,
+	));
 	let (mut L_inv, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 	let mut L_inv = L_inv.as_mat_mut();
-	linalg::triangular_inverse::invert_unit_lower_triangular(L_inv.rb_mut(), L, par);
+	linalg::triangular_inverse::invert_unit_lower_triangular(
+		L_inv.rb_mut(),
+		L,
+		par,
+	);
 	{
 		with_dim!(N, n);
 		let mut L_inv = L_inv.rb_mut().as_shape_mut(N, N);
@@ -65,7 +81,13 @@ mod tests {
 			L.as_mut(),
 			Default::default(),
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::cholesky_in_place_scratch::<c64>(n, Par::Seq, default())) }),
+			MemStack::new(&mut {
+				MemBuffer::new(factor::cholesky_in_place_scratch::<c64>(
+					n,
+					Par::Seq,
+					default(),
+				))
+			}),
 			default(),
 		)
 		.unwrap();
@@ -76,7 +98,9 @@ mod tests {
 			L.as_ref(),
 			L.diagonal(),
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<c64>(n, Par::Seq))),
+			MemStack::new(&mut MemBuffer::new(
+				inverse::inverse_scratch::<c64>(n, Par::Seq),
+			)),
 		);
 		for j in 0..n {
 			for i in 0..j {

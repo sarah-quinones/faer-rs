@@ -1,7 +1,8 @@
 //! the $L B L^\top$ decomposition of a self-adjoint matrix $A$ is such that:
 //! $$P A P^\top = LBL^H$$
-//! where $P$ is a permutation matrix, $B$ is a block diagonal matrix, with $1\times 1$ or $2 \times
-//! 2 $ diagonal blocks, and $L$ is a unit lower triangular matrix
+//! where $P$ is a permutation matrix, $B$ is a block diagonal matrix, with
+//! $1\times 1$ or $2 \times 2 $ diagonal blocks, and $L$ is a unit lower
+//! triangular matrix
 #![allow(missing_docs)]
 pub mod factor;
 pub mod inverse;
@@ -39,7 +40,10 @@ mod tests {
 			let mut perm = vec![0usize; n];
 			let mut perm_inv = vec![0; n];
 			let params = Default::default();
-			let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, f64>(n, Par::Seq, params));
+			let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<
+				usize,
+				f64,
+			>(n, Par::Seq, params));
 			let (_, perm) = factor::cholesky_in_place(
 				ldl.as_mut(),
 				subdiag.as_mut(),
@@ -49,7 +53,10 @@ mod tests {
 				MemStack::new(&mut mem),
 				params,
 			);
-			let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<usize, f64>(n, rhs.ncols(), Par::Seq));
+			let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<
+				usize,
+				f64,
+			>(n, rhs.ncols(), Par::Seq));
 			let mut x = rhs.clone();
 			solve::solve_in_place_with_conj(
 				ldl.as_ref(),
@@ -76,7 +83,8 @@ mod tests {
 	fn test_cplx() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		for n in [2, 3, 6, 19, 100, 421] {
-			let distribution = ComplexDistribution::new(StandardNormal, StandardNormal);
+			let distribution =
+				ComplexDistribution::new(StandardNormal, StandardNormal);
 			let a = CwiseMatDistribution {
 				nrows: n,
 				ncols: n,
@@ -106,7 +114,11 @@ mod tests {
 					block_size: 4,
 					..auto!(c64)
 				};
-				let mut mem = MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, params.into()));
+				let mut mem =
+					MemBuffer::new(factor::cholesky_in_place_scratch::<
+						usize,
+						c64,
+					>(n, Par::Seq, params.into()));
 				let (_, perm) = factor::cholesky_in_place(
 					ldl.as_mut(),
 					subdiag.as_mut(),
@@ -117,7 +129,10 @@ mod tests {
 					params.into(),
 				);
 				let mut x = rhs.clone();
-				let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, rhs.ncols(), Par::Seq));
+				let mut mem = MemBuffer::new(solve::solve_in_place_scratch::<
+					usize,
+					c64,
+				>(n, rhs.ncols(), Par::Seq));
 				solve::solve_in_place_with_conj(
 					ldl.as_ref(),
 					ldl.diagonal(),

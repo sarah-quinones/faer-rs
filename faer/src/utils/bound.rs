@@ -32,8 +32,8 @@ impl<'head, 'tail, 'n> Partition<'head, 'tail, 'n> {
 }
 /// lifetime branded length
 /// # safety
-/// the type's safety invariant is that all instances of this type with the same lifetime
-/// correspond to the same length.
+/// the type's safety invariant is that all instances of this type with the same
+/// lifetime correspond to the same length.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Dim<'n> {
@@ -64,8 +64,8 @@ impl Ord for Dim<'_> {
 }
 /// lifetime branded index.
 /// # safety
-/// the type's safety invariant is that all instances of this type are valid indices for
-/// [`Dim<'n>`] and less than or equal to `i::signed::max`.
+/// the type's safety invariant is that all instances of this type are valid
+/// indices for [`Dim<'n>`] and less than or equal to `i::signed::max`.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Idx<'n, I: Index = usize> {
@@ -74,8 +74,8 @@ pub struct Idx<'n, I: Index = usize> {
 }
 /// lifetime branded partition index.
 /// # safety
-/// the type's safety invariant is that all instances of this type are valid partition places
-/// for [`Dim<'n>`] and less than or equal to `i::signed::max`.
+/// the type's safety invariant is that all instances of this type are valid
+/// partition places for [`Dim<'n>`] and less than or equal to `i::signed::max`.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct IdxInc<'n, I: Index = usize> {
@@ -178,7 +178,12 @@ impl<'n> Dim<'n> {
 
 	/// partitions `self` into two segments as specifiedd by the midpoint.
 	#[inline]
-	pub const fn partition<'head, 'tail>(self, midpoint: IdxInc<'n>, head: Guard<'head>, tail: Guard<'tail>) -> Partition<'head, 'tail, 'n> {
+	pub const fn partition<'head, 'tail>(
+		self,
+		midpoint: IdxInc<'n>,
+		head: Guard<'head>,
+		tail: Guard<'tail>,
+	) -> Partition<'head, 'tail, 'n> {
 		_ = (head, tail);
 		unsafe {
 			Partition {
@@ -192,7 +197,11 @@ impl<'n> Dim<'n> {
 	/// partitions `self` into two segments.
 	#[inline]
 	#[track_caller]
-	pub fn head_partition<'head, 'tail>(self, head: Dim<'head>, tail: Guard<'tail>) -> Partition<'head, 'tail, 'n> {
+	pub fn head_partition<'head, 'tail>(
+		self,
+		head: Dim<'head>,
+		tail: Guard<'tail>,
+	) -> Partition<'head, 'tail, 'n> {
 		_ = (head, tail);
 		let midpoint = IdxInc::new_checked(head.unbound(), self);
 		unsafe {
@@ -216,16 +225,22 @@ impl<'n> Dim<'n> {
 
 	/// returns an iterator over the indices between `0` and `self`.
 	#[inline]
-	pub fn indices(self) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
+	pub fn indices(
+		self,
+	) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
 		(0..self.unbound).map(|i| unsafe { Idx::new_unbound(i) })
 	}
 
 	/// returns an iterator over the indices between `0` and `self`.
 	#[inline]
 	#[cfg(feature = "rayon")]
-	pub fn par_indices(self) -> impl rayon::iter::IndexedParallelIterator<Item = Idx<'n>> {
+	pub fn par_indices(
+		self,
+	) -> impl rayon::iter::IndexedParallelIterator<Item = Idx<'n>> {
 		use rayon::prelude::*;
-		(0..self.unbound).into_par_iter().map(|i| unsafe { Idx::new_unbound(i) })
+		(0..self.unbound)
+			.into_par_iter()
+			.map(|i| unsafe { Idx::new_unbound(i) })
 	}
 }
 impl<'n, I: Index> Idx<'n, I> {
@@ -242,10 +257,14 @@ impl<'n, I: Index> Idx<'n, I> {
 
 	/// create new branded value with the same brand as `Dim`.
 	/// # safety
-	/// the behavior is undefined unless `idx < dim` and `idx <= i::signed::max`.
+	/// the behavior is undefined unless `idx < dim` and `idx <=
+	/// i::signed::max`.
 	#[inline(always)]
 	pub unsafe fn new_unchecked(idx: I, dim: Dim<'n>) -> Self {
-		equator::debug_assert!(all(idx.zx() < dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
+		equator::debug_assert!(all(
+			idx.zx() < dim.unbound,
+			idx <= I::from_signed(I::Signed::MAX),
+		));
 		Self {
 			unbound: idx,
 			__marker: PhantomData,
@@ -258,7 +277,10 @@ impl<'n, I: Index> Idx<'n, I> {
 	#[inline(always)]
 	#[track_caller]
 	pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
-		equator::assert!(all(idx.zx() < dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
+		equator::assert!(all(
+			idx.zx() < dim.unbound,
+			idx <= I::from_signed(I::Signed::MAX),
+		));
 		Self {
 			unbound: idx,
 			__marker: PhantomData,
@@ -301,7 +323,10 @@ impl<'n, I: Index> IdxInc<'n, I> {
 	/// the behavior is undefined unless `idx <= dim`.
 	#[inline(always)]
 	pub unsafe fn new_unchecked(idx: I, dim: Dim<'n>) -> Self {
-		equator::debug_assert!(all(idx.zx() <= dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
+		equator::debug_assert!(all(
+			idx.zx() <= dim.unbound,
+			idx <= I::from_signed(I::Signed::MAX),
+		));
 		Self {
 			unbound: idx,
 			__marker: PhantomData,
@@ -314,7 +339,10 @@ impl<'n, I: Index> IdxInc<'n, I> {
 	#[inline(always)]
 	#[track_caller]
 	pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
-		equator::assert!(all(idx.zx() <= dim.unbound, idx <= I::from_signed(I::Signed::MAX),));
+		equator::assert!(all(
+			idx.zx() <= dim.unbound,
+			idx <= I::from_signed(I::Signed::MAX),
+		));
 		Self {
 			unbound: idx,
 			__marker: PhantomData,
@@ -339,13 +367,19 @@ impl<'n, I: Index> IdxInc<'n, I> {
 impl<'n> IdxInc<'n> {
 	/// returns an iterator over the indices between `self` and `to`.
 	#[inline]
-	pub fn to(self, upper: IdxInc<'n>) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
+	pub fn to(
+		self,
+		upper: IdxInc<'n>,
+	) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
 		(self.unbound..upper.unbound).map(|i| unsafe { Idx::new_unbound(i) })
 	}
 
 	/// returns an iterator over the indices between `self` and `to`.
 	#[inline]
-	pub fn range_to(self, upper: IdxInc<'n>) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
+	pub fn range_to(
+		self,
+		upper: IdxInc<'n>,
+	) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
 		(self.unbound..upper.unbound).map(|i| unsafe { Idx::new_unbound(i) })
 	}
 }
@@ -486,35 +520,48 @@ impl<'n, I: Index> Idx<'n, I> {
 	/// assert that the values of `slice` are all bounded by `size`.
 	#[track_caller]
 	#[inline]
-	pub fn from_slice_mut_checked<'a>(slice: &'a mut [I], size: Dim<'n>) -> &'a mut [Idx<'n, I>] {
+	pub fn from_slice_mut_checked<'a>(
+		slice: &'a mut [I],
+		size: Dim<'n>,
+	) -> &'a mut [Idx<'n, I>] {
 		Self::from_slice_ref_checked(slice, size);
 		unsafe { &mut *(slice as *mut _ as *mut _) }
 	}
 
-	/// assume that the values of `slice` are all bounded by the value tied to `'n`.
+	/// assume that the values of `slice` are all bounded by the value tied to
+	/// `'n`.
 	#[track_caller]
 	#[inline]
-	pub unsafe fn from_slice_mut_unchecked<'a>(slice: &'a mut [I]) -> &'a mut [Idx<'n, I>] {
+	pub unsafe fn from_slice_mut_unchecked<'a>(
+		slice: &'a mut [I],
+	) -> &'a mut [Idx<'n, I>] {
 		unsafe { &mut *(slice as *mut _ as *mut _) }
 	}
 
 	/// assert that the values of `slice` are all bounded by `size`.
 	#[track_caller]
-	pub fn from_slice_ref_checked<'a>(slice: &'a [I], size: Dim<'n>) -> &'a [Idx<'n, I>] {
+	pub fn from_slice_ref_checked<'a>(
+		slice: &'a [I],
+		size: Dim<'n>,
+	) -> &'a [Idx<'n, I>] {
 		for &idx in slice {
 			Self::new_checked(idx, size);
 		}
 		unsafe { &*(slice as *const _ as *const _) }
 	}
 
-	/// assume that the values of `slice` are all bounded by the value tied to `'n`.
+	/// assume that the values of `slice` are all bounded by the value tied to
+	/// `'n`.
 	#[track_caller]
 	#[inline]
-	pub unsafe fn from_slice_ref_unchecked<'a>(slice: &'a [I]) -> &'a [Idx<'n, I>] {
+	pub unsafe fn from_slice_ref_unchecked<'a>(
+		slice: &'a [I],
+	) -> &'a [Idx<'n, I>] {
 		unsafe { &*(slice as *const _ as *const _) }
 	}
 }
-/// `i` value smaller than the size corresponding to the lifetime `'n`, or `none`.
+/// `i` value smaller than the size corresponding to the lifetime `'n`, or
+/// `none`.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct MaybeIdx<'n, I: Index = usize> {
@@ -534,7 +581,8 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 		unsafe { Self::new_unbound(I::truncate(usize::MAX)) }
 	}
 
-	/// returns a constrained index value if `idx` is nonnegative, `none` otherwise.
+	/// returns a constrained index value if `idx` is nonnegative, `none`
+	/// otherwise.
 	#[inline]
 	#[track_caller]
 	pub fn new_checked(idx: I::Signed, size: Dim<'n>) -> Self {
@@ -545,7 +593,8 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 		}
 	}
 
-	/// returns a constrained index value if `idx` is nonnegative, `none` otherwise.
+	/// returns a constrained index value if `idx` is nonnegative, `none`
+	/// otherwise.
 	#[inline]
 	pub unsafe fn new_unchecked(idx: I::Signed, size: Dim<'n>) -> Self {
 		debug_assert!((idx.sx() as isize) < size.unbound() as isize);
@@ -555,7 +604,8 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 		}
 	}
 
-	/// returns a constrained index value if `idx` is nonnegative, `none` otherwise.
+	/// returns a constrained index value if `idx` is nonnegative, `none`
+	/// otherwise.
 	#[inline]
 	pub unsafe fn new_unbound(idx: I) -> Self {
 		Self {
@@ -589,21 +639,30 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 	/// assert that the values of `slice` are all bounded by `size`.
 	#[track_caller]
 	#[inline]
-	pub fn from_slice_mut_checked<'a>(slice: &'a mut [I::Signed], size: Dim<'n>) -> &'a mut [MaybeIdx<'n, I>] {
+	pub fn from_slice_mut_checked<'a>(
+		slice: &'a mut [I::Signed],
+		size: Dim<'n>,
+	) -> &'a mut [MaybeIdx<'n, I>] {
 		Self::from_slice_ref_checked(slice, size);
 		unsafe { &mut *(slice as *mut _ as *mut _) }
 	}
 
-	/// assume that the values of `slice` are all bounded by the value tied to `'n`.
+	/// assume that the values of `slice` are all bounded by the value tied to
+	/// `'n`.
 	#[track_caller]
 	#[inline]
-	pub unsafe fn from_slice_mut_unchecked<'a>(slice: &'a mut [I::Signed]) -> &'a mut [MaybeIdx<'n, I>] {
+	pub unsafe fn from_slice_mut_unchecked<'a>(
+		slice: &'a mut [I::Signed],
+	) -> &'a mut [MaybeIdx<'n, I>] {
 		unsafe { &mut *(slice as *mut _ as *mut _) }
 	}
 
 	/// assert that the values of `slice` are all bounded by `size`.
 	#[track_caller]
-	pub fn from_slice_ref_checked<'a>(slice: &'a [I::Signed], size: Dim<'n>) -> &'a [MaybeIdx<'n, I>] {
+	pub fn from_slice_ref_checked<'a>(
+		slice: &'a [I::Signed],
+		size: Dim<'n>,
+	) -> &'a [MaybeIdx<'n, I>] {
 		for &idx in slice {
 			Self::new_checked(idx, size);
 		}
@@ -616,10 +675,13 @@ impl<'n, I: Index> MaybeIdx<'n, I> {
 		unsafe { &*(slice as *const _ as *const _) }
 	}
 
-	/// assume that the values of `slice` are all bounded by the value tied to `'n`.
+	/// assume that the values of `slice` are all bounded by the value tied to
+	/// `'n`.
 	#[track_caller]
 	#[inline]
-	pub unsafe fn from_slice_ref_unchecked<'a>(slice: &'a [I::Signed]) -> &'a [MaybeIdx<'n, I>] {
+	pub unsafe fn from_slice_ref_unchecked<'a>(
+		slice: &'a [I::Signed],
+	) -> &'a [MaybeIdx<'n, I>] {
 		unsafe { &*(slice as *const _ as *const _) }
 	}
 }
@@ -663,7 +725,8 @@ pub struct Array<'n, T> {
 	unbound: [T],
 }
 impl<'n, T> Array<'n, T> {
-	/// returns a constrained array after checking that its length matches `size`.
+	/// returns a constrained array after checking that its length matches
+	/// `size`.
 	#[inline]
 	#[track_caller]
 	pub fn from_ref<'a>(slice: &'a [T], size: Dim<'n>) -> &'a Self {
@@ -671,7 +734,8 @@ impl<'n, T> Array<'n, T> {
 		unsafe { &*(slice as *const [T] as *const Self) }
 	}
 
-	/// returns a constrained array after checking that its length matches `size`.
+	/// returns a constrained array after checking that its length matches
+	/// `size`.
 	#[inline]
 	#[track_caller]
 	pub fn from_mut<'a>(slice: &'a mut [T], size: Dim<'n>) -> &'a mut Self {
@@ -716,7 +780,8 @@ impl<'n, T> core::ops::Index<Range<IdxInc<'n>>> for Array<'n, T> {
 		}
 		#[cfg(not(debug_assertions))]
 		unsafe {
-			self.unbound.get_unchecked(idx.start.unbound()..idx.end.unbound())
+			self.unbound
+				.get_unchecked(idx.start.unbound()..idx.end.unbound())
 		}
 	}
 }
@@ -729,7 +794,8 @@ impl<'n, T> core::ops::IndexMut<Range<IdxInc<'n>>> for Array<'n, T> {
 		}
 		#[cfg(not(debug_assertions))]
 		unsafe {
-			self.unbound.get_unchecked_mut(idx.start.unbound()..idx.end.unbound())
+			self.unbound
+				.get_unchecked_mut(idx.start.unbound()..idx.end.unbound())
 		}
 	}
 }
@@ -791,7 +857,9 @@ impl<I: Index> Unbind<I> for IdxIncOne<I> {
 impl<I: Index> Unbind<I::Signed> for MaybeIdxOne<I> {
 	#[inline]
 	unsafe fn new_unbound(idx: I::Signed) -> Self {
-		Self { inner: I::from_signed(idx) }
+		Self {
+			inner: I::from_signed(idx),
+		}
 	}
 
 	#[inline]
@@ -825,7 +893,9 @@ impl Unbind for One {
 }
 impl<I: Index> From<Zero> for IdxIncOne<I> {
 	fn from(_: Zero) -> Self {
-		Self { inner: I::truncate(0) }
+		Self {
+			inner: I::truncate(0),
+		}
 	}
 }
 impl ShapeIdx for One {

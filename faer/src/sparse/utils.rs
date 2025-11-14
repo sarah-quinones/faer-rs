@@ -1,24 +1,47 @@
 use crate::internal_prelude_sp::*;
 use crate::{assert, debug_assert};
-/// sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
-pub fn sort_indices<I: Index, T>(col_ptr: &[I], col_nnz: Option<&[I]>, row_idx: &mut [I], val: &mut [T]) {
+/// sorts `row_indices` and `values` simultaneously so that `row_indices` is
+/// nonincreasing.
+pub fn sort_indices<I: Index, T>(
+	col_ptr: &[I],
+	col_nnz: Option<&[I]>,
+	row_idx: &mut [I],
+	val: &mut [T],
+) {
 	assert!(col_ptr.len() > 0);
 	let n = col_ptr.len() - 1;
 	for j in 0..n {
 		let start = col_ptr[j].zx();
-		let end = col_nnz.map(|nnz| start + nnz[j].zx()).unwrap_or(col_ptr[j + 1].zx());
-		unsafe { crate::sort::sort_indices(&mut row_idx[start..end], &mut val[start..end]) };
+		let end = col_nnz
+			.map(|nnz| start + nnz[j].zx())
+			.unwrap_or(col_ptr[j + 1].zx());
+		unsafe {
+			crate::sort::sort_indices(
+				&mut row_idx[start..end],
+				&mut val[start..end],
+			)
+		};
 	}
 }
-/// sorts and deduplicates `row_indices` and `values` simultaneously so that `row_indices` is
-/// nonincreasing and contains no duplicate indices.
-pub fn sort_dedup_indices<I: Index, T: ComplexField>(col_ptr: &[I], col_nnz: &mut [I], row_idx: &mut [I], val: &mut [T]) {
+/// sorts and deduplicates `row_indices` and `values` simultaneously so that
+/// `row_indices` is nonincreasing and contains no duplicate indices.
+pub fn sort_dedup_indices<I: Index, T: ComplexField>(
+	col_ptr: &[I],
+	col_nnz: &mut [I],
+	row_idx: &mut [I],
+	val: &mut [T],
+) {
 	assert!(col_ptr.len() > 0);
 	let n = col_ptr.len() - 1;
 	for j in 0..n {
 		let start = col_ptr[j].zx();
 		let end = start + col_nnz[j].zx();
-		unsafe { crate::sort::sort_indices(&mut row_idx[start..end], &mut val[start..end]) };
+		unsafe {
+			crate::sort::sort_indices(
+				&mut row_idx[start..end],
+				&mut val[start..end],
+			)
+		};
 		let mut prev = I::truncate(usize::MAX);
 		let mut writer = start;
 		let mut reader = start;
@@ -52,8 +75,15 @@ pub fn permute_dedup_self_adjoint_scratch<I: Index>(dim: usize) -> StackReq {
 /// the result is stored in `new_col_ptrs`, `new_row_indices`
 ///
 /// # note
-/// allows unsorted matrices, producing a sorted output. duplicate entries are kept, however
-pub fn permute_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+/// allows unsorted matrices, producing a sorted output. duplicate entries are
+/// kept, however
+pub fn permute_self_adjoint<
+	'out,
+	N: Shape,
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
@@ -79,14 +109,20 @@ pub fn permute_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjug
 	)
 	.as_shape_mut(n, n)
 }
-/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$ without sorting the row
-/// indices, and returns a view over it
+/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$ without
+/// sorting the row indices, and returns a view over it
 ///
 /// the result is stored in `new_col_ptrs`, `new_row_indices`
 ///
 /// # note
 /// allows unsorted matrices, producing an sorted output
-pub fn permute_self_adjoint_to_unsorted<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+pub fn permute_self_adjoint_to_unsorted<
+	'out,
+	N: Shape,
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
@@ -112,14 +148,21 @@ pub fn permute_self_adjoint_to_unsorted<'out, N: Shape, I: Index, T: ComplexFiel
 	)
 	.as_shape_mut(n, n)
 }
-/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$ and deduplicate the
-/// elements of the output matrix
+/// computes the self-adjoint permutation $P A P^\top$ of the matrix $A$ and
+/// deduplicate the elements of the output matrix
 ///
 /// the result is stored in `new_col_ptrs`, `new_row_indices`
 ///
 /// # note
-/// allows unsorted matrices, producing a sorted output. duplicate entries are merged
-pub fn permute_dedup_self_adjoint<'out, N: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+/// allows unsorted matrices, producing a sorted output. duplicate entries are
+/// merged
+pub fn permute_dedup_self_adjoint<
+	'out,
+	N: Shape,
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
@@ -194,7 +237,10 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 		}
 	}
 	new_col_ptr[0] = I::truncate(0);
-	for (count, [ci0, ci1]) in iter::zip(col_counts.as_mut(), windows2(Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptr)))) {
+	for (count, [ci0, ci1]) in iter::zip(
+		col_counts.as_mut(),
+		windows2(Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptr))),
+	) {
 		let ci0 = ci0.get();
 		ci1.set(ci0 + *count);
 		*count = ci0;
@@ -207,9 +253,7 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 		let new_val = Array::from_mut(new_val, NNZ);
 		let new_row_idx = Array::from_mut(new_row_idx, NNZ);
 		let conj_if = |cond: bool, x: &T| -> T {
-			if try_const! {
-				T::IS_REAL
-			} {
+			if const { T::IS_REAL } {
 				x.copy()
 			} else {
 				if cond != conj_A { x.conj() } else { x.copy() }
@@ -219,15 +263,22 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 			let new_j = perm_inv[old_j].zx();
 			let old_j_cmp = src_to_cmp(*old_j);
 			let new_j_cmp = dst_to_cmp(*new_j);
-			for (old_i, val) in iter::zip(A.row_idx_of_col(old_j), A.val_of_col(old_j)) {
+			for (old_i, val) in
+				iter::zip(A.row_idx_of_col(old_j), A.val_of_col(old_j))
+			{
 				let new_i = perm_inv[old_i].zx();
 				let old_i_cmp = src_to_cmp(*old_i);
 				let new_i_cmp = dst_to_cmp(*new_i);
 				if old_i_cmp >= old_j_cmp {
 					let lower = new_i_cmp >= new_j_cmp;
-					let (new_j, new_i) = if lower { (new_j, new_i) } else { (new_i, new_j) };
+					let (new_j, new_i) = if lower {
+						(new_j, new_i)
+					} else {
+						(new_i, new_j)
+					};
 					let cur_row_pos = &mut cur_row_pos[new_j];
-					let row_pos = unsafe { Idx::new_unchecked(cur_row_pos.zx(), NNZ) };
+					let row_pos =
+						unsafe { Idx::new_unchecked(cur_row_pos.zx(), NNZ) };
 					*cur_row_pos += I::truncate(1);
 					new_val[row_pos] = conj_if(!lower, val);
 					new_row_idx[row_pos] = I::truncate(*new_i);
@@ -238,7 +289,18 @@ fn permute_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	if sort {
 		sort_indices(new_col_ptr, None, new_row_idx, new_val);
 	}
-	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, N, new_col_ptr, None, new_row_idx), new_val) }
+	unsafe {
+		SparseColMatMut::new(
+			SymbolicSparseColMatRef::new_unchecked(
+				N,
+				N,
+				new_col_ptr,
+				None,
+				new_row_idx,
+			),
+			new_val,
+		)
+	}
 }
 fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	new_val: &'out mut [T],
@@ -252,7 +314,18 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 	stack: &mut MemStack,
 ) -> SparseColMatMut<'out, I, T, Dim<'N>, Dim<'N>> {
 	let N = A.nrows();
-	permute_self_adjoint_imp(new_val, new_col_ptr, new_row_idx, A, conj_A, perm, in_side, out_side, false, stack);
+	permute_self_adjoint_imp(
+		new_val,
+		new_col_ptr,
+		new_row_idx,
+		A,
+		conj_A,
+		perm,
+		in_side,
+		out_side,
+		false,
+		stack,
+	);
 	{
 		let new_col_ptr = Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr));
 		let start = Array::from_ref(&new_col_ptr[..*N], N);
@@ -262,7 +335,10 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 			let start = start[j].replace(I::truncate(writer)).zx();
 			let end = end[j].get().zx();
 			unsafe {
-				crate::sort::sort_indices(&mut new_row_idx[start..end], &mut new_val[start..end]);
+				crate::sort::sort_indices(
+					&mut new_row_idx[start..end],
+					&mut new_val[start..end],
+				);
 			}
 			let mut prev = I::truncate(usize::MAX);
 			let mut reader = start;
@@ -282,16 +358,30 @@ fn permute_dedup_self_adjoint_imp<'N, 'out, I: Index, T: ComplexField>(
 		}
 		new_col_ptr[*N].set(I::truncate(writer));
 	}
-	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, N, new_col_ptr, None, new_row_idx), new_val) }
+	unsafe {
+		SparseColMatMut::new(
+			SymbolicSparseColMatRef::new_unchecked(
+				N,
+				N,
+				new_col_ptr,
+				None,
+				new_row_idx,
+			),
+			new_val,
+		)
+	}
 }
 /// computes the workspace layout required to transpose a matrix
 pub fn transpose_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
 	_ = ncols;
 	StackReq::new::<usize>(nrows)
 }
-/// computes the workspace layout required to transpose a matrix and deduplicate the
-/// output elements
-pub fn transpose_dedup_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq {
+/// computes the workspace layout required to transpose a matrix and deduplicate
+/// the output elements
+pub fn transpose_dedup_scratch<I: Index>(
+	nrows: usize,
+	ncols: usize,
+) -> StackReq {
 	_ = ncols;
 	StackReq::new::<usize>(nrows).array(2)
 }
@@ -300,7 +390,8 @@ pub fn transpose_dedup_scratch<I: Index>(nrows: usize, ncols: usize) -> StackReq
 /// the result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
 ///
 /// # note
-/// allows unsorted matrices, producing a sorted output. duplicate entries are kept, however
+/// allows unsorted matrices, producing a sorted output. duplicate entries are
+/// kept, however
 pub fn transpose<'out, Rows: Shape, Cols: Shape, I: Index, T: Clone>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -311,14 +402,23 @@ pub fn transpose<'out, Rows: Shape, Cols: Shape, I: Index, T: Clone>(
 	let (m, n) = A.shape();
 	with_dim!(M, m.unbound());
 	with_dim!(N, n.unbound());
-	transpose_imp(T::clone, new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
+	transpose_imp(
+		T::clone,
+		new_val,
+		new_col_ptr,
+		new_row_idx,
+		A.as_shape(M, N),
+		stack,
+	)
+	.as_shape_mut(n, m)
 }
 /// computes the adjoint of the matrix $A$ and returns a view over it.
 ///
 /// the result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
 ///
 /// # note
-/// allows unsorted matrices, producing a sorted output. duplicate entries are kept, however
+/// allows unsorted matrices, producing a sorted output. duplicate entries are
+/// kept, however
 pub fn adjoint<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
@@ -329,15 +429,31 @@ pub fn adjoint<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField>(
 	let (m, n) = A.shape();
 	with_dim!(M, m.unbound());
 	with_dim!(N, n.unbound());
-	transpose_imp(conj::<T>, new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
+	transpose_imp(
+		conj::<T>,
+		new_val,
+		new_col_ptr,
+		new_row_idx,
+		A.as_shape(M, N),
+		stack,
+	)
+	.as_shape_mut(n, m)
 }
 /// computes the transpose of the matrix $A$ and returns a view over it.
 ///
 /// the result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
 ///
 /// # note
-/// allows unsorted matrices, producing a sorted output. duplicate entries are merged
-pub fn transpose_dedup<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+/// allows unsorted matrices, producing a sorted output. duplicate entries are
+/// merged
+pub fn transpose_dedup<
+	'out,
+	Rows: Shape,
+	Cols: Shape,
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
@@ -347,7 +463,14 @@ pub fn transpose_dedup<'out, Rows: Shape, Cols: Shape, I: Index, T: ComplexField
 	let (m, n) = A.shape();
 	with_dim!(M, m.unbound());
 	with_dim!(N, n.unbound());
-	transpose_dedup_imp(new_val, new_col_ptr, new_row_idx, A.as_shape(M, N), stack).as_shape_mut(n, m)
+	transpose_dedup_imp(
+		new_val,
+		new_col_ptr,
+		new_row_idx,
+		A.as_shape(M, N),
+		stack,
+	)
+	.as_shape_mut(n, m)
 }
 fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T>(
 	clone: impl Fn(&T) -> T,
@@ -367,7 +490,10 @@ fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T>(
 		}
 	}
 	new_col_ptr[0] = I::truncate(0);
-	for (j, [pj0, pj1]) in iter::zip(M.indices(), windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr)))) {
+	for (j, [pj0, pj1]) in iter::zip(
+		M.indices(),
+		windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr))),
+	) {
 		let cj = &mut col_count[j];
 		let pj = pj0.get();
 		pj1.set(pj + *cj);
@@ -388,9 +514,27 @@ fn transpose_imp<'ROWS, 'COLS, 'out, I: Index, T>(
 		}
 	}
 	debug_assert!(cur_row_pos.as_ref() == &new_col_ptr[1..]);
-	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, M, new_col_ptr, None, new_row_idx), new_val) }
+	unsafe {
+		SparseColMatMut::new(
+			SymbolicSparseColMatRef::new_unchecked(
+				N,
+				M,
+				new_col_ptr,
+				None,
+				new_row_idx,
+			),
+			new_val,
+		)
+	}
 }
-fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+fn transpose_dedup_imp<
+	'ROWS,
+	'COLS,
+	'out,
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	new_val: &'out mut [T],
 	new_col_ptr: &'out mut [I],
 	new_row_idx: &'out mut [I],
@@ -416,7 +560,10 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 		}
 	}
 	new_col_ptr[0] = I::truncate(0);
-	for (j, [pj0, pj1]) in iter::zip(M.indices(), windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr)))) {
+	for (j, [pj0, pj1]) in iter::zip(
+		M.indices(),
+		windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptr))),
+	) {
 		let cj = &mut col_count[j];
 		let pj = pj0.get();
 		pj1.set(pj + *cj);
@@ -429,12 +576,17 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 	for j in N.indices() {
 		for (i, val) in iter::zip(A.row_idx_of_col(j), A.val_of_col(j)) {
 			let ci = &mut cur_row_pos[i];
-			let val = if Conj::get::<C>().is_conj() { val.conj() } else { val.copy() };
+			let val = if Conj::get::<C>().is_conj() {
+				val.conj()
+			} else {
+				val.copy()
+			};
 			let j = I::truncate(*j);
 			unsafe {
 				if last_seen[i] == j {
 					let ci = ci.zx() - 1;
-					*new_val.get_unchecked_mut(ci) = new_val.get_unchecked(ci) + (&val);
+					*new_val.get_unchecked_mut(ci) =
+						new_val.get_unchecked(ci) + (&val);
 				} else {
 					last_seen[i] = j;
 					*ci += I::truncate(1);
@@ -448,7 +600,18 @@ fn transpose_dedup_imp<'ROWS, 'COLS, 'out, I: Index, T: ComplexField, C: Conjuga
 		}
 	}
 	debug_assert!(cur_row_pos.as_ref() == &new_col_ptr[1..]);
-	unsafe { SparseColMatMut::new(SymbolicSparseColMatRef::new_unchecked(N, M, new_col_ptr, None, new_row_idx), new_val) }
+	unsafe {
+		SparseColMatMut::new(
+			SymbolicSparseColMatRef::new_unchecked(
+				N,
+				M,
+				new_col_ptr,
+				None,
+				new_row_idx,
+			),
+			new_val,
+		)
+	}
 }
 #[cfg(test)]
 mod tests {
@@ -461,7 +624,13 @@ mod tests {
 		let nrows = 5;
 		let ncols = 3;
 		let A = SparseColMatRef::new(
-			SymbolicSparseColMatRef::new_unsorted_checked(nrows, ncols, &[0usize, 4, 8, 11], None, &[0, 0, 2, 4, 2, 1, 1, 0, 0, 1, 3]),
+			SymbolicSparseColMatRef::new_unsorted_checked(
+				nrows,
+				ncols,
+				&[0usize, 4, 8, 11],
+				None,
+				&[0, 0, 2, 4, 2, 1, 1, 0, 0, 1, 3],
+			),
 			&[1.0, 2.0, 3.0, 4.0, 11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0],
 		);
 		let nnz = A.compute_nnz();
@@ -474,11 +643,19 @@ mod tests {
 				new_col_ptr,
 				new_row_idx,
 				A,
-				MemStack::new(&mut MemBuffer::new(transpose_scratch::<usize>(nrows, ncols))),
+				MemStack::new(&mut MemBuffer::new(transpose_scratch::<usize>(
+					nrows, ncols,
+				))),
 			)
 			.into_const();
 			let target = SparseColMatRef::new(
-				SymbolicSparseColMatRef::new_unsorted_checked(ncols, nrows, &[0usize, 4, 7, 9, 10, 11], None, &[0, 0, 1, 2, 1, 1, 2, 0, 1, 2, 0]),
+				SymbolicSparseColMatRef::new_unsorted_checked(
+					ncols,
+					nrows,
+					&[0usize, 4, 7, 9, 10, 11],
+					None,
+					&[0, 0, 1, 2, 1, 1, 2, 0, 1, 2, 0],
+				),
 				&[1.0, 2.0, 14.0, 21.0, 12.0, 13.0, 22.0, 3.0, 11.0, 23.0, 4.0],
 			);
 			assert!(all(
@@ -493,11 +670,19 @@ mod tests {
 				new_col_ptr,
 				new_row_idx,
 				A,
-				MemStack::new(&mut MemBuffer::new(transpose_dedup_scratch::<usize>(nrows, ncols))),
+				MemStack::new(&mut MemBuffer::new(transpose_dedup_scratch::<
+					usize,
+				>(nrows, ncols))),
 			)
 			.into_const();
 			let target = SparseColMatRef::new(
-				SymbolicSparseColMatRef::new_unsorted_checked(ncols, nrows, &[0usize, 3, 5, 7, 8, 9], None, &[0, 1, 2, 1, 2, 0, 1, 2, 0]),
+				SymbolicSparseColMatRef::new_unsorted_checked(
+					ncols,
+					nrows,
+					&[0usize, 3, 5, 7, 8, 9],
+					None,
+					&[0, 1, 2, 1, 2, 0, 1, 2, 0],
+				),
 				&[3.0, 14.0, 21.0, 25.0, 22.0, 3.0, 11.0, 23.0, 4.0],
 			);
 			assert!(all(
@@ -512,7 +697,10 @@ mod tests {
 		let n = 5;
 		let rng = &mut StdRng::seed_from_u64(0);
 		let diag_rng = &mut StdRng::seed_from_u64(1);
-		let mut rand = || ComplexDistribution::new(StandardNormal, StandardNormal).rand::<c64>(rng);
+		let mut rand = || {
+			ComplexDistribution::new(StandardNormal, StandardNormal)
+				.rand::<c64>(rng)
+		};
 		let mut rand_diag = || c64::new(StandardNormal.rand(diag_rng), 0.0);
 		let val = &[
 			rand_diag(),
@@ -553,7 +741,11 @@ mod tests {
 		let new_col_ptr = &mut *vec![0usize; n + 1];
 		let new_row_idx = &mut *vec![0usize; nnz];
 		let new_val = &mut *vec![c64::ZERO; nnz];
-		for f in [permute_self_adjoint_to_unsorted, permute_self_adjoint, permute_dedup_self_adjoint] {
+		for f in [
+			permute_self_adjoint_to_unsorted,
+			permute_self_adjoint,
+			permute_dedup_self_adjoint,
+		] {
 			for (in_side, out_side) in [
 				(Side::Lower, Side::Lower),
 				(Side::Lower, Side::Upper),
@@ -568,13 +760,18 @@ mod tests {
 					perm,
 					in_side,
 					out_side,
-					MemStack::new(&mut MemBuffer::new(permute_self_adjoint_scratch::<usize>(n))),
+					MemStack::new(&mut MemBuffer::new(
+						permute_self_adjoint_scratch::<usize>(n),
+					)),
 				)
 				.to_dense();
 				let mut A = A.to_dense();
 				match in_side {
 					Side::Lower => {
-						z!(&mut A).for_each_triangular_upper(linalg::zip::Diag::Skip, |uz!(x)| *x = c64::ZERO);
+						z!(&mut A).for_each_triangular_upper(
+							linalg::zip::Diag::Skip,
+							|uz!(x)| *x = c64::ZERO,
+						);
 						for j in 0..n {
 							for i in 0..j {
 								A[(i, j)] = A[(j, i)].conj();
@@ -582,7 +779,10 @@ mod tests {
 						}
 					},
 					Side::Upper => {
-						z!(&mut A).for_each_triangular_lower(linalg::zip::Diag::Skip, |uz!(x)| *x = c64::ZERO);
+						z!(&mut A).for_each_triangular_lower(
+							linalg::zip::Diag::Skip,
+							|uz!(x)| *x = c64::ZERO,
+						);
 						for j in 0..n {
 							for i in j + 1..n {
 								A[(i, j)] = A[(j, i)].conj();

@@ -1,7 +1,9 @@
 use super::LINEAR_IMPL_THRESHOLD;
 use crate::internal_prelude::*;
 #[inline(always)]
-fn sum_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) -> T {
+fn sum_simd<'N, T: ComplexField>(
+	data: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+) -> T {
 	struct Impl<'a, 'N, T: ComplexField> {
 		data: ColRef<'a, T, Dim<'N>, ContiguousFwd>,
 	}
@@ -48,7 +50,9 @@ fn sum_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) ->
 	}
 	dispatch!(Impl { data }, Impl, T)
 }
-fn sum_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, ContiguousFwd>) -> T {
+fn sum_simd_pairwise_rows<T: ComplexField>(
+	data: ColRef<'_, T, usize, ContiguousFwd>,
+) -> T {
 	if data.nrows() <= LINEAR_IMPL_THRESHOLD {
 		with_dim!(N, data.nrows());
 		sum_simd(data.as_row_shape(N))
@@ -60,7 +64,9 @@ fn sum_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, Contiguous
 		acc0 + acc1
 	}
 }
-fn sum_simd_pairwise_cols<T: ComplexField>(data: MatRef<'_, T, usize, usize, ContiguousFwd>) -> T {
+fn sum_simd_pairwise_cols<T: ComplexField>(
+	data: MatRef<'_, T, usize, usize, ContiguousFwd>,
+) -> T {
 	if data.ncols() == 1 {
 		sum_simd_pairwise_rows(data.col(0))
 	} else {
@@ -83,9 +89,7 @@ pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
 	} else {
 		let m = mat.nrows();
 		let n = mat.ncols();
-		if try_const! {
-			T::SIMD_CAPABILITIES.is_simd()
-		} {
+		if const { T::SIMD_CAPABILITIES.is_simd() } {
 			if let Some(mat) = mat.try_as_col_major() {
 				return sum_simd_pairwise_cols(mat);
 			}
@@ -105,7 +109,8 @@ mod tests {
 	use crate::{Col, Mat, assert, unzip, zip};
 	#[test]
 	fn test_sum_real() {
-		let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+		let relative_err =
+			|a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
 		for (m, n) in [(9, 10), (1023, 1024), (42, 1)] {
 			for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
 				let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
@@ -126,13 +131,17 @@ mod tests {
 	}
 	#[test]
 	fn test_sum_cplx() {
-		let relative_err = |a: c64, b: c64| (a - b).abs() / f64::max(a.abs(), b.abs());
+		let relative_err =
+			|a: c64, b: c64| (a - b).abs() / f64::max(a.abs(), b.abs());
 		for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
 			for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
 				let mat = Mat::from_fn(m, n, |i, j| {
 					let i = i as isize;
 					let j = j as isize;
-					c64::new(factor * ((i + j) as f64), factor * ((i - j) as f64))
+					c64::new(
+						factor * ((i + j) as f64),
+						factor * ((i - j) as f64),
+					)
 				});
 				let mut target = c64::ZERO;
 				zip!(mat.rb()).for_each(|unzip!(x)| {

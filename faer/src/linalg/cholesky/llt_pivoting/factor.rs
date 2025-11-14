@@ -34,7 +34,11 @@ pub struct PivLltInfo {
 	pub transposition_count: usize,
 }
 #[inline]
-pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(dim: usize, par: Par, params: Spec<PivLltParams, T>) -> StackReq {
+pub fn cholesky_in_place_scratch<I: Index, T: ComplexField>(
+	dim: usize,
+	par: Par,
+	params: Spec<PivLltParams, T>,
+) -> StackReq {
 	_ = par;
 	_ = params;
 	temp_mat_scratch::<T::Real>(dim, 2)
@@ -59,8 +63,10 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 			for (i, p) in perm.iter_mut().enumerate() {
 				*p = I::truncate(i);
 			}
-			let (mut work1, stack) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
-			let (mut work2, _) = unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+			let (mut work1, stack) =
+				unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
+			let (mut work2, _) =
+				unsafe { temp_mat_uninit::<T::Real, _, _>(n, 1, stack) };
 			let work1 = work1.as_mat_mut();
 			let work2 = work2.as_mat_mut();
 			let mut dot_products = work1.col_mut(0);
@@ -91,7 +97,8 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 						}
 					} else {
 						for i in j..n {
-							dot_products[i] = &dot_products[i] + a[(i, j - 1)].abs2();
+							dot_products[i] =
+								&dot_products[i] + a[(i, j - 1)].abs2();
 							diagonals[i] = a[(i, i)].real() - &dot_products[i];
 						}
 					}
@@ -101,7 +108,9 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 						for i in j..n {
 							let aii = &diagonals[i];
 							if aii.is_nan() {
-								return Err(LltError::NonPositivePivot { index: j });
+								return Err(LltError::NonPositivePivot {
+									index: j,
+								});
 							}
 							if *aii > ajj {
 								pvt = i;
@@ -117,12 +126,23 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 					if pvt != j {
 						transposition_count += 1;
 						a[(pvt, pvt)] = a[(j, j)].copy();
-						crate::perm::swap_rows_idx(a.rb_mut().get_mut(.., ..j), j, pvt);
-						crate::perm::swap_cols_idx(a.rb_mut().get_mut(pvt + 1.., ..), j, pvt);
+						crate::perm::swap_rows_idx(
+							a.rb_mut().get_mut(.., ..j),
+							j,
+							pvt,
+						);
+						crate::perm::swap_cols_idx(
+							a.rb_mut().get_mut(pvt + 1.., ..),
+							j,
+							pvt,
+						);
 						unsafe {
 							z!(
 								a.rb().get(j + 1..pvt, j).const_cast(),
-								a.rb().get(pvt, j + 1..pvt).const_cast().transpose_mut(),
+								a.rb()
+									.get(pvt, j + 1..pvt)
+									.const_cast()
+									.transpose_mut(),
 							)
 						}
 						.for_each(|uz!(a, b)| (*a, *b) = (b.conj(), a.conj()));
@@ -145,7 +165,8 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 						);
 					}
 					let ajj = &ajj.recip();
-					z!(a.rb_mut().get_mut(j + 1.., j)).for_each(|uz!(x)| *x = x.mul_real(ajj));
+					z!(a.rb_mut().get_mut(j + 1.., j))
+						.for_each(|uz!(x)| *x = x.mul_real(ajj));
 				}
 				linalg::matmul::triangular::matmul(
 					unsafe { a.rb().get(k + bs.., k + bs..).const_cast() },
@@ -166,5 +187,13 @@ pub fn cholesky_in_place<'out, I: Index, T: ComplexField>(
 	for (i, p) in perm.iter().enumerate() {
 		perm_inv[p.zx()] = I::truncate(i);
 	}
-	unsafe { Ok((PivLltInfo { rank, transposition_count }, PermRef::new_unchecked(perm, perm_inv, n))) }
+	unsafe {
+		Ok((
+			PivLltInfo {
+				rank,
+				transposition_count,
+			},
+			PermRef::new_unchecked(perm, perm_inv, n),
+		))
+	}
 }

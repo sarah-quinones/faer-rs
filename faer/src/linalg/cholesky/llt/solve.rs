@@ -1,20 +1,45 @@
 use crate::assert;
 use crate::internal_prelude::*;
-pub fn solve_in_place_scratch<T: ComplexField>(dim: usize, rhs_ncols: usize, par: Par) -> StackReq {
+pub fn solve_in_place_scratch<T: ComplexField>(
+	dim: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> StackReq {
 	_ = (dim, rhs_ncols, par);
 	StackReq::EMPTY
 }
 #[track_caller]
-pub fn solve_in_place_with_conj<T: ComplexField>(L: MatRef<'_, T>, conj_lhs: Conj, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
+pub fn solve_in_place_with_conj<T: ComplexField>(
+	L: MatRef<'_, T>,
+	conj_lhs: Conj,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+) {
 	let n = L.nrows();
 	assert!(all(L.nrows() == n, L.ncols() == n, rhs.nrows() == n));
 	_ = stack;
 	let mut rhs = rhs;
-	linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(L, conj_lhs, rhs.rb_mut(), par);
-	linalg::triangular_solve::solve_upper_triangular_in_place_with_conj(L.transpose(), conj_lhs.compose(Conj::Yes), rhs.rb_mut(), par);
+	linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(
+		L,
+		conj_lhs,
+		rhs.rb_mut(),
+		par,
+	);
+	linalg::triangular_solve::solve_upper_triangular_in_place_with_conj(
+		L.transpose(),
+		conj_lhs.compose(Conj::Yes),
+		rhs.rb_mut(),
+		par,
+	);
 }
 #[track_caller]
-pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(L: MatRef<'_, C>, rhs: MatMut<'_, T>, par: Par, stack: &mut MemStack) {
+pub fn solve_in_place<T: ComplexField, C: Conjugate<Canonical = T>>(
+	L: MatRef<'_, C>,
+	rhs: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+) {
 	solve_in_place_with_conj(L.canonical(), Conj::get::<C>(), rhs, par, stack);
 }
 #[cfg(test)]
@@ -50,16 +75,18 @@ mod tests {
 				Default::default(),
 				Par::Seq,
 				MemStack::new(&mut {
-					MemBuffer::new(llt::factor::cholesky_in_place_scratch::<c64>(
-						n,
-						Par::Seq,
-						LltParams {
-							recursion_threshold: 32,
-							block_size: 128,
-							..auto!(c64)
-						}
-						.into(),
-					))
+					MemBuffer::new(
+						llt::factor::cholesky_in_place_scratch::<c64>(
+							n,
+							Par::Seq,
+							LltParams {
+								recursion_threshold: 32,
+								block_size: 128,
+								..auto!(c64)
+							}
+							.into(),
+						),
+					)
 				}),
 				LltParams {
 					recursion_threshold: 32,
@@ -76,7 +103,13 @@ mod tests {
 					L.as_ref(),
 					X.as_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(llt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
+					MemStack::new(&mut MemBuffer::new(
+						llt::solve::solve_in_place_scratch::<c64>(
+							n,
+							k,
+							Par::Seq,
+						),
+					)),
 				);
 				assert!(& A * & X ~ B);
 			}
@@ -86,7 +119,13 @@ mod tests {
 					L.conjugate(),
 					X.as_mut(),
 					Par::Seq,
-					MemStack::new(&mut MemBuffer::new(llt::solve::solve_in_place_scratch::<c64>(n, k, Par::Seq))),
+					MemStack::new(&mut MemBuffer::new(
+						llt::solve::solve_in_place_scratch::<c64>(
+							n,
+							k,
+							Par::Seq,
+						),
+					)),
 				);
 				assert!(A.conjugate() * & X ~ B);
 			}

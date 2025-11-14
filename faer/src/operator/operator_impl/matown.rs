@@ -17,17 +17,31 @@ impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> LinOp<T> for Mat<ViewT> {
 
 	#[inline]
 	#[track_caller]
-	fn apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().apply(out, rhs, par, stack)
 	}
 
 	#[inline]
 	#[track_caller]
-	fn conj_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn conj_apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().conj_apply(out, rhs, par, stack)
 	}
 }
-impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> BiLinOp<T> for Mat<ViewT> {
+impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> BiLinOp<T>
+	for Mat<ViewT>
+{
 	#[inline]
 	fn transpose_apply_scratch(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		self.rb().transpose_apply_scratch(rhs_ncols, par)
@@ -35,15 +49,33 @@ impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> BiLinOp<T> for Mat<ViewT>
 
 	#[inline]
 	#[track_caller]
-	fn transpose_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn transpose_apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().transpose_apply(out, rhs, par, stack)
 	}
 
 	#[inline]
 	#[track_caller]
-	fn adjoint_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn adjoint_apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().adjoint_apply(out, rhs, par, stack)
 	}
 }
-impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> Precond<T> for Mat<ViewT> {}
-impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> BiPrecond<T> for Mat<ViewT> {}
+impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> Precond<T>
+	for Mat<ViewT>
+{
+}
+impl<T: ComplexField, ViewT: Conjugate<Canonical = T>> BiPrecond<T>
+	for Mat<ViewT>
+{
+}

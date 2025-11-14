@@ -180,7 +180,12 @@ where
 	}
 }
 #[inline(never)]
-pub(super) fn insertion_sort_shift_left<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize, offset: usize, is_less: &mut F) {
+pub(super) fn insertion_sort_shift_left<P: Ptr, F: FnMut(P, P) -> bool>(
+	v: P,
+	v_len: usize,
+	offset: usize,
+	is_less: &mut F,
+) {
 	let len = v_len;
 	core::assert!(offset != 0 && offset <= len);
 	for i in offset..len {
@@ -190,7 +195,12 @@ pub(super) fn insertion_sort_shift_left<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_
 	}
 }
 #[inline(never)]
-fn insertion_sort_shift_right<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize, offset: usize, is_less: &mut F) {
+fn insertion_sort_shift_right<P: Ptr, F: FnMut(P, P) -> bool>(
+	v: P,
+	v_len: usize,
+	offset: usize,
+	is_less: &mut F,
+) {
 	let len = v_len;
 	core::assert!(offset != 0 && offset <= len && len >= 2);
 	for i in (0..offset).rev() {
@@ -200,7 +210,11 @@ fn insertion_sort_shift_right<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize
 	}
 }
 #[cold]
-unsafe fn partial_insertion_sort<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize, is_less: &mut F) -> bool {
+unsafe fn partial_insertion_sort<P: Ptr, F: FnMut(P, P) -> bool>(
+	v: P,
+	v_len: usize,
+	is_less: &mut F,
+) -> bool {
 	const MAX_STEPS: usize = 5;
 	const SHORTEST_SHIFTING: usize = 50;
 	let len = v_len;
@@ -226,7 +240,11 @@ unsafe fn partial_insertion_sort<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: us
 	false
 }
 #[cold]
-pub unsafe fn heapsort<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize, mut is_less: F) {
+pub unsafe fn heapsort<P: Ptr, F: FnMut(P, P) -> bool>(
+	v: P,
+	v_len: usize,
+	mut is_less: F,
+) {
 	let mut sift_down = |v: P, v_len: usize, mut node| {
 		loop {
 			let mut child = 2 * node + 1;
@@ -251,7 +269,12 @@ pub unsafe fn heapsort<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize, mut i
 		sift_down(v, i, 0);
 	}
 }
-unsafe fn partition_in_blocks<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize, pivot: P, is_less: &mut F) -> usize {
+unsafe fn partition_in_blocks<P: Ptr, F: FnMut(P, P) -> bool>(
+	v: P,
+	v_len: usize,
+	pivot: P,
+	is_less: &mut F,
+) -> usize {
 	const BLOCK: usize = 128;
 	let mut l = v;
 	let mut block_l = BLOCK;
@@ -322,7 +345,8 @@ unsafe fn partition_in_blocks<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize
 			}
 			unsafe {
 				let tmp = P::read(left!());
-				let tmp_ptr = P::get_ptr(&tmp as *const P::Item as *mut P::Item);
+				let tmp_ptr =
+					P::get_ptr(&tmp as *const P::Item as *mut P::Item);
 				P::copy_nonoverlapping(right!(), left!(), 1);
 				for _ in 1..count {
 					start_l = start_l.add(1);
@@ -369,7 +393,12 @@ unsafe fn partition_in_blocks<P: Ptr, F: FnMut(P, P) -> bool>(v: P, v_len: usize
 		width(v, l)
 	}
 }
-pub(super) unsafe fn partition<P: Ptr, F>(v: P, v_len: usize, pivot: usize, is_less: &mut F) -> (usize, bool)
+pub(super) unsafe fn partition<P: Ptr, F>(
+	v: P,
+	v_len: usize,
+	pivot: usize,
+	is_less: &mut F,
+) -> (usize, bool)
 where
 	F: FnMut(P, P) -> bool,
 {
@@ -380,7 +409,10 @@ where
 		let v_len = v_len - 1;
 		let tmp = core::mem::ManuallyDrop::new(unsafe { P::read(pivot) });
 		let tmp = P::get_ptr((&*tmp) as *const P::Item as *mut P::Item);
-		let _pivot_guard = InsertionHole { src: tmp, dest: pivot };
+		let _pivot_guard = InsertionHole {
+			src: tmp,
+			dest: pivot,
+		};
 		let pivot = tmp;
 		let mut l = 0;
 		let mut r = v_len;
@@ -392,12 +424,20 @@ where
 				r -= 1;
 			}
 		}
-		(l + partition_in_blocks(v.add(l), r - l, pivot, is_less), l >= r)
+		(
+			l + partition_in_blocks(v.add(l), r - l, pivot, is_less),
+			l >= r,
+		)
 	};
 	v.swap_idx(0, mid);
 	(mid, was_partitioned)
 }
-pub(super) unsafe fn partition_equal<P: Ptr, F>(v: P, v_len: usize, pivot: usize, is_less: &mut F) -> usize
+pub(super) unsafe fn partition_equal<P: Ptr, F>(
+	v: P,
+	v_len: usize,
+	pivot: usize,
+	is_less: &mut F,
+) -> usize
 where
 	F: FnMut(P, P) -> bool,
 {
@@ -407,7 +447,10 @@ where
 	let v_len = v_len - 1;
 	let tmp = core::mem::ManuallyDrop::new(unsafe { P::read(pivot) });
 	let tmp = P::get_ptr((&*tmp) as *const P::Item as *mut P::Item);
-	let _pivot_guard = InsertionHole { src: tmp, dest: pivot };
+	let _pivot_guard = InsertionHole {
+		src: tmp,
+		dest: pivot,
+	};
 	let pivot = tmp;
 	let len = v_len;
 	if len == 0 {
@@ -469,7 +512,11 @@ pub(super) unsafe fn break_patterns<P: Ptr>(v: P, v_len: usize) {
 		}
 	}
 }
-pub(super) unsafe fn choose_pivot<P: Ptr, F>(v: P, v_len: usize, is_less: &mut F) -> (usize, bool)
+pub(super) unsafe fn choose_pivot<P: Ptr, F>(
+	v: P,
+	v_len: usize,
+	is_less: &mut F,
+) -> (usize, bool)
 where
 	F: FnMut(P, P) -> bool,
 {
@@ -510,7 +557,8 @@ where
 		(len - 1 - b, true)
 	}
 }
-/// sorts `v` using pattern-defeating quicksort, which is *O*(*n* \* log(*n*)) worst-case
+/// sorts `v` using pattern-defeating quicksort, which is *O*(*n* \* log(*n*))
+/// worst-case
 pub unsafe fn quicksort<P: Ptr, F>(v: P, v_len: usize, mut is_less: F)
 where
 	F: FnMut(P, P) -> bool,
@@ -521,7 +569,13 @@ where
 	let limit = usize::BITS - v_len.leading_zeros();
 	recurse(v, v_len, &mut is_less, None, limit);
 }
-unsafe fn recurse<P: Ptr, F: FnMut(P, P) -> bool>(mut v: P, mut v_len: usize, is_less: &mut F, mut pred: Option<P>, mut limit: u32) {
+unsafe fn recurse<P: Ptr, F: FnMut(P, P) -> bool>(
+	mut v: P,
+	mut v_len: usize,
+	is_less: &mut F,
+	mut pred: Option<P>,
+	mut limit: u32,
+) {
 	const MAX_INSERTION: usize = 20;
 	let mut was_balanced = true;
 	let mut was_partitioned = true;
@@ -577,7 +631,11 @@ unsafe fn recurse<P: Ptr, F: FnMut(P, P) -> bool>(mut v: P, mut v_len: usize, is
 		}
 	}
 }
-pub unsafe fn sort_unstable_by<P: Ptr>(ptr: P, len: usize, compare: impl FnMut(P, P) -> core::cmp::Ordering) {
+pub unsafe fn sort_unstable_by<P: Ptr>(
+	ptr: P,
+	len: usize,
+	compare: impl FnMut(P, P) -> core::cmp::Ordering,
+) {
 	let mut compare = compare;
 	quicksort(
 		ptr,
@@ -586,10 +644,17 @@ pub unsafe fn sort_unstable_by<P: Ptr>(ptr: P, len: usize, compare: impl FnMut(P
 		|a, b| compare(a, b) == core::cmp::Ordering::Less,
 	);
 }
-pub unsafe fn sort_indices<I: crate::Index, T>(indices: &mut [I], values: &mut [T]) {
+pub unsafe fn sort_indices<I: crate::Index, T>(
+	indices: &mut [I],
+	values: &mut [T],
+) {
 	let len = indices.len();
 	debug_assert!(values.len() == len);
-	sort_unstable_by((indices.as_mut_ptr(), values.as_mut_ptr()), len, |(i, _), (j, _)| (*i).cmp(&*j));
+	sort_unstable_by(
+		(indices.as_mut_ptr(), values.as_mut_ptr()),
+		len,
+		|(i, _), (j, _)| (*i).cmp(&*j),
+	);
 }
 #[cfg(test)]
 mod tests {
@@ -603,21 +668,27 @@ mod tests {
 		let mut a = [3, 2, 2, 4, 1];
 		let mut b = [1.0, 2.0, 3.0, 4.0, 5.0];
 		let len = a.len();
-		unsafe { quicksort((a.as_mut_ptr(), b.as_mut_ptr()), len, |p, q| *p.0 < *q.0) };
+		unsafe {
+			quicksort((a.as_mut_ptr(), b.as_mut_ptr()), len, |p, q| *p.0 < *q.0)
+		};
 		assert!(a == [1, 2, 2, 3, 4]);
 		assert!(b == [5.0, 2.0, 3.0, 1.0, 4.0]);
 	}
 	#[test]
 	fn test_quicksort_big() {
 		let rng = &mut StdRng::seed_from_u64(0);
-		let a = &mut *(0..1000).map(|_| rng.random::<u32>()).collect::<Vec<_>>();
-		let b = &mut *(0..1000).map(|_| rng.random::<f64>()).collect::<Vec<_>>();
+		let a =
+			&mut *(0..1000).map(|_| rng.random::<u32>()).collect::<Vec<_>>();
+		let b =
+			&mut *(0..1000).map(|_| rng.random::<f64>()).collect::<Vec<_>>();
 		let a_orig = &*a.to_vec();
 		let b_orig = &*b.to_vec();
 		let mut perm = (0..1000).collect::<Vec<_>>();
 		perm.sort_unstable_by_key(|&i| a[i]);
 		let len = a.len();
-		unsafe { quicksort((a.as_mut_ptr(), b.as_mut_ptr()), len, |p, q| *p.0 < *q.0) };
+		unsafe {
+			quicksort((a.as_mut_ptr(), b.as_mut_ptr()), len, |p, q| *p.0 < *q.0)
+		};
 		for i in 0..1000 {
 			assert!(a_orig[perm[i]] == a[i]);
 			assert!(b_orig[perm[i]] == b[i]);

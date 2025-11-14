@@ -16,8 +16,8 @@ use reborrow::*;
 const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
 const PAR_THRESHOLD_MNK: usize = 4096;
 pub(crate) mod internal;
-/// triangular matrix multiplication module, where some of the operands are treated as triangular
-/// matrices
+/// triangular matrix multiplication module, where some of the operands are
+/// treated as triangular matrices
 pub mod triangular;
 mod matmul_shared {
 	use super::*;
@@ -67,7 +67,9 @@ mod matmul_vertical {
 		alpha: &'a T,
 		beta: Accum,
 	}
-	impl<const MR_DIV_N: usize, const NR: usize, T: ComplexField> pulp::WithSimd for Ukr<'_, MR_DIV_N, NR, T> {
+	impl<const MR_DIV_N: usize, const NR: usize, T: ComplexField> pulp::WithSimd
+		for Ukr<'_, MR_DIV_N, NR, T>
+	{
 		type Output = ();
 
 		#[inline(always)]
@@ -93,13 +95,21 @@ mod matmul_vertical {
 			let mut local_acc = [[simd.zero(); MR_DIV_N]; NR];
 			if conj_lhs == conj_rhs {
 				for depth in K.indices() {
-					let mut a_uninit = [MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
-					for (dst, src) in core::iter::zip(&mut a_uninit, body.clone()) {
+					let mut a_uninit =
+						[MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
+					for (dst, src) in
+						core::iter::zip(&mut a_uninit, body.clone())
+					{
 						*dst = MaybeUninit::new(simd.read(a.col(depth), src));
 					}
-					a_uninit[MR_DIV_N - 1] = MaybeUninit::new(simd.read(a.col(depth), tail));
-					let a: [T::SimdVec<S>; MR_DIV_N] =
-						unsafe { crate::hacks::transmute::<[MaybeUninit<T::SimdVec<S>>; MR_DIV_N], [T::SimdVec<S>; MR_DIV_N]>(a_uninit) };
+					a_uninit[MR_DIV_N - 1] =
+						MaybeUninit::new(simd.read(a.col(depth), tail));
+					let a: [T::SimdVec<S>; MR_DIV_N] = unsafe {
+						crate::hacks::transmute::<
+							[MaybeUninit<T::SimdVec<S>>; MR_DIV_N],
+							[T::SimdVec<S>; MR_DIV_N],
+						>(a_uninit)
+					};
 					for j in N.indices() {
 						let b = simd.splat(&b[(depth, j)]);
 						for i in 0..MR_DIV_N {
@@ -110,13 +120,21 @@ mod matmul_vertical {
 				}
 			} else {
 				for depth in K.indices() {
-					let mut a_uninit: [_; MR_DIV_N] = [MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
-					for (dst, src) in core::iter::zip(&mut a_uninit, body.clone()) {
+					let mut a_uninit: [_; MR_DIV_N] =
+						[MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
+					for (dst, src) in
+						core::iter::zip(&mut a_uninit, body.clone())
+					{
 						*dst = MaybeUninit::new(simd.read(a.col(depth), src));
 					}
-					a_uninit[MR_DIV_N - 1] = MaybeUninit::new(simd.read(a.col(depth), tail));
-					let a: [T::SimdVec<S>; MR_DIV_N] =
-						unsafe { crate::hacks::transmute::<[MaybeUninit<T::SimdVec<S>>; MR_DIV_N], [T::SimdVec<S>; MR_DIV_N]>(a_uninit) };
+					a_uninit[MR_DIV_N - 1] =
+						MaybeUninit::new(simd.read(a.col(depth), tail));
+					let a: [T::SimdVec<S>; MR_DIV_N] = unsafe {
+						crate::hacks::transmute::<
+							[MaybeUninit<T::SimdVec<S>>; MR_DIV_N],
+							[T::SimdVec<S>; MR_DIV_N],
+						>(a_uninit)
+					};
 					for j in N.indices() {
 						let b = simd.splat(&b[(depth, j)]);
 						for i in 0..MR_DIV_N {
@@ -136,8 +154,10 @@ mod matmul_vertical {
 			let alpha = simd.splat(alpha);
 			match beta {
 				Accum::Add => {
-					for (result, j) in core::iter::zip(&local_acc, N.indices()) {
-						for (result, i) in core::iter::zip(result, body.clone()) {
+					for (result, j) in core::iter::zip(&local_acc, N.indices())
+					{
+						for (result, i) in core::iter::zip(result, body.clone())
+						{
 							let mut val = simd.read(dst.rb().col(j), i);
 							val = simd.mul_add(alpha, *result, val);
 							simd.write(dst.rb_mut().col_mut(j), i, val);
@@ -150,8 +170,10 @@ mod matmul_vertical {
 					}
 				},
 				Accum::Replace => {
-					for (result, j) in core::iter::zip(&local_acc, N.indices()) {
-						for (result, i) in core::iter::zip(result, body.clone()) {
+					for (result, j) in core::iter::zip(&local_acc, N.indices())
+					{
+						for (result, i) in core::iter::zip(result, body.clone())
+						{
 							let val = simd.mul(alpha, *result);
 							simd.write(dst.rb_mut().col_mut(j), i, val);
 						}
@@ -198,9 +220,19 @@ mod matmul_vertical {
 					let ukr_i = nrows.div_ceil(lane_count);
 					let ncols = Ord::min(n_chunk - col_inner, nr);
 					let ukr_j = ncols;
-					let dst = unsafe { dst.rb().const_cast() }.submatrix_mut(row, col_outer + col_inner, nrows, ncols);
+					let dst = unsafe { dst.rb().const_cast() }.submatrix_mut(
+						row,
+						col_outer + col_inner,
+						nrows,
+						ncols,
+					);
 					let a = lhs.submatrix(row, depth, nrows, k_chunk);
-					let b = rhs.submatrix(depth, col_outer + col_inner, k_chunk, ncols);
+					let b = rhs.submatrix(
+						depth,
+						col_outer + col_inner,
+						k_chunk,
+						ncols,
+					);
 					macro_rules! call {
 						($M:expr, $N:expr) => {
 							arch.dispatch(Ukr::<'_, $M, $N, T> {
@@ -249,18 +281,25 @@ mod matmul_vertical {
 						let nthreads = nthreads.get();
 						use rayon::prelude::*;
 						let job_idx = core::sync::atomic::AtomicUsize::new(0);
-						spindle::for_each(nthreads, (0..nthreads).into_par_iter(), |_| {
-							loop {
-								let job_idx = job_idx.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-								if job_idx < job_count {
-									let col_inner = nr * (job_idx % d);
-									let row = mr * (job_idx / d);
-									job(row, col_inner);
-								} else {
-									return;
+						spindle::for_each(
+							nthreads,
+							(0..nthreads).into_par_iter(),
+							|_| {
+								loop {
+									let job_idx = job_idx.fetch_add(
+										1,
+										core::sync::atomic::Ordering::Relaxed,
+									);
+									if job_idx < job_count {
+										let col_inner = nr * (job_idx % d);
+										let row = mr * (job_idx / d);
+										job(row, col_inner);
+									} else {
+										return;
+									}
 								}
-							}
-						});
+							},
+						);
 					},
 				}
 				beta = Accum::Add;
@@ -282,7 +321,9 @@ mod matmul_horizontal {
 		alpha: &'a T,
 		beta: Accum,
 	}
-	impl<const MR: usize, const NR: usize, T: ComplexField> pulp::WithSimd for Ukr<'_, MR, NR, T> {
+	impl<const MR: usize, const NR: usize, T: ComplexField> pulp::WithSimd
+		for Ukr<'_, MR, NR, T>
+	{
 		type Output = ();
 
 		#[inline(always)]
@@ -327,7 +368,8 @@ mod matmul_horizontal {
 						);
 						for i in 0..MR {
 							for j in 0..NR {
-								local_acc[j][i] = simd.mul_add(b[j], a[i], local_acc[j][i]);
+								local_acc[j][i] =
+									simd.mul_add(b[j], a[i], local_acc[j][i]);
 							}
 						}
 					}};
@@ -352,7 +394,11 @@ mod matmul_horizontal {
 						);
 						for i in 0..MR {
 							for j in 0..NR {
-								local_acc[j][i] = simd.conj_mul_add(b[j], a[i], local_acc[j][i]);
+								local_acc[j][i] = simd.conj_mul_add(
+									b[j],
+									a[i],
+									local_acc[j][i],
+								);
 							}
 						}
 					}};
@@ -433,9 +479,19 @@ mod matmul_horizontal {
 					let ukr_i = nrows;
 					let ncols = Ord::min(n_chunk - col_inner, nr);
 					let ukr_j = ncols;
-					let dst = unsafe { dst.rb().const_cast() }.submatrix_mut(row, col_outer + col_inner, nrows, ncols);
+					let dst = unsafe { dst.rb().const_cast() }.submatrix_mut(
+						row,
+						col_outer + col_inner,
+						nrows,
+						ncols,
+					);
 					let a = lhs.submatrix(row, depth, nrows, k_chunk);
-					let b = rhs.submatrix(depth, col_outer + col_inner, k_chunk, ncols);
+					let b = rhs.submatrix(
+						depth,
+						col_outer + col_inner,
+						k_chunk,
+						ncols,
+					);
 					macro_rules! call {
 						($M:expr, $N:expr) => {
 							arch.dispatch(Ukr::<'_, $M, $N, T> {
@@ -484,18 +540,25 @@ mod matmul_horizontal {
 						let nthreads = nthreads.get();
 						use rayon::prelude::*;
 						let job_idx = core::sync::atomic::AtomicUsize::new(0);
-						spindle::for_each(nthreads, (0..nthreads).into_par_iter(), |_| {
-							loop {
-								let job_idx = job_idx.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-								if job_idx < job_count {
-									let col_inner = nr * (job_idx % d);
-									let row = mr * (job_idx / d);
-									job(row, col_inner);
-								} else {
-									return;
+						spindle::for_each(
+							nthreads,
+							(0..nthreads).into_par_iter(),
+							|_| {
+								loop {
+									let job_idx = job_idx.fetch_add(
+										1,
+										core::sync::atomic::Ordering::Relaxed,
+									);
+									if job_idx < job_count {
+										let col_inner = nr * (job_idx % d);
+										let row = mr * (job_idx / d);
+										job(row, col_inner);
+									} else {
+										return;
+									}
 								}
-							}
-						});
+							},
+						);
 					},
 				}
 				beta = Accum::Add;
@@ -510,13 +573,29 @@ pub mod dot {
 	use super::*;
 	use faer_traits::SimdArch;
 	/// returns `lhs * rhs`, implicitly conjugating the operands if needed
-	pub fn inner_prod<K: Shape, T: ComplexField>(lhs: RowRef<T, K>, conj_lhs: Conj, rhs: ColRef<T, K>, conj_rhs: Conj) -> T {
-		pub fn imp<'K, T: ComplexField>(lhs: RowRef<T, Dim<'K>>, conj_lhs: Conj, rhs: ColRef<T, Dim<'K>>, conj_rhs: Conj) -> T {
-			if try_const! {
-				T::SIMD_CAPABILITIES.is_simd()
-			} {
-				if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
-					inner_prod_slice::<T>(lhs.ncols(), lhs.transpose(), conj_lhs, rhs, conj_rhs)
+	pub fn inner_prod<K: Shape, T: ComplexField>(
+		lhs: RowRef<T, K>,
+		conj_lhs: Conj,
+		rhs: ColRef<T, K>,
+		conj_rhs: Conj,
+	) -> T {
+		pub fn imp<'K, T: ComplexField>(
+			lhs: RowRef<T, Dim<'K>>,
+			conj_lhs: Conj,
+			rhs: ColRef<T, Dim<'K>>,
+			conj_rhs: Conj,
+		) -> T {
+			if const { T::SIMD_CAPABILITIES.is_simd() } {
+				if let (Some(lhs), Some(rhs)) =
+					(lhs.try_as_row_major(), rhs.try_as_col_major())
+				{
+					inner_prod_slice::<T>(
+						lhs.ncols(),
+						lhs.transpose(),
+						conj_lhs,
+						rhs,
+						conj_rhs,
+					)
 				} else {
 					inner_prod_schoolbook(lhs, conj_lhs, rhs, conj_rhs)
 				}
@@ -676,9 +755,7 @@ pub mod dot {
 	) -> T {
 		let mut acc = zero();
 		for k in lhs.ncols().indices() {
-			if try_const! {
-				T::IS_REAL
-			} {
+			if const { T::IS_REAL } {
 				acc = &lhs[k] * &rhs[k] + acc;
 			} else {
 				match (conj_lhs, conj_rhs) {
@@ -714,7 +791,7 @@ mod matvec_rowmajor {
 		alpha: &T,
 		par: Par,
 	) {
-		core::assert!(try_const! { T::SIMD_CAPABILITIES.is_simd() });
+		core::assert!(const { T::SIMD_CAPABILITIES.is_simd() });
 		let size = *lhs.nrows() * *lhs.ncols();
 		let par = if size < 256 * 256usize { Par::Seq } else { par };
 		match par {
@@ -751,9 +828,17 @@ mod matvec_rowmajor {
 							let lhs = lhs.row(i);
 							let rhs = rhs;
 							let mut tmp = if conj_lhs == conj_rhs {
-								dot::inner_prod_no_conj_simd::<T, S>(simd, lhs.transpose(), rhs)
+								dot::inner_prod_no_conj_simd::<T, S>(
+									simd,
+									lhs.transpose(),
+									rhs,
+								)
 							} else {
-								dot::inner_prod_conj_lhs_simd::<T, S>(simd, lhs.transpose(), rhs)
+								dot::inner_prod_conj_lhs_simd::<T, S>(
+									simd,
+									lhs.transpose(),
+									rhs,
+								)
 							};
 							if conj_rhs == Conj::Yes {
 								tmp = tmp.conj();
@@ -786,13 +871,23 @@ mod matvec_rowmajor {
 				use rayon::prelude::*;
 				spindle::for_each(
 					nthreads,
-					dst.par_partition_mut(nthreads).zip_eq(lhs.par_row_partition(nthreads)),
+					dst.par_partition_mut(nthreads)
+						.zip_eq(lhs.par_row_partition(nthreads)),
 					|(dst, lhs)| {
 						make_guard!(M);
 						let nrows = dst.nrows().bind(M);
 						let dst = dst.as_row_shape_mut(nrows);
 						let lhs = lhs.as_row_shape(nrows);
-						matvec(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
+						matvec(
+							dst,
+							beta,
+							lhs,
+							conj_lhs,
+							rhs,
+							conj_rhs,
+							alpha,
+							Par::Seq,
+						);
 					},
 				)
 			},
@@ -816,7 +911,7 @@ mod matvec_colmajor {
 		alpha: &T,
 		par: Par,
 	) {
-		core::assert!(try_const! { T::SIMD_CAPABILITIES.is_simd() });
+		core::assert!(const { T::SIMD_CAPABILITIES.is_simd() });
 		let size = *lhs.nrows() * *lhs.ncols();
 		let par = if size < 256 * 256usize { Par::Seq } else { par };
 		match par {
@@ -868,40 +963,68 @@ mod matvec_colmajor {
 							let mut dst = dst.rb_mut();
 							let lhs = lhs.col(j);
 							let rhs = &rhs[j];
-							let rhs = if conj_rhs == Conj::Yes { rhs.conj() } else { rhs.copy() };
+							let rhs = if conj_rhs == Conj::Yes {
+								rhs.conj()
+							} else {
+								rhs.copy()
+							};
 							let rhs = rhs * alpha;
 							let vrhs = simd.splat(&rhs);
 							if conj_lhs == Conj::Yes {
 								if let Some(i) = head {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
-									simd.write(dst.rb_mut(), i, simd.conj_mul_add(x, vrhs, y));
+									simd.write(
+										dst.rb_mut(),
+										i,
+										simd.conj_mul_add(x, vrhs, y),
+									);
 								}
 								for i in body.clone() {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
-									simd.write(dst.rb_mut(), i, simd.conj_mul_add(x, vrhs, y));
+									simd.write(
+										dst.rb_mut(),
+										i,
+										simd.conj_mul_add(x, vrhs, y),
+									);
 								}
 								if let Some(i) = tail {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
-									simd.write(dst.rb_mut(), i, simd.conj_mul_add(x, vrhs, y));
+									simd.write(
+										dst.rb_mut(),
+										i,
+										simd.conj_mul_add(x, vrhs, y),
+									);
 								}
 							} else {
 								if let Some(i) = head {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
-									simd.write(dst.rb_mut(), i, simd.mul_add(x, vrhs, y));
+									simd.write(
+										dst.rb_mut(),
+										i,
+										simd.mul_add(x, vrhs, y),
+									);
 								}
 								for i in body.clone() {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
-									simd.write(dst.rb_mut(), i, simd.mul_add(x, vrhs, y));
+									simd.write(
+										dst.rb_mut(),
+										i,
+										simd.mul_add(x, vrhs, y),
+									);
 								}
 								if let Some(i) = tail {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
-									simd.write(dst.rb_mut(), i, simd.mul_add(x, vrhs, y));
+									simd.write(
+										dst.rb_mut(),
+										i,
+										simd.mul_add(x, vrhs, y),
+									);
 								}
 							}
 						}
@@ -925,10 +1048,14 @@ mod matvec_colmajor {
 			Par::Rayon(nthreads) => {
 				use rayon::prelude::*;
 				let nthreads = nthreads.get();
-				let mut mem = MemBuffer::new(temp_mat_scratch::<T>(dst.nrows().unbound(), nthreads));
+				let mut mem = MemBuffer::new(temp_mat_scratch::<T>(
+					dst.nrows().unbound(),
+					nthreads,
+				));
 				let stack = MemStack::new(&mut mem);
 				alloca!('stack: {
-					let tmp = unsafe { mat![uninit::<T>, dst.nrows(), nthreads] };
+					let tmp =
+						unsafe { mat![uninit::<T>, dst.nrows(), nthreads] };
 				});
 				let mut tmp = tmp.try_as_col_major_mut().unwrap();
 				let mut dst = dst;
@@ -946,7 +1073,16 @@ mod matvec_colmajor {
 						let K = lhs.ncols().bind(K);
 						let lhs = lhs.as_col_shape(K);
 						let rhs = rhs.as_row_shape(K);
-						matvec(dst, Accum::Replace, lhs, conj_lhs, rhs, conj_rhs, alpha, Par::Seq);
+						matvec(
+							dst,
+							Accum::Replace,
+							lhs,
+							conj_lhs,
+							rhs,
+							conj_rhs,
+							alpha,
+							Par::Seq,
+						);
 					},
 				);
 				matvec(
@@ -960,7 +1096,8 @@ mod matvec_colmajor {
 					Par::Seq,
 				);
 				for j in 0..nthreads {
-					zip!(dst.rb_mut(), tmp.rb().col(j)).for_each(|unzip!(dst, src)| *dst = &*dst + &*src)
+					zip!(dst.rb_mut(), tmp.rb().col(j))
+						.for_each(|unzip!(dst, src)| *dst = &*dst + &*src)
 				}
 			},
 		}
@@ -1014,31 +1151,46 @@ mod rank_update {
 							Accum::Add => {
 								if let Some(i) = head {
 									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.conj_mul_add(simd.read(lhs, i), rhs, acc);
+									acc = simd.conj_mul_add(
+										simd.read(lhs, i),
+										rhs,
+										acc,
+									);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 								for i in body.clone() {
 									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.conj_mul_add(simd.read(lhs, i), rhs, acc);
+									acc = simd.conj_mul_add(
+										simd.read(lhs, i),
+										rhs,
+										acc,
+									);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 								if let Some(i) = tail {
 									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.conj_mul_add(simd.read(lhs, i), rhs, acc);
+									acc = simd.conj_mul_add(
+										simd.read(lhs, i),
+										rhs,
+										acc,
+									);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 							},
 							Accum::Replace => {
 								if let Some(i) = head {
-									let acc = simd.conj_mul(simd.read(lhs, i), rhs);
+									let acc =
+										simd.conj_mul(simd.read(lhs, i), rhs);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 								for i in body.clone() {
-									let acc = simd.conj_mul(simd.read(lhs, i), rhs);
+									let acc =
+										simd.conj_mul(simd.read(lhs, i), rhs);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 								if let Some(i) = tail {
-									let acc = simd.conj_mul(simd.read(lhs, i), rhs);
+									let acc =
+										simd.conj_mul(simd.read(lhs, i), rhs);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 							},
@@ -1048,17 +1200,29 @@ mod rank_update {
 							Accum::Add => {
 								if let Some(i) = head {
 									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.mul_add(simd.read(lhs, i), rhs, acc);
+									acc = simd.mul_add(
+										simd.read(lhs, i),
+										rhs,
+										acc,
+									);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 								for i in body.clone() {
 									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.mul_add(simd.read(lhs, i), rhs, acc);
+									acc = simd.mul_add(
+										simd.read(lhs, i),
+										rhs,
+										acc,
+									);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 								if let Some(i) = tail {
 									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.mul_add(simd.read(lhs, i), rhs, acc);
+									acc = simd.mul_add(
+										simd.read(lhs, i),
+										rhs,
+										acc,
+									);
 									simd.write(dst.rb_mut(), i, acc);
 								}
 							},
@@ -1115,10 +1279,19 @@ mod rank_update {
 				use rayon::prelude::*;
 				spindle::for_each(
 					nthreads,
-					dst.par_col_partition_mut(nthreads).zip(rhs.par_partition(nthreads)),
+					dst.par_col_partition_mut(nthreads)
+						.zip(rhs.par_partition(nthreads)),
 					|(dst, rhs)| {
 						with_dim!(N, dst.ncols());
-						rank_update_imp(dst.as_col_shape_mut(N), beta, lhs, conj_lhs, rhs.as_col_shape(N), conj_rhs, alpha);
+						rank_update_imp(
+							dst.as_col_shape_mut(N),
+							beta,
+							lhs,
+							conj_lhs,
+							rhs.as_col_shape(N),
+							conj_rhs,
+							alpha,
+						);
 					},
 				);
 			},
@@ -1150,9 +1323,7 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	}
 	let mut lhs = lhs;
 	let mut rhs = rhs;
-	if try_const! {
-		T::SIMD_CAPABILITIES.is_simd()
-	} {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		if dst.row_stride() < 0 {
 			dst = dst.reverse_rows_mut();
 			lhs = lhs.reverse_rows();
@@ -1167,12 +1338,34 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 		}
 		if dst.ncols().unbound() == 1 {
 			let first = dst.ncols().check(0);
-			if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
-				matvec_colmajor::matvec(dst.col_mut(first), beta, lhs, conj_lhs, rhs.col(first), conj_rhs, alpha, par);
+			if let (Some(dst), Some(lhs)) =
+				(dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
+			{
+				matvec_colmajor::matvec(
+					dst.col_mut(first),
+					beta,
+					lhs,
+					conj_lhs,
+					rhs.col(first),
+					conj_rhs,
+					alpha,
+					par,
+				);
 				return;
 			}
-			if let (Some(rhs), Some(lhs)) = (rhs.try_as_col_major(), lhs.try_as_row_major()) {
-				matvec_rowmajor::matvec(dst.col_mut(first), beta, lhs, conj_lhs, rhs.col(first), conj_rhs, alpha, par);
+			if let (Some(rhs), Some(lhs)) =
+				(rhs.try_as_col_major(), lhs.try_as_row_major())
+			{
+				matvec_rowmajor::matvec(
+					dst.col_mut(first),
+					beta,
+					lhs,
+					conj_lhs,
+					rhs.col(first),
+					conj_rhs,
+					alpha,
+					par,
+				);
 				return;
 			}
 		}
@@ -1181,37 +1374,85 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			let (rhs, lhs) = (lhs.transpose(), rhs.transpose());
 			let (conj_rhs, conj_lhs) = (conj_lhs, conj_rhs);
 			let first = dst.ncols().check(0);
-			if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
-				matvec_colmajor::matvec(dst.col_mut(first), beta, lhs, conj_lhs, rhs.col(first), conj_rhs, alpha, par);
+			if let (Some(dst), Some(lhs)) =
+				(dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
+			{
+				matvec_colmajor::matvec(
+					dst.col_mut(first),
+					beta,
+					lhs,
+					conj_lhs,
+					rhs.col(first),
+					conj_rhs,
+					alpha,
+					par,
+				);
 				return;
 			}
-			if let (Some(rhs), Some(lhs)) = (rhs.try_as_col_major(), lhs.try_as_row_major()) {
-				matvec_rowmajor::matvec(dst.col_mut(first), beta, lhs, conj_lhs, rhs.col(first), conj_rhs, alpha, par);
+			if let (Some(rhs), Some(lhs)) =
+				(rhs.try_as_col_major(), lhs.try_as_row_major())
+			{
+				matvec_rowmajor::matvec(
+					dst.col_mut(first),
+					beta,
+					lhs,
+					conj_lhs,
+					rhs.col(first),
+					conj_rhs,
+					alpha,
+					par,
+				);
 				return;
 			}
 		}
 		if *K == 1 {
 			let z = K.idx(0);
-			if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
-				rank_update::rank_update(dst, beta, lhs.col(z), conj_lhs, rhs.row(z), conj_rhs, alpha, par);
+			if let (Some(dst), Some(lhs)) =
+				(dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
+			{
+				rank_update::rank_update(
+					dst,
+					beta,
+					lhs.col(z),
+					conj_lhs,
+					rhs.row(z),
+					conj_rhs,
+					alpha,
+					par,
+				);
 				return;
 			}
-			if let (Some(dst), Some(rhs)) = (dst.rb_mut().try_as_row_major_mut(), rhs.try_as_row_major()) {
+			if let (Some(dst), Some(rhs)) =
+				(dst.rb_mut().try_as_row_major_mut(), rhs.try_as_row_major())
+			{
 				let dst = dst.transpose_mut();
 				let rhs = rhs.row(z).transpose();
 				let lhs = lhs.col(z).transpose();
-				rank_update::rank_update(dst, beta, rhs, conj_rhs, lhs, conj_lhs, alpha, par);
+				rank_update::rank_update(
+					dst, beta, rhs, conj_rhs, lhs, conj_lhs, alpha, par,
+				);
 				return;
 			}
 		}
 		macro_rules! gemm_call {
 			($kind:ident, $ty:ty, $nanogemm:ident) => {
 				unsafe {
-					let dst = core::mem::transmute_copy::<MatMut<'_, T, Dim<'M>, Dim<'N>>, MatMut<'_, $ty, Dim<'M>, Dim<'N>>>(&dst);
-					let lhs = core::mem::transmute_copy::<MatRef<'_, T, Dim<'M>, Dim<'K>>, MatRef<'_, $ty, Dim<'M>, Dim<'K>>>(&lhs);
-					let rhs = core::mem::transmute_copy::<MatRef<'_, T, Dim<'K>, Dim<'N>>, MatRef<'_, $ty, Dim<'K>, Dim<'N>>>(&rhs);
+					let dst = core::mem::transmute_copy::<
+						MatMut<'_, T, Dim<'M>, Dim<'N>>,
+						MatMut<'_, $ty, Dim<'M>, Dim<'N>>,
+					>(&dst);
+					let lhs = core::mem::transmute_copy::<
+						MatRef<'_, T, Dim<'M>, Dim<'K>>,
+						MatRef<'_, $ty, Dim<'M>, Dim<'K>>,
+					>(&lhs);
+					let rhs = core::mem::transmute_copy::<
+						MatRef<'_, T, Dim<'K>, Dim<'N>>,
+						MatRef<'_, $ty, Dim<'K>, Dim<'N>>,
+					>(&rhs);
 					let alpha = *core::mem::transmute_copy::<&T, &$ty>(&alpha);
-					if (*M).saturating_mul(*N).saturating_mul(*K) <= NANO_GEMM_THRESHOLD {
+					if (*M).saturating_mul(*N).saturating_mul(*K)
+						<= NANO_GEMM_THRESHOLD
+					{
 						nano_gemm::planless::$nanogemm(
 							*M,
 							*N,
@@ -1238,9 +1479,15 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 						#[cfg(all(target_arch = "x86_64", feature = "std"))]
 						{
 							use private_gemm_x86::*;
-							let feat = if std::arch::is_x86_feature_detected!("avx512f") {
+							let feat = if std::arch::is_x86_feature_detected!(
+								"avx512f"
+							) {
 								Some(InstrSet::Avx512)
-							} else if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+							} else if std::arch::is_x86_feature_detected!(
+								"avx2"
+							) && std::arch::is_x86_feature_detected!(
+								"fma"
+							) {
 								Some(InstrSet::Avx256)
 							} else {
 								None
@@ -1260,7 +1507,9 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 									core::ptr::null(),
 									DstKind::Full,
 									match beta {
-										$crate::Accum::Replace => Accum::Replace,
+										$crate::Accum::Replace => {
+											Accum::Replace
+										},
 										$crate::Accum::Add => Accum::Add,
 									},
 									lhs.as_ptr() as *const (),
@@ -1274,7 +1523,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 									rhs.col_stride(),
 									conj_rhs == Conj::Yes,
 									&raw const alpha as *const (),
-									if *M * *N * *K >= const { PAR_THRESHOLD_MNK * size_of::<T>() } {
+									if *M * *N * *K
+										>= const {
+											PAR_THRESHOLD_MNK * size_of::<T>()
+										} {
 										par.degree()
 									} else {
 										1
@@ -1309,7 +1561,9 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 								match par {
 									Par::Seq => gemm::Parallelism::None,
 									#[cfg(feature = "rayon")]
-									Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
+									Par::Rayon(nthreads) => {
+										gemm::Parallelism::Rayon(nthreads.get())
+									},
 								},
 							);
 							return;
@@ -1318,32 +1572,35 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 				};
 			};
 		}
-		if try_const! {
-			T::IS_NATIVE_F64
-		} {
+		if const { T::IS_NATIVE_F64 } {
 			gemm_call!(F64, f64, execute_f64);
 		}
-		if try_const! {
-			T::IS_NATIVE_C64
-		} {
+		if const { T::IS_NATIVE_C64 } {
 			gemm_call!(C64, num_complex::Complex<f64>, execute_c64);
 		}
-		if try_const! {
-			T::IS_NATIVE_F32
-		} {
+		if const { T::IS_NATIVE_F32 } {
 			gemm_call!(F32, f32, execute_f32);
 		}
-		if try_const! {
-			T::IS_NATIVE_C32
-		} {
+		if const { T::IS_NATIVE_C32 } {
 			gemm_call!(C32, num_complex::Complex<f32>, execute_c32);
 		}
-		if const { !(T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32) } {
-			if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
-				matmul_vertical::matmul_simd(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, par);
+		if const {
+			!(T::IS_NATIVE_F64
+				|| T::IS_NATIVE_F32
+				|| T::IS_NATIVE_C64
+				|| T::IS_NATIVE_C32)
+		} {
+			if let (Some(dst), Some(lhs)) =
+				(dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
+			{
+				matmul_vertical::matmul_simd(
+					dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, par,
+				);
 				return;
 			}
-			if let (Some(dst), Some(rhs)) = (dst.rb_mut().try_as_row_major_mut(), rhs.try_as_row_major()) {
+			if let (Some(dst), Some(rhs)) =
+				(dst.rb_mut().try_as_row_major_mut(), rhs.try_as_row_major())
+			{
 				matmul_vertical::matmul_simd(
 					dst.transpose_mut(),
 					beta,
@@ -1356,8 +1613,12 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 				);
 				return;
 			}
-			if let (Some(lhs), Some(rhs)) = (lhs.try_as_row_major(), rhs.try_as_col_major()) {
-				matmul_horizontal::matmul_simd(dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, par);
+			if let (Some(lhs), Some(rhs)) =
+				(lhs.try_as_row_major(), rhs.try_as_col_major())
+			{
+				matmul_horizontal::matmul_simd(
+					dst, beta, lhs, conj_lhs, rhs, conj_rhs, alpha, par,
+				);
 				return;
 			}
 		}
@@ -1367,7 +1628,12 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 			for j in dst.ncols().indices() {
 				for i in dst.nrows().indices() {
 					let dst = &mut dst[(i, j)];
-					let mut acc = dot::inner_prod_schoolbook(lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
+					let mut acc = dot::inner_prod_schoolbook(
+						lhs.row(i),
+						conj_lhs,
+						rhs.col(j),
+						conj_rhs,
+					);
 					acc = alpha * acc;
 					if let Accum::Add = beta {
 						acc = &*dst + acc;
@@ -1397,7 +1663,12 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 					let j = dst.ncols().check(ij / m);
 					let mut dst = unsafe { dst.const_cast() };
 					let dst = &mut dst[(i, j)];
-					let mut acc = dot::inner_prod_schoolbook(lhs.row(i), conj_lhs, rhs.col(j), conj_rhs);
+					let mut acc = dot::inner_prod_schoolbook(
+						lhs.row(i),
+						conj_lhs,
+						rhs.col(j),
+						conj_rhs,
+					);
 					acc = alpha * acc;
 					if let Accum::Add = beta {
 						acc = &*dst + acc;
@@ -1409,20 +1680,33 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	}
 }
 #[track_caller]
-fn precondition<M: Shape, N: Shape, K: Shape>(dst_nrows: M, dst_ncols: N, lhs_nrows: M, lhs_ncols: K, rhs_nrows: K, rhs_ncols: N) {
-	assert!(all(dst_nrows == lhs_nrows, dst_ncols == rhs_ncols, lhs_ncols == rhs_nrows,));
+fn precondition<M: Shape, N: Shape, K: Shape>(
+	dst_nrows: M,
+	dst_ncols: N,
+	lhs_nrows: M,
+	lhs_ncols: K,
+	rhs_nrows: K,
+	rhs_ncols: N,
+) {
+	assert!(all(
+		dst_nrows == lhs_nrows,
+		dst_ncols == rhs_ncols,
+		lhs_ncols == rhs_nrows,
+	));
 }
-/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` and stores the result in `acc`
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` and stores
+/// the result in `acc`
 ///
 /// performs the operation:
-/// - `acc = alpha * lhs * rhs` if `beta` is `Accum::Replace` (in this case, the preexisting
+/// - `acc = alpha * lhs * rhs` if `beta` is `Accum::Replace` (in this case, the
+///   preexisting
 /// values in `acc` are not read)
 /// - `acc = acc + alpha * lhs * rhs` if `beta` is `Accum::Add`
 ///
 /// # panics
 ///
-/// panics if the matrix dimensions are not compatible for matrix multiplication.
-/// i.e.
+/// panics if the matrix dimensions are not compatible for matrix
+/// multiplication. i.e.
 ///  - `acc.nrows() == lhs.nrows()`
 ///  - `acc.ncols() == rhs.ncols()`
 ///  - `lhs.ncols() == rhs.nrows()`
@@ -1446,11 +1730,19 @@ fn precondition<M: Shape, N: Shape, K: Shape>(dst_nrows: M, dst_ncols: N, lhs_nr
 /// 	],
 /// ];
 /// matmul(&mut acc, Accum::Replace, &lhs, &rhs, 2.5, Par::Seq);
-/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// zip!(&acc, &target)
+/// 	.for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
-pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape>(
+pub fn matmul<
+	T: ComplexField,
+	LhsT: Conjugate<Canonical = T>,
+	RhsT: Conjugate<Canonical = T>,
+	M: Shape,
+	N: Shape,
+	K: Shape,
+>(
 	dst: impl AsMatMut<T = T, Rows = M, Cols = N>,
 	beta: Accum,
 	lhs: impl AsMatRef<T = LhsT, Rows = M, Cols = K>,
@@ -1462,7 +1754,14 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 	let dst = dst.as_mat_mut();
 	let lhs = lhs.as_mat_ref();
 	let rhs = rhs.as_mat_ref();
-	precondition(dst.nrows(), dst.ncols(), lhs.nrows(), lhs.ncols(), rhs.nrows(), rhs.ncols());
+	precondition(
+		dst.nrows(),
+		dst.ncols(),
+		lhs.nrows(),
+		lhs.ncols(),
+		rhs.nrows(),
+		rhs.ncols(),
+	);
 	make_guard!(M);
 	make_guard!(N);
 	make_guard!(K);
@@ -1473,29 +1772,26 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 		dst.as_dyn_stride_mut().as_shape_mut(M, N),
 		beta,
 		lhs.as_dyn_stride().canonical().as_shape(M, K),
-		try_const! {
-			Conj::get::< LhsT > ()
-		},
+		const { Conj::get::<LhsT>() },
 		rhs.as_dyn_stride().canonical().as_shape(K, N),
-		try_const! {
-			Conj::get::< RhsT > ()
-		},
+		const { Conj::get::<RhsT>() },
 		&alpha,
 		par,
 	);
 }
-/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly conjugating the
-/// operands if needed) and stores the result in `acc`
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly
+/// conjugating the operands if needed) and stores the result in `acc`
 ///
 /// performs the operation:
-/// - `acc = alpha * lhs * rhs` if `beta` is `Accum::Replace` (in this case, the preexisting
+/// - `acc = alpha * lhs * rhs` if `beta` is `Accum::Replace` (in this case, the
+///   preexisting
 /// values in `acc` are not read)
 /// - `acc = acc + alpha * lhs * rhs` if `beta` is `Accum::Add`
 ///
 /// # panics
 ///
-/// panics if the matrix dimensions are not compatible for matrix multiplication.
-/// i.e.
+/// panics if the matrix dimensions are not compatible for matrix
+/// multiplication. i.e.
 ///  - `acc.nrows() == lhs.nrows()`
 ///  - `acc.ncols() == rhs.ncols()`
 ///  - `lhs.ncols() == rhs.nrows()`
@@ -1528,7 +1824,8 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 /// 	2.5,
 /// 	Par::Seq,
 /// );
-/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// zip!(&acc, &target)
+/// 	.for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
@@ -1546,7 +1843,14 @@ pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
 	let dst = dst.as_mat_mut();
 	let lhs = lhs.as_mat_ref();
 	let rhs = rhs.as_mat_ref();
-	precondition(dst.nrows(), dst.ncols(), lhs.nrows(), lhs.ncols(), rhs.nrows(), rhs.ncols());
+	precondition(
+		dst.nrows(),
+		dst.ncols(),
+		lhs.nrows(),
+		lhs.ncols(),
+		rhs.nrows(),
+		rhs.ncols(),
+	);
 	make_guard!(M);
 	make_guard!(N);
 	make_guard!(K);
@@ -1622,7 +1926,8 @@ mod tests {
 			(mid0, mid0, 1),
 			(1, 1, 1),
 		] {
-			let distribution = ComplexDistribution::new(StandardNormal, StandardNormal);
+			let distribution =
+				ComplexDistribution::new(StandardNormal, StandardNormal);
 			let a = CwiseMatDistribution {
 				nrows: m,
 				ncols: k,
@@ -1652,10 +1957,26 @@ mod tests {
 									for a_colmajor in bools {
 										for b_colmajor in bools {
 											for acc_colmajor in bools {
-												let a = if a_colmajor { a } else { a.transpose() };
-												let mut a = if a_colmajor { a } else { a.transpose() };
-												let b = if b_colmajor { b } else { b.transpose() };
-												let mut b = if b_colmajor { b } else { b.transpose() };
+												let a = if a_colmajor {
+													a
+												} else {
+													a.transpose()
+												};
+												let mut a = if a_colmajor {
+													a
+												} else {
+													a.transpose()
+												};
+												let b = if b_colmajor {
+													b
+												} else {
+													b.transpose()
+												};
+												let mut b = if b_colmajor {
+													b
+												} else {
+													b.transpose()
+												};
 												if reverse_a_rows {
 													a = a.reverse_rows();
 												}
@@ -1672,7 +1993,9 @@ mod tests {
 													for conj_b in conjs {
 														for par in par {
 															for beta in betas {
-																for alpha in alphas {
+																for alpha in
+																	alphas
+																{
 																	test_matmul_impl(
 																		reverse_acc_cols,
 																		reverse_acc_rows,
@@ -1758,8 +2081,16 @@ mod tests {
 		a: MatRef<c32>,
 		b: MatRef<c32>,
 	) {
-		let acc = if acc_colmajor { acc_init } else { acc_init.transpose_mut() };
-		let mut acc = if acc_colmajor { acc } else { acc.transpose_mut() };
+		let acc = if acc_colmajor {
+			acc_init
+		} else {
+			acc_init.transpose_mut()
+		};
+		let mut acc = if acc_colmajor {
+			acc
+		} else {
+			acc.transpose_mut()
+		};
 		if reverse_acc_rows {
 			acc = acc.reverse_rows_mut();
 		}
@@ -1767,7 +2098,15 @@ mod tests {
 			acc = acc.reverse_cols_mut();
 		}
 		let mut target = acc.rb().to_owned();
-		matmul_with_conj_fallback(target.as_mut(), a, conj_a, b, conj_b, beta, alpha);
+		matmul_with_conj_fallback(
+			target.as_mut(),
+			a,
+			conj_a,
+			b,
+			conj_b,
+			beta,
+			alpha,
+		);
 		let target = target.rb();
 		{
 			let mut acc = acc.cloned();
@@ -1841,7 +2180,12 @@ mod tests {
 			}
 		}
 	}
-	fn generate_structured_matrix(is_dst: bool, nrows: usize, ncols: usize, structure: BlockStructure) -> Mat<f64> {
+	fn generate_structured_matrix(
+		is_dst: bool,
+		nrows: usize,
+		ncols: usize,
+		structure: BlockStructure,
+	) -> Mat<f64> {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let mut mat = CwiseMatDistribution {
 			nrows,
@@ -1880,7 +2224,14 @@ mod tests {
 		}
 		mat
 	}
-	fn run_test_problem(m: usize, n: usize, k: usize, dst_structure: BlockStructure, lhs_structure: BlockStructure, rhs_structure: BlockStructure) {
+	fn run_test_problem(
+		m: usize,
+		n: usize,
+		k: usize,
+		dst_structure: BlockStructure,
+		lhs_structure: BlockStructure,
+		rhs_structure: BlockStructure,
+	) {
 		let mut dst = generate_structured_matrix(true, m, n, dst_structure);
 		let mut dst_target = dst.as_ref().to_owned();
 		let dst_orig = dst.as_ref().to_owned();
@@ -1913,42 +2264,70 @@ mod tests {
 			if dst_structure.is_dense() {
 				for j in 0..n {
 					for i in 0..m {
-						assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
+						assert!(
+							(dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10
+						);
 					}
 				}
 			} else if dst_structure.is_lower() {
 				for j in 0..n {
-					if matches!(dst_structure.diag_kind(), DiagonalKind::Generic) {
+					if matches!(
+						dst_structure.diag_kind(),
+						DiagonalKind::Generic
+					) {
 						for i in 0..j {
-							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10
+							);
 						}
 						for i in j..n {
-							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_target[(i, j)]).abs()
+									< 1e-10
+							);
 						}
 					} else {
 						for i in 0..=j {
-							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10
+							);
 						}
 						for i in j + 1..n {
-							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_target[(i, j)]).abs()
+									< 1e-10
+							);
 						}
 					}
 				}
 			} else {
 				for j in 0..n {
-					if matches!(dst_structure.diag_kind(), DiagonalKind::Generic) {
+					if matches!(
+						dst_structure.diag_kind(),
+						DiagonalKind::Generic
+					) {
 						for i in 0..=j {
-							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_target[(i, j)]).abs()
+									< 1e-10
+							);
 						}
 						for i in j + 1..n {
-							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10
+							);
 						}
 					} else {
 						for i in 0..j {
-							assert!((dst[(i, j)] - dst_target[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_target[(i, j)]).abs()
+									< 1e-10
+							);
 						}
 						for i in j..n {
-							assert!((dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10);
+							assert!(
+								(dst[(i, j)] - dst_orig[(i, j)]).abs() < 1e-10
+							);
 						}
 					}
 				}
@@ -1978,8 +2357,14 @@ mod tests {
 						let m = rand::random::<u32>() as usize % big;
 						let mut n = rand::random::<u32>() as usize % big;
 						let mut k = rand::random::<u32>() as usize % big;
-						match (!dst.is_dense(), !lhs.is_dense(), !rhs.is_dense()) {
-							(true, true, _) | (true, _, true) | (_, true, true) => {
+						match (
+							!dst.is_dense(),
+							!lhs.is_dense(),
+							!rhs.is_dense(),
+						) {
+							(true, true, _)
+							| (true, _, true)
+							| (_, true, true) => {
 								n = m;
 								k = m;
 							},

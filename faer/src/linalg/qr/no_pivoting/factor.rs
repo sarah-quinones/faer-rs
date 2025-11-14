@@ -7,7 +7,12 @@ pub struct QrInfo {
 	/// estimated rank of the matrix.
 	pub rank: usize,
 }
-fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>, row_start: usize, col_start: usize) -> usize {
+fn qr_in_place_unblocked<T: ComplexField>(
+	A: MatMut<'_, T>,
+	H: RowMut<'_, T>,
+	row_start: usize,
+	col_start: usize,
+) -> usize {
 	let mut A = A;
 	let mut H = H;
 	let (m, n) = A.shape();
@@ -16,18 +21,26 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>, ro
 	let mut row = row_start;
 	while row < Ord::min(size, m) && col < n {
 		let norm = A.rb().col(col).get(..row).norm_l2();
-		let (mut A00, A01, A10, A11) = A.rb_mut().split_at_mut(row + 1, col + 1);
+		let (mut A00, A01, A10, A11) =
+			A.rb_mut().split_at_mut(row + 1, col + 1);
 		let (mut A10l, A10r) = A10.split_at_col_mut(col);
 		let mut A10r = A10r.col_mut(0);
 		let A01 = A01.row_mut(row);
 		let A00 = &mut A00[(row, col)];
 		let (info, v) = if row == col {
-			let info = householder::make_householder_in_place(A00, A10r.rb_mut());
+			let info =
+				householder::make_householder_in_place(A00, A10r.rb_mut());
 			(info, A10r.rb())
 		} else {
-			let info = householder::make_householder_out_of_place(A00, A10l.rb_mut().col_mut(row), A10r.rb());
+			let info = householder::make_householder_out_of_place(
+				A00,
+				A10l.rb_mut().col_mut(row),
+				A10r.rb(),
+			);
 			let nrows = A10r.nrows();
-			A10r.rb_mut().get_mut(..Ord::min(nrows, col - row)).fill(zero());
+			A10r.rb_mut()
+				.get_mut(..Ord::min(nrows, col - row))
+				.fill(zero());
 			(info, A10l.rb().col(row))
 		};
 		let norm = &info.norm.hypot(norm);
@@ -37,8 +50,16 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>, ro
 		if info.norm > threshold {
 			let tau_inv = &info.tau.recip();
 			H[row] = info.tau.to_cplx();
-			for (head, tail) in core::iter::zip(A01.iter_mut(), A11.col_iter_mut()) {
-				let dot = &*head + linalg::matmul::dot::inner_prod(v.transpose(), Conj::Yes, tail.rb(), Conj::No);
+			for (head, tail) in
+				core::iter::zip(A01.iter_mut(), A11.col_iter_mut())
+			{
+				let dot = &*head
+					+ linalg::matmul::dot::inner_prod(
+						v.transpose(),
+						Conj::Yes,
+						tail.rb(),
+						Conj::No,
+					);
 				let k = &-dot.mul_real(tau_inv);
 				*head += k;
 				z!(tail, v).for_each(|uz!(dst, src)| {
@@ -51,9 +72,13 @@ fn qr_in_place_unblocked<T: ComplexField>(A: MatMut<'_, T>, H: RowMut<'_, T>, ro
 	}
 	row
 }
-/// the recommended block size to use for a $QR$ decomposition of a matrix with the given shape.
+/// the recommended block size to use for a $QR$ decomposition of a matrix with
+/// the given shape.
 #[inline]
-pub fn recommended_block_size<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
+pub fn recommended_block_size<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+) -> usize {
 	let prod = nrows * ncols;
 	let size = nrows.min(ncols);
 	(if prod > 8192 * 8192 {
@@ -113,7 +138,11 @@ fn qr_in_place_blocked<T: ComplexField>(
 	if block_size == 1 {
 		return qr_in_place_unblocked(A, H.row_mut(0), row_start, col_start);
 	}
-	let sub_block_size = if m * n < params.blocking_threshold { 1 } else { block_size / 2 };
+	let sub_block_size = if m * n < params.blocking_threshold {
+		1
+	} else {
+		block_size / 2
+	};
 	let mut A = A;
 	let mut H = H;
 	let mut col = col_start;
@@ -143,7 +172,10 @@ fn qr_in_place_blocked<T: ComplexField>(
 				while k < local {
 					let sub_block_size = Ord::min(sub_block_size, local - k);
 					if k > 0 {
-						let mut H = H.rb_mut().get_mut(offset.., ..).subcols_mut(row + k, sub_block_size);
+						let mut H = H
+							.rb_mut()
+							.get_mut(offset.., ..)
+							.subcols_mut(row + k, sub_block_size);
 						let (H0, H1) = H.rb_mut().split_at_row_mut(k);
 						let H0 = H0.rb().subrows(0, sub_block_size);
 						let H1 = H1.subrows_mut(0, sub_block_size);
@@ -152,15 +184,21 @@ fn qr_in_place_blocked<T: ComplexField>(
 					k += sub_block_size;
 				}
 				householder::upgrade_householder_factor(
-					H.rb_mut().get_mut(offset..offset + local, row..row + local),
+					H.rb_mut()
+						.get_mut(offset..offset + local, row..row + local),
 					A.rb().get(row.., row..row + local),
 					local,
 					sub_block_size,
 					par,
 				);
 				if offset > 0 {
-					use crate::linalg::matmul::triangular::{self, BlockStructure};
-					let mut H = H.rb_mut().get_mut(..offset + local, start..start + offset + local);
+					use crate::linalg::matmul::triangular::{
+						self, BlockStructure,
+					};
+					let mut H = H.rb_mut().get_mut(
+						..offset + local,
+						start..start + offset + local,
+					);
 					let A = A.rb().get(start.., start..start + offset + local);
 					let (A0, A1) = A.split_at_row(offset + local);
 					triangular::matmul(
@@ -187,7 +225,10 @@ fn qr_in_place_blocked<T: ComplexField>(
 					);
 				}
 			}
-			let (Q0, A1) = A.rb_mut().get_mut(row.., ..).split_at_col_mut(col + block_size);
+			let (Q0, A1) = A
+				.rb_mut()
+				.get_mut(row.., ..)
+				.split_at_col_mut(col + block_size);
 			let Q0 = Q0.rb().get(.., row..row + local);
 			let H = H.rb().get(offset..offset + local, row..row + local);
 			if A1.ncols() > 0 {
@@ -201,9 +242,18 @@ fn qr_in_place_blocked<T: ComplexField>(
 	row
 }
 #[track_caller]
-pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, par: Par, stack: &mut MemStack, params: Spec<QrParams, T>) -> QrInfo {
+pub fn qr_in_place<T: ComplexField>(
+	A: MatMut<'_, T>,
+	Q_coeff: MatMut<'_, T>,
+	par: Par,
+	stack: &mut MemStack,
+	params: Spec<QrParams, T>,
+) -> QrInfo {
 	let block_size = Q_coeff.nrows();
-	assert!(all(block_size > 0, Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),));
+	assert!(all(
+		block_size > 0,
+		Q_coeff.ncols() == Ord::min(A.nrows(), A.ncols()),
+	));
 	#[cfg(feature = "perf-warn")]
 	if A.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(QR_WARN) {
 		if A.col_stride().unsigned_abs() == 1 {
@@ -219,7 +269,8 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 		}
 	}
 	let mut Q_coeff = Q_coeff;
-	let rank = qr_in_place_blocked(A, Q_coeff.rb_mut(), 0, 0, par, stack, params);
+	let rank =
+		qr_in_place_blocked(A, Q_coeff.rb_mut(), 0, 0, par, stack, params);
 	Q_coeff.rb_mut().get_mut(.., rank..).fill(zero());
 	let mut col = rank / block_size * block_size;
 	let n = Q_coeff.ncols();
@@ -238,7 +289,13 @@ pub fn qr_in_place<T: ComplexField>(A: MatMut<'_, T>, Q_coeff: MatMut<'_, T>, pa
 /// computes the layout of required workspace for performing a qr
 /// decomposition with no pivoting
 #[inline]
-pub fn qr_in_place_scratch<T: ComplexField>(nrows: usize, ncols: usize, block_size: usize, par: Par, params: Spec<QrParams, T>) -> StackReq {
+pub fn qr_in_place_scratch<T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	block_size: usize,
+	par: Par,
+	params: Spec<QrParams, T>,
+) -> StackReq {
 	let _ = par;
 	let _ = nrows;
 	let _ = &params;
@@ -266,13 +323,19 @@ mod tests {
 					let A0 = CwiseMatDistribution {
 						nrows: n,
 						ncols: rank,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A1 = CwiseMatDistribution {
 						nrows: rank,
 						ncols: n,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A = &A0 * &A1;
@@ -286,7 +349,15 @@ mod tests {
 						QR.as_mut(),
 						H.as_mat_mut(),
 						Par::Seq,
-						MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(n, n, 1, Par::Seq, params))),
+						MemStack::new(&mut MemBuffer::new(
+							qr_in_place_scratch::<c64>(
+								n,
+								n,
+								1,
+								Par::Seq,
+								params,
+							),
+						)),
 						params,
 					);
 					assert!(computed_rank.rank == rank);
@@ -322,13 +393,19 @@ mod tests {
 					let A0 = CwiseMatDistribution {
 						nrows: n,
 						ncols: rank,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A1 = CwiseMatDistribution {
 						nrows: rank,
 						ncols: n,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A = &A0 * &A1;
@@ -339,7 +416,15 @@ mod tests {
 						QR.as_mut(),
 						H.as_mut(),
 						par,
-						MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(n, n, bs, par, default()))),
+						MemStack::new(&mut MemBuffer::new(
+							qr_in_place_scratch::<c64>(
+								n,
+								n,
+								bs,
+								par,
+								default(),
+							),
+						)),
 						default(),
 					);
 					assert!(computed_rank.rank == rank);
@@ -377,13 +462,19 @@ mod tests {
 					let A0 = CwiseMatDistribution {
 						nrows: m,
 						ncols: rank,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A1 = CwiseMatDistribution {
 						nrows: rank,
 						ncols: n,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A = &A0 * &A1;
@@ -394,7 +485,15 @@ mod tests {
 						QR.as_mut(),
 						H.as_mut(),
 						par,
-						MemStack::new(&mut MemBuffer::new(qr_in_place_scratch::<c64>(m, n, bs, par, default()))),
+						MemStack::new(&mut MemBuffer::new(
+							qr_in_place_scratch::<c64>(
+								m,
+								n,
+								bs,
+								par,
+								default(),
+							),
+						)),
 						default(),
 					);
 					assert!(computed_rank.rank == rank);

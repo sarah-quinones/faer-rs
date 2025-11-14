@@ -3,14 +3,22 @@ pub(crate) mod complex_schur;
 pub(crate) mod real_schur;
 #[derive(Clone, Copy, Debug)]
 pub struct SchurParams {
-	/// function that returns the number of shifts to use for a given matrix size
-	pub recommended_shift_count: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
-	/// function that returns the deflation window to use for a given matrix size
-	pub recommended_deflation_window: extern "C" fn(matrix_dimension: usize, active_block_dimension: usize) -> usize,
+	/// function that returns the number of shifts to use for a given matrix
+	/// size
+	pub recommended_shift_count: extern "C" fn(
+		matrix_dimension: usize,
+		active_block_dimension: usize,
+	) -> usize,
+	/// function that returns the deflation window to use for a given matrix
+	/// size
+	pub recommended_deflation_window: extern "C" fn(
+		matrix_dimension: usize,
+		active_block_dimension: usize,
+	) -> usize,
 	/// threshold to switch between blocked and unblocked code
 	pub blocking_threshold: usize,
-	/// threshold of percent of aggressive-early-deflation window that must converge to skip a
-	/// sweep
+	/// threshold of percent of aggressive-early-deflation window that must
+	/// converge to skip a sweep
 	pub nibble_threshold: usize,
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
@@ -26,7 +34,14 @@ impl<T: ComplexField> Auto<T> for SchurParams {
 		}
 	}
 }
-pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool, want_z: bool, parallelism: Par, params: SchurParams) -> StackReq {
+pub fn multishift_qr_scratch<T: ComplexField>(
+	n: usize,
+	nh: usize,
+	want_t: bool,
+	want_z: bool,
+	parallelism: Par,
+	params: SchurParams,
+) -> StackReq {
 	let nsr = (params.recommended_shift_count)(n, nh);
 	let _ = want_t;
 	let _ = want_z;
@@ -41,7 +56,10 @@ pub fn multishift_qr_scratch<T: ComplexField>(n: usize, nh: usize, want_t: bool,
 		temp_mat_scratch::<T>(3, nsr),
 	])
 }
-extern "C" fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
+extern "C" fn default_recommended_shift_count(
+	dim: usize,
+	_active_block_dim: usize,
+) -> usize {
 	let n = dim;
 	if n < 30 {
 		2
@@ -59,7 +77,10 @@ extern "C" fn default_recommended_shift_count(dim: usize, _active_block_dim: usi
 		256
 	}
 }
-extern "C" fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) -> usize {
+extern "C" fn default_recommended_deflation_window(
+	dim: usize,
+	_active_block_dim: usize,
+) -> usize {
 	let n = dim;
 	if n < 30 {
 		2

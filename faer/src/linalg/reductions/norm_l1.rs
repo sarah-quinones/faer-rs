@@ -3,7 +3,9 @@ use crate::internal_prelude::*;
 use faer_traits::RealReg;
 use num_complex::Complex;
 #[inline(always)]
-fn norm_l1_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) -> T::Real {
+fn norm_l1_simd<'N, T: ComplexField>(
+	data: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+) -> T::Real {
 	struct Impl<'a, 'N, T: ComplexField> {
 		data: ColRef<'a, T, Dim<'N>, ContiguousFwd>,
 	}
@@ -50,7 +52,9 @@ fn norm_l1_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
 	}
 	dispatch!(Impl { data }, Impl, T)
 }
-fn norm_l1_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, ContiguousFwd>) -> T::Real {
+fn norm_l1_simd_pairwise_rows<T: ComplexField>(
+	data: ColRef<'_, T, usize, ContiguousFwd>,
+) -> T::Real {
 	if data.nrows() <= LINEAR_IMPL_THRESHOLD {
 		with_dim!(N, data.nrows());
 		norm_l1_simd(data.as_row_shape(N))
@@ -62,7 +66,9 @@ fn norm_l1_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, Contig
 		acc0 + acc1
 	}
 }
-fn norm_l1_simd_pairwise_cols<T: ComplexField>(data: MatRef<'_, T, usize, usize, ContiguousFwd>) -> T::Real {
+fn norm_l1_simd_pairwise_cols<T: ComplexField>(
+	data: MatRef<'_, T, usize, usize, ContiguousFwd>,
+) -> T::Real {
 	if data.ncols() == 1 {
 		norm_l1_simd_pairwise_rows(data.col(0))
 	} else {
@@ -85,14 +91,16 @@ pub fn norm_l1<T: ComplexField>(mut mat: MatRef<'_, T>) -> T::Real {
 	} else {
 		let m = mat.nrows();
 		let n = mat.ncols();
-		if try_const! {
-			T::SIMD_CAPABILITIES.is_simd()
-		} {
+		if const { T::SIMD_CAPABILITIES.is_simd() } {
 			if let Some(mat) = mat.try_as_col_major() {
-				if try_const! {
-					T::IS_NATIVE_C32
-				} {
-					let mat: MatRef<'_, Complex<f32>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
+				if const { T::IS_NATIVE_C32 } {
+					let mat: MatRef<
+						'_,
+						Complex<f32>,
+						usize,
+						usize,
+						ContiguousFwd,
+					> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
 						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(
 							mat.as_ptr() as *const f32,
@@ -102,11 +110,19 @@ pub fn norm_l1<T: ComplexField>(mut mat: MatRef<'_, T>) -> T::Real {
 							mat.col_stride().wrapping_mul(2),
 						)
 					};
-					return unsafe { crate::hacks::coerce(norm_l1_simd_pairwise_cols::<f32>(mat)) };
-				} else if try_const! {
-					T::IS_NATIVE_C64
-				} {
-					let mat: MatRef<'_, Complex<f64>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
+					return unsafe {
+						crate::hacks::coerce(norm_l1_simd_pairwise_cols::<f32>(
+							mat,
+						))
+					};
+				} else if const { T::IS_NATIVE_C64 } {
+					let mat: MatRef<
+						'_,
+						Complex<f64>,
+						usize,
+						usize,
+						ContiguousFwd,
+					> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
 						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(
 							mat.as_ptr() as *const f64,
@@ -116,7 +132,11 @@ pub fn norm_l1<T: ComplexField>(mut mat: MatRef<'_, T>) -> T::Real {
 							mat.col_stride().wrapping_mul(2),
 						)
 					};
-					return unsafe { crate::hacks::coerce(norm_l1_simd_pairwise_cols::<f64>(mat)) };
+					return unsafe {
+						crate::hacks::coerce(norm_l1_simd_pairwise_cols::<f64>(
+							mat,
+						))
+					};
 				} else {
 					return norm_l1_simd_pairwise_cols(mat);
 				}
@@ -137,7 +157,8 @@ mod tests {
 	use crate::{Col, Mat, assert, unzip, zip};
 	#[test]
 	fn test_norm_l1() {
-		let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+		let relative_err =
+			|a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
 		for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
 			for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
 				let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
@@ -148,7 +169,9 @@ mod tests {
 				if factor == 0.0 {
 					assert!(norm_l1(mat.as_ref()) == target);
 				} else {
-					assert!(relative_err(norm_l1(mat.as_ref()), target) < 1e-14);
+					assert!(
+						relative_err(norm_l1(mat.as_ref()), target) < 1e-14
+					);
 				}
 			}
 		}

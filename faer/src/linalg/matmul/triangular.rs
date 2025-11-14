@@ -13,16 +13,20 @@ pub(crate) enum DiagonalKind {
 }
 #[inline]
 fn pointer_offset<T>(ptr: *const T) -> usize {
-	if try_const! {
-		core::mem::size_of::< T > ().is_power_of_two() && core::mem::size_of::< T > () <=
-		64
+	if const {
+		core::mem::size_of::<T>().is_power_of_two()
+			&& core::mem::size_of::<T>() <= 64
 	} {
 		ptr.align_offset(64).wrapping_neg() % 16
 	} else {
 		0
 	}
 }
-fn copy_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: MatRef<'_, T, Dim<'N>, Dim<'N>>, src_diag: DiagonalKind) {
+fn copy_lower<'N, T: ComplexField>(
+	dst: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	src: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	src_diag: DiagonalKind,
+) {
 	let N = dst.nrows();
 	let mut dst = dst;
 	match src_diag {
@@ -42,9 +46,15 @@ fn copy_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: Ma
 		},
 		DiagonalKind::Generic => dst.copy_from_triangular_lower(src),
 	}
-	zip!(dst).for_each_triangular_upper(Diag::Skip, |unzip!(dst)| *dst = zero());
+	zip!(dst)
+		.for_each_triangular_upper(Diag::Skip, |unzip!(dst)| *dst = zero());
 }
-fn accum_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: MatRef<'_, T, Dim<'N>, Dim<'N>>, skip_diag: bool, beta: Accum) {
+fn accum_lower<'N, T: ComplexField>(
+	dst: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	src: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	skip_diag: bool,
+	beta: Accum,
+) {
 	let N = dst.nrows();
 	debug_assert!(N == dst.nrows());
 	debug_assert!(N == dst.ncols());
@@ -52,14 +62,24 @@ fn accum_lower<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: M
 	debug_assert!(N == src.ncols());
 	match beta {
 		Accum::Add => {
-			zip!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzip!(dst, src)| *dst += src);
+			zip!(dst, src).for_each_triangular_lower(
+				if skip_diag { Diag::Skip } else { Diag::Include },
+				|unzip!(dst, src)| *dst += src,
+			);
 		},
 		Accum::Replace => {
-			zip!(dst, src).for_each_triangular_lower(if skip_diag { Diag::Skip } else { Diag::Include }, |unzip!(dst, src)| *dst = src.copy());
+			zip!(dst, src).for_each_triangular_lower(
+				if skip_diag { Diag::Skip } else { Diag::Include },
+				|unzip!(dst, src)| *dst = src.copy(),
+			);
 		},
 	}
 }
-fn copy_upper<'N, T: ComplexField>(dst: MatMut<'_, T, Dim<'N>, Dim<'N>>, src: MatRef<'_, T, Dim<'N>, Dim<'N>>, src_diag: DiagonalKind) {
+fn copy_upper<'N, T: ComplexField>(
+	dst: MatMut<'_, T, Dim<'N>, Dim<'N>>,
+	src: MatRef<'_, T, Dim<'N>, Dim<'N>>,
+	src_diag: DiagonalKind,
+) {
 	copy_lower(dst.transpose_mut(), src.transpose(), src_diag)
 }
 #[repr(align(64))]
@@ -101,15 +121,35 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
 	debug_assert!(N == rhs.ncols());
 	debug_assert!(M == dst.nrows());
 	debug_assert!(N == dst.ncols());
-	let join_parallelism = if n * n * m < 128usize * 128usize * 64usize { Par::Seq } else { par };
+	let join_parallelism = if n * n * m < 128usize * 128usize * 64usize {
+		Par::Seq
+	} else {
+		par
+	};
 	if n <= 16 {
 		let op = {
 			#[inline(never)]
 			|| {
-				stack_mat_16x16!(temp_rhs, N, pointer_offset(rhs.as_ptr()), rhs.row_stride(), rhs.col_stride(), T);
+				stack_mat_16x16!(
+					temp_rhs,
+					N,
+					pointer_offset(rhs.as_ptr()),
+					rhs.row_stride(),
+					rhs.col_stride(),
+					T
+				);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 				let mut dst = dst;
-				super::matmul_with_conj(dst.rb_mut(), beta, lhs, conj_lhs, temp_rhs.rb(), conj_rhs, alpha.clone(), par);
+				super::matmul_with_conj(
+					dst.rb_mut(),
+					beta,
+					lhs,
+					conj_lhs,
+					temp_rhs.rb(),
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
 			}
 		};
 		op();
@@ -117,12 +157,25 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
 		make_guard!(HEAD);
 		make_guard!(TAIL);
 		let bs = N.partition(N.checked_idx_inc(N.unbound() / 2), HEAD, TAIL);
-		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_with(bs, bs);
+		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) =
+			rhs.split_with(bs, bs);
 		let (lhs_left, lhs_right) = lhs.split_cols_with(bs);
 		let (mut dst_left, mut dst_right) = dst.split_cols_with_mut(bs);
 		{
 			join_raw(
-				|par| mat_x_lower_impl_unchecked(dst_left.rb_mut(), beta, lhs_left, rhs_top_left, rhs_diag, alpha, conj_lhs, conj_rhs, par),
+				|par| {
+					mat_x_lower_impl_unchecked(
+						dst_left.rb_mut(),
+						beta,
+						lhs_left,
+						rhs_top_left,
+						rhs_diag,
+						alpha,
+						conj_lhs,
+						conj_rhs,
+						par,
+					)
+				},
 				|par| {
 					mat_x_lower_impl_unchecked(
 						dst_right.rb_mut(),
@@ -139,7 +192,16 @@ fn mat_x_lower_impl_unchecked<'M, 'N, T: ComplexField>(
 				join_parallelism,
 			)
 		};
-		super::matmul_with_conj(dst_left, Accum::Add, lhs_right, conj_lhs, rhs_bot_left, conj_rhs, alpha.clone(), par);
+		super::matmul_with_conj(
+			dst_left,
+			Accum::Add,
+			lhs_right,
+			conj_lhs,
+			rhs_bot_left,
+			conj_rhs,
+			alpha.clone(),
+			par,
+		);
 	}
 }
 fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
@@ -167,9 +229,30 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		let op = {
 			#[inline(never)]
 			|| {
-				stack_mat_16x16!(temp_dst, N, pointer_offset(dst.as_ptr()), dst.row_stride(), dst.col_stride(), T);
-				stack_mat_16x16!(temp_lhs, N, pointer_offset(lhs.as_ptr()), lhs.row_stride(), lhs.col_stride(), T);
-				stack_mat_16x16!(temp_rhs, N, pointer_offset(rhs.as_ptr()), rhs.row_stride(), rhs.col_stride(), T);
+				stack_mat_16x16!(
+					temp_dst,
+					N,
+					pointer_offset(dst.as_ptr()),
+					dst.row_stride(),
+					dst.col_stride(),
+					T
+				);
+				stack_mat_16x16!(
+					temp_lhs,
+					N,
+					pointer_offset(lhs.as_ptr()),
+					lhs.row_stride(),
+					lhs.col_stride(),
+					T
+				);
+				stack_mat_16x16!(
+					temp_rhs,
+					N,
+					pointer_offset(rhs.as_ptr()),
+					rhs.row_stride(),
+					rhs.col_stride(),
+					T
+				);
 				copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 				super::matmul_with_conj(
@@ -190,9 +273,12 @@ fn lower_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		make_guard!(HEAD);
 		make_guard!(TAIL);
 		let bs = N.partition(N.checked_idx_inc(N.unbound() / 2), HEAD, TAIL);
-		let (dst_top_left, _, mut dst_bot_left, dst_bot_right) = dst.split_with_mut(bs, bs);
-		let (lhs_top_left, _, lhs_bot_left, lhs_bot_right) = lhs.split_with(bs, bs);
-		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_with(bs, bs);
+		let (dst_top_left, _, mut dst_bot_left, dst_bot_right) =
+			dst.split_with_mut(bs, bs);
+		let (lhs_top_left, _, lhs_bot_left, lhs_bot_right) =
+			lhs.split_with(bs, bs);
+		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) =
+			rhs.split_with(bs, bs);
 		lower_x_lower_into_lower_impl_unchecked(
 			dst_top_left,
 			beta,
@@ -267,11 +353,34 @@ fn upper_x_lower_impl_unchecked<'N, T: ComplexField>(
 		let op = {
 			#[inline(never)]
 			|| {
-				stack_mat_16x16!(temp_lhs, N, pointer_offset(lhs.as_ptr()), lhs.row_stride(), lhs.col_stride(), T);
-				stack_mat_16x16!(temp_rhs, N, pointer_offset(rhs.as_ptr()), rhs.row_stride(), rhs.col_stride(), T);
+				stack_mat_16x16!(
+					temp_lhs,
+					N,
+					pointer_offset(lhs.as_ptr()),
+					lhs.row_stride(),
+					lhs.col_stride(),
+					T
+				);
+				stack_mat_16x16!(
+					temp_rhs,
+					N,
+					pointer_offset(rhs.as_ptr()),
+					rhs.row_stride(),
+					rhs.col_stride(),
+					T
+				);
 				copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
-				super::matmul_with_conj(dst, beta, temp_lhs.rb(), conj_lhs, temp_rhs.rb(), conj_rhs, alpha.clone(), par);
+				super::matmul_with_conj(
+					dst,
+					beta,
+					temp_lhs.rb(),
+					conj_lhs,
+					temp_rhs.rb(),
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
 			}
 		};
 		op();
@@ -279,9 +388,12 @@ fn upper_x_lower_impl_unchecked<'N, T: ComplexField>(
 		make_guard!(HEAD);
 		make_guard!(TAIL);
 		let bs = N.partition(N.checked_idx_inc(N.unbound() / 2), HEAD, TAIL);
-		let (mut dst_top_left, dst_top_right, dst_bot_left, dst_bot_right) = dst.split_with_mut(bs, bs);
-		let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_with(bs, bs);
-		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_with(bs, bs);
+		let (mut dst_top_left, dst_top_right, dst_bot_left, dst_bot_right) =
+			dst.split_with_mut(bs, bs);
+		let (lhs_top_left, lhs_top_right, _, lhs_bot_right) =
+			lhs.split_with(bs, bs);
+		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) =
+			rhs.split_with(bs, bs);
 		join_raw(
 			|par| {
 				super::matmul_with_conj(
@@ -379,9 +491,30 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		let op = {
 			#[inline(never)]
 			|| {
-				stack_mat_16x16!(temp_dst, N, pointer_offset(dst.as_ptr()), dst.row_stride(), dst.col_stride(), T);
-				stack_mat_16x16!(temp_lhs, N, pointer_offset(lhs.as_ptr()), lhs.row_stride(), lhs.col_stride(), T);
-				stack_mat_16x16!(temp_rhs, N, pointer_offset(rhs.as_ptr()), rhs.row_stride(), rhs.col_stride(), T);
+				stack_mat_16x16!(
+					temp_dst,
+					N,
+					pointer_offset(dst.as_ptr()),
+					dst.row_stride(),
+					dst.col_stride(),
+					T
+				);
+				stack_mat_16x16!(
+					temp_lhs,
+					N,
+					pointer_offset(lhs.as_ptr()),
+					lhs.row_stride(),
+					lhs.col_stride(),
+					T
+				);
+				stack_mat_16x16!(
+					temp_rhs,
+					N,
+					pointer_offset(rhs.as_ptr()),
+					rhs.row_stride(),
+					rhs.col_stride(),
+					T
+				);
 				copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 				super::matmul_with_conj(
@@ -402,9 +535,12 @@ fn upper_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		make_guard!(HEAD);
 		make_guard!(TAIL);
 		let bs = N.partition(N.checked_idx_inc(N.unbound() / 2), HEAD, TAIL);
-		let (mut dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_with_mut(bs, bs);
-		let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_with(bs, bs);
-		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_with(bs, bs);
+		let (mut dst_top_left, _, dst_bot_left, dst_bot_right) =
+			dst.split_with_mut(bs, bs);
+		let (lhs_top_left, lhs_top_right, _, lhs_bot_right) =
+			lhs.split_with(bs, bs);
+		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) =
+			rhs.split_with(bs, bs);
 		join_raw(
 			|par| {
 				mat_x_mat_into_lower_impl_unchecked(
@@ -474,11 +610,18 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
 	par: Par,
 ) {
 	#[cfg(all(target_arch = "x86_64", feature = "std"))]
-	if const { T::IS_NATIVE_F64 || T::IS_NATIVE_F32 || T::IS_NATIVE_C64 || T::IS_NATIVE_C32 } {
+	if const {
+		T::IS_NATIVE_F64
+			|| T::IS_NATIVE_F32
+			|| T::IS_NATIVE_C64
+			|| T::IS_NATIVE_C32
+	} {
 		use private_gemm_x86::*;
 		let feat = if std::arch::is_x86_feature_detected!("avx512f") {
 			Some(InstrSet::Avx512)
-		} else if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+		} else if std::arch::is_x86_feature_detected!("avx2")
+			&& std::arch::is_x86_feature_detected!("fma")
+		{
 			Some(InstrSet::Avx256)
 		} else {
 			None
@@ -487,7 +630,10 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
 			if let Some(feat) = feat {
 				unsafe {
 					let (dst, lhs) = if skip_diag {
-						(dst.as_dyn_mut().get_mut(1.., ..), lhs.as_dyn().get(1.., ..))
+						(
+							dst.as_dyn_mut().get_mut(1.., ..),
+							lhs.as_dyn().get(1.., ..),
+						)
 					} else {
 						(dst.as_dyn_mut(), lhs.as_dyn())
 					};
@@ -544,13 +690,33 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
 	debug_assert!(dst.nrows() == lhs.nrows());
 	debug_assert!(dst.ncols() == rhs.ncols());
 	debug_assert!(lhs.ncols() == rhs.nrows());
-	let par = if n * n * k < 128usize * 128usize * 128usize { Par::Seq } else { par };
+	let par = if n * n * k < 128usize * 128usize * 128usize {
+		Par::Seq
+	} else {
+		par
+	};
 	if n <= 16 {
 		let op = {
 			#[inline(never)]
 			|| {
-				stack_mat_16x16!(temp_dst, N, pointer_offset(dst.as_ptr()), dst.row_stride(), dst.col_stride(), T);
-				super::matmul_with_conj(temp_dst.rb_mut(), Accum::Replace, lhs, conj_lhs, rhs, conj_rhs, alpha.clone(), par);
+				stack_mat_16x16!(
+					temp_dst,
+					N,
+					pointer_offset(dst.as_ptr()),
+					dst.row_stride(),
+					dst.col_stride(),
+					T
+				);
+				super::matmul_with_conj(
+					temp_dst.rb_mut(),
+					Accum::Replace,
+					lhs,
+					conj_lhs,
+					rhs,
+					conj_rhs,
+					alpha.clone(),
+					par,
+				);
 				accum_lower(dst, temp_dst.rb(), skip_diag, beta);
 			}
 		};
@@ -559,15 +725,51 @@ fn mat_x_mat_into_lower_impl_unchecked<'N, 'K, T: ComplexField>(
 		make_guard!(HEAD);
 		make_guard!(TAIL);
 		let bs = N.partition(N.checked_idx_inc(N.unbound() / 2), HEAD, TAIL);
-		let (dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_with_mut(bs, bs);
+		let (dst_top_left, _, dst_bot_left, dst_bot_right) =
+			dst.split_with_mut(bs, bs);
 		let (lhs_top, lhs_bot) = lhs.split_rows_with(bs);
 		let (rhs_left, rhs_right) = rhs.split_cols_with(bs);
 		join_raw(
-			|par| super::matmul_with_conj(dst_bot_left, beta, lhs_bot, conj_lhs, rhs_left, conj_rhs, alpha.clone(), par),
+			|par| {
+				super::matmul_with_conj(
+					dst_bot_left,
+					beta,
+					lhs_bot,
+					conj_lhs,
+					rhs_left,
+					conj_rhs,
+					alpha.clone(),
+					par,
+				)
+			},
 			|par| {
 				join_raw(
-					|par| mat_x_mat_into_lower_impl_unchecked(dst_top_left, beta, skip_diag, lhs_top, rhs_left, alpha, conj_lhs, conj_rhs, par),
-					|par| mat_x_mat_into_lower_impl_unchecked(dst_bot_right, beta, skip_diag, lhs_bot, rhs_right, alpha, conj_lhs, conj_rhs, par),
+					|par| {
+						mat_x_mat_into_lower_impl_unchecked(
+							dst_top_left,
+							beta,
+							skip_diag,
+							lhs_top,
+							rhs_left,
+							alpha,
+							conj_lhs,
+							conj_rhs,
+							par,
+						)
+					},
+					|par| {
+						mat_x_mat_into_lower_impl_unchecked(
+							dst_bot_right,
+							beta,
+							skip_diag,
+							lhs_bot,
+							rhs_right,
+							alpha,
+							conj_lhs,
+							conj_rhs,
+							par,
+						)
+					},
 					par,
 				)
 			},
@@ -599,8 +801,22 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		let op = {
 			#[inline(never)]
 			|| {
-				stack_mat_16x16!(temp_dst, N, pointer_offset(dst.as_ptr()), dst.row_stride(), dst.col_stride(), T);
-				stack_mat_16x16!(temp_rhs, N, pointer_offset(rhs.as_ptr()), rhs.row_stride(), rhs.col_stride(), T);
+				stack_mat_16x16!(
+					temp_dst,
+					N,
+					pointer_offset(dst.as_ptr()),
+					dst.row_stride(),
+					dst.col_stride(),
+					T
+				);
+				stack_mat_16x16!(
+					temp_rhs,
+					N,
+					pointer_offset(rhs.as_ptr()),
+					rhs.row_stride(),
+					rhs.col_stride(),
+					T
+				);
 				copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 				super::matmul_with_conj(
 					temp_dst.rb_mut(),
@@ -620,9 +836,12 @@ fn mat_x_lower_into_lower_impl_unchecked<'N, T: ComplexField>(
 		make_guard!(HEAD);
 		make_guard!(TAIL);
 		let bs = N.partition(N.checked_idx_inc(N.unbound() / 2), HEAD, TAIL);
-		let (mut dst_top_left, _, mut dst_bot_left, dst_bot_right) = dst.split_with_mut(bs, bs);
-		let (lhs_top_left, lhs_top_right, lhs_bot_left, lhs_bot_right) = lhs.split_with(bs, bs);
-		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_with(bs, bs);
+		let (mut dst_top_left, _, mut dst_bot_left, dst_bot_right) =
+			dst.split_with_mut(bs, bs);
+		let (lhs_top_left, lhs_top_right, lhs_bot_left, lhs_bot_right) =
+			lhs.split_with(bs, bs);
+		let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) =
+			rhs.split_with(bs, bs);
 		super::matmul_with_conj(
 			dst_bot_left.rb_mut(),
 			beta,
@@ -690,15 +909,15 @@ pub enum BlockStructure {
 	TriangularLower,
 	/// the lower triangular half (excluding the diagonal) is accessed.
 	StrictTriangularLower,
-	/// the lower triangular half (excluding the diagonal, which is assumed to be equal to
-	/// `1.0`) is accessed.
+	/// the lower triangular half (excluding the diagonal, which is assumed to
+	/// be equal to `1.0`) is accessed.
 	UnitTriangularLower,
 	/// the upper triangular half (including the diagonal) is accessed.
 	TriangularUpper,
 	/// the upper triangular half (excluding the diagonal) is accessed.
 	StrictTriangularUpper,
-	/// the upper triangular half (excluding the diagonal, which is assumed to be equal to
-	/// `1.0`) is accessed.
+	/// the upper triangular half (excluding the diagonal, which is assumed to
+	/// be equal to `1.0`) is accessed.
 	UnitTriangularUpper,
 }
 impl BlockStructure {
@@ -712,14 +931,20 @@ impl BlockStructure {
 	#[inline]
 	pub fn is_lower(self) -> bool {
 		use BlockStructure::*;
-		matches!(self, TriangularLower | StrictTriangularLower | UnitTriangularLower)
+		matches!(
+			self,
+			TriangularLower | StrictTriangularLower | UnitTriangularLower
+		)
 	}
 
 	/// checks if `self` is triangular upper (either inclusive or exclusive).
 	#[inline]
 	pub fn is_upper(self) -> bool {
 		use BlockStructure::*;
-		matches!(self, TriangularUpper | StrictTriangularUpper | UnitTriangularUpper)
+		matches!(
+			self,
+			TriangularUpper | StrictTriangularUpper | UnitTriangularUpper
+		)
 	}
 
 	/// returns the block structure corresponding to the transposed matrix.
@@ -741,7 +966,9 @@ impl BlockStructure {
 	pub(crate) fn diag_kind(self) -> DiagonalKind {
 		use BlockStructure::*;
 		match self {
-			Rectangular | TriangularLower | TriangularUpper => DiagonalKind::Generic,
+			Rectangular | TriangularLower | TriangularUpper => {
+				DiagonalKind::Generic
+			},
 			StrictTriangularLower | StrictTriangularUpper => DiagonalKind::Zero,
 			UnitTriangularLower | UnitTriangularUpper => DiagonalKind::Unit,
 		}
@@ -759,7 +986,11 @@ fn precondition<M: Shape, N: Shape, K: Shape>(
 	rhs_ncols: N,
 	rhs_structure: BlockStructure,
 ) {
-	assert!(all(dst_nrows == lhs_nrows, dst_ncols == rhs_ncols, lhs_ncols == rhs_nrows,));
+	assert!(all(
+		dst_nrows == lhs_nrows,
+		dst_ncols == rhs_ncols,
+		lhs_ncols == rhs_nrows,
+	));
 	let dst_nrows = dst_nrows.unbound();
 	let dst_ncols = dst_ncols.unbound();
 	let lhs_nrows = lhs_nrows.unbound();
@@ -776,34 +1007,37 @@ fn precondition<M: Shape, N: Shape, K: Shape>(
 		assert!(rhs_nrows == rhs_ncols);
 	}
 }
-/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly conjugating the
-/// operands if needed) and stores the result in `acc`
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly
+/// conjugating the operands if needed) and stores the result in `acc`
 ///
 /// performs the operation:
-/// - `acc = alpha * lhs * rhs` if `beta` is `accum::replace` (in this case, the preexisting
+/// - `acc = alpha * lhs * rhs` if `beta` is `accum::replace` (in this case, the
+///   preexisting
 /// values in `acc` are not read)
 /// - `acc = acc + alpha * lhs * rhs` if `beta` is `accum::add`
 ///
-/// the left hand side and right hand side may be interpreted as triangular depending on the
-/// given corresponding matrix structure.
+/// the left hand side and right hand side may be interpreted as triangular
+/// depending on the given corresponding matrix structure.
 ///
 /// for the destination matrix, the result is:
 /// - fully computed if the structure is rectangular,
-/// - only the triangular half (including the diagonal) is computed if the structure is
+/// - only the triangular half (including the diagonal) is computed if the
+///   structure is
 /// triangular
-/// - only the strict triangular half (excluding the diagonal) is computed if the structure is
+/// - only the strict triangular half (excluding the diagonal) is computed if
+///   the structure is
 /// strictly triangular or unit triangular
 ///
 /// # panics
 ///
-/// panics if the matrix dimensions are not compatible for matrix multiplication.
-/// i.e.
+/// panics if the matrix dimensions are not compatible for matrix
+/// multiplication. i.e.
 ///  - `acc.nrows() == lhs.nrows()`
 ///  - `acc.ncols() == rhs.ncols()`
 ///  - `lhs.ncols() == rhs.nrows()`
 ///
-/// additionally, matrices that are marked as triangular must be square, i.e., they must have
-/// the same number of rows and columns.
+/// additionally, matrices that are marked as triangular must be square, i.e.,
+/// they must have the same number of rows and columns.
 ///
 /// # example
 ///
@@ -836,7 +1070,8 @@ fn precondition<M: Shape, N: Shape, K: Shape>(
 /// 	2.5,
 /// 	Par::Seq,
 /// );
-/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// zip!(&acc, &target)
+/// 	.for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
@@ -888,34 +1123,37 @@ pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
 		par,
 	);
 }
-/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly conjugating the
-/// operands if needed) and stores the result in `acc`
+/// computes the matrix product `[beta * acc] + alpha * lhs * rhs` (implicitly
+/// conjugating the operands if needed) and stores the result in `acc`
 ///
 /// performs the operation:
-/// - `acc = alpha * lhs * rhs` if `beta` is `accum::replace` (in this case, the preexisting
+/// - `acc = alpha * lhs * rhs` if `beta` is `accum::replace` (in this case, the
+///   preexisting
 /// values in `acc` are not read)
 /// - `acc = acc + alpha * lhs * rhs` if `beta` is `accum::add`
 ///
-/// the left hand side and right hand side may be interpreted as triangular depending on the
-/// given corresponding matrix structure.
+/// the left hand side and right hand side may be interpreted as triangular
+/// depending on the given corresponding matrix structure.
 ///
 /// for the destination matrix, the result is:
 /// - fully computed if the structure is rectangular,
-/// - only the triangular half (including the diagonal) is computed if the structure is
+/// - only the triangular half (including the diagonal) is computed if the
+///   structure is
 /// triangular
-/// - only the strict triangular half (excluding the diagonal) is computed if the structure is
+/// - only the strict triangular half (excluding the diagonal) is computed if
+///   the structure is
 /// strictly triangular or unit triangular
 ///
 /// # panics
 ///
-/// panics if the matrix dimensions are not compatible for matrix multiplication.
-/// i.e.
+/// panics if the matrix dimensions are not compatible for matrix
+/// multiplication. i.e.
 ///  - `acc.nrows() == lhs.nrows()`
 ///  - `acc.ncols() == rhs.ncols()`
 ///  - `lhs.ncols() == rhs.nrows()`
 ///
-/// additionally, matrices that are marked as triangular must be square, i.e., they must have
-/// the same number of rows and columns.
+/// additionally, matrices that are marked as triangular must be square, i.e.,
+/// they must have the same number of rows and columns.
 ///
 /// # example
 ///
@@ -946,11 +1184,19 @@ pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
 /// 	2.5,
 /// 	Par::Seq,
 /// );
-/// zip!(&acc, &target).for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
+/// zip!(&acc, &target)
+/// 	.for_each(|unzip!(acc, target)| assert!((acc - target).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
-pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>, M: Shape, N: Shape, K: Shape>(
+pub fn matmul<
+	T: ComplexField,
+	LhsT: Conjugate<Canonical = T>,
+	RhsT: Conjugate<Canonical = T>,
+	M: Shape,
+	N: Shape,
+	K: Shape,
+>(
 	dst: impl AsMatMut<T = T, Rows = M, Cols = N>,
 	dst_structure: BlockStructure,
 	beta: Accum,
@@ -988,14 +1234,10 @@ pub fn matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<C
 		beta,
 		lhs.as_dyn_stride().canonical().as_shape(M, K),
 		lhs_structure,
-		try_const! {
-			Conj::get::< LhsT > ()
-		},
+		const { Conj::get::<LhsT>() },
 		rhs.as_dyn_stride().canonical().as_shape(K, N),
 		rhs_structure,
-		try_const! {
-			Conj::get::< RhsT > ()
-		},
+		const { Conj::get::<RhsT>() },
 		alpha.by_ref(),
 		par,
 	);
@@ -1033,7 +1275,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 		false
 	} else if lhs_structure.is_lower() {
 		acc = acc.reverse_rows_and_cols_mut().transpose_mut();
-		(lhs, rhs) = (rhs.reverse_rows_and_cols().transpose(), lhs.reverse_rows_and_cols().transpose());
+		(lhs, rhs) = (
+			rhs.reverse_rows_and_cols().transpose(),
+			lhs.reverse_rows_and_cols().transpose(),
+		);
 		(conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
 		(lhs_structure, rhs_structure) = (rhs_structure, lhs_structure);
 		true
@@ -1042,7 +1287,8 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 		acc = acc.transpose_mut();
 		(lhs, rhs) = (rhs.transpose(), lhs.transpose());
 		(conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
-		(lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
+		(lhs_structure, rhs_structure) =
+			(rhs_structure.transpose(), lhs_structure.transpose());
 		true
 	} else {
 		false
@@ -1055,7 +1301,10 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	let K = lhs.ncols().bind(K);
 	let clear_upper = |acc: MatMut<'_, T>, skip_diag: bool| match &beta {
 		Accum::Add => {},
-		Accum::Replace => zip!(acc).for_each_triangular_upper(if skip_diag { Diag::Skip } else { Diag::Include }, |unzip!(acc)| *acc = zero()),
+		Accum::Replace => zip!(acc).for_each_triangular_upper(
+			if skip_diag { Diag::Skip } else { Diag::Include },
+			|unzip!(acc)| *acc = zero(),
+		),
 	};
 	let skip_diag = matches!(
 		acc_structure,
@@ -1068,7 +1317,16 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 	let rhs_diag = rhs_structure.diag_kind();
 	if acc_structure.is_dense() {
 		if lhs_structure.is_dense() && rhs_structure.is_dense() {
-			super::matmul_with_conj(acc, beta, lhs, conj_lhs, rhs, conj_rhs, alpha.clone(), par);
+			super::matmul_with_conj(
+				acc,
+				beta,
+				lhs,
+				conj_lhs,
+				rhs,
+				conj_rhs,
+				alpha.clone(),
+				par,
+			);
 		} else {
 			debug_assert!(rhs_structure.is_lower());
 			if lhs_structure.is_dense() {

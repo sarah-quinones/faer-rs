@@ -38,7 +38,12 @@ impl<'a, I: Index, N: Shape> IntoConst for Ref<'a, I, N> {
 		self
 	}
 }
-impl<I: Index, N: Shape, Inner: for<'short> Reborrow<'short, Target = Ref<'short, I, N>>> generic::Perm<Inner> {
+impl<
+	I: Index,
+	N: Shape,
+	Inner: for<'short> Reborrow<'short, Target = Ref<'short, I, N>>,
+> generic::Perm<Inner>
+{
 	/// convert `self` to a permutation view
 	#[inline]
 	pub fn as_ref(&self) -> PermRef<'_, I, N> {
@@ -46,15 +51,25 @@ impl<I: Index, N: Shape, Inner: for<'short> Reborrow<'short, Target = Ref<'short
 	}
 }
 impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
-	/// returns the input permutation with the given shape after checking that it matches the
-	/// current shape
+	/// returns the input permutation with the given shape after checking that
+	/// it matches the current shape
 	#[inline]
 	pub fn as_shape<M: Shape>(self, dim: M) -> PermRef<'a, I, M> {
 		assert!(self.len().unbound() == dim.unbound());
 		PermRef {
 			0: Ref {
-				forward: unsafe { core::slice::from_raw_parts(self.forward.as_ptr() as _, dim.unbound()) },
-				inverse: unsafe { core::slice::from_raw_parts(self.inverse.as_ptr() as _, dim.unbound()) },
+				forward: unsafe {
+					core::slice::from_raw_parts(
+						self.forward.as_ptr() as _,
+						dim.unbound(),
+					)
+				},
+				inverse: unsafe {
+					core::slice::from_raw_parts(
+						self.inverse.as_ptr() as _,
+						dim.unbound(),
+					)
+				},
 			},
 		}
 	}
@@ -64,14 +79,24 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 	/// # panics
 	///
 	/// the function panics if any of the following conditions are violated:
-	/// * `forward` and `inverse` must have the same length which must be less than or equal to
-	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other
+	/// * `forward` and `inverse` must have the same length which must be less
+	///   than or equal to
+	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of
+	/// each other
 	#[inline]
 	#[track_caller]
-	pub fn new_checked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], dim: N) -> Self {
+	pub fn new_checked(
+		forward: &'a [Idx<N, I>],
+		inverse: &'a [Idx<N, I>],
+		dim: N,
+	) -> Self {
 		#[track_caller]
 		fn check<I: Index>(forward: &[I], inverse: &[I], n: usize) {
-			assert!(all(n <= I::Signed::MAX.zx(), forward.len() == n, inverse.len() == n,));
+			assert!(all(
+				n <= I::Signed::MAX.zx(),
+				forward.len() == n,
+				inverse.len() == n,
+			));
 			for (i, &p) in forward.iter().enumerate() {
 				let p = p.to_signed().zx();
 				assert!(p < n);
@@ -83,24 +108,34 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 			I::canonicalize(N::cast_idx_slice(inverse)),
 			dim.unbound(),
 		);
-		Self { 0: Ref { forward, inverse } }
+		Self {
+			0: Ref { forward, inverse },
+		}
 	}
 
-	/// creates a new permutation reference, without checking the validity of the inputs
+	/// creates a new permutation reference, without checking the validity of
+	/// the inputs
 	///
 	/// # safety
 	///
-	/// `forward` and `inverse` must have the same length which must be less than or equal to
-	/// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other
+	/// `forward` and `inverse` must have the same length which must be less
+	/// than or equal to `I::Signed::MAX`, be valid permutations, and be
+	/// inverse permutations of each other
 	#[inline]
 	#[track_caller]
-	pub unsafe fn new_unchecked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], dim: N) -> Self {
+	pub unsafe fn new_unchecked(
+		forward: &'a [Idx<N, I>],
+		inverse: &'a [Idx<N, I>],
+		dim: N,
+	) -> Self {
 		assert!(all(
 			dim.unbound() <= I::Signed::MAX.zx(),
 			forward.len() == dim.unbound(),
 			inverse.len() == dim.unbound(),
 		));
-		Self { 0: Ref { forward, inverse } }
+		Self {
+			0: Ref { forward, inverse },
+		}
 	}
 
 	/// returns the permutation as an array
@@ -138,8 +173,14 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		unsafe {
 			PermRef {
 				0: Ref {
-					forward: core::slice::from_raw_parts(self.forward.as_ptr() as _, self.forward.len()),
-					inverse: core::slice::from_raw_parts(self.inverse.as_ptr() as _, self.inverse.len()),
+					forward: core::slice::from_raw_parts(
+						self.forward.as_ptr() as _,
+						self.forward.len(),
+					),
+					inverse: core::slice::from_raw_parts(
+						self.inverse.as_ptr() as _,
+						self.inverse.len(),
+					),
 				},
 			}
 		}
@@ -152,8 +193,14 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 		unsafe {
 			PermRef {
 				0: Ref {
-					forward: core::slice::from_raw_parts(self.forward.as_ptr() as _, self.forward.len()),
-					inverse: core::slice::from_raw_parts(self.inverse.as_ptr() as _, self.inverse.len()),
+					forward: core::slice::from_raw_parts(
+						self.forward.as_ptr() as _,
+						self.forward.len(),
+					),
+					inverse: core::slice::from_raw_parts(
+						self.inverse.as_ptr() as _,
+						self.inverse.len(),
+					),
 				},
 			}
 		}
@@ -162,11 +209,18 @@ impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
 impl<'a, 'N, I: Index> PermRef<'a, I, Dim<'N>> {
 	/// returns the permutation as an array
 	#[inline]
-	pub fn bound_arrays(self) -> (&'a Array<'N, Idx<Dim<'N>, I>>, &'a Array<'N, Idx<Dim<'N>, I>>) {
+	pub fn bound_arrays(
+		self,
+	) -> (
+		&'a Array<'N, Idx<Dim<'N>, I>>,
+		&'a Array<'N, Idx<Dim<'N>, I>>,
+	) {
 		unsafe {
 			(
-				&*(self.forward as *const [Idx<Dim<'N>, I>] as *const Array<'N, Idx<Dim<'N>, I>>),
-				&*(self.inverse as *const [Idx<Dim<'N>, I>] as *const Array<'N, Idx<Dim<'N>, I>>),
+				&*(self.forward as *const [Idx<Dim<'N>, I>]
+					as *const Array<'N, Idx<Dim<'N>, I>>),
+				&*(self.inverse as *const [Idx<Dim<'N>, I>]
+					as *const Array<'N, Idx<Dim<'N>, I>>),
 			)
 		}
 	}

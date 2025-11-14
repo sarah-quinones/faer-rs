@@ -8,16 +8,43 @@ pub fn solve_lstsq_in_place_scratch<I: Index, T: ComplexField>(
 	par: Par,
 ) -> StackReq {
 	StackReq::and(
-		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(qr_nrows, qr_ncols, qr_block_size, rhs_ncols, par),
+		linalg::qr::no_pivoting::solve::solve_lstsq_in_place_scratch::<T>(
+			qr_nrows,
+			qr_ncols,
+			qr_block_size,
+			rhs_ncols,
+			par,
+		),
 		crate::perm::permute_rows_in_place_scratch::<I, T>(qr_ncols, rhs_ncols),
 	)
 }
-pub fn solve_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_block_size: usize, rhs_ncols: usize, par: Par) -> StackReq {
-	solve_lstsq_in_place_scratch::<I, T>(qr_dim, qr_dim, qr_block_size, rhs_ncols, par)
+pub fn solve_in_place_scratch<I: Index, T: ComplexField>(
+	qr_dim: usize,
+	qr_block_size: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> StackReq {
+	solve_lstsq_in_place_scratch::<I, T>(
+		qr_dim,
+		qr_dim,
+		qr_block_size,
+		rhs_ncols,
+		par,
+	)
 }
-pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(qr_dim: usize, qr_block_size: usize, rhs_ncols: usize, par: Par) -> StackReq {
+pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(
+	qr_dim: usize,
+	qr_block_size: usize,
+	rhs_ncols: usize,
+	par: Par,
+) -> StackReq {
 	StackReq::and(
-		linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(qr_dim, qr_block_size, rhs_ncols, par),
+		linalg::qr::no_pivoting::solve::solve_transpose_in_place_scratch::<T>(
+			qr_dim,
+			qr_block_size,
+			rhs_ncols,
+			par,
+		),
 		crate::perm::permute_rows_in_place_scratch::<I, T>(qr_dim, rhs_ncols),
 	)
 }
@@ -36,11 +63,27 @@ pub fn solve_lstsq_in_place_with_conj<I: Index, T: ComplexField>(
 	let n = Q_basis.ncols();
 	let size = Ord::min(m, n);
 	let mut rhs = rhs;
-	linalg::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj(Q_basis, Q_coeff, R, conj_QR, rhs.rb_mut(), par, stack);
-	crate::perm::permute_rows_in_place(rhs.get_mut(..size, ..), col_perm.inverse(), stack);
+	linalg::qr::no_pivoting::solve::solve_lstsq_in_place_with_conj(
+		Q_basis,
+		Q_coeff,
+		R,
+		conj_QR,
+		rhs.rb_mut(),
+		par,
+		stack,
+	);
+	crate::perm::permute_rows_in_place(
+		rhs.get_mut(..size, ..),
+		col_perm.inverse(),
+		stack,
+	);
 }
 #[track_caller]
-pub fn solve_lstsq_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+pub fn solve_lstsq_in_place<
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
 	R: MatRef<'_, C>,
@@ -82,10 +125,16 @@ pub fn solve_in_place_with_conj<I: Index, T: ComplexField>(
 		R.nrows() == n,
 		R.ncols() == n,
 	));
-	solve_lstsq_in_place_with_conj(Q_basis, Q_coeff, R, col_perm, conj_QR, rhs, par, stack);
+	solve_lstsq_in_place_with_conj(
+		Q_basis, Q_coeff, R, col_perm, conj_QR, rhs, par, stack,
+	);
 }
 #[track_caller]
-pub fn solve_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+pub fn solve_in_place<
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
 	R: MatRef<'_, C>,
@@ -129,10 +178,16 @@ pub fn solve_transpose_in_place_with_conj<I: Index, T: ComplexField>(
 	));
 	let mut rhs = rhs;
 	crate::perm::permute_rows_in_place(rhs.rb_mut(), col_perm, stack);
-	linalg::qr::no_pivoting::solve::solve_transpose_in_place_with_conj(Q_basis, Q_coeff, R, conj_QR, rhs, par, stack);
+	linalg::qr::no_pivoting::solve::solve_transpose_in_place_with_conj(
+		Q_basis, Q_coeff, R, conj_QR, rhs, par, stack,
+	);
 }
 #[track_caller]
-pub fn solve_transpose_in_place<I: Index, T: ComplexField, C: Conjugate<Canonical = T>>(
+pub fn solve_transpose_in_place<
+	I: Index,
+	T: ComplexField,
+	C: Conjugate<Canonical = T>,
+>(
 	Q_basis: MatRef<'_, C>,
 	Q_coeff: MatRef<'_, C>,
 	R: MatRef<'_, C>,
@@ -188,12 +243,11 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(
-				m,
-				n,
-				4,
-				Par::Seq,
-				default(),
+			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<
+				usize,
+				c64,
+			>(
+				m, n, 4, Par::Seq, default()
 			))),
 			default(),
 		);
@@ -207,13 +261,15 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(solve::solve_lstsq_in_place_scratch::<usize, c64>(
-					m,
-					n,
-					4,
-					k,
-					Par::Seq,
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					solve::solve_lstsq_in_place_scratch::<usize, c64>(
+						m,
+						n,
+						4,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			let X = X.get(..n, ..);
 			assert!(A.adjoint() * & A * & X ~ A.adjoint() * & B);
@@ -227,13 +283,15 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(solve::solve_lstsq_in_place_scratch::<usize, c64>(
-					m,
-					n,
-					4,
-					k,
-					Par::Seq,
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					solve::solve_lstsq_in_place_scratch::<usize, c64>(
+						m,
+						n,
+						4,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			let X = X.get(..n, ..);
 			assert!(A.transpose() * A.conjugate() * & X ~ A.transpose() * & B);
@@ -266,12 +324,11 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(
-				n,
-				n,
-				4,
-				Par::Seq,
-				default(),
+			MemStack::new(&mut MemBuffer::new(factor::qr_in_place_scratch::<
+				usize,
+				c64,
+			>(
+				n, n, 4, Par::Seq, default()
 			))),
 			default(),
 		);
@@ -285,7 +342,14 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(
+						n,
+						4,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!(& A * & X ~ B);
 		}
@@ -298,7 +362,14 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(solve::solve_in_place_scratch::<usize, c64>(n, 4, k, Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					solve::solve_in_place_scratch::<usize, c64>(
+						n,
+						4,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!(A.conjugate() * & X ~ B);
 		}
@@ -311,12 +382,14 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(solve::solve_transpose_in_place_scratch::<usize, c64>(
-					n,
-					4,
-					k,
-					Par::Seq,
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					solve::solve_transpose_in_place_scratch::<usize, c64>(
+						n,
+						4,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!(A.transpose() * & X ~ B);
 		}
@@ -329,12 +402,14 @@ mod tests {
 				col_perm,
 				X.as_mut(),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(solve::solve_transpose_in_place_scratch::<usize, c64>(
-					n,
-					4,
-					k,
-					Par::Seq,
-				))),
+				MemStack::new(&mut MemBuffer::new(
+					solve::solve_transpose_in_place_scratch::<usize, c64>(
+						n,
+						4,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!(A.adjoint() * & X ~ B);
 		}

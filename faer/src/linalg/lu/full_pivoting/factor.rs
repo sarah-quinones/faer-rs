@@ -61,8 +61,12 @@ fn reduce_2d<T: ComplexField, S: Simd>(
 	let best_val_splat = simd.splat_real(&best_val);
 	let is_best = (**simd).ge(best_values, best_val_splat);
 	let idx = simd.first_true_mask(is_best);
-	let best_row = bytemuck::cast_slice::<T::SimdIndex<S>, T::Index>(core::slice::from_ref(&best_row))[idx];
-	let best_col = bytemuck::cast_slice::<T::SimdIndex<S>, T::Index>(core::slice::from_ref(&best_col))[idx];
+	let best_row = bytemuck::cast_slice::<T::SimdIndex<S>, T::Index>(
+		core::slice::from_ref(&best_row),
+	)[idx];
+	let best_col = bytemuck::cast_slice::<T::SimdIndex<S>, T::Index>(
+		core::slice::from_ref(&best_col),
+	)[idx];
 	(best_row.zx(), best_col.zx(), best_val)
 }
 #[inline(always)]
@@ -72,7 +76,8 @@ fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
 	let (head, body4, body1, tail) = simd.batch_indices::<4>();
 	let iota = T::simd_iota(&simd.0);
-	let lane_count = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+	let lane_count =
+		core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 	let inc1 = simd.isplat(T::Index::truncate(lane_count));
 	let inc4 = simd.isplat(T::Index::truncate(4 * lane_count));
 	let mut best_val0 = simd.splat_real(&zero());
@@ -83,33 +88,45 @@ fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	let mut best_idx1 = simd.isplat(T::Index::truncate(0));
 	let mut best_idx2 = simd.isplat(T::Index::truncate(0));
 	let mut best_idx3 = simd.isplat(T::Index::truncate(0));
-	let mut idx0 = simd.iadd(iota, simd.isplat(T::Index::truncate(simd.offset().wrapping_neg())));
+	let mut idx0 = simd.iadd(
+		iota,
+		simd.isplat(T::Index::truncate(simd.offset().wrapping_neg())),
+	);
 	if let Some(i0) = head {
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
 		idx0 = simd.iadd(idx0, inc1);
 	}
 	let mut idx1 = simd.iadd(idx0, inc1);
 	let mut idx2 = simd.iadd(idx1, inc1);
 	let mut idx3 = simd.iadd(idx2, inc1);
 	for [i0, i1, i2, i3] in body4 {
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
-		(best_val1, best_idx1) = best_value(&simd, best_val1, best_idx1, simd.read(data, i1), idx1);
-		(best_val2, best_idx2) = best_value(&simd, best_val2, best_idx2, simd.read(data, i2), idx2);
-		(best_val3, best_idx3) = best_value(&simd, best_val3, best_idx3, simd.read(data, i3), idx3);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
+		(best_val1, best_idx1) =
+			best_value(&simd, best_val1, best_idx1, simd.read(data, i1), idx1);
+		(best_val2, best_idx2) =
+			best_value(&simd, best_val2, best_idx2, simd.read(data, i2), idx2);
+		(best_val3, best_idx3) =
+			best_value(&simd, best_val3, best_idx3, simd.read(data, i3), idx3);
 		idx0 = simd.iadd(idx0, inc4);
 		idx1 = simd.iadd(idx1, inc4);
 		idx2 = simd.iadd(idx2, inc4);
 		idx3 = simd.iadd(idx3, inc4);
 	}
 	for i0 in body1 {
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
 		idx0 = simd.iadd(idx0, inc1);
 	}
 	if let Some(i0) = tail {
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
 	}
-	(best_val0, best_idx0) = best_score(&simd, best_val0, best_idx0, best_val1, best_idx1);
-	(best_val2, best_idx2) = best_score(&simd, best_val2, best_idx2, best_val3, best_idx3);
+	(best_val0, best_idx0) =
+		best_score(&simd, best_val0, best_idx0, best_val1, best_idx1);
+	(best_val2, best_idx2) =
+		best_score(&simd, best_val2, best_idx2, best_val3, best_idx3);
 	best_score(&simd, best_val0, best_idx0, best_val2, best_idx2)
 }
 #[inline(always)]
@@ -122,7 +139,8 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	let mut data = data;
 	let (head, body4, body1, tail) = simd.batch_indices::<3>();
 	let iota = T::simd_iota(&simd.0);
-	let lane_count = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+	let lane_count =
+		core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 	let inc1 = simd.isplat(T::Index::truncate(lane_count));
 	let inc3 = simd.isplat(T::Index::truncate(3 * lane_count));
 	let mut best_val0 = simd.splat_real(&zero());
@@ -131,13 +149,17 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	let mut best_idx0 = simd.isplat(T::Index::truncate(0));
 	let mut best_idx1 = simd.isplat(T::Index::truncate(0));
 	let mut best_idx2 = simd.isplat(T::Index::truncate(0));
-	let mut idx0 = simd.iadd(iota, simd.isplat(T::Index::truncate(simd.offset().wrapping_neg())));
+	let mut idx0 = simd.iadd(
+		iota,
+		simd.isplat(T::Index::truncate(simd.offset().wrapping_neg())),
+	);
 	let rhs = simd.splat(&-rhs);
 	if let Some(i0) = head {
 		let mut x0 = simd.read(data.rb(), i0);
 		let l0 = simd.read(lhs, i0);
 		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, x0, idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, x0, idx0);
 		idx0 = simd.iadd(idx0, inc1);
 		simd.write(data.rb_mut(), i0, x0);
 	}
@@ -147,17 +169,20 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 		let mut x0 = simd.read(data.rb(), i0);
 		let l0 = simd.read(lhs, i0);
 		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, x0, idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, x0, idx0);
 		simd.write(data.rb_mut(), i0, x0);
 		let mut x1 = simd.read(data.rb(), i1);
 		let l1 = simd.read(lhs, i1);
 		x1 = simd.mul_add(l1, rhs, x1);
-		(best_val1, best_idx1) = best_value(&simd, best_val1, best_idx1, x1, idx1);
+		(best_val1, best_idx1) =
+			best_value(&simd, best_val1, best_idx1, x1, idx1);
 		simd.write(data.rb_mut(), i1, x1);
 		let mut x2 = simd.read(data.rb(), i2);
 		let l2 = simd.read(lhs, i2);
 		x2 = simd.mul_add(l2, rhs, x2);
-		(best_val2, best_idx2) = best_value(&simd, best_val2, best_idx2, x2, idx2);
+		(best_val2, best_idx2) =
+			best_value(&simd, best_val2, best_idx2, x2, idx2);
 		simd.write(data.rb_mut(), i2, x2);
 		idx0 = simd.iadd(idx0, inc3);
 		idx1 = simd.iadd(idx1, inc3);
@@ -167,7 +192,8 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 		let mut x0 = simd.read(data.rb(), i0);
 		let l0 = simd.read(lhs, i0);
 		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, x0, idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, x0, idx0);
 		idx0 = simd.iadd(idx0, inc1);
 		simd.write(data.rb_mut(), i0, x0);
 	}
@@ -175,14 +201,18 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 		let mut x0 = simd.read(data.rb(), i0);
 		let l0 = simd.read(lhs, i0);
 		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) = best_value(&simd, best_val0, best_idx0, x0, idx0);
+		(best_val0, best_idx0) =
+			best_value(&simd, best_val0, best_idx0, x0, idx0);
 		simd.write(data.rb_mut(), i0, x0);
 	}
-	(best_val0, best_idx0) = best_score(&simd, best_val0, best_idx0, best_val1, best_idx1);
+	(best_val0, best_idx0) =
+		best_score(&simd, best_val0, best_idx0, best_val1, best_idx1);
 	best_score(&simd, best_val0, best_idx0, best_val2, best_idx2)
 }
 #[inline(always)]
-fn best_in_mat_simd<T: ComplexField>(data: MatRef<'_, T, usize, usize, ContiguousFwd>) -> (usize, usize, Real<T>) {
+fn best_in_mat_simd<T: ComplexField>(
+	data: MatRef<'_, T, usize, usize, ContiguousFwd>,
+) -> (usize, usize, Real<T>) {
 	struct Impl<'a, 'M, 'N, T: ComplexField> {
 		data: MatRef<'a, T, Dim<'M>, Dim<'N>, ContiguousFwd>,
 	}
@@ -216,7 +246,13 @@ fn best_in_mat_simd<T: ComplexField>(data: MatRef<'_, T, usize, usize, Contiguou
 	}
 	with_dim!(M, data.nrows());
 	with_dim!(N, data.ncols());
-	dispatch!(Impl { data: data.as_shape(M, N) }, Impl, T)
+	dispatch!(
+		Impl {
+			data: data.as_shape(M, N)
+		},
+		Impl,
+		T
+	)
 }
 #[inline(always)]
 fn update_and_best_in_mat_simd<T: ComplexField>(
@@ -236,10 +272,16 @@ fn update_and_best_in_mat_simd<T: ComplexField>(
 
 		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-			let Self { data, lhs, rhs, align } = self;
+			let Self {
+				data,
+				lhs,
+				rhs,
+				align,
+			} = self;
 			let M = data.nrows();
 			let N = data.ncols();
-			let simd = SimdCtx::<'_, T, S>::new_align(T::simd_ctx(simd), M, align);
+			let simd =
+				SimdCtx::<'_, T, S>::new_align(T::simd_ctx(simd), M, align);
 			let mut best_row = simd.isplat(T::Index::truncate(0));
 			let mut best_col = simd.isplat(T::Index::truncate(0));
 			let mut best_val = simd.splat_real(&zero());
@@ -247,7 +289,8 @@ fn update_and_best_in_mat_simd<T: ComplexField>(
 			for j in N.indices() {
 				let data = data.rb_mut().col_mut(j);
 				let rhs = rhs[j].copy();
-				let (best_val_j, best_row_j) = update_and_best_in_col_simd(simd, data, lhs, rhs);
+				let (best_val_j, best_row_j) =
+					update_and_best_in_col_simd(simd, data, lhs, rhs);
 				(best_val, best_row, best_col) = best_score_2d(
 					&simd,
 					best_val,
@@ -274,7 +317,9 @@ fn update_and_best_in_mat_simd<T: ComplexField>(
 		T
 	)
 }
-fn best_in_matrix_fallback<T: ComplexField>(data: MatRef<'_, T>) -> (usize, usize, Real<T>) {
+fn best_in_matrix_fallback<T: ComplexField>(
+	data: MatRef<'_, T>,
+) -> (usize, usize, Real<T>) {
 	let mut max = zero();
 	let mut row = 0;
 	let mut col = 0;
@@ -291,10 +336,10 @@ fn best_in_matrix_fallback<T: ComplexField>(data: MatRef<'_, T>) -> (usize, usiz
 	}
 	(row, col, max)
 }
-fn best_in_matrix<T: ComplexField>(data: MatRef<'_, T>) -> (usize, usize, Real<T>) {
-	if try_const! {
-		T::SIMD_CAPABILITIES.is_simd()
-	} {
+fn best_in_matrix<T: ComplexField>(
+	data: MatRef<'_, T>,
+) -> (usize, usize, Real<T>) {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		if let Some(dst) = data.try_as_col_major() {
 			best_in_mat_simd(dst)
 		} else {
@@ -310,17 +355,31 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
 	rhs: RowRef<'_, T>,
 	align: usize,
 ) -> (usize, usize, Real<T>) {
-	if try_const! {
-		T::SIMD_CAPABILITIES.is_simd()
-	} {
-		if let (Some(dst), Some(lhs)) = (dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major()) {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
+		if let (Some(dst), Some(lhs)) =
+			(dst.rb_mut().try_as_col_major_mut(), lhs.try_as_col_major())
+		{
 			update_and_best_in_mat_simd(dst, lhs, rhs, align)
 		} else {
-			matmul(dst.rb_mut(), Accum::Add, lhs.as_mat(), rhs.as_mat(), -one::<T>(), Par::Seq);
+			matmul(
+				dst.rb_mut(),
+				Accum::Add,
+				lhs.as_mat(),
+				rhs.as_mat(),
+				-one::<T>(),
+				Par::Seq,
+			);
 			best_in_matrix(dst.rb())
 		}
 	} else {
-		matmul(dst.rb_mut(), Accum::Add, lhs.as_mat(), rhs.as_mat(), -one::<T>(), Par::Seq);
+		matmul(
+			dst.rb_mut(),
+			Accum::Add,
+			lhs.as_mat(),
+			rhs.as_mat(),
+			-one::<T>(),
+			Par::Seq,
+		);
 		best_in_matrix(dst.rb())
 	}
 }
@@ -343,7 +402,10 @@ fn lu_in_place_unblocked<T: ComplexField>(
 	let (mut max_row, mut max_col, mut max_score) = best_in_matrix(A.rb());
 	for k in 0..Ord::min(m, n) {
 		if max_score < min_positive() {
-			for (i, (row, col)) in core::iter::zip(&mut row_trans[k..], &mut col_trans[k..]).enumerate() {
+			for (i, (row, col)) in
+				core::iter::zip(&mut row_trans[k..], &mut col_trans[k..])
+					.enumerate()
+			{
 				*row = i + k;
 				*col = i + k;
 			}
@@ -380,13 +442,21 @@ fn lu_in_place_unblocked<T: ComplexField>(
 		let rhs = A01.row(k);
 		match par {
 			Par::Seq => {
-				(max_row, max_col, max_score) = rank_one_update_and_best_in_matrix(A11.rb_mut(), lhs, rhs, simd_align(k + 1));
+				(max_row, max_col, max_score) =
+					rank_one_update_and_best_in_matrix(
+						A11.rb_mut(),
+						lhs,
+						rhs,
+						simd_align(k + 1),
+					);
 			},
 			#[cfg(feature = "rayon")]
 			Par::Rayon(nthreads) => {
 				use rayon::prelude::*;
 				let nthreads = nthreads.get();
-				let mut best = core::iter::repeat_with(|| (0, 0, zero())).take(nthreads).collect::<alloc::vec::Vec<_>>();
+				let mut best = core::iter::repeat_with(|| (0, 0, zero()))
+					.take(nthreads)
+					.collect::<alloc::vec::Vec<_>>();
 				let full_cols = A11.ncols();
 				spindle::for_each(
 					nthreads,
@@ -396,7 +466,13 @@ fn lu_in_place_unblocked<T: ComplexField>(
 						.enumerate(),
 					|(idx, (((max_row, max_col, max_score), A11), rhs))| {
 						(*max_row, *max_col, *max_score) = {
-							let (a, mut b, c) = rank_one_update_and_best_in_matrix(A11, lhs, rhs, simd_align(k + 1));
+							let (a, mut b, c) =
+								rank_one_update_and_best_in_matrix(
+									A11,
+									lhs,
+									rhs,
+									simd_align(k + 1),
+								);
 							b += par_split_indices(full_cols, idx, nthreads).0;
 							(a, b, c)
 						};
@@ -437,7 +513,12 @@ impl<T: ComplexField> Auto<T> for FullPivLuParams {
 	}
 }
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<FullPivLuParams, T>) -> StackReq {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+	params: Spec<FullPivLuParams, T>,
+) -> StackReq {
 	_ = par;
 	_ = params;
 	let size = Ord::min(nrows, ncols);
@@ -458,7 +539,10 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	params: Spec<FullPivLuParams, T>,
 ) -> (FullPivLuInfo, PermRef<'out, I>, PermRef<'out, I>) {
 	#[cfg(feature = "perf-warn")]
-	if (mat.col_stride().unsigned_abs() == 1 || mat.row_stride().unsigned_abs() != 1) && crate::__perf_warn!(LU_WARN) {
+	if (mat.col_stride().unsigned_abs() == 1
+		|| mat.row_stride().unsigned_abs() != 1)
+		&& crate::__perf_warn!(LU_WARN)
+	{
 		log::warn!(
 			target : "faer_perf",
 			"LU with full pivoting prefers column-major or row-major matrix. Found matrix with generic strides."
@@ -471,9 +555,23 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	let (mut col_transpositions, _) = stack.make_with(size, |_| 0);
 	let col_transpositions = col_transpositions.as_mut();
 	let n_transpositions = if mat.row_stride().abs() < mat.col_stride().abs() {
-		lu_in_place_unblocked(mat, row_transpositions, col_transpositions, par, false, params)
+		lu_in_place_unblocked(
+			mat,
+			row_transpositions,
+			col_transpositions,
+			par,
+			false,
+			params,
+		)
 	} else {
-		lu_in_place_unblocked(mat.transpose_mut(), col_transpositions, row_transpositions, par, true, params)
+		lu_in_place_unblocked(
+			mat.transpose_mut(),
+			col_transpositions,
+			row_transpositions,
+			par,
+			true,
+			params,
+		)
 	};
 	for i in 0..M {
 		row_perm[i] = I::truncate(i);
@@ -523,7 +621,10 @@ mod tests {
 				let A = CwiseMatDistribution {
 					nrows: m,
 					ncols: n,
-					dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+					dist: ComplexDistribution::new(
+						StandardNormal,
+						StandardNormal,
+					),
 				}
 				.rand::<Mat<c64>>(rng);
 				let A = A.as_ref();
@@ -539,7 +640,12 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, c64>(n, n, par, default()))),
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<
+						usize,
+						c64,
+					>(
+						n, n, par, default()
+					))),
 					default(),
 				);
 				let mut L = LU.as_ref().cloned();
@@ -584,7 +690,12 @@ mod tests {
 					col_perm,
 					col_perm_inv,
 					par,
-					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, par, default()))),
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<
+						usize,
+						f64,
+					>(
+						n, n, par, default()
+					))),
 					default(),
 				);
 				let mut L = LU.as_ref().cloned();
@@ -1453,7 +1564,8 @@ mod tests {
         ];
 		let A = MatRef::from_row_major_array(&A).to_owned();
 		let b = [
-			-0.0, -0.0, -2.0, -2.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+			-0.0, -0.0, -2.0, -2.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0, -0.0,
+			-0.0, -0.0, -0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
 			0.0, 0.0, 0.0, 0.0,
 		];
 		let b = ColRef::from_slice(&b);

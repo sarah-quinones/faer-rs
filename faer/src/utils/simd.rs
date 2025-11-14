@@ -44,34 +44,77 @@ impl<T: ComplexField, S: Simd> core::ops::Deref for SimdCtx<'_, T, S> {
 	}
 }
 pub trait SimdIndex<'N, T: ComplexField, S: Simd> {
-	fn read(simd: &SimdCtx<'N, T, S>, slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>, index: Self) -> T::SimdVec<S>;
-	fn write(simd: &SimdCtx<'N, T, S>, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: Self, value: T::SimdVec<S>);
+	fn read(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+	) -> T::SimdVec<S>;
+	fn write(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+		value: T::SimdVec<S>,
+	);
 }
 impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdBody<'N, T, S> {
 	#[inline(always)]
-	fn read(simd: &SimdCtx<'N, T, S>, slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>, index: Self) -> T::SimdVec<S> {
-		unsafe { simd.load(&*(slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>)) }
+	fn read(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+	) -> T::SimdVec<S> {
+		unsafe {
+			simd.load(
+				&*(slice.as_ptr().wrapping_offset(index.start)
+					as *const T::SimdVec<S>),
+			)
+		}
 	}
 
 	#[inline(always)]
-	fn write(simd: &SimdCtx<'N, T, S>, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: Self, value: T::SimdVec<S>) {
+	fn write(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+		value: T::SimdVec<S>,
+	) {
 		unsafe {
-			simd.store(&mut *(slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>), value);
+			simd.store(
+				&mut *(slice.as_ptr_mut().wrapping_offset(index.start)
+					as *mut T::SimdVec<S>),
+				value,
+			);
 		}
 	}
 }
 impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdHead<'N, T, S> {
 	#[inline(always)]
-	fn read(simd: &SimdCtx<'N, T, S>, slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>, index: Self) -> T::SimdVec<S> {
-		unsafe { simd.mask_load(simd.head_mem_mask, slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>) }
+	fn read(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+	) -> T::SimdVec<S> {
+		unsafe {
+			simd.mask_load(
+				simd.head_mem_mask,
+				slice.as_ptr().wrapping_offset(index.start)
+					as *const T::SimdVec<S>,
+			)
+		}
 	}
 
 	#[inline(always)]
-	fn write(simd: &SimdCtx<'N, T, S>, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: Self, value: T::SimdVec<S>) {
+	fn write(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+		value: T::SimdVec<S>,
+	) {
 		unsafe {
 			simd.mask_store(
 				simd.head_mem_mask,
-				slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
+				slice.as_ptr_mut().wrapping_offset(index.start)
+					as *mut T::SimdVec<S>,
 				value,
 			);
 		}
@@ -79,16 +122,32 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdHead<'N, T, S> {
 }
 impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
 	#[inline(always)]
-	fn read(simd: &SimdCtx<'N, T, S>, slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>, index: Self) -> T::SimdVec<S> {
-		unsafe { simd.mask_load(simd.tail_mem_mask, slice.as_ptr().wrapping_offset(index.start) as *const T::SimdVec<S>) }
+	fn read(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+	) -> T::SimdVec<S> {
+		unsafe {
+			simd.mask_load(
+				simd.tail_mem_mask,
+				slice.as_ptr().wrapping_offset(index.start)
+					as *const T::SimdVec<S>,
+			)
+		}
 	}
 
 	#[inline(always)]
-	fn write(simd: &SimdCtx<'N, T, S>, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: Self, value: T::SimdVec<S>) {
+	fn write(
+		simd: &SimdCtx<'N, T, S>,
+		slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+		index: Self,
+		value: T::SimdVec<S>,
+	) {
 		unsafe {
 			simd.mask_store(
 				simd.tail_mem_mask,
-				slice.as_ptr_mut().wrapping_offset(index.start) as *mut T::SimdVec<S>,
+				slice.as_ptr_mut().wrapping_offset(index.start)
+					as *mut T::SimdVec<S>,
 				value,
 			);
 		}
@@ -97,13 +156,17 @@ impl<'N, T: ComplexField, S: Simd> SimdIndex<'N, T, S> for SimdTail<'N, T, S> {
 impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 	#[inline(always)]
 	pub fn new(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
-		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
-		let stride = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+		core::assert!(
+			const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) }
+		);
+		let stride =
+			core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 		let iota = T::simd_iota(&simd);
 		let head_start = T::simd_index_splat(&simd, T::Index::truncate(0));
 		let head_end = T::simd_index_splat(&simd, T::Index::truncate(0));
 		let tail_start = T::simd_index_splat(&simd, T::Index::truncate(0));
-		let tail_end = T::simd_index_splat(&simd, T::Index::truncate(*len % stride));
+		let tail_end =
+			T::simd_index_splat(&simd, T::Index::truncate(*len % stride));
 		Self {
 			ctx: simd,
 			len,
@@ -121,15 +184,30 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 				T::simd_index_greater_than_or_equal(&simd, iota, tail_start),
 				T::simd_index_less_than(&simd, iota, tail_end),
 			),
-			head_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(0)),
-			tail_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(*len % stride)),
+			head_mem_mask: T::simd_mem_mask_between(
+				&simd,
+				T::Index::truncate(0),
+				T::Index::truncate(0),
+			),
+			tail_mem_mask: T::simd_mem_mask_between(
+				&simd,
+				T::Index::truncate(0),
+				T::Index::truncate(*len % stride),
+			),
 		}
 	}
 
 	#[inline(always)]
-	pub fn new_align(simd: T::SimdCtx<S>, len: Dim<'N>, align_offset: usize) -> Self {
-		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
-		let stride = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+	pub fn new_align(
+		simd: T::SimdCtx<S>,
+		len: Dim<'N>,
+		align_offset: usize,
+	) -> Self {
+		core::assert!(
+			const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) }
+		);
+		let stride =
+			core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 		let align_offset = align_offset % stride;
 		let iota = T::simd_iota(&simd);
 		if align_offset == 0 {
@@ -137,10 +215,15 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		} else {
 			let offset = stride - align_offset;
 			let full_len = offset + *len;
-			let head_start = T::simd_index_splat(&simd, T::Index::truncate(offset));
-			let head_end = T::simd_index_splat(&simd, T::Index::truncate(stride));
+			let head_start =
+				T::simd_index_splat(&simd, T::Index::truncate(offset));
+			let head_end =
+				T::simd_index_splat(&simd, T::Index::truncate(stride));
 			let tail_start = T::simd_index_splat(&simd, T::Index::truncate(0));
-			let tail_end = T::simd_index_splat(&simd, T::Index::truncate(full_len % stride));
+			let tail_end = T::simd_index_splat(
+				&simd,
+				T::Index::truncate(full_len % stride),
+			);
 			if align_offset <= *len {
 				Self {
 					ctx: simd,
@@ -151,22 +234,40 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 					tail_end: (full_len + stride - 1) / stride,
 					head_mask: T::simd_and_mask(
 						&simd,
-						T::simd_index_greater_than_or_equal(&simd, iota, head_start),
+						T::simd_index_greater_than_or_equal(
+							&simd, iota, head_start,
+						),
 						T::simd_index_less_than(&simd, iota, head_end),
 					),
 					tail_mask: T::simd_and_mask(
 						&simd,
-						T::simd_index_greater_than_or_equal(&simd, iota, tail_start),
+						T::simd_index_greater_than_or_equal(
+							&simd, iota, tail_start,
+						),
 						T::simd_index_less_than(&simd, iota, tail_end),
 					),
-					head_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(offset), T::Index::truncate(stride)),
-					tail_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(full_len % stride)),
+					head_mem_mask: T::simd_mem_mask_between(
+						&simd,
+						T::Index::truncate(offset),
+						T::Index::truncate(stride),
+					),
+					tail_mem_mask: T::simd_mem_mask_between(
+						&simd,
+						T::Index::truncate(0),
+						T::Index::truncate(full_len % stride),
+					),
 				}
 			} else {
-				let head_start = T::simd_index_splat(&simd, T::Index::truncate(offset));
-				let head_end = T::simd_index_splat(&simd, T::Index::truncate(full_len % stride));
-				let tail_start = T::simd_index_splat(&simd, T::Index::truncate(0));
-				let tail_end = T::simd_index_splat(&simd, T::Index::truncate(0));
+				let head_start =
+					T::simd_index_splat(&simd, T::Index::truncate(offset));
+				let head_end = T::simd_index_splat(
+					&simd,
+					T::Index::truncate(full_len % stride),
+				);
+				let tail_start =
+					T::simd_index_splat(&simd, T::Index::truncate(0));
+				let tail_end =
+					T::simd_index_splat(&simd, T::Index::truncate(0));
 				Self {
 					ctx: simd,
 					len,
@@ -176,16 +277,28 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 					tail_end: 1,
 					head_mask: T::simd_and_mask(
 						&simd,
-						T::simd_index_greater_than_or_equal(&simd, iota, head_start),
+						T::simd_index_greater_than_or_equal(
+							&simd, iota, head_start,
+						),
 						T::simd_index_less_than(&simd, iota, head_end),
 					),
 					tail_mask: T::simd_and_mask(
 						&simd,
-						T::simd_index_greater_than_or_equal(&simd, iota, tail_start),
+						T::simd_index_greater_than_or_equal(
+							&simd, iota, tail_start,
+						),
 						T::simd_index_less_than(&simd, iota, tail_end),
 					),
-					head_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(offset), T::Index::truncate(full_len % stride)),
-					tail_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(0)),
+					head_mem_mask: T::simd_mem_mask_between(
+						&simd,
+						T::Index::truncate(offset),
+						T::Index::truncate(full_len % stride),
+					),
+					tail_mem_mask: T::simd_mem_mask_between(
+						&simd,
+						T::Index::truncate(0),
+						T::Index::truncate(0),
+					),
 				}
 			}
 		}
@@ -198,15 +311,21 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 
 	#[inline(always)]
 	pub fn new_force_mask(simd: T::SimdCtx<S>, len: Dim<'N>) -> Self {
-		core::assert!(try_const! { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) });
+		core::assert!(
+			const { matches!(T::SIMD_CAPABILITIES, SimdCapabilities::Simd) }
+		);
 		crate::assert!(*len != 0);
 		let new_len = *len - 1;
-		let stride = core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
+		let stride =
+			core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
 		let iota = T::simd_iota(&simd);
 		let head_start = T::simd_index_splat(&simd, T::Index::truncate(0));
 		let head_end = T::simd_index_splat(&simd, T::Index::truncate(0));
 		let tail_start = T::simd_index_splat(&simd, T::Index::truncate(0));
-		let tail_end = T::simd_index_splat(&simd, T::Index::truncate((new_len % stride) + 1));
+		let tail_end = T::simd_index_splat(
+			&simd,
+			T::Index::truncate((new_len % stride) + 1),
+		);
 		Self {
 			ctx: simd,
 			len,
@@ -224,18 +343,35 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 				T::simd_index_greater_than_or_equal(&simd, iota, tail_start),
 				T::simd_index_less_than(&simd, iota, tail_end),
 			),
-			head_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(0), T::Index::truncate(0)),
-			tail_mem_mask: T::simd_mem_mask_between(&simd, T::Index::truncate(0), T::Index::truncate((new_len % stride) + 1)),
+			head_mem_mask: T::simd_mem_mask_between(
+				&simd,
+				T::Index::truncate(0),
+				T::Index::truncate(0),
+			),
+			tail_mem_mask: T::simd_mem_mask_between(
+				&simd,
+				T::Index::truncate(0),
+				T::Index::truncate((new_len % stride) + 1),
+			),
 		}
 	}
 
 	#[inline(always)]
-	pub fn read<I: SimdIndex<'N, T, S>>(&self, slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>, index: I) -> T::SimdVec<S> {
+	pub fn read<I: SimdIndex<'N, T, S>>(
+		&self,
+		slice: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+		index: I,
+	) -> T::SimdVec<S> {
 		I::read(self, slice, index)
 	}
 
 	#[inline(always)]
-	pub fn write<I: SimdIndex<'N, T, S>>(&self, slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>, index: I, value: T::SimdVec<S>) {
+	pub fn write<I: SimdIndex<'N, T, S>>(
+		&self,
+		slice: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
+		index: I,
+		value: T::SimdVec<S>,
+	) {
 		I::write(self, slice, index, value)
 	}
 
@@ -254,12 +390,15 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		&self,
 	) -> (
 		Option<SimdHead<'N, T, S>>,
-		impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, T, S>>,
+		impl Clone
+		+ ExactSizeIterator
+		+ DoubleEndedIterator<Item = SimdBody<'N, T, S>>,
 		Option<SimdTail<'N, T, S>>,
 	) {
 		macro_rules! stride {
 			() => {
-				core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>()
+				core::mem::size_of::<T::SimdVec<S>>()
+					/ core::mem::size_of::<T>()
 			};
 		}
 		let offset = -(self.offset as isize);
@@ -295,13 +434,18 @@ impl<'N, T: ComplexField, S: Simd> SimdCtx<'N, T, S> {
 		&self,
 	) -> (
 		Option<SimdHead<'N, T, S>>,
-		impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = [SimdBody<'N, T, S>; BATCH]>,
-		impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = SimdBody<'N, T, S>>,
+		impl Clone
+		+ ExactSizeIterator
+		+ DoubleEndedIterator<Item = [SimdBody<'N, T, S>; BATCH]>,
+		impl Clone
+		+ ExactSizeIterator
+		+ DoubleEndedIterator<Item = SimdBody<'N, T, S>>,
 		Option<SimdTail<'N, T, S>>,
 	) {
 		macro_rules! stride {
 			() => {
-				core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>()
+				core::mem::size_of::<T::SimdVec<S>>()
+					/ core::mem::size_of::<T>()
 			};
 		}
 		let len = self.body_end - self.head_end;

@@ -3,7 +3,9 @@ use crate::internal_prelude::*;
 use faer_traits::RealReg;
 use num_complex::Complex;
 #[inline(always)]
-fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>) -> [T::Real; 3] {
+fn norm_l2_simd<'N, T: ComplexField>(
+	data: ColRef<'_, T, Dim<'N>, ContiguousFwd>,
+) -> [T::Real; 3] {
 	struct Impl<'a, 'N, T: ComplexField> {
 		data: ColRef<'a, T, Dim<'N>, ContiguousFwd>,
 	}
@@ -64,7 +66,9 @@ fn norm_l2_simd<'N, T: ComplexField>(data: ColRef<'_, T, Dim<'N>, ContiguousFwd>
 	}
 	dispatch!(Impl { data }, Impl, T)
 }
-fn norm_l2_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, ContiguousFwd>) -> [T::Real; 3] {
+fn norm_l2_simd_pairwise_rows<T: ComplexField>(
+	data: ColRef<'_, T, usize, ContiguousFwd>,
+) -> [T::Real; 3] {
 	if data.nrows() <= LINEAR_IMPL_THRESHOLD {
 		with_dim!(N, data.nrows());
 		norm_l2_simd(data.as_row_shape(N))
@@ -73,10 +77,16 @@ fn norm_l2_simd_pairwise_rows<T: ComplexField>(data: ColRef<'_, T, usize, Contig
 		let (head, tail) = data.split_at_row(split_point);
 		let acc0 = norm_l2_simd_pairwise_rows(head);
 		let acc1 = norm_l2_simd_pairwise_rows(tail);
-		[&acc0[0] + &acc1[0], &acc0[1] + &acc1[1], &acc0[2] + &acc1[2]]
+		[
+			&acc0[0] + &acc1[0],
+			&acc0[1] + &acc1[1],
+			&acc0[2] + &acc1[2],
+		]
 	}
 }
-fn norm_l2_simd_pairwise_cols<T: ComplexField>(data: MatRef<'_, T, usize, usize, ContiguousFwd>) -> [T::Real; 3] {
+fn norm_l2_simd_pairwise_cols<T: ComplexField>(
+	data: MatRef<'_, T, usize, usize, ContiguousFwd>,
+) -> [T::Real; 3] {
 	if data.ncols() == 1 {
 		norm_l2_simd_pairwise_rows(data.col(0))
 	} else {
@@ -84,7 +94,11 @@ fn norm_l2_simd_pairwise_cols<T: ComplexField>(data: MatRef<'_, T, usize, usize,
 		let (head, tail) = data.split_at_col(split_point);
 		let acc0 = norm_l2_simd_pairwise_cols(head);
 		let acc1 = norm_l2_simd_pairwise_cols(tail);
-		[&acc0[0] + &acc1[0], &acc0[1] + &acc1[1], &acc0[2] + &acc1[2]]
+		[
+			&acc0[0] + &acc1[0],
+			&acc0[1] + &acc1[1],
+			&acc0[2] + &acc1[2],
+		]
 	}
 }
 pub fn norm_l2_x3<T: ComplexField>(mut mat: MatRef<'_, T>) -> [T::Real; 3] {
@@ -99,14 +113,16 @@ pub fn norm_l2_x3<T: ComplexField>(mut mat: MatRef<'_, T>) -> [T::Real; 3] {
 	} else {
 		let m = mat.nrows();
 		let n = mat.ncols();
-		if try_const! {
-			T::SIMD_CAPABILITIES.is_simd()
-		} {
+		if const { T::SIMD_CAPABILITIES.is_simd() } {
 			if let Some(mat) = mat.try_as_col_major() {
-				if try_const! {
-					T::IS_NATIVE_C32
-				} {
-					let mat: MatRef<'_, Complex<f32>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
+				if const { T::IS_NATIVE_C32 } {
+					let mat: MatRef<
+						'_,
+						Complex<f32>,
+						usize,
+						usize,
+						ContiguousFwd,
+					> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
 						MatRef::<'_, f32, usize, usize, ContiguousFwd>::from_raw_parts(
 							mat.as_ptr() as *const f32,
@@ -116,11 +132,19 @@ pub fn norm_l2_x3<T: ComplexField>(mut mat: MatRef<'_, T>) -> [T::Real; 3] {
 							mat.col_stride().wrapping_mul(2),
 						)
 					};
-					return unsafe { crate::hacks::coerce(norm_l2_simd_pairwise_cols::<f32>(mat)) };
-				} else if try_const! {
-					T::IS_NATIVE_C64
-				} {
-					let mat: MatRef<'_, Complex<f64>, usize, usize, ContiguousFwd> = unsafe { crate::hacks::coerce(mat) };
+					return unsafe {
+						crate::hacks::coerce(norm_l2_simd_pairwise_cols::<f32>(
+							mat,
+						))
+					};
+				} else if const { T::IS_NATIVE_C64 } {
+					let mat: MatRef<
+						'_,
+						Complex<f64>,
+						usize,
+						usize,
+						ContiguousFwd,
+					> = unsafe { crate::hacks::coerce(mat) };
 					let mat = unsafe {
 						MatRef::<'_, f64, usize, usize, ContiguousFwd>::from_raw_parts(
 							mat.as_ptr() as *const f64,
@@ -130,7 +154,11 @@ pub fn norm_l2_x3<T: ComplexField>(mut mat: MatRef<'_, T>) -> [T::Real; 3] {
 							mat.col_stride().wrapping_mul(2),
 						)
 					};
-					return unsafe { crate::hacks::coerce(norm_l2_simd_pairwise_cols::<f64>(mat)) };
+					return unsafe {
+						crate::hacks::coerce(norm_l2_simd_pairwise_cols::<f64>(
+							mat,
+						))
+					};
 				} else {
 					return norm_l2_simd_pairwise_cols(mat);
 				}
@@ -166,7 +194,8 @@ mod tests {
 	use crate::{Col, Mat, assert, c64, unzip, zip};
 	#[test]
 	fn test_norm_l2() {
-		let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+		let relative_err =
+			|a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
 		for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
 			for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
 				let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
@@ -177,7 +206,9 @@ mod tests {
 				if factor == 0.0 {
 					assert!(norm_l2(mat.as_ref()) == target);
 				} else {
-					assert!(relative_err(norm_l2(mat.as_ref()), target) < 1e-14);
+					assert!(
+						relative_err(norm_l2(mat.as_ref()), target) < 1e-14
+					);
 				}
 			}
 		}
@@ -187,10 +218,13 @@ mod tests {
 	}
 	#[test]
 	fn test_norm_l2_cplx() {
-		let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+		let relative_err =
+			|a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
 		for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
 			for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
-				let mat = Mat::from_fn(m, n, |i, j| factor * c64::new((i + j) as f64, i.wrapping_sub(j) as f64));
+				let mat = Mat::from_fn(m, n, |i, j| {
+					factor * c64::new((i + j) as f64, i.wrapping_sub(j) as f64)
+				});
 				let mut target = 0.0;
 				zip!(mat.as_ref()).for_each(|unzip!(x)| {
 					target = f64::hypot(x.abs(), target);
@@ -198,7 +232,9 @@ mod tests {
 				if factor == 0.0 {
 					assert!(norm_l2(mat.as_ref()) == target);
 				} else {
-					assert!(relative_err(norm_l2(mat.as_ref()), target) < 1e-14);
+					assert!(
+						relative_err(norm_l2(mat.as_ref()), target) < 1e-14
+					);
 				}
 			}
 		}

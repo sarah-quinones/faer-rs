@@ -20,7 +20,12 @@ pub fn nonstatic_typeid<T: ?Sized>() -> core::any::TypeId {
 		}
 	}
 	let it = core::marker::PhantomData::<T>;
-	unsafe { core::mem::transmute::<&dyn NonStaticAny, &'static dyn NonStaticAny>(&it).type_id() }
+	unsafe {
+		core::mem::transmute::<&dyn NonStaticAny, &'static dyn NonStaticAny>(
+			&it,
+		)
+		.type_id()
+	}
 }
 #[inline(always)]
 pub unsafe fn coerce<Src, Dst>(src: Src) -> Dst {
@@ -29,9 +34,9 @@ pub unsafe fn coerce<Src, Dst>(src: Src) -> Dst {
 }
 #[inline(always)]
 pub unsafe fn transmute<Src, Dst>(src: Src) -> Dst {
-	if try_const! {
-		core::mem::size_of::< Src > () != core::mem::size_of::< Dst > () ||
-		core::mem::align_of::< Src > () != core::mem::align_of::< Dst > ()
+	if const {
+		core::mem::size_of::<Src>() != core::mem::size_of::<Dst>()
+			|| core::mem::align_of::<Src>() != core::mem::align_of::<Dst>()
 	} {
 		panic!();
 	} else {
@@ -125,7 +130,11 @@ impl Debug for C64 {
 impl Debug for C32Conj {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let re_sign = if self.re.is_sign_negative() { '-' } else { '+' };
-		let im_sign = if self.neg_im.is_sign_negative() { '+' } else { '-' };
+		let im_sign = if self.neg_im.is_sign_negative() {
+			'+'
+		} else {
+			'-'
+		};
 		let re = self.re.abs();
 		let im = self.neg_im.abs();
 		write!(f, "{re_sign}")?;
@@ -138,7 +147,11 @@ impl Debug for C32Conj {
 impl Debug for C64Conj {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let re_sign = if self.re.is_sign_negative() { '-' } else { '+' };
-		let im_sign = if self.neg_im.is_sign_negative() { '+' } else { '-' };
+		let im_sign = if self.neg_im.is_sign_negative() {
+			'+'
+		} else {
+			'-'
+		};
 		let re = self.re.abs();
 		let im = self.neg_im.abs();
 		write!(f, "{re_sign}")?;
@@ -153,9 +166,11 @@ pub fn hijack_debug<T: Debug>(x: &T) -> &dyn Debug {
 		unsafe { &*(x as *const T as *const C32) }
 	} else if nonstatic_typeid::<T>() == nonstatic_typeid::<Complex<f64>>() {
 		unsafe { &*(x as *const T as *const C64) }
-	} else if nonstatic_typeid::<T>() == nonstatic_typeid::<ComplexConj<f32>>() {
+	} else if nonstatic_typeid::<T>() == nonstatic_typeid::<ComplexConj<f32>>()
+	{
 		unsafe { &*(x as *const T as *const C32Conj) }
-	} else if nonstatic_typeid::<T>() == nonstatic_typeid::<ComplexConj<f64>>() {
+	} else if nonstatic_typeid::<T>() == nonstatic_typeid::<ComplexConj<f64>>()
+	{
 		unsafe { &*(x as *const T as *const C64Conj) }
 	} else {
 		x

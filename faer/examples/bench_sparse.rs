@@ -9,14 +9,16 @@ use std::ffi::OsStr;
 use std::sync::LazyLock;
 #[cfg(suitesparse)]
 use suitesparse_sys::*;
-static MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
-	HashMap::from([
+static MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
+	|| {
+		HashMap::from([
 		("nd24k", "http://sparse-files.engr.tamu.edu/MM/ND/nd24k.tar.gz"),
 		("nd3k", "http://sparse-files.engr.tamu.edu/MM/ND/nd3k.tar.gz"),
 		("af shell7", "http://sparse-files.engr.tamu.edu/MM/Schenk_AFE/af_shell7.tar.gz"),
 		("G3 circuit", "http://sparse-files.engr.tamu.edu/MM/AMD/G3_circuit.tar.gz"),
 	])
-});
+	},
+);
 fn download(name: &str, sym: bool) -> SparseColMat<usize, f64> {
 	let url = MAP[name];
 	let mut dst = Vec::new();
@@ -38,12 +40,16 @@ fn download(name: &str, sym: bool) -> SparseColMat<usize, f64> {
 	let mut size = 0;
 	for entry in mtx.entries().unwrap() {
 		let mut entry = entry.unwrap();
-		if entry.path().unwrap().extension() == Some(OsStr::new("mtx")) && entry.size() > size {
+		if entry.path().unwrap().extension() == Some(OsStr::new("mtx"))
+			&& entry.size() > size
+		{
 			size = entry.size();
 			entry.unpack(&tmp).unwrap();
 		}
 	}
-	let matrix_market_rs::MtxData::Sparse([nrows, ncols], coord, val, _) = matrix_market_rs::MtxData::<f64, 2>::from_file(&tmp).unwrap() else {
+	let matrix_market_rs::MtxData::Sparse([nrows, ncols], coord, val, _) =
+		matrix_market_rs::MtxData::<f64, 2>::from_file(&tmp).unwrap()
+	else {
 		panic!();
 	};
 	SparseColMat::try_new_from_triplets(
@@ -79,7 +85,10 @@ fn suitesparse_llt(bencher: Bencher, name: String) {
 			nzmax: A.compute_nnz(),
 			p: A.col_ptr().as_ptr() as _,
 			i: A.row_idx().as_ptr() as _,
-			nz: A.col_nnz().map(|x| x.as_ptr() as _).unwrap_or(core::ptr::null_mut()),
+			nz: A
+				.col_nnz()
+				.map(|x| x.as_ptr() as _)
+				.unwrap_or(core::ptr::null_mut()),
 			x: A.val().as_ptr() as _,
 			z: core::ptr::null_mut(),
 			stype: -1,
@@ -103,8 +112,16 @@ fn suitesparse_llt(bencher: Bencher, name: String) {
 }
 fn faer_llt(bencher: Bencher, name: String) {
 	let A = download(&name, true);
-	let symbolic = linalg::solvers::SymbolicLlt::try_new(A.symbolic(), Side::Lower).unwrap();
-	bencher.bench(|| linalg::solvers::Llt::try_new_with_symbolic(symbolic.clone(), A.rb(), Side::Lower));
+	let symbolic =
+		linalg::solvers::SymbolicLlt::try_new(A.symbolic(), Side::Lower)
+			.unwrap();
+	bencher.bench(|| {
+		linalg::solvers::Llt::try_new_with_symbolic(
+			symbolic.clone(),
+			A.rb(),
+			Side::Lower,
+		)
+	});
 }
 fn main() -> eyre::Result<()> {
 	spindle::with_lock(rayon::current_num_threads(), || {
@@ -119,7 +136,10 @@ fn main() -> eyre::Result<()> {
 					tail: list,
 				};
 				#[cfg(faer)]
-				let list = diol::variadics::Cons { head: faer_llt, tail: list };
+				let list = diol::variadics::Cons {
+					head: faer_llt,
+					tail: list,
+				};
 				list
 			},
 			["nd3k", "af shell7", "G3 circuit"].map(String::from),

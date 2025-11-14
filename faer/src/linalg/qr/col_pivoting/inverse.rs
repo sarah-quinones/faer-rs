@@ -1,7 +1,11 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_scratch;
-pub fn inverse_scratch<I: Index, T: ComplexField>(dim: usize, block_size: usize, par: Par) -> StackReq {
+pub fn inverse_scratch<I: Index, T: ComplexField>(
+	dim: usize,
+	block_size: usize,
+	par: Par,
+) -> StackReq {
 	_ = par;
 	StackReq::or(
 		apply_block_householder_sequence_transpose_on_the_right_in_place_scratch::<T>(dim, block_size, dim),
@@ -72,7 +76,15 @@ mod tests {
 			col_perm_fwd,
 			col_perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(n, n, 4, Par::Seq, default())) }),
+			MemStack::new(&mut {
+				MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(
+					n,
+					n,
+					4,
+					Par::Seq,
+					default(),
+				))
+			}),
 			default(),
 		);
 		let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
@@ -84,7 +96,10 @@ mod tests {
 			QR.as_ref(),
 			col_perm,
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<usize, c64>(n, 4, Par::Seq))),
+			MemStack::new(&mut MemBuffer::new(inverse::inverse_scratch::<
+				usize,
+				c64,
+			>(n, 4, Par::Seq))),
 		);
 		assert!(A_inv * A ~ Mat::identity(n, n));
 	}

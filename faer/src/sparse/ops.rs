@@ -1,8 +1,9 @@
 use super::*;
 use crate::assert;
 use crate::internal_prelude::*;
-/// returns the resulting matrix obtained by applying `f` to the elements from `lhs` and `rhs`,
-/// skipping entries that are unavailable in both of `lhs` and `rhs`.
+/// returns the resulting matrix obtained by applying `f` to the elements from
+/// `lhs` and `rhs`, skipping entries that are unavailable in both of `lhs` and
+/// `rhs`.
 ///
 /// # panics
 /// panics if `lhs` and `rhs` don't have matching dimensions.
@@ -40,7 +41,9 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 	}
 	let mut row_idx = try_zeroed(nnz)?;
 	let mut values = alloc::vec::Vec::new();
-	values.try_reserve_exact(nnz).map_err(|_| FaerError::OutOfMemory)?;
+	values
+		.try_reserve_exact(nnz)
+		.map_err(|_| FaerError::OutOfMemory)?;
 	let mut nnz = 0usize;
 	for j in 0..n {
 		let lhs_values = lhs.val_of_col(j);
@@ -59,7 +62,10 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 				},
 				core::cmp::Ordering::Equal => {
 					row_idx[nnz] = lhs;
-					values.push(f(Some(&lhs_values[lhs_pos]), Some(&rhs_values[rhs_pos])));
+					values.push(f(
+						Some(&lhs_values[lhs_pos]),
+						Some(&rhs_values[rhs_pos]),
+					));
 				},
 				core::cmp::Ordering::Greater => {
 					row_idx[nnz] = rhs;
@@ -70,12 +76,14 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 			rhs_pos += (rhs <= lhs) as usize;
 			nnz += 1;
 		}
-		row_idx[nnz..nnz + lhs.len() - lhs_pos].copy_from_slice(&lhs[lhs_pos..]);
+		row_idx[nnz..nnz + lhs.len() - lhs_pos]
+			.copy_from_slice(&lhs[lhs_pos..]);
 		for src in &lhs_values[lhs_pos..lhs.len()] {
 			values.push(f(Some(src), None));
 		}
 		nnz += lhs.len() - lhs_pos;
-		row_idx[nnz..nnz + rhs.len() - rhs_pos].copy_from_slice(&rhs[rhs_pos..]);
+		row_idx[nnz..nnz + rhs.len() - rhs_pos]
+			.copy_from_slice(&rhs[rhs_pos..]);
 		for src in &rhs_values[rhs_pos..rhs.len()] {
 			values.push(f(None, Some(src)));
 		}
@@ -86,8 +94,8 @@ pub fn binary_op<I: Index, T, LhsT, RhsT>(
 		values,
 	))
 }
-/// returns the resulting matrix obtained by applying `f` to the elements from `dst` and `src`
-/// skipping entries that are unavailable in both of them.
+/// returns the resulting matrix obtained by applying `f` to the elements from
+/// `dst` and `src` skipping entries that are unavailable in both of them.
 /// the sparsity patter of `dst` is unchanged.
 ///
 /// # panics
@@ -132,9 +140,9 @@ pub fn binary_op_assign_into<I: Index, T, SrcT>(
 		}
 	}
 }
-/// returns the resulting matrix obtained by applying `f` to the elements from `dst`, `lhs` and
-/// `rhs`, skipping entries that are unavailable in all of `dst`, `lhs` and `rhs`.
-/// the sparsity patter of `dst` is unchanged.
+/// returns the resulting matrix obtained by applying `f` to the elements from
+/// `dst`, `lhs` and `rhs`, skipping entries that are unavailable in all of
+/// `dst`, `lhs` and `rhs`. the sparsity patter of `dst` is unchanged.
 ///
 /// # panics
 /// panics if `lhs`, `rhs` and `dst` don't have matching dimensions.
@@ -179,7 +187,11 @@ pub fn ternary_op_assign_into<I: Index, T, LhsT, RhsT>(
 						f(&mut dst_val[dst_pos], Some(&lhs_val[lhs_pos]), None);
 					},
 					core::cmp::Ordering::Equal => {
-						f(&mut dst_val[dst_pos], Some(&lhs_val[lhs_pos]), Some(&rhs_val[rhs_pos]));
+						f(
+							&mut dst_val[dst_pos],
+							Some(&lhs_val[lhs_pos]),
+							Some(&rhs_val[rhs_pos]),
+						);
 					},
 					core::cmp::Ordering::Greater => {
 						f(&mut dst_val[dst_pos], None, Some(&rhs_val[rhs_pos]));
@@ -220,7 +232,8 @@ pub fn ternary_op_assign_into<I: Index, T, LhsT, RhsT>(
 		}
 	}
 }
-/// returns the sparsity pattern containing the union of those of `lhs` and `rhs`.
+/// returns the sparsity pattern containing the union of those of `lhs` and
+/// `rhs`.
 ///
 /// # panics
 /// panics if `lhs` and `rhs` don't have matching dimensions.
@@ -231,8 +244,14 @@ pub fn union_symbolic<I: Index>(
 	rhs: SymbolicSparseColMatRef<'_, I>,
 ) -> Result<SymbolicSparseColMat<I>, FaerError> {
 	Ok(binary_op(
-		SparseColMatRef::<I, Symbolic>::new(lhs, Symbolic::materialize(lhs.compute_nnz())),
-		SparseColMatRef::<I, Symbolic>::new(rhs, Symbolic::materialize(rhs.compute_nnz())),
+		SparseColMatRef::<I, Symbolic>::new(
+			lhs,
+			Symbolic::materialize(lhs.compute_nnz()),
+		),
+		SparseColMatRef::<I, Symbolic>::new(
+			rhs,
+			Symbolic::materialize(rhs.compute_nnz()),
+		),
 		#[inline(always)]
 		|_, _| Symbolic,
 	)?
@@ -245,15 +264,22 @@ pub fn union_symbolic<I: Index>(
 /// panics if `lhs` and `rhs` don't have matching dimensions.
 #[track_caller]
 #[inline]
-pub fn add<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
+pub fn add<
+	I: Index,
+	T: ComplexField,
+	LhsT: Conjugate<Canonical = T>,
+	RhsT: Conjugate<Canonical = T>,
+>(
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
 ) -> Result<SparseColMat<I, T>, FaerError> {
-	binary_op(lhs, rhs, |lhs, rhs| match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
-		(None, None) => zero(),
-		(None, Some(rhs)) => rhs,
-		(Some(lhs), None) => lhs,
-		(Some(lhs), Some(rhs)) => lhs + rhs,
+	binary_op(lhs, rhs, |lhs, rhs| {
+		match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
+			(None, None) => zero(),
+			(None, Some(rhs)) => rhs,
+			(Some(lhs), None) => lhs,
+			(Some(lhs), Some(rhs)) => lhs + rhs,
+		}
 	})
 }
 /// returns the difference of `lhs` and `rhs`.
@@ -262,24 +288,34 @@ pub fn add<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conj
 /// panics if `lhs` and `rhs` don't have matching dimensions.
 #[track_caller]
 #[inline]
-pub fn sub<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
+pub fn sub<
+	I: Index,
+	T: ComplexField,
+	LhsT: Conjugate<Canonical = T>,
+	RhsT: Conjugate<Canonical = T>,
+>(
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
 ) -> Result<SparseColMat<I, T>, FaerError> {
-	binary_op(lhs, rhs, |lhs, rhs| match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
-		(None, None) => zero(),
-		(None, Some(rhs)) => rhs,
-		(Some(lhs), None) => lhs,
-		(Some(lhs), Some(rhs)) => lhs - rhs,
+	binary_op(lhs, rhs, |lhs, rhs| {
+		match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
+			(None, None) => zero(),
+			(None, Some(rhs)) => rhs,
+			(Some(lhs), None) => lhs,
+			(Some(lhs), Some(rhs)) => lhs - rhs,
+		}
 	})
 }
-/// computes the sum of `dst` and `src` and stores the result in `dst` without changing its
-/// symbolic structure.
+/// computes the sum of `dst` and `src` and stores the result in `dst` without
+/// changing its symbolic structure.
 ///
 /// # panics
 /// panics if `dst` and `rhs` don't have matching dimensions.
 /// panics if `rhs` contains an index that's unavailable in `dst`.
-pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
+pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(
+	dst: SparseColMatMut<'_, I, T>,
+	rhs: SparseColMatRef<'_, I, RhsT>,
+) {
 	binary_op_assign_into(dst, rhs, |dst, rhs| {
 		*dst += match rhs {
 			Some(rhs) => Conj::apply(rhs),
@@ -287,13 +323,16 @@ pub fn add_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst
 		}
 	})
 }
-/// computes the difference of `dst` and `src` and stores the result in `dst` without changing its
-/// symbolic structure.
+/// computes the difference of `dst` and `src` and stores the result in `dst`
+/// without changing its symbolic structure.
 ///
 /// # panics
 /// panics if `dst` and `rhs` don't have matching dimensions.
 /// panics if `rhs` contains an index that's unavailable in `dst`.
-pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RhsT>) {
+pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(
+	dst: SparseColMatMut<'_, I, T>,
+	rhs: SparseColMatRef<'_, I, RhsT>,
+) {
 	binary_op_assign_into(dst, rhs, |dst, rhs| {
 		*dst -= match rhs {
 			Some(rhs) => Conj::apply(rhs),
@@ -301,15 +340,20 @@ pub fn sub_assign<I: Index, T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst
 		}
 	})
 }
-/// computes the sum of `lhs` and `rhs`, storing the result in `dst` without changing its
-/// symbolic structure.
+/// computes the sum of `lhs` and `rhs`, storing the result in `dst` without
+/// changing its symbolic structure.
 ///
 /// # panics
 /// panics if `dst`, `lhs` and `rhs` don't have matching dimensions.
 /// panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.
 #[track_caller]
 #[inline]
-pub fn add_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
+pub fn add_into<
+	I: Index,
+	T: ComplexField,
+	LhsT: Conjugate<Canonical = T>,
+	RhsT: Conjugate<Canonical = T>,
+>(
 	dst: SparseColMatMut<'_, I, T>,
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,
@@ -323,15 +367,20 @@ pub fn add_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT:
 		};
 	})
 }
-/// computes the difference of `lhs` and `rhs`, storing the result in `dst` without changing its
-/// symbolic structure.
+/// computes the difference of `lhs` and `rhs`, storing the result in `dst`
+/// without changing its symbolic structure.
 ///
 /// # panics
 /// panics if `dst`, `lhs` and `rhs` don't have matching dimensions.
 /// panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.
 #[track_caller]
 #[inline]
-pub fn sub_into<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(
+pub fn sub_into<
+	I: Index,
+	T: ComplexField,
+	LhsT: Conjugate<Canonical = T>,
+	RhsT: Conjugate<Canonical = T>,
+>(
 	dst: SparseColMatMut<'_, I, T>,
 	lhs: SparseColMatRef<'_, I, LhsT>,
 	rhs: SparseColMatRef<'_, I, RhsT>,

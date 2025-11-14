@@ -6,7 +6,8 @@ pub struct Own<T, Cols: Shape = usize> {
 	pub(crate) trans: Col<T, Cols>,
 }
 impl<T, Cols: Shape> Row<T, Cols> {
-	/// returns a new row with dimension `ncols`, filled with the provided function
+	/// returns a new row with dimension `ncols`, filled with the provided
+	/// function
 	#[inline]
 	pub fn from_fn(ncols: Cols, f: impl FnMut(Idx<Cols>) -> T) -> Self {
 		Self {
@@ -23,7 +24,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 		T: ComplexField,
 	{
 		Self {
-			0: Own { trans: Col::zeros(ncols) },
+			0: Own {
+				trans: Col::zeros(ncols),
+			},
 		}
 	}
 
@@ -34,7 +37,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 		T: ComplexField,
 	{
 		Self {
-			0: Own { trans: Col::ones(ncols) },
+			0: Own {
+				trans: Col::ones(ncols),
+			},
 		}
 	}
 
@@ -51,25 +56,33 @@ impl<T, Cols: Shape> Row<T, Cols> {
 		}
 	}
 
-	/// reserves the minimum capacity for `col_capacity` columns without reallocating, or returns an
-	/// error in case of failure. does nothing if the capacity is already sufficient
+	/// reserves the minimum capacity for `col_capacity` columns without
+	/// reallocating, or returns an error in case of failure. does nothing if
+	/// the capacity is already sufficient
 	#[inline]
-	pub fn try_reserve(&mut self, new_row_capacity: usize) -> Result<(), TryReserveError> {
+	pub fn try_reserve(
+		&mut self,
+		new_row_capacity: usize,
+	) -> Result<(), TryReserveError> {
 		self.0.trans.try_reserve(new_row_capacity)
 	}
 
-	/// reserves the minimum capacity for `col_capacity` columns without reallocating. does nothing
-	/// if the capacity is already sufficient
+	/// reserves the minimum capacity for `col_capacity` columns without
+	/// reallocating. does nothing if the capacity is already sufficient
 	#[track_caller]
 	pub fn reserve(&mut self, new_row_capacity: usize) {
 		self.0.trans.reserve(new_row_capacity)
 	}
 
 	/// resizes the row in-place so that the new dimension is `new_ncols`.
-	/// new elements are created with the given function `f`, so that elements at index `j`
-	/// are created by calling `f(j)`
+	/// new elements are created with the given function `f`, so that elements
+	/// at index `j` are created by calling `f(j)`
 	#[inline]
-	pub fn resize_with(&mut self, new_ncols: Cols, f: impl FnMut(Idx<Cols>) -> T) {
+	pub fn resize_with(
+		&mut self,
+		new_ncols: Cols,
+		f: impl FnMut(Idx<Cols>) -> T,
+	) {
 		self.0.trans.resize_with(new_ncols, f);
 	}
 
@@ -99,7 +112,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline]
 	pub fn into_diagonal(self) -> Diag<T, Cols> {
 		Diag {
-			0: crate::diag::Own { inner: self.0.trans },
+			0: crate::diag::Own {
+				inner: self.0.trans,
+			},
 		}
 	}
 
@@ -182,7 +197,10 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline]
 	#[track_caller]
 	/// see [`RowRef::split_at_col`]
-	pub fn split_at_col(&self, col: IdxInc<Cols>) -> (RowRef<'_, T, usize>, RowRef<'_, T, usize>) {
+	pub fn split_at_col(
+		&self,
+		col: IdxInc<Cols>,
+	) -> (RowRef<'_, T, usize>, RowRef<'_, T, usize>) {
 		self.rb().split_at_col(col)
 	}
 
@@ -222,7 +240,10 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowRef::get`]
-	pub fn get<ColRange>(&self, col: ColRange) -> <RowRef<'_, T, Cols> as RowIndex<ColRange>>::Target
+	pub fn get<ColRange>(
+		&self,
+		col: ColRange,
+	) -> <RowRef<'_, T, Cols> as RowIndex<ColRange>>::Target
 	where
 		for<'a> RowRef<'a, T, Cols>: RowIndex<ColRange>,
 	{
@@ -232,11 +253,19 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowRef::get_unchecked`]
-	pub unsafe fn get_unchecked<ColRange>(&self, col: ColRange) -> <RowRef<'_, T, Cols> as RowIndex<ColRange>>::Target
+	pub unsafe fn get_unchecked<ColRange>(
+		&self,
+		col: ColRange,
+	) -> <RowRef<'_, T, Cols> as RowIndex<ColRange>>::Target
 	where
 		for<'a> RowRef<'a, T, Cols>: RowIndex<ColRange>,
 	{
-		unsafe { <RowRef<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(self.rb(), col) }
+		unsafe {
+			<RowRef<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(
+				self.rb(),
+				col,
+			)
+		}
 	}
 
 	#[inline]
@@ -247,7 +276,11 @@ impl<T, Cols: Shape> Row<T, Cols> {
 
 	#[inline]
 	/// see [`RowRef::subcols`]
-	pub fn subcols<V: Shape>(&self, col_start: IdxInc<Cols>, ncols: V) -> RowRef<'_, T, V> {
+	pub fn subcols<V: Shape>(
+		&self,
+		col_start: IdxInc<Cols>,
+		ncols: V,
+	) -> RowRef<'_, T, V> {
 		self.rb().subcols(col_start, ncols)
 	}
 
@@ -271,14 +304,18 @@ impl<T, Cols: Shape> Row<T, Cols> {
 
 	#[inline]
 	/// see [`RowRef::iter`]
-	pub fn iter(&self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ T> {
+	pub fn iter(
+		&self,
+	) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ T> {
 		self.rb().iter()
 	}
 
 	#[inline]
 	#[cfg(feature = "rayon")]
 	/// see [`RowRef::par_iter`]
-	pub fn par_iter(&self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ T>
+	pub fn par_iter(
+		&self,
+	) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ T>
 	where
 		T: Sync,
 	{
@@ -287,7 +324,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 
 	#[inline]
 	/// see [`RowRef::try_as_row_major`]
-	pub fn try_as_row_major(&self) -> Option<RowRef<'_, T, Cols, ContiguousFwd>> {
+	pub fn try_as_row_major(
+		&self,
+	) -> Option<RowRef<'_, T, Cols, ContiguousFwd>> {
 		self.rb().try_as_row_major()
 	}
 
@@ -338,7 +377,10 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[inline]
 	#[track_caller]
 	/// see [`RowMut::split_at_col_mut`]
-	pub fn split_at_col_mut(&mut self, col: IdxInc<Cols>) -> (RowMut<'_, T, usize>, RowMut<'_, T, usize>) {
+	pub fn split_at_col_mut(
+		&mut self,
+		col: IdxInc<Cols>,
+	) -> (RowMut<'_, T, usize>, RowMut<'_, T, usize>) {
 		self.rb_mut().split_at_col_mut(col)
 	}
 
@@ -378,7 +420,10 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowMut::get_mut`]
-	pub fn get_mut<ColRange>(&mut self, col: ColRange) -> <RowMut<'_, T, Cols> as RowIndex<ColRange>>::Target
+	pub fn get_mut<ColRange>(
+		&mut self,
+		col: ColRange,
+	) -> <RowMut<'_, T, Cols> as RowIndex<ColRange>>::Target
 	where
 		for<'a> RowMut<'a, T, Cols>: RowIndex<ColRange>,
 	{
@@ -388,11 +433,19 @@ impl<T, Cols: Shape> Row<T, Cols> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowMut::get_mut_unchecked`]
-	pub unsafe fn get_mut_unchecked<ColRange>(&mut self, col: ColRange) -> <RowMut<'_, T, Cols> as RowIndex<ColRange>>::Target
+	pub unsafe fn get_mut_unchecked<ColRange>(
+		&mut self,
+		col: ColRange,
+	) -> <RowMut<'_, T, Cols> as RowIndex<ColRange>>::Target
 	where
 		for<'a> RowMut<'a, T, Cols>: RowIndex<ColRange>,
 	{
-		unsafe { <RowMut<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(self.rb_mut(), col) }
+		unsafe {
+			<RowMut<'_, T, Cols> as RowIndex<ColRange>>::get_unchecked(
+				self.rb_mut(),
+				col,
+			)
+		}
 	}
 
 	#[inline]
@@ -403,7 +456,11 @@ impl<T, Cols: Shape> Row<T, Cols> {
 
 	#[inline]
 	/// see [`RowMut::subcols_mut`]
-	pub fn subcols_mut<V: Shape>(&mut self, col_start: IdxInc<Cols>, ncols: V) -> RowMut<'_, T, V> {
+	pub fn subcols_mut<V: Shape>(
+		&mut self,
+		col_start: IdxInc<Cols>,
+		ncols: V,
+	) -> RowMut<'_, T, V> {
 		self.rb_mut().subcols_mut(col_start, ncols)
 	}
 
@@ -427,14 +484,18 @@ impl<T, Cols: Shape> Row<T, Cols> {
 
 	#[inline]
 	/// see [`RowMut::iter_mut`]
-	pub fn iter_mut(&mut self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ mut T> {
+	pub fn iter_mut(
+		&mut self,
+	) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ mut T> {
 		self.rb_mut().iter_mut()
 	}
 
 	#[inline]
 	#[cfg(feature = "rayon")]
 	/// see [`RowMut::par_iter_mut`]
-	pub fn par_iter_mut(&mut self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ mut T>
+	pub fn par_iter_mut(
+		&mut self,
+	) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ mut T>
 	where
 		T: Send,
 	{
@@ -443,7 +504,9 @@ impl<T, Cols: Shape> Row<T, Cols> {
 
 	#[inline]
 	/// see [`RowMut::try_as_row_major_mut`]
-	pub fn try_as_row_major_mut(&mut self) -> Option<RowMut<'_, T, Cols, ContiguousFwd>> {
+	pub fn try_as_row_major_mut(
+		&mut self,
+	) -> Option<RowMut<'_, T, Cols, ContiguousFwd>> {
 		self.rb_mut().try_as_row_major_mut()
 	}
 
@@ -458,7 +521,9 @@ impl<'short, T, Cols: Shape> Reborrow<'short> for Own<T, Cols> {
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		Ref { trans: self.trans.rb() }
+		Ref {
+			trans: self.trans.rb(),
+		}
 	}
 }
 impl<'short, T, Cols: Shape> ReborrowMut<'short> for Own<T, Cols> {
@@ -466,7 +531,9 @@ impl<'short, T, Cols: Shape> ReborrowMut<'short> for Own<T, Cols> {
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		Mut { trans: self.trans.rb_mut() }
+		Mut {
+			trans: self.trans.rb_mut(),
+		}
 	}
 }
 impl<T, Cols: Shape> Row<T, Cols>

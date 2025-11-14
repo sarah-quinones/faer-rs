@@ -271,15 +271,21 @@ impl faer_traits::ComplexField for fx128 {
 	type Arch = <::faer::fx128 as ::faer::traits::ComplexField>::Arch;
 	type Index = <::faer::fx128 as ::faer::traits::ComplexField>::Index;
 	type Real = Self;
-	type SimdCtx<S: pulp::Simd> = <::faer::fx128 as ::faer::traits::ComplexField>::SimdCtx<S>;
-	type SimdIndex<S: pulp::Simd> = <::faer::fx128 as ::faer::traits::ComplexField>::SimdIndex<S>;
-	type SimdMask<S: pulp::Simd> = <::faer::fx128 as ::faer::traits::ComplexField>::SimdMask<S>;
-	type SimdMemMask<S: pulp::Simd> = <::faer::fx128 as ::faer::traits::ComplexField>::SimdMemMask<S>;
-	type SimdVec<S: pulp::Simd> = <::faer::fx128 as ::faer::traits::ComplexField>::SimdVec<S>;
+	type SimdCtx<S: pulp::Simd> =
+		<::faer::fx128 as ::faer::traits::ComplexField>::SimdCtx<S>;
+	type SimdIndex<S: pulp::Simd> =
+		<::faer::fx128 as ::faer::traits::ComplexField>::SimdIndex<S>;
+	type SimdMask<S: pulp::Simd> =
+		<::faer::fx128 as ::faer::traits::ComplexField>::SimdMask<S>;
+	type SimdMemMask<S: pulp::Simd> =
+		<::faer::fx128 as ::faer::traits::ComplexField>::SimdMemMask<S>;
+	type SimdVec<S: pulp::Simd> =
+		<::faer::fx128 as ::faer::traits::ComplexField>::SimdVec<S>;
 	type Unit = <::faer::fx128 as ::faer::traits::ComplexField>::Unit;
 
 	const IS_REAL: bool = true;
-	const SIMD_CAPABILITIES: faer_traits::SimdCapabilities = ::faer::fx128::SIMD_CAPABILITIES;
+	const SIMD_CAPABILITIES: faer_traits::SimdCapabilities =
+		::faer::fx128::SIMD_CAPABILITIES;
 
 	#[inline(always)]
 	fn zero_impl() -> Self {
@@ -382,12 +388,20 @@ impl faer_traits::ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_mask_between<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMask<S> {
+	fn simd_mask_between<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_mask_between(ctx, start, end)
 	}
 
 	#[inline(always)]
-	fn simd_mem_mask_between<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, start: Self::Index, end: Self::Index) -> Self::SimdMemMask<S> {
+	fn simd_mem_mask_between<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		start: Self::Index,
+		end: Self::Index,
+	) -> Self::SimdMemMask<S> {
 		::faer::fx128::simd_mem_mask_between(ctx, start, end)
 	}
 
@@ -411,67 +425,114 @@ impl faer_traits::ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_splat<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: &Self) -> Self::SimdVec<S> {
+	fn simd_splat<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_splat(ctx, &value.0)
 	}
 
 	#[inline(always)]
-	fn simd_splat_real<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: &Self::Real) -> Self::SimdVec<S> {
+	fn simd_splat_real<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: &Self::Real,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_splat_real(ctx, &value.0)
 	}
 
 	#[inline(always)]
-	fn simd_add<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_add<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_add(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_sub<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_sub<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_sub(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_neg<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_neg<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_neg(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_conj<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_conj(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs1<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs1<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_abs1(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs_max<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs_max<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_abs_max(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_mul_real<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_real<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_mul_real(ctx, lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_pow2<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_pow2<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_mul_pow2(ctx, lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_mul(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_conj_mul<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_conj_mul<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_conj_mul(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_mul_add<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_mul_add<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_mul_add(ctx, lhs, rhs, acc)
 	}
 
@@ -486,42 +547,71 @@ impl faer_traits::ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_abs2<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_abs2(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_abs2_add<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>, acc: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_abs2_add<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+		acc: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_abs2_add(ctx, value, acc)
 	}
 
 	#[inline(always)]
-	fn simd_reduce_sum<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_sum<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		Self(::faer::fx128::simd_reduce_sum(ctx, value))
 	}
 
 	#[inline(always)]
-	fn simd_reduce_max<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdVec<S>) -> Self {
+	fn simd_reduce_max<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdVec<S>,
+	) -> Self {
 		Self(::faer::fx128::simd_reduce_max(ctx, value))
 	}
 
 	#[inline(always)]
-	fn simd_equal<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_equal<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_equal(ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_less_than(ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_less_than_or_equal<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_less_than_or_equal<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_less_than_or_equal(ctx, real_lhs, real_rhs)
 	}
 
 	#[inline(always)]
-	fn simd_greater_than<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, real_lhs: Self::SimdVec<S>, real_rhs: Self::SimdVec<S>) -> Self::SimdMask<S> {
+	fn simd_greater_than<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		real_lhs: Self::SimdVec<S>,
+		real_rhs: Self::SimdVec<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_greater_than(ctx, real_lhs, real_rhs)
 	}
 
@@ -535,7 +625,12 @@ impl faer_traits::ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_select<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>, lhs: Self::SimdVec<S>, rhs: Self::SimdVec<S>) -> Self::SimdVec<S> {
+	fn simd_select<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+		lhs: Self::SimdVec<S>,
+		rhs: Self::SimdVec<S>,
+	) -> Self::SimdVec<S> {
 		::faer::fx128::simd_select(ctx, mask, lhs, rhs)
 	}
 
@@ -550,37 +645,62 @@ impl faer_traits::ComplexField for fx128 {
 	}
 
 	#[inline(always)]
-	fn simd_index_splat<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::Index) -> Self::SimdIndex<S> {
+	fn simd_index_splat<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::Index,
+	) -> Self::SimdIndex<S> {
 		::faer::fx128::simd_index_splat(ctx, value)
 	}
 
 	#[inline(always)]
-	fn simd_index_add<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdIndex<S> {
+	fn simd_index_add<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdIndex<S> {
 		::faer::fx128::simd_index_add(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_index_less_than<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdIndex<S>, rhs: Self::SimdIndex<S>) -> Self::SimdMask<S> {
+	fn simd_index_less_than<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdIndex<S>,
+		rhs: Self::SimdIndex<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_index_less_than(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_and_mask<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_and_mask<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_and_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_or_mask<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, lhs: Self::SimdMask<S>, rhs: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_or_mask<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		lhs: Self::SimdMask<S>,
+		rhs: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_or_mask(ctx, lhs, rhs)
 	}
 
 	#[inline(always)]
-	fn simd_not_mask<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, mask: Self::SimdMask<S>) -> Self::SimdMask<S> {
+	fn simd_not_mask<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		mask: Self::SimdMask<S>,
+	) -> Self::SimdMask<S> {
 		::faer::fx128::simd_not_mask(ctx, mask)
 	}
 
 	#[inline(always)]
-	fn simd_first_true_mask<S: pulp::Simd>(ctx: &Self::SimdCtx<S>, value: Self::SimdMask<S>) -> usize {
+	fn simd_first_true_mask<S: pulp::Simd>(
+		ctx: &Self::SimdCtx<S>,
+		value: Self::SimdMask<S>,
+	) -> usize {
 		::faer::fx128::simd_first_true_mask(ctx, value)
 	}
 }
@@ -742,7 +862,11 @@ impl ::nalgebra::SimdValue for fx128 {
 	}
 
 	#[inline(always)]
-	fn zip_map_lanes(self, b: Self, f: impl Fn(Self::Element, Self::Element) -> Self::Element) -> Self
+	fn zip_map_lanes(
+		self,
+		b: Self,
+		f: impl Fn(Self::Element, Self::Element) -> Self::Element,
+	) -> Self
 	where
 		Self: Clone,
 	{
@@ -775,7 +899,12 @@ impl approx::RelativeEq for fx128 {
 		Self(::faer::fx128::EPSILON)
 	}
 
-	fn relative_eq(&self, other: &Self, epsilon: Self::Epsilon, max_relative: Self::Epsilon) -> bool {
+	fn relative_eq(
+		&self,
+		other: &Self,
+		epsilon: Self::Epsilon,
+		max_relative: Self::Epsilon,
+	) -> bool {
 		if self == other {
 			return true;
 		}
@@ -789,7 +918,11 @@ impl approx::RelativeEq for fx128 {
 		}
 		let abs_self = (*self).0.abs();
 		let abs_other = (*other).0.abs();
-		let largest = if abs_other > abs_self { abs_other } else { abs_self };
+		let largest = if abs_other > abs_self {
+			abs_other
+		} else {
+			abs_self
+		};
 		// Use a relative difference comparison
 		abs_diff <= largest * max_relative.0
 	}
@@ -852,7 +985,8 @@ impl ::nalgebra::ComplexField for fx128 {
 		}
 	}
 
-	/// The sum of the absolute value of this complex number's real and imaginary part.
+	/// The sum of the absolute value of this complex number's real and
+	/// imaginary part.
 	fn norm1(self) -> Self::RealField {
 		Self(self.0.abs())
 	}
@@ -1020,7 +1154,11 @@ impl ::nalgebra::ComplexField for fx128 {
 	}
 
 	fn try_sqrt(self) -> Option<Self> {
-		if !self.is_negative() { Some(Self(self.0.sqrt())) } else { None }
+		if !self.is_negative() {
+			Some(Self(self.0.sqrt()))
+		} else {
+			None
+		}
 	}
 }
 impl ::nalgebra::RealField for fx128 {
@@ -1167,10 +1305,38 @@ unsafe extern "C" {
 	#[cfg(blis)]
 	fn bli_thread_set_num_threads(num: i64) -> c_void;
 	fn omp_set_num_threads(num: i32) -> c_void;
-	fn sgetc2_(n: *const c_int, A: *mut f32, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
-	fn dgetc2_(n: *const c_int, A: *mut f64, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
-	fn cgetc2_(n: *const c_int, A: *mut c32, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
-	fn zgetc2_(n: *const c_int, A: *mut c64, lda: *const c_int, ipiv: *mut c_int, jpiv: *mut c_int, info: *mut c_int) -> c_void;
+	fn sgetc2_(
+		n: *const c_int,
+		A: *mut f32,
+		lda: *const c_int,
+		ipiv: *mut c_int,
+		jpiv: *mut c_int,
+		info: *mut c_int,
+	) -> c_void;
+	fn dgetc2_(
+		n: *const c_int,
+		A: *mut f64,
+		lda: *const c_int,
+		ipiv: *mut c_int,
+		jpiv: *mut c_int,
+		info: *mut c_int,
+	) -> c_void;
+	fn cgetc2_(
+		n: *const c_int,
+		A: *mut c32,
+		lda: *const c_int,
+		ipiv: *mut c_int,
+		jpiv: *mut c_int,
+		info: *mut c_int,
+	) -> c_void;
+	fn zgetc2_(
+		n: *const c_int,
+		A: *mut c64,
+		lda: *const c_int,
+		ipiv: *mut c_int,
+		jpiv: *mut c_int,
+		info: *mut c_int,
+	) -> c_void;
 }
 fn lapack_set_num_threads(parallel: Par) {
 	let _ = parallel;
@@ -1202,7 +1368,10 @@ fn lapack_set_num_threads(parallel: Par) {
 	};
 }
 trait Scalar: Copy + faer_traits::ComplexField + na::ComplexField {
-	const IS_NATIVE: bool = Self::IS_NATIVE_F32 || Self::IS_NATIVE_C32 || Self::IS_NATIVE_F64 || Self::IS_NATIVE_C64;
+	const IS_NATIVE: bool = Self::IS_NATIVE_F32
+		|| Self::IS_NATIVE_C32
+		|| Self::IS_NATIVE_F64
+		|| Self::IS_NATIVE_C64;
 	fn random(rng: &mut dyn RngCore, nrows: usize, ncols: usize) -> Mat<Self>;
 }
 trait Lib {
@@ -1269,7 +1438,8 @@ impl Scalar for fx128 {
 }
 impl Scalar for cx128 {
 	fn random(rng: &mut dyn RngCore, nrows: usize, ncols: usize) -> Mat<Self> {
-		zip!(&c64::random(rng, nrows, ncols)).map(|unzip!(&x)| Self::new(fx128(x.re.into()), fx128(x.im.into())))
+		zip!(&c64::random(rng, nrows, ncols))
+			.map(|unzip!(&x)| Self::new(fx128(x.re.into()), fx128(x.im.into())))
 	}
 }
 impl Scalar for f32 {
@@ -1310,13 +1480,24 @@ fn bench_eigen<T: Scalar>(bencher: Bencher, decomp: usize, A: MatRef<'_, T>) {
 	unsafe {
 		let eig = eig::libeigen_make_decomp(decomp, dtype, m, n);
 		bencher.bench(|| {
-			eig::libeigen_factorize(decomp, dtype, eig, A.as_ptr() as _, m, n, cs);
+			eig::libeigen_factorize(
+				decomp,
+				dtype,
+				eig,
+				A.as_ptr() as _,
+				m,
+				n,
+				cs,
+			);
 		});
 		eig::libeigen_free_decomp(decomp, dtype, eig);
 	}
 	return;
 }
-fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -1330,10 +1511,15 @@ fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
-	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
+	let A = &A * A.adjoint()
+		+ Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::llt::factor::cholesky_in_place_scratch::<T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1343,7 +1529,14 @@ fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 		bencher.bench(|| {
 			if Lib::FAER {
 				L.copy_from_triangular_lower(&A);
-				linalg::cholesky::llt::factor::cholesky_in_place(L.rb_mut(), Default::default(), parallel, stack, params).unwrap();
+				linalg::cholesky::llt::factor::cholesky_in_place(
+					L.rb_mut(),
+					Default::default(),
+					parallel,
+					stack,
+					params,
+				)
+				.unwrap();
 			} else if Lib::LAPACK {
 				L.copy_from_triangular_lower(&A);
 				#[cfg(any(openblas, mkl, blis))]
@@ -1384,11 +1577,13 @@ fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 				}
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.cholesky()
 					.unwrap();
@@ -1397,7 +1592,10 @@ fn llt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 		})
 	}
 }
-fn ldlt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn ldlt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -1411,10 +1609,15 @@ fn ldlt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 	assert!(m == n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
-	let A = &A * A.adjoint() + Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
+	let A = &A * A.adjoint()
+		+ Scale(from_f64::<T>(m as f64)) * Mat::<T>::identity(n, n);
 	let mut L = Mat::zeros(n, n);
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::ldlt::factor::cholesky_in_place_scratch::<T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1423,11 +1626,21 @@ fn ldlt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::ldlt::factor::cholesky_in_place(L.rb_mut(), Default::default(), parallel, stack, params).unwrap();
+			linalg::cholesky::ldlt::factor::cholesky_in_place(
+				L.rb_mut(),
+				Default::default(),
+				parallel,
+				stack,
+				params,
+			)
+			.unwrap();
 		})
 	}
 }
-fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1515,13 +1728,25 @@ fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 	};
 	#[cfg(any(openblas, mkl, blis))]
 	let work = &mut *avec![zero::<T>(); lwork];
-	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if Lib::FAER || (Lib::LAPACK && T::IS_NATIVE) {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
 			if Lib::FAER {
-				linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
+				linalg::cholesky::lblt::factor::cholesky_in_place(
+					L.rb_mut(),
+					subdiag.rb_mut(),
+					fwd,
+					bwd,
+					parallel,
+					stack,
+					params,
+				);
 			} else if Lib::LAPACK {
 				fwd.fill(0);
 				#[cfg(any(openblas, mkl, blis))]
@@ -1576,7 +1801,10 @@ fn lblt<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(
 		})
 	}
 }
-fn lblt_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn lblt_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1604,16 +1832,31 @@ fn lblt_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 		..Auto::<T>::auto()
 	}
 	.into();
-	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
+			linalg::cholesky::lblt::factor::cholesky_in_place(
+				L.rb_mut(),
+				subdiag.rb_mut(),
+				fwd,
+				bwd,
+				parallel,
+				stack,
+				params,
+			);
 		})
 	}
 }
-fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1701,13 +1944,25 @@ fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 	};
 	#[cfg(any(openblas, mkl, blis))]
 	let work = &mut *avec![zero::<T>(); lwork];
-	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if Lib::FAER || (Lib::LAPACK && T::IS_NATIVE) {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
 			if Lib::FAER {
-				linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
+				linalg::cholesky::lblt::factor::cholesky_in_place(
+					L.rb_mut(),
+					subdiag.rb_mut(),
+					fwd,
+					bwd,
+					parallel,
+					stack,
+					params,
+				);
 			} else if Lib::LAPACK {
 				fwd.fill(0);
 				#[cfg(any(openblas, mkl, blis))]
@@ -1762,7 +2017,10 @@ fn lblt_rook<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 		})
 	}
 }
-fn lblt_rook_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn lblt_rook_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1790,16 +2048,31 @@ fn lblt_rook_diag<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 		..Auto::<T>::auto()
 	}
 	.into();
-	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
+			linalg::cholesky::lblt::factor::cholesky_in_place(
+				L.rb_mut(),
+				subdiag.rb_mut(),
+				fwd,
+				bwd,
+				parallel,
+				stack,
+				params,
+			);
 		})
 	}
 }
-fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	#[cfg(eigen)]
 	if Lib::EIGEN {
@@ -1827,16 +2100,31 @@ fn lblt_full<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Plo
 		..Auto::<T>::auto()
 	}
 	.into();
-	let stack = &mut MemBuffer::new(linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::cholesky::lblt::factor::cholesky_in_place_scratch::<usize, T>(
+			n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if Lib::FAER {
 		bencher.bench(|| {
 			L.copy_from_triangular_lower(&A);
-			linalg::cholesky::lblt::factor::cholesky_in_place(L.rb_mut(), subdiag.rb_mut(), fwd, bwd, parallel, stack, params);
+			linalg::cholesky::lblt::factor::cholesky_in_place(
+				L.rb_mut(),
+				subdiag.rb_mut(),
+				fwd,
+				bwd,
+				parallel,
+				stack,
+				params,
+			);
 		})
 	}
 }
-fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) || (!T::IS_NATIVE && Ord::max(m, n) > 1024)
 		// parallel mkl sometimes segfaults here ¯\_(ツ)_/¯
@@ -1847,7 +2135,8 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 	}
 	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
 	lapack_set_num_threads(parallel);
-	let block_size = linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
+	let block_size =
+		linalg::qr::no_pivoting::factor::recommended_block_size::<T>(m, n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	#[cfg(eigen)]
@@ -1917,15 +2206,23 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 	#[cfg(any(openblas, mkl, blis))]
 	let work = &mut *avec![zero::<T>(); lwork];
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
-		m, n, block_size, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(
+		linalg::qr::no_pivoting::factor::qr_in_place_scratch::<T>(
+			m, n, block_size, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				QR.copy_from(&A);
-				linalg::qr::no_pivoting::factor::qr_in_place(QR.rb_mut(), Q.rb_mut(), parallel, stack, params);
+				linalg::qr::no_pivoting::factor::qr_in_place(
+					QR.rb_mut(),
+					Q.rb_mut(),
+					parallel,
+					stack,
+					params,
+				);
 			} else if Lib::LAPACK {
 				QR.copy_from(&A);
 				#[cfg(any(openblas, mkl, blis))]
@@ -1978,11 +2275,13 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 				}
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.qr();
 				};
@@ -1990,7 +2289,10 @@ fn qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n)
 		});
 	}
 }
-fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -2001,7 +2303,8 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 	}
 	let parallel = if Thd::PAR { Par::rayon(0) } else { Par::Seq };
 	lapack_set_num_threads(parallel);
-	let block_size = linalg::qr::col_pivoting::factor::recommended_block_size::<T>(m, n);
+	let block_size =
+		linalg::qr::col_pivoting::factor::recommended_block_size::<T>(m, n);
 	let rng = &mut StdRng::seed_from_u64(0);
 	let A = T::random(rng, m, n);
 	#[cfg(eigen)]
@@ -2081,15 +2384,25 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 	#[cfg(any(openblas, mkl, blis))]
 	let work = &mut *avec![zero::<T>(); lwork];
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(
-		m, n, block_size, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(
+		linalg::qr::col_pivoting::factor::qr_in_place_scratch::<usize, T>(
+			m, n, block_size, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				QR.copy_from(&A);
-				linalg::qr::col_pivoting::factor::qr_in_place(QR.rb_mut(), Q.rb_mut(), col_fwd, col_bwd, parallel, stack, params);
+				linalg::qr::col_pivoting::factor::qr_in_place(
+					QR.rb_mut(),
+					Q.rb_mut(),
+					col_fwd,
+					col_bwd,
+					parallel,
+					stack,
+					params,
+				);
 			} else if Lib::LAPACK {
 				QR.copy_from(&A);
 				col_fwd.fill(0);
@@ -2149,11 +2462,13 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 				}
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.col_piv_qr();
 				};
@@ -2161,7 +2476,10 @@ fn col_piv_qr<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, Pl
 		});
 	}
 }
-fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -2183,15 +2501,24 @@ fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 	let row_fwd = &mut *avec![0usize; n];
 	let row_bwd = &mut *avec![0usize; n];
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(
-		n, n, parallel, params,
-	));
+	let stack = &mut MemBuffer::new(
+		linalg::lu::partial_pivoting::factor::lu_in_place_scratch::<usize, T>(
+			n, n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				LU.copy_from(&A);
-				linalg::lu::partial_pivoting::factor::lu_in_place(LU.rb_mut(), row_fwd, row_bwd, parallel, stack, params);
+				linalg::lu::partial_pivoting::factor::lu_in_place(
+					LU.rb_mut(),
+					row_fwd,
+					row_bwd,
+					parallel,
+					stack,
+					params,
+				);
 			} else if Lib::LAPACK {
 				LU.copy_from(&A);
 				row_fwd.fill(0);
@@ -2237,11 +2564,13 @@ fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 				}
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.lu();
 				};
@@ -2249,7 +2578,10 @@ fn partial_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher
 		})
 	}
 }
-fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN || Lib::LAPACK))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -2272,13 +2604,26 @@ fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, P
 	let col_fwd = &mut *avec![0usize; n];
 	let col_bwd = &mut *avec![0usize; n];
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(m, n, parallel, params));
+	let stack = &mut MemBuffer::new(
+		linalg::lu::full_pivoting::factor::lu_in_place_scratch::<usize, T>(
+			m, n, parallel, params,
+		),
+	);
 	let stack = MemStack::new(stack);
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
 				LU.copy_from(&A);
-				linalg::lu::full_pivoting::factor::lu_in_place(LU.rb_mut(), row_fwd, row_bwd, col_fwd, col_bwd, parallel, stack, params);
+				linalg::lu::full_pivoting::factor::lu_in_place(
+					LU.rb_mut(),
+					row_fwd,
+					row_bwd,
+					col_fwd,
+					col_bwd,
+					parallel,
+					stack,
+					params,
+				);
 			} else if Lib::LAPACK {
 				LU.copy_from(&A);
 				row_fwd.fill(0);
@@ -2325,11 +2670,13 @@ fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, P
 				}
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.full_piv_lu();
 				};
@@ -2337,7 +2684,10 @@ fn full_piv_lu<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, P
 		})
 	}
 }
-fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -2462,7 +2812,16 @@ fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
-				linalg::svd::svd(A.rb(), S.rb_mut(), Some(U.rb_mut()), Some(V.rb_mut()), parallel, stack, params).unwrap();
+				linalg::svd::svd(
+					A.rb(),
+					S.rb_mut(),
+					Some(U.rb_mut()),
+					Some(V.rb_mut()),
+					parallel,
+					stack,
+					params,
+				)
+				.unwrap();
 			} else if Lib::LAPACK {
 				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
@@ -2541,11 +2900,13 @@ fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 				};
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.svd(true, true);
 				};
@@ -2553,7 +2914,10 @@ fn svd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n
 		});
 	}
 }
-fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN)) || (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis)))) || (!T::IS_NATIVE && Ord::max(m, n) > 1024)
 		// parallel mkl sometimes segfaults here ¯\_(ツ)_/¯
@@ -2664,17 +3028,26 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bench
 	#[cfg(any(openblas, mkl, blis))]
 	let iwork = &mut *avec![0usize; liwork];
 	let params = Default::default();
-	let stack = &mut MemBuffer::new(linalg::evd::self_adjoint_evd_scratch::<T>(
-		m,
-		linalg::evd::ComputeEigenvectors::Yes,
-		parallel,
-		params,
-	));
+	let stack =
+		&mut MemBuffer::new(linalg::evd::self_adjoint_evd_scratch::<T>(
+			m,
+			linalg::evd::ComputeEigenvectors::Yes,
+			parallel,
+			params,
+		));
 	let stack = MemStack::new(stack);
 	if !Lib::LAPACK || T::IS_NATIVE {
 		bencher.bench(|| {
 			if Lib::FAER {
-				linalg::evd::self_adjoint_evd(A.rb(), S.rb_mut(), Some(U.rb_mut()), parallel, stack, params).unwrap();
+				linalg::evd::self_adjoint_evd(
+					A.rb(),
+					S.rb_mut(),
+					Some(U.rb_mut()),
+					parallel,
+					stack,
+					params,
+				)
+				.unwrap();
 			} else if Lib::LAPACK {
 				#[cfg(any(openblas, mkl, blis))]
 				unsafe {
@@ -2743,11 +3116,13 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bench
 				}
 			} else if Lib::NALGEBRA {
 				unsafe {
-					na::DMatrixView::from_data(na::ViewStorage::from_raw_parts(
-						A.as_ptr(),
-						(na::Dyn(n), na::Dyn(n)),
-						(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
-					))
+					na::DMatrixView::from_data(
+						na::ViewStorage::from_raw_parts(
+							A.as_ptr(),
+							(na::Dyn(n), na::Dyn(n)),
+							(na::Const::<1>, na::Dyn(A.col_stride() as usize)),
+						),
+					)
 					.clone_owned()
 					.symmetric_eigen();
 				};
@@ -2755,7 +3130,10 @@ fn self_adjoint_evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bench
 		});
 	}
 }
-fn evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(bencher: Bencher, PlotArg(n): PlotArg) {
+fn evd<T: Scalar, Lib: self::Lib, Thd: self::Thread>(
+	bencher: Bencher,
+	PlotArg(n): PlotArg,
+) {
 	let m = n;
 	if (Ord::max(m, n) > 2048 && (Lib::NALGEBRA || Lib::EIGEN))
 		|| (Lib::LAPACK && cfg!(not(any(openblas, mkl, blis))))
@@ -2998,9 +3376,12 @@ impl diol::traits::PlotMetric for FlopsMetric {
 	}
 }
 fn main() -> eyre::Result<()> {
-	let config = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/bench.toml"))?
-		.parse::<Table>()
-		.unwrap();
+	let config = std::fs::read_to_string(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/examples/bench.toml"
+	))?
+	.parse::<Table>()
+	.unwrap();
 	let mut parallel = vec![];
 	if config["par"]["seq"].as_bool().unwrap() {
 		parallel.push(Par::Seq);
@@ -3030,15 +3411,34 @@ fn main() -> eyre::Result<()> {
 							rayon::current_num_threads(),
 							$title
 						);
-						let seq_name = &format!("{}{}{}", stringify!($T), " sequential ", $title);
+						let seq_name = &format!(
+							"{}{}{}",
+							stringify!($T),
+							" sequential ",
+							$title
+						);
 						let name = match parallel {
 							Par::Seq => seq_name,
 							Par::Rayon(_) => par_name,
 						};
-						if bench_config.group_filter.as_ref().is_none_or(|regex| regex.is_match(name)) {
-							let timings_path = format!("{}{}/timings {name}.json", env!("CARGO_MANIFEST_DIR"), "/../target");
-							let timings = serde_json::de::from_str::<BenchResult>(&*std::fs::read_to_string(&timings_path).unwrap_or(String::new()))
-								.unwrap_or(BenchResult { groups: HashMap::new() });
+						if bench_config
+							.group_filter
+							.as_ref()
+							.is_none_or(|regex| regex.is_match(name))
+						{
+							let timings_path = format!(
+								"{}{}/timings {name}.json",
+								env!("CARGO_MANIFEST_DIR"),
+								"/../target"
+							);
+							let timings =
+								serde_json::de::from_str::<BenchResult>(
+									&*std::fs::read_to_string(&timings_path)
+										.unwrap_or(String::new()),
+								)
+								.unwrap_or(BenchResult {
+									groups: HashMap::new(),
+								});
 							let bench = Bench::new(&bench_config);
 							match parallel {
 								Par::Seq => bench.register_many(
@@ -3047,26 +3447,70 @@ fn main() -> eyre::Result<()> {
 										let list = diol::variadics::Nil;
 										#[cfg(any(openblas, mkl))]
 										let list = diol::variadics::Cons {
-											head: $name::<T, self::lapack, self::seq>
-												.with_name(core::any::type_name::<self::lapack>().trim_start_matches("bench::")),
+											head: $name::<
+												T,
+												self::lapack,
+												self::seq,
+											>
+												.with_name(
+													core::any::type_name::<
+														self::lapack,
+													>()
+													.trim_start_matches(
+														"bench::",
+													),
+												),
 											tail: list,
 										};
 										#[cfg(nalgebra)]
 										let list = diol::variadics::Cons {
-											head: $name::<T, self::nalgebra, self::seq>
-												.with_name(core::any::type_name::<self::nalgebra>().trim_start_matches("bench::")),
+											head: $name::<
+												T,
+												self::nalgebra,
+												self::seq,
+											>
+												.with_name(
+													core::any::type_name::<
+														self::nalgebra,
+													>()
+													.trim_start_matches(
+														"bench::",
+													),
+												),
 											tail: list,
 										};
 										#[cfg(eigen)]
 										let list = diol::variadics::Cons {
-											head: $name::<T, self::eigen, self::seq>
-												.with_name(core::any::type_name::<self::eigen>().trim_start_matches("bench::")),
+											head: $name::<
+												T,
+												self::eigen,
+												self::seq,
+											>
+												.with_name(
+													core::any::type_name::<
+														self::eigen,
+													>()
+													.trim_start_matches(
+														"bench::",
+													),
+												),
 											tail: list,
 										};
 										#[cfg(faer)]
 										let list = diol::variadics::Cons {
-											head: $name::<T, self::faer, self::seq>
-												.with_name(core::any::type_name::<self::faer>().trim_start_matches("bench::")),
+											head: $name::<
+												T,
+												self::faer,
+												self::seq,
+											>
+												.with_name(
+													core::any::type_name::<
+														self::faer,
+													>()
+													.trim_start_matches(
+														"bench::",
+													),
+												),
 											tail: list,
 										};
 										list
@@ -3080,14 +3524,36 @@ fn main() -> eyre::Result<()> {
 										let list = diol::variadics::Nil;
 										#[cfg(any(openblas, mkl, blis))]
 										let list = diol::variadics::Cons {
-											head: $name::<T, self::lapack, self::par>
-												.with_name(core::any::type_name::<self::lapack>().trim_start_matches("bench::")),
+											head: $name::<
+												T,
+												self::lapack,
+												self::par,
+											>
+												.with_name(
+													core::any::type_name::<
+														self::lapack,
+													>()
+													.trim_start_matches(
+														"bench::",
+													),
+												),
 											tail: list,
 										};
 										#[cfg(faer)]
 										let list = diol::variadics::Cons {
-											head: $name::<T, self::faer, self::par>
-												.with_name(core::any::type_name::<self::faer>().trim_start_matches("bench::")),
+											head: $name::<
+												T,
+												self::faer,
+												self::par,
+											>
+												.with_name(
+													core::any::type_name::<
+														self::faer,
+													>()
+													.trim_start_matches(
+														"bench::",
+													),
+												),
 											tail: list,
 										};
 										list
@@ -3096,19 +3562,37 @@ fn main() -> eyre::Result<()> {
 								),
 							}
 							let timings = bench.run()?.combine(&timings);
-							timings.plot(&bench_config, bench_config.plot_dir.0.as_ref().unwrap())?;
-							std::fs::write(timings_path, serde_json::to_string(&timings).unwrap())?;
+							timings.plot(
+								&bench_config,
+								bench_config.plot_dir.0.as_ref().unwrap(),
+							)?;
+							std::fs::write(
+								timings_path,
+								serde_json::to_string(&timings).unwrap(),
+							)?;
 						}
 					};
 				}
 				register_one!("llt", llt, "block_decomp");
 				register_one!("ldlt", ldlt, "block_decomp");
 				register_one!("lblt", lblt, "block_decomp");
-				register_one!("lblt diagonal pivoting", lblt_diag, "block_decomp");
+				register_one!(
+					"lblt diagonal pivoting",
+					lblt_diag,
+					"block_decomp"
+				);
 				register_one!("lblt rook pivoting", lblt_rook, "block_decomp");
-				register_one!("lblt diagonal + rook pivoting", lblt_rook_diag, "block_decomp");
+				register_one!(
+					"lblt diagonal + rook pivoting",
+					lblt_rook_diag,
+					"block_decomp"
+				);
 				register_one!("lblt full pivoting", lblt_full, "decomp");
-				register_one!("lu partial pivoting", partial_piv_lu, "block_decomp");
+				register_one!(
+					"lu partial pivoting",
+					partial_piv_lu,
+					"block_decomp"
+				);
 				register_one!("lu full pivoting", full_piv_lu, "decomp");
 				register_one!("qr no pivoting", qr, "block_decomp");
 				register_one!("qr column pivoting", col_piv_qr, "decomp");
@@ -3124,25 +3608,36 @@ fn main() -> eyre::Result<()> {
 	spindle::SPIN_LIMIT.store(
 		shl(
 			spindle::DEFAULT_SPIN_LIMIT,
-			std::env::var("SPIN").as_deref().unwrap_or("0").parse::<i32>().unwrap(),
+			std::env::var("SPIN")
+				.as_deref()
+				.unwrap_or("0")
+				.parse::<i32>()
+				.unwrap(),
 		),
 		std::sync::atomic::Ordering::Relaxed,
 	);
 	spindle::PAUSE_LIMIT.store(
 		shl(
 			spindle::DEFAULT_PAUSE_LIMIT,
-			std::env::var("PAUSE").as_deref().unwrap_or("0").parse::<i32>().unwrap(),
+			std::env::var("PAUSE")
+				.as_deref()
+				.unwrap_or("0")
+				.parse::<i32>()
+				.unwrap(),
 		),
 		std::sync::atomic::Ordering::Relaxed,
 	);
-	spindle::with_lock(rayon::current_num_threads(), || -> eyre::Result<()> {
-		register!(f32);
-		register!(f64);
-		register!(fx128);
-		register!(c32);
-		register!(c64);
-		register!(cx128);
-		Ok(())
-	})?;
+	spindle::with_lock(
+		rayon::current_num_threads(),
+		|| -> eyre::Result<()> {
+			register!(f32);
+			register!(f64);
+			register!(fx128);
+			register!(c32);
+			register!(c64);
+			register!(cx128);
+			Ok(())
+		},
+	)?;
 	Ok(())
 }

@@ -1,7 +1,11 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par) -> StackReq {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+) -> StackReq {
 	_ = par;
 	temp_mat_scratch::<T>(nrows, ncols)
 }
@@ -86,7 +90,14 @@ mod tests {
 				perm_fwd,
 				perm_bwd,
 				Par::Seq,
-				MemStack::new(&mut { MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(m, n, Par::Seq, default())) }),
+				MemStack::new(&mut {
+					MemBuffer::new(factor::lu_in_place_scratch::<usize, c64>(
+						m,
+						n,
+						Par::Seq,
+						default(),
+					))
+				}),
 				default(),
 			);
 			let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
@@ -97,7 +108,13 @@ mod tests {
 				LU.as_ref(),
 				perm,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(m, n, Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					reconstruct::reconstruct_scratch::<usize, c64>(
+						m,
+						n,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!(A_rec ~ A);
 		}

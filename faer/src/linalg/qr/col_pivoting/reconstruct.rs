@@ -1,6 +1,11 @@
 use crate::assert;
 use crate::internal_prelude::*;
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, block_size: usize, par: Par) -> StackReq {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	block_size: usize,
+	par: Par,
+) -> StackReq {
 	_ = par;
 	StackReq::or(
 		linalg::householder::apply_block_householder_sequence_on_the_left_in_place_scratch::<T>(nrows, block_size, ncols),
@@ -32,7 +37,9 @@ pub fn reconstruct<I: Index, T: ComplexField>(
 	));
 	let mut out = out;
 	out.fill(zero());
-	out.rb_mut().get_mut(..size, ..n).copy_from_triangular_upper(R);
+	out.rb_mut()
+		.get_mut(..size, ..n)
+		.copy_from_triangular_upper(R);
 	linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(Q_basis, Q_coeff, Conj::No, out.rb_mut(), par, stack);
 	crate::perm::permute_cols_in_place(out.rb_mut(), col_perm.inverse(), stack);
 }
@@ -65,7 +72,15 @@ mod tests {
 				col_perm_fwd,
 				col_perm_bwd,
 				Par::Seq,
-				MemStack::new(&mut { MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(m, n, 4, Par::Seq, default())) }),
+				MemStack::new(&mut {
+					MemBuffer::new(factor::qr_in_place_scratch::<usize, c64>(
+						m,
+						n,
+						4,
+						Par::Seq,
+						default(),
+					))
+				}),
 				default(),
 			);
 			let approx_eq = CwiseMat(ApproxEq::eps() * (n as f64));
@@ -77,7 +92,14 @@ mod tests {
 				QR.get(..size, ..),
 				col_perm,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(m, n, 4, Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					reconstruct::reconstruct_scratch::<usize, c64>(
+						m,
+						n,
+						4,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!(A_rec ~ A);
 		}

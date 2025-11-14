@@ -14,7 +14,9 @@ impl<T, Rows: Copy, CStride: Copy> Clone for Ref<'_, T, Rows, CStride> {
 		*self
 	}
 }
-impl<'short, T, Rows: Copy, CStride: Copy> Reborrow<'short> for Ref<'_, T, Rows, CStride> {
+impl<'short, T, Rows: Copy, CStride: Copy> Reborrow<'short>
+	for Ref<'_, T, Rows, CStride>
+{
 	type Target = Ref<'short, T, Rows, CStride>;
 
 	#[inline]
@@ -22,7 +24,9 @@ impl<'short, T, Rows: Copy, CStride: Copy> Reborrow<'short> for Ref<'_, T, Rows,
 		*self
 	}
 }
-impl<'short, T, Rows: Copy, CStride: Copy> ReborrowMut<'short> for Ref<'_, T, Rows, CStride> {
+impl<'short, T, Rows: Copy, CStride: Copy> ReborrowMut<'short>
+	for Ref<'_, T, Rows, CStride>
+{
 	type Target = Ref<'short, T, Rows, CStride>;
 
 	#[inline]
@@ -38,8 +42,14 @@ impl<'a, T, Rows: Copy, CStride: Copy> IntoConst for Ref<'a, T, Rows, CStride> {
 		self
 	}
 }
-unsafe impl<T: Sync, Rows: Sync, CStride: Sync> Sync for Ref<'_, T, Rows, CStride> {}
-unsafe impl<T: Sync, Rows: Send, CStride: Send> Send for Ref<'_, T, Rows, CStride> {}
+unsafe impl<T: Sync, Rows: Sync, CStride: Sync> Sync
+	for Ref<'_, T, Rows, CStride>
+{
+}
+unsafe impl<T: Sync, Rows: Send, CStride: Send> Send
+	for Ref<'_, T, Rows, CStride>
+{
+}
 impl<'a, T> RowRef<'a, T> {
 	/// creates a row view over the given element
 	#[inline]
@@ -47,8 +57,8 @@ impl<'a, T> RowRef<'a, T> {
 		unsafe { RowRef::from_raw_parts(value as *const T, 1, 1) }
 	}
 
-	/// creates a `RowRef` from slice views over the row vector data, the result has the same
-	/// number of columns as the length of the input slice
+	/// creates a `RowRef` from slice views over the row vector data, the result
+	/// has the same number of columns as the length of the input slice
 	#[inline]
 	pub fn from_slice(slice: &'a [T]) -> Self {
 		let len = slice.len();
@@ -56,14 +66,19 @@ impl<'a, T> RowRef<'a, T> {
 	}
 }
 impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
-	/// creates a `RowRef` from pointers to the column vector data, number of rows, and row stride
+	/// creates a `RowRef` from pointers to the column vector data, number of
+	/// rows, and row stride
 	///
 	/// # safety
 	/// this function has the same safety requirements as
 	/// [`MatRef::from_raw_parts(ptr, 1, ncols, 0, col_stride)`]
 	#[inline(always)]
 	#[track_caller]
-	pub const unsafe fn from_raw_parts(ptr: *const T, ncols: Cols, col_stride: CStride) -> Self {
+	pub const unsafe fn from_raw_parts(
+		ptr: *const T,
+		ncols: Cols,
+		col_stride: CStride,
+	) -> Self {
 		Self {
 			0: Ref {
 				trans: ColRef::from_raw_parts(ptr, ncols, col_stride),
@@ -119,11 +134,12 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		self.trans.ptr_at(col)
 	}
 
-	/// returns a raw pointer to the element at the given index, assuming the provided index
-	/// is within the row bounds
+	/// returns a raw pointer to the element at the given index, assuming the
+	/// provided index is within the row bounds
 	///
 	/// # safety
-	/// the behavior is undefined if any of the following conditions are violated:
+	/// the behavior is undefined if any of the following conditions are
+	/// violated:
 	/// * `col < self.ncols()`
 	#[inline(always)]
 	#[track_caller]
@@ -132,8 +148,8 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		self.trans.ptr_inbounds_at(col)
 	}
 
-	/// splits the row vertically at the given column into two parts and returns an array of
-	/// each subrow, in the following order:
+	/// splits the row vertically at the given column into two parts and returns
+	/// an array of each subrow, in the following order:
 	/// * left
 	/// * right
 	///
@@ -142,7 +158,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	/// * `col <= self.ncols()`
 	#[inline]
 	#[track_caller]
-	pub fn split_at_col(self, col: IdxInc<Cols>) -> (RowRef<'a, T, usize, CStride>, RowRef<'a, T, usize, CStride>) {
+	pub fn split_at_col(
+		self,
+		col: IdxInc<Cols>,
+	) -> (RowRef<'a, T, usize, CStride>, RowRef<'a, T, usize, CStride>) {
 		assert!(all(col <= self.ncols()));
 		let rs = self.col_stride();
 		let top = self.as_ptr();
@@ -150,7 +169,11 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		unsafe {
 			(
 				RowRef::from_raw_parts(top, col.unbound(), rs),
-				RowRef::from_raw_parts(bot, self.ncols().unbound() - col.unbound(), rs),
+				RowRef::from_raw_parts(
+					bot,
+					self.ncols().unbound() - col.unbound(),
+					rs,
+				),
 			)
 		}
 	}
@@ -217,7 +240,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	/// * `col` must be contained in `[0, self.ncols())`
 	#[track_caller]
 	#[inline(always)]
-	pub fn get<ColRange>(self, col: ColRange) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+	pub fn get<ColRange>(
+		self,
+		col: ColRange,
+	) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
 	where
 		RowRef<'a, T, Cols, CStride>: RowIndex<ColRange>,
 	{
@@ -228,15 +254,23 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	/// `col` is a range, without bound checks
 	///
 	/// # panics
-	/// the behavior is undefined if any of the following conditions are violated:
+	/// the behavior is undefined if any of the following conditions are
+	/// violated:
 	/// * `col` must be contained in `[0, self.ncols())`
 	#[track_caller]
 	#[inline(always)]
-	pub unsafe fn get_unchecked<ColRange>(self, col: ColRange) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+	pub unsafe fn get_unchecked<ColRange>(
+		self,
+		col: ColRange,
+	) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
 	where
 		RowRef<'a, T, Cols, CStride>: RowIndex<ColRange>,
 	{
-		unsafe { <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(self, col) }
+		unsafe {
+			<RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(
+				self, col,
+			)
+		}
 	}
 
 	/// returns a view over the `self`, with the columns in reversed order
@@ -249,15 +283,19 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		}
 	}
 
-	/// returns a view over the subrow starting at column `col_start`, and with number of
-	/// columns `ncols`
+	/// returns a view over the subrow starting at column `col_start`, and with
+	/// number of columns `ncols`
 	///
 	/// # panics
 	/// the function panics if any of the following conditions are violated:
 	/// * `col_start <= self.ncols()`
 	/// * `ncols <= self.ncols() - col_start`
 	#[inline]
-	pub fn subcols<V: Shape>(self, col_start: IdxInc<Cols>, ncols: V) -> RowRef<'a, T, V, CStride> {
+	pub fn subcols<V: Shape>(
+		self,
+		col_start: IdxInc<Cols>,
+		ncols: V,
+	) -> RowRef<'a, T, V, CStride> {
 		assert!(all(col_start <= self.ncols()));
 		{
 			let ncols = ncols.unbound();
@@ -269,30 +307,46 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		unsafe { RowRef::from_raw_parts(self.ptr_at(col_start), ncols, cs) }
 	}
 
-	/// returns the input row with the given column shape after checking that it matches the
-	/// current column shape
+	/// returns the input row with the given column shape after checking that it
+	/// matches the current column shape
 	#[inline]
 	#[track_caller]
 	pub fn as_col_shape<V: Shape>(self, ncols: V) -> RowRef<'a, T, V, CStride> {
 		assert!(all(self.ncols().unbound() == ncols.unbound()));
-		unsafe { RowRef::from_raw_parts(self.as_ptr(), ncols, self.col_stride()) }
+		unsafe {
+			RowRef::from_raw_parts(self.as_ptr(), ncols, self.col_stride())
+		}
 	}
 
 	/// returns the input row with dynamic column shape
 	#[inline]
 	pub fn as_dyn_cols(self) -> RowRef<'a, T, usize, CStride> {
-		unsafe { RowRef::from_raw_parts(self.as_ptr(), self.ncols().unbound(), self.col_stride()) }
+		unsafe {
+			RowRef::from_raw_parts(
+				self.as_ptr(),
+				self.ncols().unbound(),
+				self.col_stride(),
+			)
+		}
 	}
 
 	/// returns the input row with dynamic stride
 	#[inline]
 	pub fn as_dyn_stride(self) -> RowRef<'a, T, Cols, isize> {
-		unsafe { RowRef::from_raw_parts(self.as_ptr(), self.ncols(), self.col_stride().element_stride()) }
+		unsafe {
+			RowRef::from_raw_parts(
+				self.as_ptr(),
+				self.ncols(),
+				self.col_stride().element_stride(),
+			)
+		}
 	}
 
 	/// returns an iterator over the elements of the row
 	#[inline]
-	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
+	pub fn iter(
+		self,
+	) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
 	where
 		Cols: 'a,
 	{
@@ -302,7 +356,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 	/// returns a parallel iterator over the elements of the row
 	#[inline]
 	#[cfg(feature = "rayon")]
-	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
+	pub fn par_iter(
+		self,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
 	where
 		T: Sync,
 		Cols: 'a,
@@ -310,14 +366,20 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		self.trans.par_iter()
 	}
 
-	/// returns a parallel iterator that provides exactly `count` successive chunks of the elements
-	/// of this row
+	/// returns a parallel iterator that provides exactly `count` successive
+	/// chunks of the elements of this row
 	///
 	/// only available with the `rayon` feature
 	#[inline]
 	#[track_caller]
 	#[cfg(feature = "rayon")]
-	pub fn par_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, usize, CStride>>
+	pub fn par_partition(
+		self,
+		count: usize,
+	) -> impl 'a
+	+ rayon::iter::IndexedParallelIterator<
+		Item = RowRef<'a, T, usize, CStride>,
+	>
 	where
 		T: Sync,
 		Cols: 'a,
@@ -326,11 +388,20 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		self.transpose().par_partition(count).map(ColRef::transpose)
 	}
 
-	/// returns a view over the row with a static column stride equal to `+1`, or `None` otherwise
+	/// returns a view over the row with a static column stride equal to `+1`,
+	/// or `None` otherwise
 	#[inline]
-	pub fn try_as_row_major(self) -> Option<RowRef<'a, T, Cols, ContiguousFwd>> {
+	pub fn try_as_row_major(
+		self,
+	) -> Option<RowRef<'a, T, Cols, ContiguousFwd>> {
 		if self.col_stride().element_stride() == 1 {
-			Some(unsafe { RowRef::from_raw_parts(self.as_ptr(), self.ncols(), ContiguousFwd) })
+			Some(unsafe {
+				RowRef::from_raw_parts(
+					self.as_ptr(),
+					self.ncols(),
+					ContiguousFwd,
+				)
+			})
 		} else {
 			None
 		}
@@ -365,7 +436,13 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowRef<'a, T, Cols, CStride> {
 		self.at(i)
 	}
 }
-impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> Reborrow<'short, Target = Ref<'short, T, Cols, CStride>>> generic::Row<Inner> {
+impl<
+	T,
+	Cols: Shape,
+	CStride: Stride,
+	Inner: for<'short> Reborrow<'short, Target = Ref<'short, T, Cols, CStride>>,
+> generic::Row<Inner>
+{
 	/// returns a view over `self`
 	#[inline]
 	pub fn as_ref(&self) -> RowRef<'_, T, Cols, CStride> {
@@ -419,16 +496,28 @@ impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> Reborrow<'short, Target
 
 	/// see [`Mat::kron`]
 	#[inline]
-	pub fn kron(&self, rhs: impl AsMatRef<T: Conjugate<Canonical = T::Canonical>>) -> Mat<T::Canonical>
+	pub fn kron(
+		&self,
+		rhs: impl AsMatRef<T: Conjugate<Canonical = T::Canonical>>,
+	) -> Mat<T::Canonical>
 	where
 		T: Conjugate,
 	{
-		fn imp<T: ComplexField>(lhs: MatRef<impl Conjugate<Canonical = T>>, rhs: MatRef<impl Conjugate<Canonical = T>>) -> Mat<T> {
-			let mut out = Mat::zeros(lhs.nrows() * rhs.nrows(), lhs.ncols() * rhs.ncols());
+		fn imp<T: ComplexField>(
+			lhs: MatRef<impl Conjugate<Canonical = T>>,
+			rhs: MatRef<impl Conjugate<Canonical = T>>,
+		) -> Mat<T> {
+			let mut out = Mat::zeros(
+				lhs.nrows() * rhs.nrows(),
+				lhs.ncols() * rhs.ncols(),
+			);
 			linalg::kron::kron(out.rb_mut(), lhs, rhs);
 			out
 		}
-		imp(self.rb().as_mat().as_dyn().as_dyn_stride(), rhs.as_mat_ref().as_dyn().as_dyn_stride())
+		imp(
+			self.rb().as_mat().as_dyn().as_dyn_stride(),
+			rhs.as_mat_ref().as_dyn().as_dyn_stride(),
+		)
 	}
 
 	/// returns `true` if all of the elements of `self` are finite.
@@ -460,7 +549,8 @@ impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> Reborrow<'short, Target
 		self.rb().transpose().cloned().into_transpose()
 	}
 
-	/// returns a newly allocated row holding the (possibly conjugated) values of `self`
+	/// returns a newly allocated row holding the (possibly conjugated) values
+	/// of `self`
 	#[inline]
 	pub fn to_owned(&self) -> Row<T::Canonical, Cols>
 	where
@@ -489,16 +579,28 @@ impl<'COLS, 'a, T, CStride: Stride> RowRef<'a, T, Dim<'COLS>, CStride> {
 	pub fn split_cols_with<'LEFT, 'RIGHT>(
 		self,
 		col: Partition<'LEFT, 'RIGHT, 'COLS>,
-	) -> (RowRef<'a, T, Dim<'LEFT>, CStride>, RowRef<'a, T, Dim<'RIGHT>, CStride>) {
+	) -> (
+		RowRef<'a, T, Dim<'LEFT>, CStride>,
+		RowRef<'a, T, Dim<'RIGHT>, CStride>,
+	) {
 		let (a, b) = self.split_at_col(col.midpoint());
 		(a.as_col_shape(col.head), b.as_col_shape(col.tail))
 	}
 }
-impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug for Ref<'_, T, Cols, CStride> {
+impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug
+	for Ref<'_, T, Cols, CStride>
+{
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		fn imp<T: core::fmt::Debug>(f: &mut core::fmt::Formatter<'_>, this: RowRef<'_, T, Dim<'_>>) -> core::fmt::Result {
+		fn imp<T: core::fmt::Debug>(
+			f: &mut core::fmt::Formatter<'_>,
+			this: RowRef<'_, T, Dim<'_>>,
+		) -> core::fmt::Result {
 			f.debug_list()
-				.entries(this.ncols().indices().map(|j| crate::hacks::hijack_debug(this.at(j))))
+				.entries(
+					this.ncols()
+						.indices()
+						.map(|j| crate::hacks::hijack_debug(this.at(j))),
+				)
 				.finish()
 		}
 		let this = generic::Row::from_inner_ref(self);

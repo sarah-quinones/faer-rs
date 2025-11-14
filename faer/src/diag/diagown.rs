@@ -11,7 +11,8 @@ impl<T: core::fmt::Debug, Dim: Shape> core::fmt::Debug for Own<T, Dim> {
 	}
 }
 impl<T, Dim: Shape> Diag<T, Dim> {
-	/// returns the stride of the diagonal, specified in number of elements, not in bytes
+	/// returns the stride of the diagonal, specified in number of elements, not
+	/// in bytes
 	#[inline(always)]
 	pub fn stride(&self) -> isize {
 		1
@@ -174,7 +175,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: ComplexField,
 	{
 		Self {
-			0: Own { inner: Col::zeros(dim) },
+			0: Own {
+				inner: Col::zeros(dim),
+			},
 		}
 	}
 
@@ -185,7 +188,9 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 		T: ComplexField,
 	{
 		Self {
-			0: Own { inner: Col::ones(dim) },
+			0: Own {
+				inner: Col::ones(dim),
+			},
 		}
 	}
 
@@ -205,8 +210,10 @@ impl<T, Dim: Shape> Diag<T, Dim> {
 	/// copies `other` into `self`
 	#[inline]
 	#[track_caller]
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, rhs: impl AsDiagRef<T = RhsT, Dim = Dim>)
-	where
+	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
+		&mut self,
+		rhs: impl AsDiagRef<T = RhsT, Dim = Dim>,
+	) where
 		T: ComplexField,
 	{
 		self.0.inner.copy_from(rhs.as_diag_ref().inner)
@@ -217,7 +224,9 @@ impl<'short, T, Dim: Shape> Reborrow<'short> for Own<T, Dim> {
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		Ref { inner: self.inner.rb() }
+		Ref {
+			inner: self.inner.rb(),
+		}
 	}
 }
 impl<'short, T, Dim: Shape> ReborrowMut<'short> for Own<T, Dim> {
@@ -225,6 +234,8 @@ impl<'short, T, Dim: Shape> ReborrowMut<'short> for Own<T, Dim> {
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		Mut { inner: self.inner.rb_mut() }
+		Mut {
+			inner: self.inner.rb_mut(),
+		}
 	}
 }

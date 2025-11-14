@@ -1,5 +1,7 @@
 use super::*;
-impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> LinOp<T> for SparseRowMat<I, ViewT> {
+impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> LinOp<T>
+	for SparseRowMat<I, ViewT>
+{
 	#[inline]
 	fn nrows(&self) -> usize {
 		self.rb().nrows()
@@ -17,17 +19,31 @@ impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> LinOp<T> for Sp
 
 	#[inline]
 	#[track_caller]
-	fn apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().apply(out, rhs, par, stack)
 	}
 
 	#[inline]
 	#[track_caller]
-	fn conj_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn conj_apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().conj_apply(out, rhs, par, stack)
 	}
 }
-impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> BiLinOp<T> for SparseRowMat<I, ViewT> {
+impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> BiLinOp<T>
+	for SparseRowMat<I, ViewT>
+{
 	#[inline]
 	fn transpose_apply_scratch(&self, rhs_ncols: usize, par: Par) -> StackReq {
 		self.rb().transpose_apply_scratch(rhs_ncols, par)
@@ -35,15 +51,33 @@ impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> BiLinOp<T> for 
 
 	#[inline]
 	#[track_caller]
-	fn transpose_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn transpose_apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().transpose_apply(out, rhs, par, stack)
 	}
 
 	#[inline]
 	#[track_caller]
-	fn adjoint_apply(&self, out: MatMut<'_, T>, rhs: MatRef<'_, T>, par: Par, stack: &mut MemStack) {
+	fn adjoint_apply(
+		&self,
+		out: MatMut<'_, T>,
+		rhs: MatRef<'_, T>,
+		par: Par,
+		stack: &mut MemStack,
+	) {
 		self.rb().adjoint_apply(out, rhs, par, stack)
 	}
 }
-impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> Precond<T> for SparseRowMat<I, ViewT> {}
-impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> BiPrecond<T> for SparseRowMat<I, ViewT> {}
+impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> Precond<T>
+	for SparseRowMat<I, ViewT>
+{
+}
+impl<I: Index, T: ComplexField, ViewT: Conjugate<Canonical = T>> BiPrecond<T>
+	for SparseRowMat<I, ViewT>
+{
+}

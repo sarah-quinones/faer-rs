@@ -16,15 +16,20 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 	let ref one_half = from_f64::<T>(0.5);
 	let ref epsilon = eps::<T>();
 	let mid = left + (right - left).mul_pow2(one_half);
-	let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = batch_secular_eq(
-		&[zero(), left.copy(), left.copy(), right.copy()],
-		&[
-			mid,
-			if last { right - left } else { (right - left).mul_pow2(one_half) },
-			(right - left).mul_pow2(one_half),
-			(left - right).mul_pow2(one_half),
-		],
-	);
+	let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] =
+		batch_secular_eq(
+			&[zero(), left.copy(), left.copy(), right.copy()],
+			&[
+				mid,
+				if last {
+					right - left
+				} else {
+					(right - left).mul_pow2(one_half)
+				},
+				(right - left).mul_pow2(one_half),
+				(left - right).mul_pow2(one_half),
+			],
+		);
 	let (mut shift, mu) = if last || (f_mid > zero()) {
 		(left.copy(), (right - left).mul_pow2(one_half))
 	} else {
@@ -69,11 +74,13 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 			}
 			let mut err = SecantError::PrecisionLimitReached;
 			while f_cur != zero()
-				&& (&mu_cur - &mu_prev).abs() > eight * epsilon * mu_cur.abs().fmax(mu_prev.abs())
+				&& (&mu_cur - &mu_prev).abs()
+					> eight * epsilon * mu_cur.abs().fmax(mu_prev.abs())
 				&& (&f_cur - &f_prev).abs() > *epsilon
 				&& !use_bisection
 			{
-				let ref a = (&f_cur - &f_prev) * (&mu_prev * &mu_cur) / (&mu_prev - &mu_cur);
+				let ref a = (&f_cur - &f_prev) * (&mu_prev * &mu_cur)
+					/ (&mu_prev - &mu_cur);
 				let ref b = &f_cur - a / &mu_cur;
 				let mu_zero = -a / b;
 				let ref f_zero = secular_eq(shift.copy(), mu_zero.copy());
@@ -86,11 +93,13 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 				f_prev = f_cur.copy();
 				mu_cur = mu_zero.copy();
 				f_cur = f_zero.copy();
-				if shift == *left && (mu_cur < zero() || mu_cur > right - left) {
+				if shift == *left && (mu_cur < zero() || mu_cur > right - left)
+				{
 					err = SecantError::OutOfBounds;
 					use_bisection = true;
 				}
-				if shift == *right && (mu_cur > zero() || mu_cur < left - right) {
+				if shift == *right && (mu_cur > zero() || mu_cur < left - right)
+				{
 					err = SecantError::OutOfBounds;
 					use_bisection = true;
 				}
@@ -98,7 +107,8 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 					let mut k = one::<T>();
 					for _ in 0..4 {
 						let mu_opposite = -a / (&k * f_zero + b);
-						let f_opposite = secular_eq(shift.copy(), mu_opposite.copy());
+						let f_opposite =
+							secular_eq(shift.copy(), mu_opposite.copy());
 						if *f_zero < zero() && f_opposite >= zero() {
 							right_candidate = Some(mu_opposite);
 							break;
@@ -115,16 +125,21 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 			(use_bisection, mu_cur, left_candidate, right_candidate, err)
 		}
 	};
-	let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) = if shift == *left {
-		(
-			zero(),
-			-infinity::<T>(),
-			if last { right - left } else { (right - left) * one_half },
-			if last { &f_max } else { &f_mid }.copy(),
-		)
-	} else {
-		((left - right) * one_half, f_mid.copy(), zero(), infinity())
-	};
+	let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) =
+		if shift == *left {
+			(
+				zero(),
+				-infinity::<T>(),
+				if last {
+					right - left
+				} else {
+					(right - left) * one_half
+				},
+				if last { &f_max } else { &f_mid }.copy(),
+			)
+		} else {
+			((left - right) * one_half, f_mid.copy(), zero(), infinity())
+		};
 	let mut iteration_count = 0;
 	let mut f_prev = f_mid.copy();
 	let ref half0 = one_half.copy();
@@ -149,7 +164,8 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 	let f_values = batch_secular_eq(&[(); 4].map(|_| shift.copy()), &mu_values);
 	if shift == *left {
 		let mut i = 0;
-		for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
+		for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate()
+		{
 			if *f < zero() {
 				left_shifted = mu.copy();
 				f_left = f.copy();
@@ -162,7 +178,8 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 		}
 	} else {
 		let mut i = 0;
-		for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate() {
+		for (idx, (mu, f)) in core::iter::zip(&mu_values, &f_values).enumerate()
+		{
 			if *f > zero() {
 				right_shifted = mu.copy();
 				f_right = f.copy();
@@ -174,9 +191,13 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 			f_left = f_values[i].copy();
 		}
 	}
-	while &right_shifted - &left_shifted > two * epsilon * left_shifted.abs().fmax(right_shifted.abs()) {
-		let mid_shifted_arithmetic = (&left_shifted + &right_shifted) * one_half;
-		let mut mid_shifted_geometric = left_shifted.abs().sqrt() * right_shifted.abs().sqrt();
+	while &right_shifted - &left_shifted
+		> two * epsilon * left_shifted.abs().fmax(right_shifted.abs())
+	{
+		let mid_shifted_arithmetic =
+			(&left_shifted + &right_shifted) * one_half;
+		let mut mid_shifted_geometric =
+			left_shifted.abs().sqrt() * right_shifted.abs().sqrt();
 		if left_shifted < zero() {
 			mid_shifted_geometric = -mid_shifted_geometric;
 		}
@@ -203,13 +224,24 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 		iteration_count += 1;
 	}
 	let args = if left_shifted == zero() {
-		(right_shifted.mul_pow2(two), right_shifted.copy(), f_prev, f_right)
+		(
+			right_shifted.mul_pow2(two),
+			right_shifted.copy(),
+			f_prev,
+			f_right,
+		)
 	} else if right_shifted == zero() {
-		(left_shifted.mul_pow2(two), left_shifted.copy(), f_prev, f_left)
+		(
+			left_shifted.mul_pow2(two),
+			left_shifted.copy(),
+			f_prev,
+			f_left,
+		)
 	} else {
 		(left_shifted.copy(), right_shifted.copy(), f_left, f_right)
 	};
-	let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) = secant(args.0, args.1, args.2, args.3);
+	let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
+		secant(args.0, args.1, args.2, args.3);
 	match (left_candidate, right_candidate) {
 		(Some(left), Some(right)) if left < right => {
 			if left > left_shifted {
@@ -222,7 +254,9 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 		_ => {},
 	}
 	if use_bisection {
-		while &right_shifted - &left_shifted > two * epsilon * left_shifted.abs().fmax(right_shifted.abs()) {
+		while &right_shifted - &left_shifted
+			> two * epsilon * left_shifted.abs().fmax(right_shifted.abs())
+		{
 			let mid_shifted = (&left_shifted + &right_shifted) * one_half;
 			let f_mid = secular_eq(shift.copy(), mid_shifted.copy());
 			if f_mid == zero() {
@@ -249,7 +283,9 @@ pub(super) fn qr_algorithm<T: RealField>(
 	if n == 0 {
 		return Ok(());
 	}
-	let max_iters = Ord::max(30, nbits::<T>() / 2).saturating_mul(n).saturating_mul(n);
+	let max_iters = Ord::max(30, nbits::<T>() / 2)
+		.saturating_mul(n)
+		.saturating_mul(n);
 	let last = n - 1;
 	let ref max = diag.norm_max().fmax(subdiag.norm_max());
 	if *max == zero() {
@@ -271,7 +307,9 @@ pub(super) fn qr_algorithm<T: RealField>(
 		for iter in 0..max_iters {
 			for i0 in 0..last {
 				let i1 = i0 + 1;
-				if subdiag[i0].abs2() <= eps2 * (&diag[i0] * &diag[i1]).abs() + sml {
+				if subdiag[i0].abs2()
+					<= eps2 * (&diag[i0] * &diag[i1]).abs() + sml
+				{
 					subdiag[i0] = zero();
 				}
 			}
@@ -293,14 +331,19 @@ pub(super) fn qr_algorithm<T: RealField>(
 					let mut val = subdiag[i].copy();
 					subdiag[i] = zero();
 					for j in i + 1..end {
-						let rot = JacobiRotation::make_givens(diag[j].copy(), val.copy());
+						let rot = JacobiRotation::make_givens(
+							diag[j].copy(),
+							val.copy(),
+						);
 						diag[j] = &rot.c * &diag[j] - &rot.s * &val;
 						if j + 1 < end {
 							val = &rot.s * &subdiag[j];
 							subdiag[j] = &rot.c * &subdiag[j];
 						}
 						if let Some(v) = v.rb_mut() {
-							rot.transpose().apply_on_the_right_in_place(v.two_cols_mut(j, i));
+							rot.transpose().apply_on_the_right_in_place(
+								v.two_cols_mut(j, i),
+							);
 						}
 					}
 				}
@@ -346,7 +389,10 @@ pub(super) fn qr_algorithm<T: RealField>(
 					subdiag[k - 1] = (&rot.c * &y - &rot.s * &z).abs();
 				}
 				let mut diag_k = diag[k].copy();
-				let tmp = (&rot.c * &diag_k - &rot.s * &subdiag[k], &rot.s * &diag_k + &rot.c * &subdiag[k]);
+				let tmp = (
+					&rot.c * &diag_k - &rot.s * &subdiag[k],
+					&rot.s * &diag_k + &rot.c * &subdiag[k],
+				);
 				diag_k = tmp.0;
 				subdiag[k] = tmp.1;
 				let k1 = k + 1;
@@ -360,7 +406,10 @@ pub(super) fn qr_algorithm<T: RealField>(
 				let rot = JacobiRotation::make_givens(y.copy(), z.copy());
 				diag_k = &rot.c * &y - &rot.s * &z;
 				diag[k] = diag_k;
-				let tmp = (&rot.c * &subdiag[k] - &rot.s * &diag[k1], &rot.s * &subdiag[k] + &rot.c * &diag[k1]);
+				let tmp = (
+					&rot.c * &subdiag[k] - &rot.s * &diag[k1],
+					&rot.s * &subdiag[k] + &rot.c * &diag[k1],
+				);
 				subdiag[k] = tmp.0;
 				diag[k1] = tmp.1;
 				if k < end - 2 {
@@ -454,8 +503,16 @@ fn compute_svd_of_m<T: RealField>(
 	with_dim!(o, perm.len());
 	let (mut col0_perm, stack) = unsafe { temp_mat_uninit(o, 1, stack) };
 	let (mut diag_perm, stack) = unsafe { temp_mat_uninit(o, 1, stack) };
-	let mut col0_perm = col0_perm.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
-	let mut diag_perm = diag_perm.as_mat_mut().col_mut(0).try_as_col_major_mut().unwrap();
+	let mut col0_perm = col0_perm
+		.as_mat_mut()
+		.col_mut(0)
+		.try_as_col_major_mut()
+		.unwrap();
+	let mut diag_perm = diag_perm
+		.as_mat_mut()
+		.col_mut(0)
+		.try_as_col_major_mut()
+		.unwrap();
 	for (k, &p) in perm.iter().enumerate() {
 		let k = o.idx(k);
 		col0_perm[k] = col0[p].copy();
@@ -484,7 +541,8 @@ fn compute_svd_of_m<T: RealField>(
 		col0_perm.rb(),
 	);
 	let perm = Idx::from_slice_ref_checked(perm, N);
-	let outer_perm = Array::from_ref(Idx::from_slice_ref_checked(outer_perm, N), N);
+	let outer_perm =
+		Array::from_ref(Idx::from_slice_ref_checked(outer_perm, N), N);
 	perturb_col0(
 		zhat.rb_mut().as_row_shape_mut(N),
 		col0.as_row_shape(N),
@@ -521,10 +579,12 @@ fn compute_svd_of_m<T: RealField>(
 		shifts.rb().as_row_shape(N),
 		mus.rb().as_row_shape(N),
 	);
-	for (idx, diag) in diag.rb_mut().get_mut(..actual_n).iter_mut().enumerate() {
+	for (idx, diag) in diag.rb_mut().get_mut(..actual_n).iter_mut().enumerate()
+	{
 		*diag = s[actual_n - idx - 1].copy();
 	}
-	for (idx, diag) in diag.rb_mut().get_mut(actual_n..).iter_mut().enumerate() {
+	for (idx, diag) in diag.rb_mut().get_mut(actual_n..).iter_mut().enumerate()
+	{
 		*diag = s[actual_n + idx].copy();
 	}
 }
@@ -543,12 +603,21 @@ fn compute_singular_vectors<'N, T: RealField>(
 ) {
 	let n = diag.nrows();
 	for k in n.indices() {
-		let actual_k = if *k >= actual_n { k } else { n.idx(actual_n - col_perm_inv[*k] - 1) };
+		let actual_k = if *k >= actual_n {
+			k
+		} else {
+			n.idx(actual_n - col_perm_inv[*k] - 1)
+		};
 		if let Some(mut u) = um.rb_mut() {
 			u[(*n, *actual_k)] = zero();
 		}
-		let mut u = um.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n).col_mut(actual_k));
-		let mut v = vm.rb_mut().map(|v| v.submatrix_mut(IdxInc::ZERO, IdxInc::ZERO, n, n).col_mut(actual_k));
+		let mut u = um
+			.rb_mut()
+			.map(|u| u.submatrix_mut(0, 0, n, n).col_mut(actual_k));
+		let mut v = vm.rb_mut().map(|v| {
+			v.submatrix_mut(IdxInc::ZERO, IdxInc::ZERO, n, n)
+				.col_mut(actual_k)
+		});
 		if zhat[k] == zero() {
 			if let Some(mut u) = u.rb_mut() {
 				u[outer_perm[k]] = one();
@@ -562,7 +631,8 @@ fn compute_singular_vectors<'N, T: RealField>(
 		let ref shift = shifts[k].copy();
 		if let Some(mut u) = u.rb_mut() {
 			for &i in perm {
-				u[outer_perm[i]] = (&zhat[i] / ((&diag[i] - shift) - mu)) / (&diag[i] + (shift + mu));
+				u[outer_perm[i]] = (&zhat[i] / ((&diag[i] - shift) - mu))
+					/ (&diag[i] + (shift + mu));
 			}
 			let ref norm_inv = u.norm_l2().recip();
 			z!(u.rb_mut()).for_each(|uz!(x)| *x *= norm_inv);
@@ -570,7 +640,9 @@ fn compute_singular_vectors<'N, T: RealField>(
 		if let Some(mut v) = v {
 			v[outer_perm[n.idx(0)]] = -one::<T>();
 			for &i in &perm[1..] {
-				v[outer_perm[i]] = ((&diag[i] * &zhat[i]) / ((&diag[i] - shift) - mu)) / (&diag[i] + (shift + mu));
+				v[outer_perm[i]] = ((&diag[i] * &zhat[i])
+					/ ((&diag[i] - shift) - mu))
+					/ (&diag[i] + (shift + mu));
 			}
 			let ref norm_inv = v.norm_l2().recip();
 			z!(v.rb_mut()).for_each(|uz!(x)| *x *= norm_inv);
@@ -603,7 +675,8 @@ fn perturb_col0<'N, T: RealField>(
 			continue;
 		}
 		let ref dk = diag[k];
-		let mut prod = (&s[last_idx] + dk) * (&mus[last_idx] + (&shifts[last_idx] - dk));
+		let mut prod =
+			(&s[last_idx] + dk) * (&mus[last_idx] + (&shifts[last_idx] - dk));
 		for (l, &i) in perm.iter().enumerate() {
 			if i == k {
 				continue;
@@ -619,7 +692,8 @@ fn perturb_col0<'N, T: RealField>(
 			} else {
 				i
 			};
-			let term = ((&s[j] + dk) / (&diag[i] + dk)) * ((&mus[j] + (&shifts[j] - dk)) / (&diag[i] - dk));
+			let term = ((&s[j] + dk) / (&diag[i] + dk))
+				* ((&mus[j] + (&shifts[j] - dk)) / (&diag[i] - dk));
 			prod = prod * term;
 		}
 		let tmp = prod.sqrt();
@@ -651,7 +725,11 @@ fn compute_singular_values<'N, 'O, T: RealField>(
 		shifts[k] = zero();
 		mus[k] = zero();
 		if col0[k] == zero() || actual_n == 1 {
-			s[k] = if *k == 0 { col0[first].copy() } else { diag[k].copy() };
+			s[k] = if *k == 0 {
+				col0[first].copy()
+			} else {
+				diag[k].copy()
+			};
 			shifts[k] = s[k].copy();
 			mus[k] = zero();
 			continue 'kth_iter;
@@ -705,7 +783,9 @@ fn batch_secular_eq<'N, const N: usize, T: RealField>(
 	for i in n.indices() {
 		let ref c = col0_perm[i].copy();
 		let ref d = diag_perm[i].copy();
-		for ((res, mu), shift) in res.iter_mut().zip(mu.iter()).zip(shift.iter()) {
+		for ((res, mu), shift) in
+			res.iter_mut().zip(mu.iter()).zip(shift.iter())
+		{
 			*res += c.abs2() / (((d - shift) - mu) * ((d + shift) + mu));
 		}
 	}
@@ -727,7 +807,8 @@ fn deflate<T: RealField>(
 	let first = 0;
 	let mut jacobi_0i = 0;
 	let mut jacobi_ij = 0;
-	let (max_diag, max_col0) = (diag.rb().get(first + 1..).norm_max(), col0.norm_max());
+	let (max_diag, max_col0) =
+		(diag.rb().get(first + 1..).norm_max(), col0.norm_max());
 	let mx = max_diag.fmax(max_col0);
 	let ref eps = eps::<T>();
 	let ref sml = min_positive::<T>();
@@ -829,7 +910,8 @@ fn deflate<T: RealField>(
 	while i > 1 {
 		let i1 = i - 1;
 		if &diag[i] - &diag[i1] < *eps_strict {
-			if let Some(rot) = deflation_44(diag.rb_mut(), col0.rb_mut(), i1, i) {
+			if let Some(rot) = deflation_44(diag.rb_mut(), col0.rb_mut(), i1, i)
+			{
 				jacobi_coeff[jacobi_0i + jacobi_ij] = rot;
 				jacobi_idx[jacobi_0i + jacobi_ij] = i;
 				jacobi_ij += 1;
@@ -914,7 +996,8 @@ pub(super) fn divide_and_conquer_scratch<T: ComplexField>(
 		let jacobi_coeffs = StackReq::new::<JacobiRotation<T>>(n);
 		let um = temp_mat_scratch::<T>(n + 1, n + 1);
 		let vm = temp_mat_scratch::<T>(n, if compute_v { n } else { 0 });
-		let combined_u = temp_mat_scratch::<T>(if compute_u { n + 1 } else { 2 }, n + 1);
+		let combined_u =
+			temp_mat_scratch::<T>(if compute_u { n + 1 } else { 2 }, n + 1);
 		let combined_v = vm;
 		StackReq::all_of(&[perm, jacobi_coeffs, um, vm, combined_u, combined_v])
 	}
@@ -955,13 +1038,23 @@ pub(super) fn divide_and_conquer<T: RealField>(
 				val = &rot.s * &subdiag[i - 1];
 				subdiag[i - 1] = &rot.c * &subdiag[i - 1];
 			}
-			rot.transpose().apply_on_the_right_in_place(u_alloc.rb_mut().two_cols_mut(i, j));
+			rot.transpose().apply_on_the_right_in_place(
+				u_alloc.rb_mut().two_cols_mut(i, j),
+			);
 		}
-		qr_algorithm(diag.rb_mut(), subdiag.rb_mut(), Some(u_alloc.rb_mut()), v.rb_mut())?;
+		qr_algorithm(
+			diag.rb_mut(),
+			subdiag.rb_mut(),
+			Some(u_alloc.rb_mut()),
+			v.rb_mut(),
+		)?;
 		match u.rb_mut() {
-			MatU::Full(u) => u.submatrix_mut(0, 0, n + 1, n + 1).copy_from(u_alloc.rb()),
+			MatU::Full(u) => {
+				u.submatrix_mut(0, 0, n + 1, n + 1).copy_from(u_alloc.rb())
+			},
 			MatU::TwoRows(u) => {
-				let (mut top, mut bot) = u.subcols_mut(0, n + 1).two_rows_mut(0, 1);
+				let (mut top, mut bot) =
+					u.subcols_mut(0, n + 1).two_rows_mut(0, 1);
 				top.copy_from(u_alloc.rb().row(0));
 				bot.copy_from(u_alloc.rb().row(n));
 			},
@@ -1035,10 +1128,26 @@ pub(super) fn divide_and_conquer<T: RealField>(
 		let mut r2 = Ok(());
 		crate::utils::thread::join_raw(
 			|par| {
-				r1 = divide_and_conquer(d1.rb_mut(), subd1.rb_mut(), u1.rb_mut(), v1.rb_mut(), par, stack1, qr_fallback_threshold);
+				r1 = divide_and_conquer(
+					d1.rb_mut(),
+					subd1.rb_mut(),
+					u1.rb_mut(),
+					v1.rb_mut(),
+					par,
+					stack1,
+					qr_fallback_threshold,
+				);
 			},
 			|par| {
-				r2 = divide_and_conquer(d2.rb_mut(), subd2.rb_mut(), u2.rb_mut(), v2.rb_mut(), par, stack2, qr_fallback_threshold);
+				r2 = divide_and_conquer(
+					d2.rb_mut(),
+					subd2.rb_mut(),
+					u2.rb_mut(),
+					v2.rb_mut(),
+					par,
+					stack2,
+					qr_fallback_threshold,
+				);
 			},
 			par,
 		);
@@ -1048,7 +1157,11 @@ pub(super) fn divide_and_conquer<T: RealField>(
 			MatU::TwoRows(mut u1) => {
 				for i in (0..k).rev() {
 					with_dim!(ncols, u1.ncols());
-					swap_cols_idx(u1.rb_mut().as_col_shape_mut(ncols), ncols.idx(i), ncols.idx(i + 1));
+					swap_cols_idx(
+						u1.rb_mut().as_col_shape_mut(ncols),
+						ncols.idx(i),
+						ncols.idx(i + 1),
+					);
 				}
 			},
 			_ => {},
@@ -1072,7 +1185,11 @@ pub(super) fn divide_and_conquer<T: RealField>(
 	let ref al = alpha * lambda;
 	let ref bp = beta * phi;
 	let ref r0 = (al.abs2() + bp.abs2()).sqrt();
-	let (ref c0, ref s0) = if *r0 == zero() { (one(), zero()) } else { (al / r0, bp / r0) };
+	let (ref c0, ref s0) = if *r0 == zero() {
+		(one(), zero())
+	} else {
+		(al / r0, bp / r0)
+	};
 	let mut col0 = subdiag;
 	diag[0] = r0.copy();
 	col0[0] = r0.copy();
@@ -1089,17 +1206,23 @@ pub(super) fn divide_and_conquer<T: RealField>(
 			for j in k + 1..n {
 				col0[j] = beta * &u2[(0, j - 1)];
 			}
-			z!(u0_top.rb_mut().col_mut(0), un_top.rb_mut().col_mut(0), u1.col_mut(k)).for_each(|uz!(x0, xn, a)| {
+			z!(
+				u0_top.rb_mut().col_mut(0),
+				un_top.rb_mut().col_mut(0),
+				u1.col_mut(k)
+			)
+			.for_each(|uz!(x0, xn, a)| {
 				*x0 = c0 * &*a;
 				*xn = -s0 * &*a;
 				if cfg!(debug_assertions) {
 					*a = zero();
 				}
 			});
-			z!(u0_bot.rb_mut().col_mut(0), un_bot.rb_mut().col_mut(0)).for_each(|uz!(x0, xn)| {
-				*x0 = s0 * &*xn;
-				*xn = c0 * &*xn;
-			});
+			z!(u0_bot.rb_mut().col_mut(0), un_bot.rb_mut().col_mut(0))
+				.for_each(|uz!(x0, xn)| {
+					*x0 = s0 * &*xn;
+					*xn = c0 * &*xn;
+				});
 		},
 		MatU::TwoRows(mut u) => {
 			for j in 1..k + 1 {
@@ -1128,7 +1251,11 @@ pub(super) fn divide_and_conquer<T: RealField>(
 	}
 	let (mut perm, stack) = stack.collect(0..n);
 	let perm = &mut *perm;
-	let (mut jacobi_coeff, stack) = stack.make_with(n, |_| JacobiRotation::<T> { c: zero(), s: zero() });
+	let (mut jacobi_coeff, stack) =
+		stack.make_with(n, |_| JacobiRotation::<T> {
+			c: zero(),
+			s: zero(),
+		});
 	let jacobi_coeff = &mut *jacobi_coeff;
 	let (mut jacobi_idx, stack) = stack.collect(0..n);
 	let jacobi_idx = &mut *jacobi_idx;
@@ -1150,20 +1277,40 @@ pub(super) fn divide_and_conquer<T: RealField>(
 	let (mut vm, stack) = temp_mat_zeroed(n, allocate_vm * n, stack);
 	let mut um = um.as_mat_mut().try_as_col_major_mut().unwrap();
 	let mut vm = if v.is_some() {
-		Some(vm.as_mat_mut().subcols_mut(0, n).try_as_col_major_mut().unwrap())
+		Some(
+			vm.as_mat_mut()
+				.subcols_mut(0, n)
+				.try_as_col_major_mut()
+				.unwrap(),
+		)
 	} else {
 		None
 	};
-	compute_svd_of_m(Some(um.rb_mut()), vm.rb_mut(), diag.rb_mut(), col0.rb(), perm, stack);
+	compute_svd_of_m(
+		Some(um.rb_mut()),
+		vm.rb_mut(),
+		diag.rb_mut(),
+		col0.rb(),
+		perm,
+		stack,
+	);
 	for i in 0..n {
 		col0[i] = zero();
 	}
-	for (rot, &i) in core::iter::zip(&jacobi_coeff[jacobi_0i..][..jacobi_ij], &jacobi_idx[jacobi_0i..][..jacobi_ij]).rev() {
+	for (rot, &i) in core::iter::zip(
+		&jacobi_coeff[jacobi_0i..][..jacobi_ij],
+		&jacobi_idx[jacobi_0i..][..jacobi_ij],
+	)
+	.rev()
+	{
 		let (i, j) = (i - 1, i);
 		let actual_i = perm[i];
 		let actual_j = perm[j];
 		{
-			let (i, j) = um.rb_mut().subcols_mut(0, n).two_rows_mut(actual_i, actual_j);
+			let (i, j) = um
+				.rb_mut()
+				.subcols_mut(0, n)
+				.two_rows_mut(actual_i, actual_j);
 			rot.apply_on_the_left_in_place((j, i));
 		}
 		if let Some(mut vm) = vm.rb_mut() {
@@ -1171,56 +1318,100 @@ pub(super) fn divide_and_conquer<T: RealField>(
 			rot.apply_on_the_left_in_place((j, i));
 		}
 	}
-	for (rot, &i) in core::iter::zip(&jacobi_coeff[..jacobi_0i], &jacobi_idx[..jacobi_0i]).rev() {
+	for (rot, &i) in
+		core::iter::zip(&jacobi_coeff[..jacobi_0i], &jacobi_idx[..jacobi_0i])
+			.rev()
+	{
 		let (i, j) = um.rb_mut().subcols_mut(0, n).two_rows_mut(0, i);
 		rot.apply_on_the_left_in_place((j, i));
 	}
 	let _v_is_none = v.is_none();
-	let update_v = |mut v: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack| {
-		let (mut combined_v, _) = unsafe { temp_mat_uninit(n, allocate_vm * n, stack) };
-		let mut combined_v = if v.is_some() {
-			Some(combined_v.as_mat_mut().subcols_mut(0, n).try_as_col_major_mut().unwrap())
-		} else {
-			None
+	let update_v =
+		|mut v: Option<MatMut<'_, T>>, par: Par, stack: &mut MemStack| {
+			let (mut combined_v, _) =
+				unsafe { temp_mat_uninit(n, allocate_vm * n, stack) };
+			let mut combined_v = if v.is_some() {
+				Some(
+					combined_v
+						.as_mat_mut()
+						.subcols_mut(0, n)
+						.try_as_col_major_mut()
+						.unwrap(),
+				)
+			} else {
+				None
+			};
+			if let (Some(mut v), Some(v_rhs), Some(mut combined_v)) =
+				(v.rb_mut(), vm.rb(), combined_v.rb_mut())
+			{
+				let mut combined_v = combined_v.rb_mut();
+				let (mut combined_v1, combined_v2) =
+					combined_v.rb_mut().split_at_row_mut(k);
+				let mut combined_v2 = combined_v2.submatrix_mut(1, 0, rem, n);
+				let v_lhs = v.rb();
+				let v_lhs1 = v_lhs.submatrix(0, 1, k, k);
+				let v_lhs2 = v_lhs.submatrix(k + 1, k + 1, rem, rem);
+				let (v_rhs1, v_rhs2) = v_rhs.split_at_row(1).1.split_at_row(k);
+				crate::utils::thread::join_raw(
+					|par| {
+						crate::linalg::matmul::matmul(
+							combined_v1.rb_mut(),
+							Accum::Replace,
+							v_lhs1,
+							v_rhs1,
+							one(),
+							par,
+						)
+					},
+					|par| {
+						crate::linalg::matmul::matmul(
+							combined_v2.rb_mut(),
+							Accum::Replace,
+							v_lhs2,
+							v_rhs2,
+							one(),
+							par,
+						)
+					},
+					par,
+				);
+				crate::linalg::matmul::matmul(
+					combined_v.rb_mut().submatrix_mut(k, 0, 1, n),
+					Accum::Replace,
+					v_lhs.submatrix(k, 0, 1, 1),
+					v_rhs.submatrix(0, 0, 1, n),
+					one(),
+					par,
+				);
+				v.copy_from(combined_v.rb());
+			}
 		};
-		if let (Some(mut v), Some(v_rhs), Some(mut combined_v)) = (v.rb_mut(), vm.rb(), combined_v.rb_mut()) {
-			let mut combined_v = combined_v.rb_mut();
-			let (mut combined_v1, combined_v2) = combined_v.rb_mut().split_at_row_mut(k);
-			let mut combined_v2 = combined_v2.submatrix_mut(1, 0, rem, n);
-			let v_lhs = v.rb();
-			let v_lhs1 = v_lhs.submatrix(0, 1, k, k);
-			let v_lhs2 = v_lhs.submatrix(k + 1, k + 1, rem, rem);
-			let (v_rhs1, v_rhs2) = v_rhs.split_at_row(1).1.split_at_row(k);
-			crate::utils::thread::join_raw(
-				|par| crate::linalg::matmul::matmul(combined_v1.rb_mut(), Accum::Replace, v_lhs1, v_rhs1, one(), par),
-				|par| crate::linalg::matmul::matmul(combined_v2.rb_mut(), Accum::Replace, v_lhs2, v_rhs2, one(), par),
-				par,
-			);
-			crate::linalg::matmul::matmul(
-				combined_v.rb_mut().submatrix_mut(k, 0, 1, n),
-				Accum::Replace,
-				v_lhs.submatrix(k, 0, 1, 1),
-				v_rhs.submatrix(0, 0, 1, n),
-				one(),
-				par,
-			);
-			v.copy_from(combined_v.rb());
-		}
-	};
 	let update_u = |mut u: MatMut<'_, T>, par: Par, stack: &mut MemStack| {
 		let n = n;
 		let k = k;
 		let rem = rem;
-		let (mut combined_u, _) = unsafe { temp_mat_uninit(n + 1, n + 1, stack) };
+		let (mut combined_u, _) =
+			unsafe { temp_mat_uninit(n + 1, n + 1, stack) };
 		let mut combined_u = combined_u.as_mat_mut();
-		let (mut combined_u1, mut combined_u2) = combined_u.rb_mut().split_at_row_mut(k + 1);
+		let (mut combined_u1, mut combined_u2) =
+			combined_u.rb_mut().split_at_row_mut(k + 1);
 		let u_lhs = u.rb();
 		let u_rhs = um.rb();
-		let (u_lhs1, u_lhs2) = (u_lhs.submatrix(0, 0, k + 1, k + 1), u_lhs.submatrix(k + 1, k + 1, rem + 1, rem + 1));
+		let (u_lhs1, u_lhs2) = (
+			u_lhs.submatrix(0, 0, k + 1, k + 1),
+			u_lhs.submatrix(k + 1, k + 1, rem + 1, rem + 1),
+		);
 		let (u_rhs1, u_rhs2) = u_rhs.split_at_row(k + 1);
 		crate::utils::thread::join_raw(
 			|par| {
-				crate::linalg::matmul::matmul(combined_u1.rb_mut(), Accum::Replace, u_lhs1, u_rhs1, one(), par);
+				crate::linalg::matmul::matmul(
+					combined_u1.rb_mut(),
+					Accum::Replace,
+					u_lhs1,
+					u_rhs1,
+					one(),
+					par,
+				);
 				crate::linalg::matmul::matmul(
 					combined_u1.rb_mut(),
 					Accum::Add,
@@ -1231,7 +1422,14 @@ pub(super) fn divide_and_conquer<T: RealField>(
 				);
 			},
 			|par| {
-				crate::linalg::matmul::matmul(combined_u2.rb_mut(), Accum::Replace, u_lhs2, u_rhs2, one(), par);
+				crate::linalg::matmul::matmul(
+					combined_u2.rb_mut(),
+					Accum::Replace,
+					u_lhs2,
+					u_rhs2,
+					one(),
+					par,
+				);
 				crate::linalg::matmul::matmul(
 					combined_u2.rb_mut(),
 					Accum::Add,
@@ -1251,18 +1449,33 @@ pub(super) fn divide_and_conquer<T: RealField>(
 		},
 		MatU::TwoRows(mut u) => {
 			update_v(v.rb_mut(), par, stack);
-			let (mut combined_u, _) = unsafe { temp_mat_uninit(2, n + 1, stack) };
+			let (mut combined_u, _) =
+				unsafe { temp_mat_uninit(2, n + 1, stack) };
 			let mut combined_u = combined_u.as_mat_mut();
-			crate::linalg::matmul::matmul(combined_u.rb_mut(), Accum::Replace, u.rb(), um.rb(), one(), par);
+			crate::linalg::matmul::matmul(
+				combined_u.rb_mut(),
+				Accum::Replace,
+				u.rb(),
+				um.rb(),
+				one(),
+				par,
+			);
 			u.copy_from(combined_u.rb());
 		},
 		MatU::Full(u) => match par {
 			#[cfg(feature = "rayon")]
 			Par::Rayon(_) if !_v_is_none => {
 				let req_v = crate::linalg::temp_mat_scratch::<T>(n, n);
-				let (mem_v, stack_u) = stack.make_aligned_uninit::<u8>(req_v.size_bytes(), req_v.align_bytes());
+				let (mem_v, stack_u) = stack.make_aligned_uninit::<u8>(
+					req_v.size_bytes(),
+					req_v.align_bytes(),
+				);
 				let stack_v = MemStack::new(mem_v);
-				crate::utils::thread::join_raw(|par| update_v(v.rb_mut(), par, stack_v), |par| update_u(u, par, stack_u), par);
+				crate::utils::thread::join_raw(
+					|par| update_v(v.rb_mut(), par, stack_v),
+					|par| update_u(u, par, stack_u),
+					par,
+				);
 			},
 			_ => {
 				update_v(v.rb_mut(), par, stack);
@@ -1284,7 +1497,10 @@ mod tests {
 	use std::mem::MaybeUninit;
 	use std::path::{Path, PathBuf};
 	use std::vec;
-	fn bidiag_to_mat<T: RealField>(diag: ColRef<'_, T, usize, ContiguousFwd>, subdiag: ColRef<'_, T, usize, ContiguousFwd>) -> Mat<T> {
+	fn bidiag_to_mat<T: RealField>(
+		diag: ColRef<'_, T, usize, ContiguousFwd>,
+		subdiag: ColRef<'_, T, usize, ContiguousFwd>,
+	) -> Mat<T> {
 		let n = diag.nrows();
 		let mut m = Mat::zeros(n, n);
 		for i in 0..n {
@@ -1295,7 +1511,10 @@ mod tests {
 		}
 		m
 	}
-	fn bidiag_to_mat2<T: RealField>(diag: ColRef<'_, T, usize, ContiguousFwd>, subdiag: ColRef<'_, T, usize, ContiguousFwd>) -> Mat<T> {
+	fn bidiag_to_mat2<T: RealField>(
+		diag: ColRef<'_, T, usize, ContiguousFwd>,
+		subdiag: ColRef<'_, T, usize, ContiguousFwd>,
+	) -> Mat<T> {
 		let n = diag.nrows();
 		let mut m = Mat::zeros(n + 1, n);
 		for i in 0..n {
@@ -1332,11 +1551,18 @@ mod tests {
 			subdiag.push(line.parse::<f64>().unwrap());
 		}
 		assert!(diag.len() == subdiag.len());
-		(Col::from_fn(diag.len(), |i| diag[i]), Col::from_fn(diag.len(), |i| subdiag[i]))
+		(
+			Col::from_fn(diag.len(), |i| diag[i]),
+			Col::from_fn(diag.len(), |i| subdiag[i]),
+		)
 	}
 	#[test]
 	fn test_qr_algorithm() {
-		for file in std::fs::read_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/")).unwrap() {
+		for file in std::fs::read_dir(
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/"),
+		)
+		.unwrap()
+		{
 			let (diag, mut subdiag) = parse_bidiag(&file.unwrap().path());
 			subdiag[diag.nrows() - 1] = 0.0;
 			let n = diag.nrows();
@@ -1364,15 +1590,23 @@ mod tests {
 				assert!(x == 0.0);
 			}
 			let mut approx_eq = CwiseMat(ApproxEq::<f64>::eps());
-			approx_eq.0.abs_tol *= f64::max(diag.norm_max(), subdiag.norm_max()) * (n as f64).sqrt();
-			approx_eq.0.rel_tol *= f64::max(diag.norm_max(), subdiag.norm_max()) * (n as f64).sqrt();
+			approx_eq.0.abs_tol *=
+				f64::max(diag.norm_max(), subdiag.norm_max())
+					* (n as f64).sqrt();
+			approx_eq.0.rel_tol *=
+				f64::max(diag.norm_max(), subdiag.norm_max())
+					* (n as f64).sqrt();
 			let reconstructed = &u * d.as_diagonal() * v.adjoint();
 			assert!(reconstructed ~ bidiag_to_mat(diag, subdiag));
 		}
 	}
 	#[test]
 	fn test_divide_and_conquer() {
-		for file in std::fs::read_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/")).unwrap() {
+		for file in std::fs::read_dir(
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/"),
+		)
+		.unwrap()
+		{
 			let (diag, subdiag) = parse_bidiag(&file.unwrap().path());
 			let n = diag.nrows();
 			if n > 1024 {
@@ -1395,7 +1629,15 @@ mod tests {
 				MatU::Full(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(divide_and_conquer_scratch::<f64>(n, 4, true, true, Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					divide_and_conquer_scratch::<f64>(
+						n,
+						4,
+						true,
+						true,
+						Par::Seq,
+					),
+				)),
 				4,
 			)
 			.unwrap();
@@ -1407,8 +1649,14 @@ mod tests {
 				d2[(i, i)] = d[i];
 			}
 			let mut approx_eq = CwiseMat(ApproxEq::<f64>::eps());
-			approx_eq.0.abs_tol *= f64::max(diag.norm_max(), subdiag.norm_max()) * (n as f64).sqrt() * 10.0;
-			approx_eq.0.rel_tol *= f64::max(diag.norm_max(), subdiag.norm_max()) * (n as f64).sqrt() * 10.0;
+			approx_eq.0.abs_tol *=
+				f64::max(diag.norm_max(), subdiag.norm_max())
+					* (n as f64).sqrt()
+					* 10.0;
+			approx_eq.0.rel_tol *=
+				f64::max(diag.norm_max(), subdiag.norm_max())
+					* (n as f64).sqrt()
+					* 10.0;
 			let reconstructed = &u * &d2 * v.adjoint();
 			assert!(reconstructed ~ bidiag_to_mat2(diag, subdiag));
 		}
@@ -1416,7 +1664,11 @@ mod tests {
 	#[test]
 	#[ignore]
 	fn test_josef() {
-		for file in std::fs::read_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/")).unwrap() {
+		for file in std::fs::read_dir(
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data/svd/"),
+		)
+		.unwrap()
+		{
 			let (diag, subdiag) = parse_bidiag(&file.unwrap().path());
 			let diag = z!(&diag).map(|uz!(x)| *x as f32);
 			let subdiag = z!(&subdiag).map(|uz!(x)| *x as f32);
@@ -1441,7 +1693,15 @@ mod tests {
 				MatU::Full(u.as_mut()),
 				Some(v.as_mut()),
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(divide_and_conquer_scratch::<f32>(n, 4, true, true, Par::Seq))),
+				MemStack::new(&mut MemBuffer::new(
+					divide_and_conquer_scratch::<f32>(
+						n,
+						4,
+						true,
+						true,
+						Par::Seq,
+					),
+				)),
 				4,
 			)
 			.unwrap();
@@ -1453,8 +1713,14 @@ mod tests {
 				d2[(i, i)] = d[i];
 			}
 			let mut approx_eq = CwiseMat(ApproxEq::<f32>::eps());
-			approx_eq.0.abs_tol *= f32::max(diag.norm_max(), subdiag.norm_max()) * (n as f32).sqrt() * 10.0;
-			approx_eq.0.rel_tol *= f32::max(diag.norm_max(), subdiag.norm_max()) * (n as f32).sqrt() * 10.0;
+			approx_eq.0.abs_tol *=
+				f32::max(diag.norm_max(), subdiag.norm_max())
+					* (n as f32).sqrt()
+					* 10.0;
+			approx_eq.0.rel_tol *=
+				f32::max(diag.norm_max(), subdiag.norm_max())
+					* (n as f32).sqrt()
+					* 10.0;
 			let reconstructed = &u * &d2 * v.adjoint();
 			assert!(reconstructed ~ bidiag_to_mat2(diag, subdiag));
 		}
@@ -1467,13 +1733,20 @@ mod tests {
 		let diag_orig = &*vec![1.0, 5.0, 3.0, 1e-7, 4.0, 2.0, 2e-7_f32];
 		let col_orig = &*vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0_f32];
 		let n_jacobi = 2;
-		let jacobi_coeffs = &mut *vec![JacobiRotation { c: 0.0, s: 0.0 }; n_jacobi];
+		let jacobi_coeffs =
+			&mut *vec![JacobiRotation { c: 0.0, s: 0.0 }; n_jacobi];
 		let jacobi_indices = &mut *vec![0; n_jacobi];
 		let perm = &mut *vec![0; n];
 		let diag = &mut *diag_orig.to_vec();
 		let col = &mut *col_orig.to_vec();
-		let mut diag = MatMut::from_column_major_slice_mut(diag, n, 1).col_mut(0).try_as_col_major_mut().unwrap();
-		let mut col = MatMut::from_column_major_slice_mut(col, n, 1).col_mut(0).try_as_col_major_mut().unwrap();
+		let mut diag = MatMut::from_column_major_slice_mut(diag, n, 1)
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
+		let mut col = MatMut::from_column_major_slice_mut(col, n, 1)
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
 		let (jacobi_0i, jacobi_ij) = deflate(
 			diag.rb_mut(),
 			col.rb_mut(),
@@ -1501,7 +1774,9 @@ mod tests {
 			M[(i, 0)] = col[i];
 		}
 		M = P.inverse() * M * P;
-		for (&rot, &i) in core::iter::zip(&*jacobi_coeffs, &*jacobi_indices).rev() {
+		for (&rot, &i) in
+			core::iter::zip(&*jacobi_coeffs, &*jacobi_indices).rev()
+		{
 			let (x, y) = M.two_rows_mut(0, i);
 			rot.apply_on_the_left_in_place((y, x));
 		}
@@ -1515,13 +1790,20 @@ mod tests {
 		let diag_orig = &*vec![1.0, 5.0, 3.0, 1.0, 4.0, 2.0, 1.0];
 		let col_orig = &*vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0_f32];
 		let n_jacobi = 1;
-		let jacobi_coeffs = &mut *vec![JacobiRotation { c: 0.0, s: 0.0 }; n_jacobi];
+		let jacobi_coeffs =
+			&mut *vec![JacobiRotation { c: 0.0, s: 0.0 }; n_jacobi];
 		let jacobi_indices = &mut *vec![0; n_jacobi];
 		let perm = &mut *vec![0; n];
 		let diag = &mut *diag_orig.to_vec();
 		let col = &mut *col_orig.to_vec();
-		let mut diag = MatMut::from_column_major_slice_mut(diag, n, 1).col_mut(0).try_as_col_major_mut().unwrap();
-		let mut col = MatMut::from_column_major_slice_mut(col, n, 1).col_mut(0).try_as_col_major_mut().unwrap();
+		let mut diag = MatMut::from_column_major_slice_mut(diag, n, 1)
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
+		let mut col = MatMut::from_column_major_slice_mut(col, n, 1)
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
 		let (jacobi_0i, jacobi_ij) = deflate(
 			diag.rb_mut(),
 			col.rb_mut(),
@@ -1549,7 +1831,9 @@ mod tests {
 			M[(i, 0)] = col[i];
 		}
 		M = P.inverse() * M * P;
-		for (&rot, &i) in core::iter::zip(&*jacobi_coeffs, &*jacobi_indices).rev() {
+		for (&rot, &i) in
+			core::iter::zip(&*jacobi_coeffs, &*jacobi_indices).rev()
+		{
 			let (i, j) = (i - 1, i);
 			let (pi, pj) = (perm[i], perm[j]);
 			let (x, y) = M.two_rows_mut(pi, pj);
@@ -1567,13 +1851,20 @@ mod tests {
 		let diag_orig = &*vec![1.0, 5.0, 3.0, 2.0, 4.0, 2.0, 0.0];
 		let col_orig = &*vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0_f32];
 		let n_jacobi = 2;
-		let jacobi_coeffs = &mut *vec![JacobiRotation { c: 0.0, s: 0.0 }; n_jacobi];
+		let jacobi_coeffs =
+			&mut *vec![JacobiRotation { c: 0.0, s: 0.0 }; n_jacobi];
 		let jacobi_indices = &mut *vec![0; n_jacobi];
 		let perm = &mut *vec![0; n];
 		let diag = &mut *diag_orig.to_vec();
 		let col = &mut *col_orig.to_vec();
-		let mut diag = MatMut::from_column_major_slice_mut(diag, n, 1).col_mut(0).try_as_col_major_mut().unwrap();
-		let mut col = MatMut::from_column_major_slice_mut(col, n, 1).col_mut(0).try_as_col_major_mut().unwrap();
+		let mut diag = MatMut::from_column_major_slice_mut(diag, n, 1)
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
+		let mut col = MatMut::from_column_major_slice_mut(col, n, 1)
+			.col_mut(0)
+			.try_as_col_major_mut()
+			.unwrap();
 		let (jacobi_0i, jacobi_ij) = deflate(
 			diag.rb_mut(),
 			col.rb_mut(),
@@ -1601,7 +1892,9 @@ mod tests {
 			M[(i, 0)] = col[i];
 		}
 		M = P.inverse() * M * P;
-		for (&rot, &i) in core::iter::zip(&jacobi_coeffs[1..], &jacobi_indices[1..]).rev() {
+		for (&rot, &i) in
+			core::iter::zip(&jacobi_coeffs[1..], &jacobi_indices[1..]).rev()
+		{
 			let (i, j) = (i - 1, i);
 			let (pi, pj) = (perm[i], perm[j]);
 			let (x, y) = M.two_rows_mut(pi, pj);
@@ -1609,7 +1902,9 @@ mod tests {
 			let (x, y) = M.two_cols_mut(pi, pj);
 			rot.adjoint().apply_on_the_right_in_place((y, x));
 		}
-		for (&rot, &i) in core::iter::zip(&jacobi_coeffs[..1], &jacobi_indices[..1]).rev() {
+		for (&rot, &i) in
+			core::iter::zip(&jacobi_coeffs[..1], &jacobi_indices[..1]).rev()
+		{
 			let (x, y) = M.two_rows_mut(0, i);
 			rot.apply_on_the_left_in_place((y, x));
 		}

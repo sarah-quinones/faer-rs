@@ -120,7 +120,11 @@ fn simd_cholesky_row_batch<'N, T: ComplexField, S: Simd>(
 			let j_row = TAIL.idx(*j - *start);
 			let mut diag = Aj[j_row].real();
 			if regularize {
-				let sign = if is_llt { 1 } else { if let Some(signs) = signs { signs[j] } else { 0 } };
+				let sign = if is_llt {
+					1
+				} else {
+					if let Some(signs) = signs { signs[j] } else { 0 }
+				};
 				let small_or_negative = diag <= eps;
 				let minus_small_or_positive = diag >= -&eps;
 				if sign == 1 && small_or_negative {
@@ -183,7 +187,8 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 	signs: Option<&[i8]>,
 ) -> Result<usize, usize> {
 	let N = A.ncols();
-	let block_size = 4 * (core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>());
+	let block_size =
+		4 * (core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>());
 	let mut A = A;
 	let mut D = D;
 	let mut count = 0;
@@ -195,7 +200,17 @@ fn simd_cholesky_matrix<T: ComplexField, S: Simd>(
 		let A = A.rb_mut().submatrix_mut(0, 0, HEAD, HEAD);
 		let D = D.rb_mut().subcols_mut(0, HEAD);
 		let signs = signs.map(|signs| Array::from_ref(&signs[..*HEAD], HEAD));
-		count += simd_cholesky_row_batch(simd, A, D, HEAD.idx_inc(j), is_llt, regularize, eps.clone(), delta.clone(), signs)?;
+		count += simd_cholesky_row_batch(
+			simd,
+			A,
+			D,
+			HEAD.idx_inc(j),
+			is_llt,
+			regularize,
+			eps.clone(),
+			delta.clone(),
+			signs,
+		)?;
 		j += block_size;
 	}
 	Ok(count)
@@ -234,16 +249,16 @@ fn simd_cholesky<T: ComplexField>(
 			} = self;
 			let simd = T::simd_ctx(simd);
 			if A.nrows() > 0 {
-				simd_cholesky_matrix(simd, A, D, is_llt, regularize, eps, delta, signs)
+				simd_cholesky_matrix(
+					simd, A, D, is_llt, regularize, eps, delta, signs,
+				)
 			} else {
 				Ok(0)
 			}
 		}
 	}
 	let mut A = A;
-	if try_const! {
-		T::SIMD_CAPABILITIES.is_simd()
-	} {
+	if const { T::SIMD_CAPABILITIES.is_simd() } {
 		if let Some(A) = A.rb_mut().try_as_col_major_mut() {
 			dispatch!(
 				Impl {
@@ -259,10 +274,26 @@ fn simd_cholesky<T: ComplexField>(
 				T
 			)
 		} else {
-			cholesky_fallback(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
+			cholesky_fallback(
+				A,
+				D,
+				is_llt,
+				regularize,
+				eps.clone(),
+				delta.clone(),
+				signs,
+			)
 		}
 	} else {
-		cholesky_fallback(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
+		cholesky_fallback(
+			A,
+			D,
+			is_llt,
+			regularize,
+			eps.clone(),
+			delta.clone(),
+			signs,
+		)
 	}
 }
 fn cholesky_fallback<T: ComplexField>(
@@ -291,7 +322,11 @@ fn cholesky_fallback<T: ComplexField>(
 		let D = D.rb_mut().at_mut(j);
 		let mut diag = A[(j, j)].real();
 		if regularize {
-			let sign = if is_llt { 1 } else { if let Some(signs) = signs { signs[j] } else { 0 } };
+			let sign = if is_llt {
+				1
+			} else {
+				if let Some(signs) = signs { signs[j] } else { 0 }
+			};
 			let small_or_negative = diag <= eps;
 			let minus_small_or_positive = diag >= -&eps;
 			if sign == 1 && small_or_negative {
@@ -343,7 +378,15 @@ pub(crate) fn cholesky_recursion_right_looking<T: ComplexField>(
 ) -> Result<usize, usize> {
 	let n = A.ncols();
 	if n <= recursion_threshold {
-		simd_cholesky(A, D, is_llt, regularize, eps.clone(), delta.clone(), signs)
+		simd_cholesky(
+			A,
+			D,
+			is_llt,
+			regularize,
+			eps.clone(),
+			delta.clone(),
+			signs,
+		)
 	} else {
 		let mut count = 0;
 		let block_size = Ord::min(n.next_power_of_two() / 2, block_size);
@@ -352,7 +395,10 @@ pub(crate) fn cholesky_recursion_right_looking<T: ComplexField>(
 		let mut j = 0;
 		while j < n {
 			let block_size = Ord::min(block_size, n - j);
-			let (mut A00, A01, mut A10, mut A11) = A.rb_mut().get_mut(j.., j..).split_at_mut(block_size, block_size);
+			let (mut A00, A01, mut A10, mut A11) = A
+				.rb_mut()
+				.get_mut(j.., j..)
+				.split_at_mut(block_size, block_size);
 			let mut D0 = D.rb_mut().subcols_mut(j, block_size);
 			let mut L10xD0 = A01.transpose_mut();
 			let signs = signs.map(|signs| &signs[j..][..block_size]);
@@ -373,9 +419,17 @@ pub(crate) fn cholesky_recursion_right_looking<T: ComplexField>(
 			}
 			let A00 = A00.rb();
 			if is_llt {
-				linalg::triangular_solve::solve_lower_triangular_in_place(A00.conjugate(), A10.rb_mut().transpose_mut(), par)
+				linalg::triangular_solve::solve_lower_triangular_in_place(
+					A00.conjugate(),
+					A10.rb_mut().transpose_mut(),
+					par,
+				)
 			} else {
-				linalg::triangular_solve::solve_unit_lower_triangular_in_place(A00.conjugate(), A10.rb_mut().transpose_mut(), par)
+				linalg::triangular_solve::solve_unit_lower_triangular_in_place(
+					A00.conjugate(),
+					A10.rb_mut().transpose_mut(),
+					par,
+				)
 			}
 			let mut A10 = A10.rb_mut();
 			if is_llt {
@@ -456,9 +510,21 @@ pub(crate) fn cholesky_block_left_looking<T: ComplexField>(
 	par: Par,
 ) -> Result<usize, usize> {
 	let n = A.nrows();
-	let cholesky = |A: MatMut<'_, T>, D: RowMut<'_, T>, signs: Option<&[i8]>| {
-		cholesky_recursion_right_looking(A, D, recursion_threshold, block_size, is_llt, regularize, eps, delta, signs, par)
-	};
+	let cholesky =
+		|A: MatMut<'_, T>, D: RowMut<'_, T>, signs: Option<&[i8]>| {
+			cholesky_recursion_right_looking(
+				A,
+				D,
+				recursion_threshold,
+				block_size,
+				is_llt,
+				regularize,
+				eps,
+				delta,
+				signs,
+				par,
+			)
+		};
 	if true || n < right_looking_threshold {
 		cholesky(A, D, signs)
 	} else {
@@ -472,7 +538,8 @@ pub(crate) fn cholesky_block_left_looking<T: ComplexField>(
 			let AL = AL.rb();
 			let mut AL0xD0 = A01.get_mut(.., ..bj).transpose_mut();
 			let (AL0, AL1) = AL.split_at_row(bj);
-			let (mut AR0, mut AR1) = AR.rb_mut().get_mut(.., ..bj).split_at_row_mut(bj);
+			let (mut AR0, mut AR1) =
+				AR.rb_mut().get_mut(.., ..bj).split_at_row_mut(bj);
 			let (D0, D1) = D.rb_mut().split_at_col_mut(j);
 			let D0 = D0.rb();
 			let mut D1 = D1.get_mut(..bj);
@@ -488,7 +555,14 @@ pub(crate) fn cholesky_block_left_looking<T: ComplexField>(
 					-one::<T>(),
 					par,
 				);
-				linalg::matmul::matmul(AR1.rb_mut(), Accum::Add, AL1.rb(), AL0.rb().adjoint(), -one::<T>(), par);
+				linalg::matmul::matmul(
+					AR1.rb_mut(),
+					Accum::Add,
+					AL1.rb(),
+					AL0.rb().adjoint(),
+					-one::<T>(),
+					par,
+				);
 			} else {
 				if has_spicy_matmul::<T>() {
 					spicy_matmul::<usize, T>(
@@ -540,17 +614,36 @@ pub(crate) fn cholesky_block_left_looking<T: ComplexField>(
 						-one::<T>(),
 						par,
 					);
-					linalg::matmul::matmul(AR1.rb_mut(), Accum::Add, AL1, AL0xD0.adjoint(), -one::<T>(), par);
+					linalg::matmul::matmul(
+						AR1.rb_mut(),
+						Accum::Add,
+						AL1,
+						AL0xD0.adjoint(),
+						-one::<T>(),
+						par,
+					);
 				}
 			};
-			match cholesky(AR0.rb_mut(), D1.rb_mut(), signs.map(|signs| &signs[j..][..bj])) {
+			match cholesky(
+				AR0.rb_mut(),
+				D1.rb_mut(),
+				signs.map(|signs| &signs[j..][..bj]),
+			) {
 				Ok(local_count) => count += local_count,
 				Err(fail_idx) => return Err(j + fail_idx),
 			}
 			if is_llt {
-				linalg::triangular_solve::solve_lower_triangular_in_place(AR0.conjugate(), AR1.rb_mut().transpose_mut(), par);
+				linalg::triangular_solve::solve_lower_triangular_in_place(
+					AR0.conjugate(),
+					AR1.rb_mut().transpose_mut(),
+					par,
+				);
 			} else {
-				linalg::triangular_solve::solve_unit_lower_triangular_in_place(AR0.conjugate(), AR1.rb_mut().transpose_mut(), par);
+				linalg::triangular_solve::solve_unit_lower_triangular_in_place(
+					AR0.conjugate(),
+					AR1.rb_mut().transpose_mut(),
+					par,
+				);
 				for k in 0..bj {
 					let d = &D1[k].real().recip();
 					for i in j + bj..n {
@@ -565,8 +658,8 @@ pub(crate) fn cholesky_block_left_looking<T: ComplexField>(
 	}
 }
 /// dynamic $LDL^\top$ regularization.
-/// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
-/// their corrected sign.
+/// values below `epsilon` in absolute value, or with the wrong sign are set to
+/// `delta` with their corrected sign.
 #[derive(Copy, Clone, Debug)]
 pub struct LdltRegularization<'a, T> {
 	/// expected signs for the diagonal at each step of the decomposition.
@@ -620,7 +713,11 @@ impl<T: ComplexField> Auto<T> for LdltParams {
 	}
 }
 #[inline]
-pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LdltParams, T>) -> StackReq {
+pub fn cholesky_in_place_scratch<T: ComplexField>(
+	dim: usize,
+	par: Par,
+	params: Spec<LdltParams, T>,
+) -> StackReq {
 	_ = par;
 	_ = params;
 	temp_mat_scratch::<T>(dim, 1)
@@ -645,10 +742,13 @@ pub fn cholesky_in_place<T: ComplexField>(
 		params.recursion_threshold,
 		params.block_size,
 		false,
-		regularization.dynamic_regularization_delta > zero() && regularization.dynamic_regularization_epsilon > zero(),
+		regularization.dynamic_regularization_delta > zero()
+			&& regularization.dynamic_regularization_epsilon > zero(),
 		&regularization.dynamic_regularization_epsilon,
 		&regularization.dynamic_regularization_delta,
-		regularization.dynamic_regularization_signs.map(|signs| signs),
+		regularization
+			.dynamic_regularization_signs
+			.map(|signs| signs),
 		par,
 	) {
 		Ok(count) => Ok(LdltInfo {
@@ -656,7 +756,11 @@ pub fn cholesky_in_place<T: ComplexField>(
 		}),
 		Err(index) => Err(LdltError::ZeroPivot { index }),
 	};
-	let init = if let Err(LdltError::ZeroPivot { index }) = ret { index + 1 } else { n };
+	let init = if let Err(LdltError::ZeroPivot { index }) = ret {
+		index + 1
+	} else {
+		n
+	};
 	for i in 0..init {
 		A[(i, i)] = D[i].copy();
 	}
@@ -682,7 +786,10 @@ mod tests {
 					let A = CwiseMatDistribution {
 						nrows: n,
 						ncols: n,
-						dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+						dist: ComplexDistribution::new(
+							StandardNormal,
+							StandardNormal,
+						),
 					}
 					.rand::<Mat<c64>>(rng);
 					let A = &A * &A.adjoint();
@@ -691,7 +798,8 @@ mod tests {
 					let mut L = L.as_mut();
 					let mut D = Row::zeros(n);
 					let mut D = D.as_mut();
-					f(L.rb_mut(), D.rb_mut(), llt, false, 0.0, 0.0, None).unwrap();
+					f(L.rb_mut(), D.rb_mut(), llt, false, 0.0, 0.0, None)
+						.unwrap();
 					for j in 0..n {
 						for i in 0..j {
 							L[(i, j)] = c64::ZERO;
@@ -719,7 +827,10 @@ mod tests {
 				let A = CwiseMatDistribution {
 					nrows: n,
 					ncols: n,
-					dist: ComplexDistribution::new(StandardNormal, StandardNormal),
+					dist: ComplexDistribution::new(
+						StandardNormal,
+						StandardNormal,
+					),
 				}
 				.rand::<Mat<c64>>(rng);
 				let A = &A * &A.adjoint();
@@ -728,7 +839,19 @@ mod tests {
 				let mut L = L.as_mut();
 				let mut D = Row::zeros(n);
 				let mut D = D.as_mut();
-				cholesky_recursion_right_looking(L.rb_mut(), D.rb_mut(), 32, 32, llt, false, &0.0, &0.0, None, Par::Seq).unwrap();
+				cholesky_recursion_right_looking(
+					L.rb_mut(),
+					D.rb_mut(),
+					32,
+					32,
+					llt,
+					false,
+					&0.0,
+					&0.0,
+					None,
+					Par::Seq,
+				)
+				.unwrap();
 				for j in 0..n {
 					for i in 0..j {
 						L[(i, j)] = c64::ZERO;

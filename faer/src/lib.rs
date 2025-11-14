@@ -1,32 +1,36 @@
-//! `faer` is a general-purpose linear algebra library for rust, with a focus on high performance
-//! for algebraic operations on medium/large matrices, as well as matrix decompositions
+//! `faer` is a general-purpose linear algebra library for rust, with a focus on
+//! high performance for algebraic operations on medium/large matrices, as well
+//! as matrix decompositions
 //!
-//! most of the high-level functionality in this library is provided through associated functions in
-//! its vocabulary types: [`Mat`]/[`MatRef`]/[`MatMut`]
+//! most of the high-level functionality in this library is provided through
+//! associated functions in its vocabulary types: [`Mat`]/[`MatRef`]/[`MatMut`]
 //!
-//! `faer` is recommended for applications that handle medium to large dense matrices, and its
-//! design is not well suited for applications that operate mostly on low dimensional vectors and
-//! matrices such as computer graphics or game development. for such applications, `nalgebra` and
-//! `cgmath` may be better suited
+//! `faer` is recommended for applications that handle medium to large dense
+//! matrices, and its design is not well suited for applications that operate
+//! mostly on low dimensional vectors and matrices such as computer graphics or
+//! game development. for such applications, `nalgebra` and `cgmath` may be
+//! better suited
 //!
 //! # basic usage
 //!
-//! [`Mat`] is a resizable matrix type with dynamic capacity, which can be created using
-//! [`Mat::new`] to produce an empty $0\times 0$ matrix, [`Mat::zeros`] to create a rectangular
-//! matrix filled with zeros, [`Mat::identity`] to create an identity matrix, or [`Mat::from_fn`]
+//! [`Mat`] is a resizable matrix type with dynamic capacity, which can be
+//! created using [`Mat::new`] to produce an empty $0\times 0$ matrix,
+//! [`Mat::zeros`] to create a rectangular matrix filled with zeros,
+//! [`Mat::identity`] to create an identity matrix, or [`Mat::from_fn`]
 //! for the more general case
 //!
-//! Given a `&Mat<T>` (resp. `&mut Mat<T>`), a [`MatRef<'_, T>`](MatRef) (resp. [`MatMut<'_,
-//! T>`](MatMut)) can be created by calling [`Mat::as_ref`] (resp. [`Mat::as_mut`]), which allow
-//! for more flexibility than `Mat` in that they allow slicing ([`MatRef::get`]) and splitting
-//! ([`MatRef::split_at`])
+//! Given a `&Mat<T>` (resp. `&mut Mat<T>`), a [`MatRef<'_, T>`](MatRef) (resp.
+//! [`MatMut<'_, T>`](MatMut)) can be created by calling [`Mat::as_ref`] (resp.
+//! [`Mat::as_mut`]), which allow for more flexibility than `Mat` in that they
+//! allow slicing ([`MatRef::get`]) and splitting ([`MatRef::split_at`])
 //!
-//! `MatRef` and `MatMut` are lightweight view objects. the former can be copied freely while the
-//! latter has move and reborrow semantics, as described in its documentation
+//! `MatRef` and `MatMut` are lightweight view objects. the former can be copied
+//! freely while the latter has move and reborrow semantics, as described in its
+//! documentation
 //!
-//! most of the matrix operations can be used through the corresponding math operators: `+` for
-//! matrix addition, `-` for subtraction, `*` for either scalar or matrix multiplication depending
-//! on the types of the operands.
+//! most of the matrix operations can be used through the corresponding math
+//! operators: `+` for matrix addition, `-` for subtraction, `*` for either
+//! scalar or matrix multiplication depending on the types of the operands.
 //!
 //! ## example
 //! ```
@@ -46,81 +50,87 @@
 //! ```
 //!
 //! # matrix decompositions
-//! `faer` provides a variety of matrix factorizations, each with its own advantages and drawbacks:
+//! `faer` provides a variety of matrix factorizations, each with its own
+//! advantages and drawbacks:
 //!
 //! ## $LL^\top$ decomposition
-//! [`Mat::llt`] decomposes a self-adjoint positive definite matrix $A$ such that
-//! $$A = LL^H,$$
-//! where $L$ is a lower triangular matrix. this decomposition is highly efficient and has good
-//! stability properties
+//! [`Mat::llt`] decomposes a self-adjoint positive definite matrix $A$ such
+//! that $$A = LL^H,$$
+//! where $L$ is a lower triangular matrix. this decomposition is highly
+//! efficient and has good stability properties
 //!
-//! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Llt)
+//! [an implementation for sparse matrices is also
+//! available](sparse::linalg::solvers::Llt)
 //!
 //! ## $LBL^\top$ decomposition
-//! [`Mat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
-//! $$P A P^\top = LBL^H,$$
-//! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$ is a block
-//! diagonal matrix, with $1 \times 1$ or $2 \times 2$ diagonal blocks.
-//! this decomposition is efficient and has good stability properties
+//! [`Mat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$
+//! such that $$P A P^\top = LBL^H,$$
+//! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$
+//! is a block diagonal matrix, with $1 \times 1$ or $2 \times 2$ diagonal
+//! blocks. this decomposition is efficient and has good stability properties
 //!
 //! ## $LU$ decomposition with partial pivoting
-//! [`Mat::partial_piv_lu`] decomposes a square invertible matrix $A$ into a lower triangular
-//! matrix $L$, a unit upper triangular matrix $U$, and a permutation matrix $P$, such that
-//! $$PA = LU$$
-//! it is used by default for computing the determinant, and is generally the recommended method
-//! for solving a square linear system or computing the inverse of a matrix (although we generally
-//! recommend using a [`faer::linalg::solvers::Solve`](crate::linalg::solvers::Solve) instead of
+//! [`Mat::partial_piv_lu`] decomposes a square invertible matrix $A$ into a
+//! lower triangular matrix $L$, a unit upper triangular matrix $U$, and a
+//! permutation matrix $P$, such that $$PA = LU$$
+//! it is used by default for computing the determinant, and is generally the
+//! recommended method for solving a square linear system or computing the
+//! inverse of a matrix (although we generally recommend using a
+//! [`faer::linalg::solvers::Solve`](crate::linalg::solvers::Solve) instead of
 //! computing the inverse explicitly)
 //!
-//! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Lu)
+//! [an implementation for sparse matrices is also
+//! available](sparse::linalg::solvers::Lu)
 //!
 //! ## $LU$ decomposition with full pivoting
-//! [`Mat::full_piv_lu`] decomposes a generic rectangular matrix $A$ into a lower triangular
-//! matrix $L$, a unit upper triangular matrix $U$, and permutation matrices $P$ and $Q$, such that
-//! $$PAQ^\top = LU$$
-//! it can be more stable than the LU decomposition with partial pivoting, in exchange for being
-//! more computationally expensive
+//! [`Mat::full_piv_lu`] decomposes a generic rectangular matrix $A$ into a
+//! lower triangular matrix $L$, a unit upper triangular matrix $U$, and
+//! permutation matrices $P$ and $Q$, such that $$PAQ^\top = LU$$
+//! it can be more stable than the LU decomposition with partial pivoting, in
+//! exchange for being more computationally expensive
 //!
 //! ## $QR$ decomposition
 //! [`Mat::qr`] decomposes a matrix $A$ into the product $$A = QR,$$
-//! where $Q$ is a unitary matrix, and $R$ is an upper trapezoidal matrix. it is often used for
-//! solving least squares problems
+//! where $Q$ is a unitary matrix, and $R$ is an upper trapezoidal matrix. it is
+//! often used for solving least squares problems
 //!
-//! [an implementation for sparse matrices is also available](sparse::linalg::solvers::Qr)
+//! [an implementation for sparse matrices is also
+//! available](sparse::linalg::solvers::Qr)
 //!
 //! ## $QR$ decomposition with column pivoting
-//! ([`Mat::col_piv_qr`]) decomposes a matrix $A$ into the product $$AP^\top = QR,$$
-//! where $P$ is a permutation matrix, $Q$ is a unitary matrix, and $R$ is an upper trapezoidal
-//! matrix
+//! ([`Mat::col_piv_qr`]) decomposes a matrix $A$ into the product $$AP^\top =
+//! QR,$$ where $P$ is a permutation matrix, $Q$ is a unitary matrix, and $R$ is
+//! an upper trapezoidal matrix
 //!
-//! it is slower than the version with no pivoting, in exchange for being more numerically stable
-//! for rank-deficient matrices
+//! it is slower than the version with no pivoting, in exchange for being more
+//! numerically stable for rank-deficient matrices
 //!
 //! ## singular value decomposition
-//! the SVD of a matrix $A$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
-//! and $V$, such that:
+//! the SVD of a matrix $A$ of shape $(m, n)$ is a decomposition into three
+//! components $U$, $S$, and $V$, such that:
 //!
 //! - $U$ has shape $(m, m)$ and is a unitary matrix,
 //! - $V$ has shape $(n, n)$ and is a unitary matrix,
-//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal, with nonnegative
+//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal,
+//!   with nonnegative
 //! diagonal values in nonincreasing order,
 //! - and finally:
 //!
 //! $$A = U S V^H$$
 //!
-//! the SVD is provided in two forms: either the full matrices $U$ and $V$ are computed, using
-//! [`Mat::svd`], or only their first $\min(m, n)$ columns are computed, using
-//! [`Mat::thin_svd`]
+//! the SVD is provided in two forms: either the full matrices $U$ and $V$ are
+//! computed, using [`Mat::svd`], or only their first $\min(m, n)$ columns are
+//! computed, using [`Mat::thin_svd`]
 //!
-//! if only the singular values (elements of $S$) are desired, they can be obtained in
-//! nonincreasing order using [`Mat::singular_values`]
+//! if only the singular values (elements of $S$) are desired, they can be
+//! obtained in nonincreasing order using [`Mat::singular_values`]
 //!
 //! ## eigendecomposition
-//! **note**: the order of the eigenvalues is currently unspecified and may be changed in a future
-//! release
+//! **note**: the order of the eigenvalues is currently unspecified and may be
+//! changed in a future release
 //!
-//! the eigenvalue decomposition of a square matrix $A$ of shape $(n, n)$ is a decomposition into
-//! two components $U$, $S$:
+//! the eigenvalue decomposition of a square matrix $A$ of shape $(n, n)$ is a
+//! decomposition into two components $U$, $S$:
 //!
 //! - $U$ has shape $(n, n)$ and is invertible,
 //! - $S$ has shape $(n, n)$ and is a diagonal matrix,
@@ -128,30 +138,35 @@
 //!
 //! $$A = U S U^{-1}$$
 //!
-//! if $A$ is self-adjoint, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
-//! additionally, the eigenvalues are sorted in nondecreasing order
+//! if $A$ is self-adjoint, then $U$ can be made unitary ($U^{-1} = U^H$), and
+//! $S$ is real valued. additionally, the eigenvalues are sorted in
+//! nondecreasing order
 //!
-//! Depending on the domain of the input matrix and whether it is self-adjoint, multiple methods
-//! are provided to compute the eigendecomposition:
-//! * [`Mat::self_adjoint_eigen`] can be used with either real or complex matrices,
+//! Depending on the domain of the input matrix and whether it is self-adjoint,
+//! multiple methods are provided to compute the eigendecomposition:
+//! * [`Mat::self_adjoint_eigen`] can be used with either real or complex
+//!   matrices,
 //! producing an eigendecomposition of the same type,
-//! * [`Mat::eigen`] can be used with real or complex matrices, but always produces complex values.
+//! * [`Mat::eigen`] can be used with real or complex matrices, but always
+//!   produces complex values.
 //!
-//! if only the eigenvalues (elements of $S$) are desired, they can be obtained using
-//! [`Mat::self_adjoint_eigenvalues`] (nondecreasing order), [`Mat::eigenvalues`]
-//! with the same conditions described above.
+//! if only the eigenvalues (elements of $S$) are desired, they can be obtained
+//! using [`Mat::self_adjoint_eigenvalues`] (nondecreasing order),
+//! [`Mat::eigenvalues`] with the same conditions described above.
 //!
 //! # crate features
 //!
-//! - `std`: enabled by default. links with the standard library to enable additional features such
-//!   as cpu feature detection at runtime
-//! - `rayon`: enabled by default. enables the `rayon` parallel backend and enables global
-//!   parallelism by default
+//! - `std`: enabled by default. links with the standard library to enable
+//!   additional features such as cpu feature detection at runtime
+//! - `rayon`: enabled by default. enables the `rayon` parallel backend and
+//!   enables global parallelism by default
 //! - `serde`: Enables serialization and deserialization of [`Mat`]
 //! - `npy`: enables conversions to/from numpy's matrix file format
-//! - `perf-warn`: produces performance warnings when matrix operations are called with suboptimal
+//! - `perf-warn`: produces performance warnings when matrix operations are
+//!   called with suboptimal
 //! data layout
-//! - `nightly`: requires the nightly compiler. enables experimental simd features such as avx512
+//! - `nightly`: requires the nightly compiler. enables experimental simd
+//!   features such as avx512
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 #![warn(rustdoc::broken_intra_doc_links)]
@@ -173,11 +188,6 @@ macro_rules! repeat_n {
 		iter::repeat_n($e, $n)
 	};
 }
-macro_rules! try_const {
-	($e:expr) => {
-		::pulp::try_const! { $e }
-	};
-}
 use core::num::NonZeroUsize;
 use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
@@ -191,10 +201,20 @@ macro_rules! auto {
 }
 macro_rules! dispatch {
 	($imp:expr, $ty:ident, $T:ty $(,)?) => {
-		if try_const! { <$T >::IS_NATIVE_C32 } {
-			unsafe { transmute(<ComplexImpl<f32> as ComplexField>::Arch::default().dispatch(transmute::<_, $ty<ComplexImpl<f32>>>($imp))) }
-		} else if try_const! { <$T >::IS_NATIVE_C64 } {
-			unsafe { transmute(<ComplexImpl<f64> as ComplexField>::Arch::default().dispatch(transmute::<_, $ty<ComplexImpl<f64>>>($imp))) }
+		if const { <$T>::IS_NATIVE_C32 } {
+			unsafe {
+				transmute(
+					<ComplexImpl<f32> as ComplexField>::Arch::default()
+						.dispatch(transmute::<_, $ty<ComplexImpl<f32>>>($imp)),
+				)
+			}
+		} else if const { <$T>::IS_NATIVE_C64 } {
+			unsafe {
+				transmute(
+					<ComplexImpl<f64> as ComplexField>::Arch::default()
+						.dispatch(transmute::<_, $ty<ComplexImpl<f64>>>($imp)),
+				)
+			}
 		} else {
 			<$T>::Arch::default().dispatch($imp)
 		}
@@ -209,7 +229,8 @@ macro_rules! stack_mat {
 			core::mem::MaybeUninit::<__Mat<$T, $A, $N>>::uninit()
 		};
 		let __stack = MemStack::new_any(core::slice::from_mut(&mut __tmp));
-		let mut $name = $crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
+		let mut $name =
+			$crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
 		let mut $name = $name.as_mat_mut();
 	};
 	($name:ident, $m:expr, $n:expr, $T:ty $(,)?) => {
@@ -238,7 +259,8 @@ macro_rules! __perf_warn {
 		#[inline(always)]
 		#[allow(non_snake_case)]
 		fn $name() -> &'static ::core::sync::atomic::AtomicBool {
-			static $name: ::core::sync::atomic::AtomicBool = ::core::sync::atomic::AtomicBool::new(false);
+			static $name: ::core::sync::atomic::AtomicBool =
+				::core::sync::atomic::AtomicBool::new(false);
 			&$name
 		}
 		::core::matches!(
@@ -264,8 +286,8 @@ macro_rules! with_dim {
         $crate::utils::bound::Dim::new(__val__, $name);)*
     };
 }
-/// zips together matrix of the same size, so that coefficient-wise operations can be performed on
-/// their elements.
+/// zips together matrix of the same size, so that coefficient-wise operations
+/// can be performed on their elements.
 ///
 /// # note
 /// the order in which the matrix elements are traversed is unspecified.
@@ -308,9 +330,11 @@ macro_rules! zip {
 /// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
 /// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
 /// let mut sum = Mat::<f64>::zeros(nrows, ncols);
-/// zip!(&mut sum, &a, &b).for_each(|unzip!(sum, a, b): Zip!(&mut f64, &f64, &f64)| {
-/// 	*sum = a + b;
-/// });
+/// zip!(&mut sum, &a, &b).for_each(
+/// 	|unzip!(sum, a, b): Zip!(&mut f64, &f64, &f64)| {
+/// 		*sum = a + b;
+/// 	},
+/// );
 /// for i in 0..nrows {
 /// 	for j in 0..ncols {
 /// 		assert_eq!(sum[(i, j)], a[(i, j)] + b[(i, j)]);
@@ -500,9 +524,13 @@ macro_rules! row {
 /// is perfectly acceptable
 #[doc(hidden)]
 #[track_caller]
-pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) -> mat::Mat<T> {
+pub fn concat_impl<T: ComplexField>(
+	blocks: &[&[(mat::MatRef<'_, T>, Conj)]],
+) -> mat::Mat<T> {
 	#[inline(always)]
-	fn count_total_columns<T: ComplexField>(block_row: &[(mat::MatRef<'_, T>, Conj)]) -> usize {
+	fn count_total_columns<T: ComplexField>(
+		block_row: &[(mat::MatRef<'_, T>, Conj)],
+	) -> usize {
 		let mut out: usize = 0;
 		for (elem, _) in block_row.iter() {
 			out += elem.ncols();
@@ -511,7 +539,9 @@ pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) ->
 	}
 	#[inline(always)]
 	#[track_caller]
-	fn count_rows<T: ComplexField>(block_row: &[(mat::MatRef<'_, T>, Conj)]) -> usize {
+	fn count_rows<T: ComplexField>(
+		block_row: &[(mat::MatRef<'_, T>, Conj)],
+	) -> usize {
 		let mut out: usize = 0;
 		for (i, (e, _)) in block_row.iter().enumerate() {
 			if i == 0 {
@@ -541,7 +571,9 @@ pub fn concat_impl<T: ComplexField>(blocks: &[&[(mat::MatRef<'_, T>, Conj)]]) ->
 	for row in blocks.iter() {
 		mj = 0;
 		for (elem, conj) in row.iter() {
-			let mut dst = mat.as_mut().submatrix_mut(ni, mj, elem.nrows(), elem.ncols());
+			let mut dst =
+				mat.as_mut()
+					.submatrix_mut(ni, mj, elem.nrows(), elem.ncols());
 			if *conj == Conj::No {
 				dst.copy_from(elem);
 			} else {
@@ -607,9 +639,11 @@ mod seal {
 	impl Seal for crate::ContiguousFwd {}
 	impl Seal for crate::ContiguousBwd {}
 }
-/// sealed trait for types that can be created from "unbound" values, as long as their
-/// struct preconditions are upheld
-pub trait Unbind<I = usize>: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
+/// sealed trait for types that can be created from "unbound" values, as long as
+/// their struct preconditions are upheld
+pub trait Unbind<I = usize>:
+	Send + Sync + Copy + core::fmt::Debug + seal::Seal
+{
 	/// creates new value
 	/// # safety
 	/// safety invariants must be upheld
@@ -633,7 +667,14 @@ pub trait ShapeIdx {
 	type MaybeIdx<I: Index>: Unbind<I::Signed> + Ord + Eq;
 }
 /// matrix dimension
-pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>, IdxInc<usize>: Ord + Eq + PartialOrd<Self>> {
+pub trait Shape:
+	Unbind
+	+ Ord
+	+ ShapeIdx<
+		Idx<usize>: Ord + Eq + PartialOrd<Self>,
+		IdxInc<usize>: Ord + Eq + PartialOrd<Self>,
+	>
+{
 	/// whether the types involved have any safety invariants
 	const IS_BOUND: bool = true;
 	/// bind the current value using a invariant lifetime guard
@@ -714,14 +755,20 @@ pub trait Shape: Unbind + Ord + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>
 	}
 	/// returns an iterator over the indices between `from` and `to`
 	#[inline(always)]
-	fn indices(from: IdxInc<Self>, to: IdxInc<Self>) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<Self>> {
+	fn indices(
+		from: IdxInc<Self>,
+		to: IdxInc<Self>,
+	) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<Self>>
+	{
 		(from.unbound()..to.unbound()).map(
 			#[inline(always)]
 			|i| unsafe { Idx::<Self>::new_unbound(i) },
 		)
 	}
 }
-impl<T: Send + Sync + Copy + core::fmt::Debug + faer_traits::Seal> Unbind<T> for T {
+impl<T: Send + Sync + Copy + core::fmt::Debug + faer_traits::Seal> Unbind<T>
+	for T
+{
 	#[inline(always)]
 	unsafe fn new_unbound(idx: T) -> Self {
 		idx
@@ -741,7 +788,9 @@ impl Shape for usize {
 	const IS_BOUND: bool = false;
 }
 /// stride distance between two consecutive elements along a given dimension
-pub trait Stride: seal::Seal + core::fmt::Debug + Copy + Send + Sync + 'static {
+pub trait Stride:
+	seal::Seal + core::fmt::Debug + Copy + Send + Sync + 'static
+{
 	/// the reversed stride type
 	type Rev: Stride<Rev = Self>;
 	/// returns the reversed stride
@@ -852,7 +901,8 @@ impl Conj {
 		}
 	}
 
-	/// returns `Conj::No` if `T` is the canonical representation, otherwise `Conj::Yes`
+	/// returns `Conj::No` if `T` is the canonical representation, otherwise
+	/// `Conj::Yes`
 	#[inline]
 	pub const fn get<T: Conjugate>() -> Self {
 		if T::IS_CANONICAL { Self::No } else { Self::Yes }
@@ -861,9 +911,7 @@ impl Conj {
 	#[inline]
 	pub(crate) fn apply<T: Conjugate>(value: &T) -> T::Canonical {
 		let value = unsafe { &*(value as *const T as *const T::Canonical) };
-		if try_const! {
-			matches!(Self::get::< T > (), Conj::Yes)
-		} {
+		if const { matches!(Self::get::<T>(), Conj::Yes) } {
 			T::Canonical::conj_impl(value)
 		} else {
 			T::Canonical::copy_impl(value)
@@ -872,7 +920,11 @@ impl Conj {
 
 	#[inline]
 	pub(crate) fn apply_rt<T: ComplexField>(self, value: &T) -> T {
-		if self.is_conj() { T::conj_impl(value) } else { T::copy_impl(value) }
+		if self.is_conj() {
+			T::conj_impl(value)
+		} else {
+			T::copy_impl(value)
+		}
 	}
 }
 /// determines the parallelization configuration
@@ -880,7 +932,8 @@ impl Conj {
 pub enum Par {
 	/// sequential, non portable across different platforms
 	Seq,
-	/// parallelized using the global rayon threadpool, non portable across different platforms
+	/// parallelized using the global rayon threadpool, non portable across
+	/// different platforms
 	#[cfg(feature = "rayon")]
 	Rayon(NonZeroUsize),
 }
@@ -891,13 +944,16 @@ impl Par {
 	#[cfg(feature = "rayon")]
 	pub fn rayon(nthreads: usize) -> Self {
 		if nthreads == 0 {
-			Self::Rayon(NonZeroUsize::new(rayon::current_num_threads()).unwrap())
+			Self::Rayon(
+				NonZeroUsize::new(rayon::current_num_threads()).unwrap(),
+			)
 		} else {
 			Self::Rayon(NonZeroUsize::new(nthreads).unwrap())
 		}
 	}
 
-	/// the number of threads that should ideally execute an operation with the given parallelism
+	/// the number of threads that should ideally execute an operation with the
+	/// given parallelism
 	#[inline]
 	pub fn degree(&self) -> usize {
 		utils::thread::parallelism_degree(*self)
@@ -954,8 +1010,12 @@ mod internal_prelude {
 	pub(crate) use crate::col::{Col, ColMut, ColRef};
 	pub(crate) use crate::diag::{Diag, DiagMut, DiagRef};
 	pub(crate) use crate::hacks::transmute;
-	pub(crate) use crate::linalg::{self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed};
-	pub(crate) use crate::mat::{AsMat, AsMatMut, AsMatRef, Mat, MatMut, MatRef};
+	pub(crate) use crate::linalg::{
+		self, temp_mat_scratch, temp_mat_uninit, temp_mat_zeroed,
+	};
+	pub(crate) use crate::mat::{
+		AsMat, AsMatMut, AsMatRef, Mat, MatMut, MatRef,
+	};
 	pub(crate) use crate::perm::{Perm, PermRef};
 	pub(crate) use crate::prelude::*;
 	pub(crate) use crate::row::{AsRowMut, AsRowRef, Row, RowMut, RowRef};
@@ -965,7 +1025,8 @@ mod internal_prelude {
 	pub use faer_traits::ext::*;
 	pub use faer_traits::math_utils::*;
 	pub use faer_traits::{
-		ComplexField, ComplexImpl, ComplexImplConj, Conjugate, Index, IndexCore, Real, RealField, SignedIndex, SimdArch, Symbolic,
+		ComplexField, ComplexImpl, ComplexImplConj, Conjugate, Index,
+		IndexCore, Real, RealField, SignedIndex, SimdArch, Symbolic,
 	};
 	pub use num_complex::Complex;
 	#[cfg(test)]
@@ -977,9 +1038,14 @@ mod internal_prelude {
 		i.wrapping_neg()
 	}
 	pub use crate::make_guard;
-	pub(crate) use crate::{Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape, Stride, Unbind, unzip, zip};
+	pub(crate) use crate::{
+		Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape,
+		Stride, Unbind, unzip, zip,
+	};
 	pub use dyn_stack::{MemStack, StackReq, alloc as alloca};
-	pub use equator::{assert, assert as Assert, debug_assert, debug_assert as DebugAssert};
+	pub use equator::{
+		assert, assert as Assert, debug_assert, debug_assert as DebugAssert,
+	};
 	pub use reborrow::*;
 	pub use {unzip as uz, zip as z};
 }
@@ -987,8 +1053,10 @@ mod internal_prelude {
 pub(crate) mod internal_prelude_sp {
 	pub(crate) use crate::internal_prelude::*;
 	pub(crate) use crate::sparse::{
-		FaerError, NONE, Pair, SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
-		SymbolicSparseColMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef, Triplet, csc_numeric, csc_symbolic, csr_numeric, csr_symbolic,
+		FaerError, NONE, Pair, SparseColMat, SparseColMatMut, SparseColMatRef,
+		SparseRowMat, SparseRowMatMut, SparseRowMatRef, SymbolicSparseColMat,
+		SymbolicSparseColMatRef, SymbolicSparseRowMat, SymbolicSparseRowMatRef,
+		Triplet, csc_numeric, csc_symbolic, csr_numeric, csr_symbolic,
 		linalg as linalg_sp, try_collect, try_zeroed, windows2,
 	};
 	pub(crate) use core::cell::Cell;
@@ -1015,7 +1083,10 @@ pub mod prelude {
 #[cfg(feature = "sparse")]
 mod prelude_sp {
 	use crate::sparse;
-	pub use sparse::{SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut, SparseRowMatRef};
+	pub use sparse::{
+		SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat,
+		SparseRowMatMut, SparseRowMatRef,
+	};
 }
 /// scaling factor for multiplying matrices.
 #[derive(Copy, Clone, Debug)]
@@ -1028,7 +1099,8 @@ impl<T> Scale<T> {
 		unsafe { &*(value as *const T as *const Self) }
 	}
 
-	/// create a mutable reference to a scaling factor from a mutable reference to a value.
+	/// create a mutable reference to a scaling factor from a mutable reference
+	/// to a value.
 	#[inline(always)]
 	pub fn from_mut(value: &mut T) -> &mut Self {
 		unsafe { &mut *(value as *mut T as *mut Self) }
@@ -1089,13 +1161,14 @@ mod non_exhaustive {
 	pub struct NonExhaustive(pub(crate) ());
 }
 pub(crate) use non_exhaustive::NonExhaustive;
-/// like `Default`, but with an extra type parameter so that algorithm hyperparameters can be tuned
-/// per scalar type.
+/// like `Default`, but with an extra type parameter so that algorithm
+/// hyperparameters can be tuned per scalar type.
 pub trait Auto<T> {
 	/// returns the default value for the type `T`
 	fn auto() -> Self;
 }
-/// implements [`Default`] based on `Config`'s [`Auto`] implementation for the type `T`.
+/// implements [`Default`] based on `Config`'s [`Auto`] implementation for the
+/// type `T`.
 pub struct Spec<Config, T> {
 	/// wrapped config value
 	pub config: Config,

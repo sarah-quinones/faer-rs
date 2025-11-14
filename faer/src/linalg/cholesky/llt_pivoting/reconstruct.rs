@@ -1,15 +1,29 @@
 use crate::assert;
 use crate::internal_prelude::*;
 use linalg::matmul::triangular::BlockStructure;
-pub fn reconstruct_scratch<I: Index, T: ComplexField>(dim: usize, par: Par) -> StackReq {
+pub fn reconstruct_scratch<I: Index, T: ComplexField>(
+	dim: usize,
+	par: Par,
+) -> StackReq {
 	_ = (dim, par);
 	temp_mat_scratch::<T>(dim, dim)
 }
 #[track_caller]
-pub fn reconstruct<I: Index, T: ComplexField>(out: MatMut<'_, T>, L: MatRef<'_, T>, perm: PermRef<'_, I>, par: Par, stack: &mut MemStack) {
+pub fn reconstruct<I: Index, T: ComplexField>(
+	out: MatMut<'_, T>,
+	L: MatRef<'_, T>,
+	perm: PermRef<'_, I>,
+	par: Par,
+	stack: &mut MemStack,
+) {
 	let mut out = out;
 	let n = out.nrows();
-	assert!(all(out.nrows() == n, out.ncols() == n, L.nrows() == n, L.ncols() == n,));
+	assert!(all(
+		out.nrows() == n,
+		out.ncols() == n,
+		L.nrows() == n,
+		L.ncols() == n,
+	));
 	let (mut tmp, _) = unsafe { temp_mat_uninit::<T, _, _>(n, n, stack) };
 	let mut tmp = tmp.as_mat_mut();
 	linalg::matmul::triangular::matmul(
@@ -63,7 +77,13 @@ mod tests {
 			perm_fwd,
 			perm_bwd,
 			Par::Seq,
-			MemStack::new(&mut { MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(n, Par::Seq, default())) }),
+			MemStack::new(&mut {
+				MemBuffer::new(factor::cholesky_in_place_scratch::<usize, c64>(
+					n,
+					Par::Seq,
+					default(),
+				))
+			}),
 			default(),
 		)
 		.unwrap();
@@ -74,7 +94,9 @@ mod tests {
 			L.as_ref(),
 			perm,
 			Par::Seq,
-			MemStack::new(&mut MemBuffer::new(reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq))),
+			MemStack::new(&mut MemBuffer::new(
+				reconstruct::reconstruct_scratch::<usize, c64>(n, Par::Seq),
+			)),
 		);
 		for j in 0..n {
 			for i in 0..j {

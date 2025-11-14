@@ -2,8 +2,8 @@ use crate::internal_prelude::*;
 use crate::linalg::cholesky::ldlt::factor::LdltParams;
 /// dynamic $LL^\top$ regularization.
 ///
-/// values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
-/// their corrected sign
+/// values below `epsilon` in absolute value, or with the wrong sign are set to
+/// `delta` with their corrected sign
 #[derive(Copy, Clone, Debug)]
 pub struct LltRegularization<T> {
 	/// regularized value
@@ -55,7 +55,11 @@ impl<T: ComplexField> Auto<T> for LltParams {
 	}
 }
 #[inline]
-pub fn cholesky_in_place_scratch<T: ComplexField>(dim: usize, par: Par, params: Spec<LltParams, T>) -> StackReq {
+pub fn cholesky_in_place_scratch<T: ComplexField>(
+	dim: usize,
+	par: Par,
+	params: Spec<LltParams, T>,
+) -> StackReq {
 	_ = par;
 	_ = params;
 	temp_mat_scratch::<T>(dim, 1)
@@ -78,7 +82,8 @@ pub fn cholesky_in_place<T: ComplexField>(
 		params.recursion_threshold,
 		params.block_size,
 		true,
-		regularization.dynamic_regularization_delta > zero() && regularization.dynamic_regularization_epsilon > zero(),
+		regularization.dynamic_regularization_delta > zero()
+			&& regularization.dynamic_regularization_epsilon > zero(),
 		&regularization.dynamic_regularization_epsilon,
 		&regularization.dynamic_regularization_delta,
 		None,

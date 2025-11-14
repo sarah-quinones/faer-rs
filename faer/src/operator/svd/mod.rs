@@ -22,22 +22,32 @@ fn iterate_lanczos<T: ComplexField>(
 		let Q = Q.rb();
 		let mut Pnext = Pnext.col_mut(0);
 		let mut Qnext = Qnext.col_mut(0);
-		let ref f = from_f64::<T::Real>(Ord::max(j, 8) as f64) * eps::<T::Real>();
+		let ref f =
+			from_f64::<T::Real>(Ord::max(j, 8) as f64) * eps::<T::Real>();
 		{
-			A.apply(Pnext.rb_mut().as_mat_mut(), Q.col(j - 1).as_mat(), par, stack);
+			A.apply(
+				Pnext.rb_mut().as_mat_mut(),
+				Q.col(j - 1).as_mat(),
+				par,
+				stack,
+			);
 			for i in 0..j - 1 {
 				let ref r = P.col(i).adjoint() * Pnext.rb();
-				zip!(Pnext.rb_mut(), P.col(i)).for_each(|unzip!(y, x): Zip!(&mut _, &_)| *y -= r * x);
+				zip!(Pnext.rb_mut(), P.col(i))
+					.for_each(|unzip!(y, x): Zip!(&mut _, &_)| *y -= r * x);
 			}
 			{
-				let (mut converged, _) = stack.collect(core::iter::repeat_n(false, j - 1));
+				let (mut converged, _) =
+					stack.collect(core::iter::repeat_n(false, j - 1));
 				loop {
 					let mut all_true = true;
 					for i in 0..j - 1 {
 						if !converged[i] {
 							all_true = false;
 							let ref r = P.col(i).adjoint() * Pnext.rb();
-							zip!(Pnext.rb_mut(), P.col(i)).for_each(|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x);
+							zip!(Pnext.rb_mut(), P.col(i)).for_each(
+								|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x,
+							);
 							converged[i] = r.abs() < f * Pnext.norm_l2();
 						}
 					}
@@ -49,7 +59,8 @@ fn iterate_lanczos<T: ComplexField>(
 			let norm = Pnext.norm_l2();
 			if norm > zero() {
 				let ref norm_inv = norm.recip();
-				zip!(&mut Pnext).for_each(|unzip!(v)| *v = v.mul_real(norm_inv));
+				zip!(&mut Pnext)
+					.for_each(|unzip!(v)| *v = v.mul_real(norm_inv));
 			} else {
 				break;
 			}
@@ -57,20 +68,29 @@ fn iterate_lanczos<T: ComplexField>(
 		}
 		let Pnext = Pnext.rb();
 		{
-			A.adjoint_apply(Qnext.rb_mut().as_mat_mut(), Pnext.as_mat(), par, stack);
+			A.adjoint_apply(
+				Qnext.rb_mut().as_mat_mut(),
+				Pnext.as_mat(),
+				par,
+				stack,
+			);
 			for i in 0..j {
 				let ref r = Q.col(i).adjoint() * Qnext.rb();
-				zip!(Qnext.rb_mut(), Q.col(i)).for_each(|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x);
+				zip!(Qnext.rb_mut(), Q.col(i))
+					.for_each(|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x);
 			}
 			{
-				let (mut converged, _) = stack.collect(core::iter::repeat_n(false, j));
+				let (mut converged, _) =
+					stack.collect(core::iter::repeat_n(false, j));
 				loop {
 					let mut all_true = true;
 					for i in 0..j {
 						if !converged[i] {
 							all_true = false;
 							let ref r = Q.col(i).adjoint() * Qnext.rb();
-							zip!(Qnext.rb_mut(), Q.col(i)).for_each(|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x);
+							zip!(Qnext.rb_mut(), Q.col(i)).for_each(
+								|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x,
+							);
 							converged[i] = r.abs() < f * Qnext.norm_l2();
 						}
 					}
@@ -82,7 +102,8 @@ fn iterate_lanczos<T: ComplexField>(
 			let norm = Qnext.norm_l2();
 			if norm > zero() {
 				let ref norm_inv = norm.recip();
-				zip!(&mut Qnext).for_each(|unzip!(v)| *v = v.mul_real(norm_inv));
+				zip!(&mut Qnext)
+					.for_each(|unzip!(v)| *v = v.mul_real(norm_inv));
 			} else {
 				break;
 			}
@@ -106,26 +127,32 @@ pub fn partial_svd_imp<T: ComplexField>(
 ) -> usize {
 	let m = A.nrows();
 	let n = A.ncols();
-	let (mut H, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim + 1, stack);
+	let (mut H, stack) =
+		temp_mat_zeroed::<T, _, _>(max_dim, max_dim + 1, stack);
 	let mut H = H.as_mat_mut();
 	let (mut P, stack) = temp_mat_zeroed::<T, _, _>(m, max_dim, stack);
 	let mut P = P.as_mat_mut();
 	let (mut Q, stack) = temp_mat_zeroed::<T, _, _>(n, max_dim + 1, stack);
 	let mut Q = Q.as_mat_mut();
-	let (mut tmp, stack) = temp_mat_zeroed::<T, _, _>(Ord::max(m, n), max_dim, stack);
+	let (mut tmp, stack) =
+		temp_mat_zeroed::<T, _, _>(Ord::max(m, n), max_dim, stack);
 	let mut tmp = tmp.as_mat_mut();
 	let mut active = 0usize;
 	if max_dim < Ord::min(m, n) {
-		let (mut X, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
+		let (mut X, stack) =
+			temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
 		let mut X = X.as_mat_mut();
-		let (mut Y, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
+		let (mut Y, stack) =
+			temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
 		let mut Y = Y.as_mat_mut();
-		let (mut residual, stack) = temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
+		let (mut residual, stack) =
+			temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
 		let mut residual = residual.as_mat_mut().col_mut(0);
 		let ref f = v0.norm_l2();
 		if *f > min_positive() {
 			let ref f = f.recip();
-			zip!(Q.rb_mut().col_mut(0), v0).for_each(|unzip!(y, x): Zip!(&mut _, &_)| *y = x.mul_real(f));
+			zip!(Q.rb_mut().col_mut(0), v0)
+				.for_each(|unzip!(y, x): Zip!(&mut _, &_)| *y = x.mul_real(f));
 		} else {
 			let n0 = n as u32;
 			let n1 = (n >> 32) as u32;
@@ -133,19 +160,40 @@ pub fn partial_svd_imp<T: ComplexField>(
 			let ref f = n.sqrt().recip();
 			zip!(Q.rb_mut().col_mut(0)).for_each(|unzip!(y)| *y = f.copy());
 		}
-		iterate_lanczos(A, H.as_mut(), Q.as_mut(), P.as_mut(), 1, min_dim, par, stack);
+		iterate_lanczos(
+			A,
+			H.as_mut(),
+			Q.as_mut(),
+			P.as_mut(),
+			1,
+			min_dim,
+			par,
+			stack,
+		);
 		let mut k = min_dim;
 		for _ in 0..restarts {
-			iterate_lanczos(A, H.as_mut(), Q.as_mut(), P.as_mut(), k + 1, max_dim, par, stack);
+			iterate_lanczos(
+				A,
+				H.as_mut(),
+				Q.as_mut(),
+				P.as_mut(),
+				k + 1,
+				max_dim,
+				par,
+				stack,
+			);
 			let ref Hmm = H[(max_dim - 1, max_dim)].copy();
 			let dim = max_dim - active;
 			X.fill(zero());
 			X.rb_mut().diagonal_mut().fill(one());
 			Y.fill(zero());
 			Y.rb_mut().diagonal_mut().fill(one());
-			let mut X_slice = X.rb_mut().get_mut(active..max_dim, active..max_dim);
-			let mut Y_slice = Y.rb_mut().get_mut(active..max_dim, active..max_dim);
-			let mut H_slice = H.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut X_slice =
+				X.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut Y_slice =
+				Y.rb_mut().get_mut(active..max_dim, active..max_dim);
+			let mut H_slice =
+				H.rb_mut().get_mut(active..max_dim, active..max_dim);
 			{
 				let (mut s, stack) = temp_mat_zeroed(dim, 1, stack);
 				let mut s = s.as_mat_mut().col_mut(0).as_diagonal_mut();
@@ -211,11 +259,13 @@ pub fn partial_svd_imp<T: ComplexField>(
 							H[(lo, lo)] = H[(hi, hi)].copy();
 							residual[lo] = residual[hi].copy();
 							{
-								let (mut lo, hi) = X.rb_mut().two_cols_mut(lo, hi);
+								let (mut lo, hi) =
+									X.rb_mut().two_cols_mut(lo, hi);
 								lo.copy_from(hi);
 							}
 							{
-								let (mut lo, hi) = Y.rb_mut().two_cols_mut(lo, hi);
+								let (mut lo, hi) =
+									Y.rb_mut().two_cols_mut(lo, hi);
 								lo.copy_from(hi);
 							}
 						}
@@ -227,11 +277,13 @@ pub fn partial_svd_imp<T: ComplexField>(
 						if hi > mi {
 							H[(mi, mi)] = H[(hi, hi)].copy();
 							{
-								let (mut mi, hi) = X.rb_mut().two_cols_mut(mi, hi);
+								let (mut mi, hi) =
+									X.rb_mut().two_cols_mut(mi, hi);
 								mi.copy_from(hi);
 							}
 							{
-								let (mut mi, hi) = Y.rb_mut().two_cols_mut(mi, hi);
+								let (mut mi, hi) =
+									Y.rb_mut().two_cols_mut(mi, hi);
 								mi.copy_from(hi);
 							}
 						}
@@ -296,8 +348,14 @@ pub fn partial_svd_imp<T: ComplexField>(
 		let mut right_singular_vecs = right_singular_vecs;
 		for idx in 0..active {
 			let j = perm[idx];
-			left_singular_vecs.rb_mut().col_mut(idx).copy_from(P.rb().col(j));
-			right_singular_vecs.rb_mut().col_mut(idx).copy_from(Q.rb().col(j));
+			left_singular_vecs
+				.rb_mut()
+				.col_mut(idx)
+				.copy_from(P.rb().col(j));
+			right_singular_vecs
+				.rb_mut()
+				.col_mut(idx)
+				.copy_from(Q.rb().col(j));
 			singular_vals[idx] = H[(j, j)].copy();
 		}
 		active
@@ -354,8 +412,14 @@ mod tests {
 		assert!(s.iter().map(|x| x.norm()).is_sorted_by(|x, y| x >= y));
 		assert!(n_converged == n_eigval);
 		for j in 0..n_converged {
-			assert!((A.adjoint() * (A * V.col(j)) - Scale(s[j] * s[j]) * V.col(j)).norm_l2() < 1e-10);
-			assert!((A * (A.adjoint() * U.col(j)) - Scale(s[j] * s[j]) * U.col(j)).norm_l2() < 1e-10);
+			assert!(
+				(A.adjoint() * (A * V.col(j)) - Scale(s[j] * s[j]) * V.col(j))
+					.norm_l2() < 1e-10
+			);
+			assert!(
+				(A * (A.adjoint() * U.col(j)) - Scale(s[j] * s[j]) * U.col(j))
+					.norm_l2() < 1e-10
+			);
 		}
 	}
 }

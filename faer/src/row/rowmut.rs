@@ -6,20 +6,28 @@ use equator::{assert, debug_assert};
 pub struct Mut<'a, T, Cols = usize, CStride = isize> {
 	pub(crate) trans: ColMut<'a, T, Cols, CStride>,
 }
-impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short> for Mut<'_, T, Rows, RStride> {
+impl<'short, T, Rows: Copy, RStride: Copy> Reborrow<'short>
+	for Mut<'_, T, Rows, RStride>
+{
 	type Target = Ref<'short, T, Rows, RStride>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		Ref { trans: self.trans.rb() }
+		Ref {
+			trans: self.trans.rb(),
+		}
 	}
 }
-impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short> for Mut<'_, T, Rows, RStride> {
+impl<'short, T, Rows: Copy, RStride: Copy> ReborrowMut<'short>
+	for Mut<'_, T, Rows, RStride>
+{
 	type Target = Mut<'short, T, Rows, RStride>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		Mut { trans: self.trans.rb_mut() }
+		Mut {
+			trans: self.trans.rb_mut(),
+		}
 	}
 }
 impl<'a, T, Rows: Copy, RStride: Copy> IntoConst for Mut<'a, T, Rows, RStride> {
@@ -39,8 +47,8 @@ impl<'a, T> RowMut<'a, T> {
 		unsafe { RowMut::from_raw_parts_mut(value as *mut T, 1, 1) }
 	}
 
-	/// creates a `RowMut` from slice views over the row vector data, the result has the same
-	/// number of columns as the length of the input slice
+	/// creates a `RowMut` from slice views over the row vector data, the result
+	/// has the same number of columns as the length of the input slice
 	#[inline]
 	pub fn from_slice_mut(slice: &'a mut [T]) -> Self {
 		let len = slice.len();
@@ -48,14 +56,19 @@ impl<'a, T> RowMut<'a, T> {
 	}
 }
 impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
-	/// creates a `RowMut` from pointers to the column vector data, number of rows, and row stride
+	/// creates a `RowMut` from pointers to the column vector data, number of
+	/// rows, and row stride
 	///
 	/// # safety
 	/// this function has the same safety requirements as
 	/// [`MatMut::from_raw_parts_mut(ptr, 1, ncols, 0, col_stride)`]
 	#[inline(always)]
 	#[track_caller]
-	pub const unsafe fn from_raw_parts_mut(ptr: *mut T, ncols: Cols, col_stride: CStride) -> Self {
+	pub const unsafe fn from_raw_parts_mut(
+		ptr: *mut T,
+		ncols: Cols,
+		col_stride: CStride,
+	) -> Self {
 		Self {
 			0: Mut {
 				trans: ColMut::from_raw_parts_mut(ptr, ncols, col_stride),
@@ -121,11 +134,12 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 		self.trans.ptr_at(col)
 	}
 
-	/// returns a raw pointer to the element at the given index, assuming the provided index
-	/// is within the row bounds
+	/// returns a raw pointer to the element at the given index, assuming the
+	/// provided index is within the row bounds
 	///
 	/// # safety
-	/// the behavior is undefined if any of the following conditions are violated:
+	/// the behavior is undefined if any of the following conditions are
+	/// violated:
 	/// * `col < self.ncols()`
 	#[inline(always)]
 	#[track_caller]
@@ -137,7 +151,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[inline]
 	#[track_caller]
 	/// see [`RowRef::split_at_col`]
-	pub fn split_at_col(self, col: IdxInc<Cols>) -> (RowRef<'a, T, usize, CStride>, RowRef<'a, T, usize, CStride>) {
+	pub fn split_at_col(
+		self,
+		col: IdxInc<Cols>,
+	) -> (RowRef<'a, T, usize, CStride>, RowRef<'a, T, usize, CStride>) {
 		self.into_const().split_at_col(col)
 	}
 
@@ -177,21 +194,35 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowRef::get`]
-	pub fn get<ColRange>(self, col: ColRange) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+	pub fn get<ColRange>(
+		self,
+		col: ColRange,
+	) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
 	where
 		RowRef<'a, T, Cols, CStride>: RowIndex<ColRange>,
 	{
-		<RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get(self.into_const(), col)
+		<RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get(
+			self.into_const(),
+			col,
+		)
 	}
 
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowRef::get_unchecked`]
-	pub unsafe fn get_unchecked<ColRange>(self, col: ColRange) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+	pub unsafe fn get_unchecked<ColRange>(
+		self,
+		col: ColRange,
+	) -> <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
 	where
 		RowRef<'a, T, Cols, CStride>: RowIndex<ColRange>,
 	{
-		unsafe { <RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(self.into_const(), col) }
+		unsafe {
+			<RowRef<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(
+				self.into_const(),
+				col,
+			)
+		}
 	}
 
 	#[inline]
@@ -202,7 +233,11 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 
 	#[inline]
 	/// see [`RowRef::subcols`]
-	pub fn subcols<V: Shape>(self, col_start: IdxInc<Cols>, ncols: V) -> RowRef<'a, T, V, CStride> {
+	pub fn subcols<V: Shape>(
+		self,
+		col_start: IdxInc<Cols>,
+		ncols: V,
+	) -> RowRef<'a, T, V, CStride> {
 		self.into_const().subcols(col_start, ncols)
 	}
 
@@ -227,7 +262,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 
 	#[inline]
 	/// see [`RowRef::iter`]
-	pub fn iter(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
+	pub fn iter(
+		self,
+	) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a T>
 	where
 		Cols: 'a,
 	{
@@ -237,7 +274,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[inline]
 	#[cfg(feature = "rayon")]
 	/// see [`RowRef::par_iter`]
-	pub fn par_iter(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
+	pub fn par_iter(
+		self,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a T>
 	where
 		T: Sync,
 		Cols: 'a,
@@ -247,7 +286,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 
 	#[inline]
 	/// see [`RowRef::try_as_row_major`]
-	pub fn try_as_row_major(self) -> Option<RowRef<'a, T, Cols, ContiguousFwd>> {
+	pub fn try_as_row_major(
+		self,
+	) -> Option<RowRef<'a, T, Cols, ContiguousFwd>> {
 		self.into_const().try_as_row_major()
 	}
 
@@ -283,7 +324,13 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 		unsafe { self.into_const().as_mat().const_cast() }
 	}
 }
-impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> ReborrowMut<'short, Target = Mut<'short, T, Cols, CStride>>> generic::Row<Inner> {
+impl<
+	T,
+	Cols: Shape,
+	CStride: Stride,
+	Inner: for<'short> ReborrowMut<'short, Target = Mut<'short, T, Cols, CStride>>,
+> generic::Row<Inner>
+{
 	#[inline]
 	/// returns a view over `self`
 	pub fn as_mut(&mut self) -> RowMut<'_, T, Cols, CStride> {
@@ -292,11 +339,15 @@ impl<T, Cols: Shape, CStride: Stride, Inner: for<'short> ReborrowMut<'short, Tar
 
 	#[inline]
 	/// copies `other` into `self`
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, other: impl AsRowRef<T = RhsT, Cols = Cols>)
-	where
+	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
+		&mut self,
+		other: impl AsRowRef<T = RhsT, Cols = Cols>,
+	) where
 		T: ComplexField,
 	{
-		self.rb_mut().transpose_mut().copy_from(other.as_row_ref().transpose());
+		self.rb_mut()
+			.transpose_mut()
+			.copy_from(other.as_row_ref().transpose());
 	}
 
 	/// fills all the elements of `self` with `value`
@@ -331,7 +382,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[inline]
 	#[track_caller]
 	/// see [`RowRef::split_at_col`]
-	pub fn split_at_col_mut(self, col: IdxInc<Cols>) -> (RowMut<'a, T, usize, CStride>, RowMut<'a, T, usize, CStride>) {
+	pub fn split_at_col_mut(
+		self,
+		col: IdxInc<Cols>,
+	) -> (RowMut<'a, T, usize, CStride>, RowMut<'a, T, usize, CStride>) {
 		let (a, b) = self.into_const().split_at_col(col);
 		unsafe { (a.const_cast(), b.const_cast()) }
 	}
@@ -385,7 +439,10 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowRef::get`]
-	pub fn get_mut<ColRange>(self, col: ColRange) -> <RowMut<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+	pub fn get_mut<ColRange>(
+		self,
+		col: ColRange,
+	) -> <RowMut<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
 	where
 		RowMut<'a, T, Cols, CStride>: RowIndex<ColRange>,
 	{
@@ -395,11 +452,18 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`RowRef::get`]
-	pub unsafe fn get_mut_unchecked<ColRange>(self, col: ColRange) -> <RowMut<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
+	pub unsafe fn get_mut_unchecked<ColRange>(
+		self,
+		col: ColRange,
+	) -> <RowMut<'a, T, Cols, CStride> as RowIndex<ColRange>>::Target
 	where
 		RowMut<'a, T, Cols, CStride>: RowIndex<ColRange>,
 	{
-		unsafe { <RowMut<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(self, col) }
+		unsafe {
+			<RowMut<'a, T, Cols, CStride> as RowIndex<ColRange>>::get_unchecked(
+				self, col,
+			)
+		}
 	}
 
 	#[inline]
@@ -410,14 +474,21 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 
 	#[inline]
 	/// see [`RowRef::subcols`]
-	pub fn subcols_mut<V: Shape>(self, col_start: IdxInc<Cols>, ncols: V) -> RowMut<'a, T, V, CStride> {
+	pub fn subcols_mut<V: Shape>(
+		self,
+		col_start: IdxInc<Cols>,
+		ncols: V,
+	) -> RowMut<'a, T, V, CStride> {
 		unsafe { self.into_const().subcols(col_start, ncols).const_cast() }
 	}
 
 	#[inline]
 	#[track_caller]
 	/// see [`RowRef::as_col_shape`]
-	pub fn as_col_shape_mut<V: Shape>(self, ncols: V) -> RowMut<'a, T, V, CStride> {
+	pub fn as_col_shape_mut<V: Shape>(
+		self,
+		ncols: V,
+	) -> RowMut<'a, T, V, CStride> {
 		unsafe { self.into_const().as_col_shape(ncols).const_cast() }
 	}
 
@@ -435,7 +506,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 
 	#[inline]
 	/// see [`RowRef::iter`]
-	pub fn iter_mut(self) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a mut T>
+	pub fn iter_mut(
+		self,
+	) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = &'a mut T>
 	where
 		Cols: 'a,
 	{
@@ -445,7 +518,9 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[inline]
 	#[cfg(feature = "rayon")]
 	/// see [`RowRef::par_iter`]
-	pub fn par_iter_mut(self) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a mut T>
+	pub fn par_iter_mut(
+		self,
+	) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = &'a mut T>
 	where
 		T: Send,
 		Cols: 'a,
@@ -457,7 +532,13 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[track_caller]
 	#[cfg(feature = "rayon")]
 	/// see [`RowRef::par_partition`]
-	pub fn par_partition(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, T, usize, CStride>>
+	pub fn par_partition(
+		self,
+		count: usize,
+	) -> impl 'a
+	+ rayon::iter::IndexedParallelIterator<
+		Item = RowRef<'a, T, usize, CStride>,
+	>
 	where
 		T: Sync,
 		Cols: 'a,
@@ -469,7 +550,13 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	#[track_caller]
 	#[cfg(feature = "rayon")]
 	/// see [`RowRef::par_partition`]
-	pub fn par_partition_mut(self, count: usize) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowMut<'a, T, usize, CStride>>
+	pub fn par_partition_mut(
+		self,
+		count: usize,
+	) -> impl 'a
+	+ rayon::iter::IndexedParallelIterator<
+		Item = RowMut<'a, T, usize, CStride>,
+	>
 	where
 		T: Send,
 		Cols: 'a,
@@ -485,20 +572,30 @@ impl<'a, T, Cols: Shape, CStride: Stride> RowMut<'a, T, Cols, CStride> {
 	}
 
 	pub(crate) unsafe fn as_type<U>(self) -> RowMut<'a, U, Cols, CStride> {
-		RowMut::from_raw_parts_mut(self.as_ptr_mut() as *mut U, self.ncols(), self.col_stride())
+		RowMut::from_raw_parts_mut(
+			self.as_ptr_mut() as *mut U,
+			self.ncols(),
+			self.col_stride(),
+		)
 	}
 
 	#[inline]
 	/// see [`RowRef::try_as_row_major`]
-	pub fn try_as_row_major_mut(self) -> Option<RowMut<'a, T, Cols, ContiguousFwd>> {
-		self.into_const().try_as_row_major().map(|x| unsafe { x.const_cast() })
+	pub fn try_as_row_major_mut(
+		self,
+	) -> Option<RowMut<'a, T, Cols, ContiguousFwd>> {
+		self.into_const()
+			.try_as_row_major()
+			.map(|x| unsafe { x.const_cast() })
 	}
 
 	#[inline]
 	/// see [`RowRef::as_diagonal`]
 	pub fn as_diagonal_mut(self) -> DiagMut<'a, T, Cols, CStride> {
 		DiagMut {
-			0: crate::diag::Mut { inner: self.0.trans },
+			0: crate::diag::Mut {
+				inner: self.0.trans,
+			},
 		}
 	}
 
@@ -541,7 +638,10 @@ impl<'COLS, 'a, T, CStride: Stride> RowMut<'a, T, Dim<'COLS>, CStride> {
 	pub fn split_cols_with<'LEFT, 'RIGHT>(
 		self,
 		col: Partition<'LEFT, 'RIGHT, 'COLS>,
-	) -> (RowRef<'a, T, Dim<'LEFT>, CStride>, RowRef<'a, T, Dim<'RIGHT>, CStride>) {
+	) -> (
+		RowRef<'a, T, Dim<'LEFT>, CStride>,
+		RowRef<'a, T, Dim<'RIGHT>, CStride>,
+	) {
 		let (a, b) = self.split_at_col(col.midpoint());
 		(a.as_col_shape(col.head), b.as_col_shape(col.tail))
 	}
@@ -552,12 +652,17 @@ impl<'COLS, 'a, T, CStride: Stride> RowMut<'a, T, Dim<'COLS>, CStride> {
 	pub fn split_cols_with_mut<'LEFT, 'RIGHT>(
 		self,
 		col: Partition<'LEFT, 'RIGHT, 'COLS>,
-	) -> (RowMut<'a, T, Dim<'LEFT>, CStride>, RowMut<'a, T, Dim<'RIGHT>, CStride>) {
+	) -> (
+		RowMut<'a, T, Dim<'LEFT>, CStride>,
+		RowMut<'a, T, Dim<'RIGHT>, CStride>,
+	) {
 		let (a, b) = self.split_at_col_mut(col.midpoint());
 		(a.as_col_shape_mut(col.head), b.as_col_shape_mut(col.tail))
 	}
 }
-impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug for Mut<'_, T, Cols, CStride> {
+impl<T: core::fmt::Debug, Cols: Shape, CStride: Stride> core::fmt::Debug
+	for Mut<'_, T, Cols, CStride>
+{
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.rb().fmt(f)
 	}

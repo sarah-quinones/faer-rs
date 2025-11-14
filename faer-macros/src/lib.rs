@@ -4,11 +4,16 @@ use std::iter;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use syn::visit_mut::{self, VisitMut};
-use syn::{Expr, ExprCall, ExprParen, ExprPath, ExprReference, Ident, Macro, Path, PathSegment};
+use syn::{
+	Expr, ExprCall, ExprParen, ExprPath, ExprReference, Ident, Macro, Path,
+	PathSegment,
+};
 struct MigrationCtx(HashMap<&'static str, &'static str>);
 impl visit_mut::VisitMut for MigrationCtx {
 	fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
-		if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
+		if let Ok(mut expr) =
+			i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated)
+		{
 			for expr in expr.iter_mut() {
 				self.visit_expr_mut(expr);
 			}
@@ -89,11 +94,16 @@ impl visit_mut::VisitMut for MigrationCtx {
 				});
 			},
 
-			Expr::MethodCall(call) if call.method.to_string().starts_with("faer_") => {
-				if let Some(new_method) = self.0.get(&*call.method.to_string()).map(|x| &**x) {
+			Expr::MethodCall(call)
+				if call.method.to_string().starts_with("faer_") =>
+			{
+				if let Some(new_method) =
+					self.0.get(&*call.method.to_string()).map(|x| &**x)
+				{
 					*i = math_expr(
 						&Ident::new(new_method, call.method.span()),
-						std::iter::once(&*call.receiver).chain(call.args.iter()),
+						std::iter::once(&*call.receiver)
+							.chain(call.args.iter()),
 					)
 				}
 			},
@@ -118,7 +128,9 @@ fn ident_expr(ident: &syn::Ident) -> Expr {
 }
 impl visit_mut::VisitMut for MathCtx {
 	fn visit_macro_mut(&mut self, i: &mut syn::Macro) {
-		if let Ok(mut expr) = i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated) {
+		if let Ok(mut expr) =
+			i.parse_body_with(Punctuated::<Expr, Comma>::parse_terminated)
+		{
 			for expr in expr.iter_mut() {
 				self.visit_expr_mut(expr);
 			}
@@ -138,7 +150,9 @@ impl visit_mut::VisitMut for MathCtx {
 				syn::UnOp::Neg(minus) => {
 					*i = Expr::Call(ExprCall {
 						attrs: vec![],
-						func: Box::new(ident_expr(&Ident::new("neg", minus.span))),
+						func: Box::new(ident_expr(&Ident::new(
+							"neg", minus.span,
+						))),
 						paren_token: Default::default(),
 						args: std::iter::once((*unary.expr).clone())
 							.map(|e| {
@@ -157,7 +171,9 @@ impl visit_mut::VisitMut for MathCtx {
 			Expr::Binary(binop) => {
 				let func = match binop.op {
 					syn::BinOp::Add(plus) => Some(Ident::new("add", plus.span)),
-					syn::BinOp::Sub(minus) => Some(Ident::new("sub", minus.span)),
+					syn::BinOp::Sub(minus) => {
+						Some(Ident::new("sub", minus.span))
+					},
 					syn::BinOp::Mul(star) => Some(Ident::new("mul", star.span)),
 					syn::BinOp::Div(star) => Some(Ident::new("div", star.span)),
 					_ => None,
@@ -226,7 +242,10 @@ fn math_expr<'a>(method: &Ident, args: impl Iterator<Item = &'a Expr>) -> Expr {
 	})
 }
 #[proc_macro_attribute]
-pub fn math(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn math(
+	_: proc_macro::TokenStream,
+	item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
 	let Ok(mut item) = syn::parse::<syn::ItemFn>(item.clone()) else {
 		return item;
 	};
@@ -236,7 +255,10 @@ pub fn math(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_m
 	item.into()
 }
 #[proc_macro_attribute]
-pub fn migrate(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn migrate(
+	_: proc_macro::TokenStream,
+	item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
 	let Ok(mut item) = syn::parse::<syn::ItemFn>(item.clone()) else {
 		return item;
 	};

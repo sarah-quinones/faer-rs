@@ -7,7 +7,10 @@ impl<T> Serialize for MatRef<'_, T>
 where
 	T: Serialize,
 {
-	fn serialize<S>(&self, s: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+	fn serialize<S>(
+		&self,
+		s: S,
+	) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
 	where
 		S: Serializer,
 	{
@@ -20,7 +23,8 @@ where
 			where
 				S: Serializer,
 			{
-				let mut seq = s.serialize_seq(Some(self.0.nrows() * self.0.ncols()))?;
+				let mut seq =
+					s.serialize_seq(Some(self.0.nrows() * self.0.ncols()))?;
 				for i in 0..self.0.nrows() {
 					for j in 0..self.0.ncols() {
 						seq.serialize_element(&self.0[(i, j)])?;
@@ -40,7 +44,10 @@ impl<T> Serialize for MatMut<'_, T>
 where
 	T: Serialize,
 {
-	fn serialize<S>(&self, s: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+	fn serialize<S>(
+		&self,
+		s: S,
+	) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
 	where
 		S: Serializer,
 	{
@@ -51,7 +58,10 @@ impl<T> Serialize for Mat<T>
 where
 	T: Serialize,
 {
-	fn serialize<S>(&self, s: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+	fn serialize<S>(
+		&self,
+		s: S,
+	) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
 	where
 		S: Serializer,
 	{
@@ -59,7 +69,9 @@ where
 	}
 }
 impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
-	fn deserialize<D>(d: D) -> Result<Self, <D as serde::Deserializer<'a>>::Error>
+	fn deserialize<D>(
+		d: D,
+	) -> Result<Self, <D as serde::Deserializer<'a>>::Error>
 	where
 		D: serde::Deserializer<'a>,
 	{
@@ -81,7 +93,9 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 				match self {
 					MatrixOrVec::Matrix(m) => m,
 					MatrixOrVec::Vec(mut v) => {
-						let me = Mat::from_fn(nrows, ncols, |i, j| unsafe { core::ptr::read(&v[i * ncols + j]) });
+						let me = Mat::from_fn(nrows, ncols, |i, j| unsafe {
+							core::ptr::read(&v[i * ncols + j])
+						});
 						unsafe { v.set_len(0) };
 						me
 					},
@@ -108,7 +122,10 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 		{
 			type Value = MatrixOrVec<T>;
 
-			fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+			fn deserialize<D>(
+				self,
+				deserializer: D,
+			) -> Result<Self::Value, D::Error>
 			where
 				D: serde::Deserializer<'a>,
 			{
@@ -121,7 +138,10 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 		{
 			type Value = MatrixOrVec<T>;
 
-			fn expecting(&self, formatter: &mut alloc::fmt::Formatter) -> alloc::fmt::Result {
+			fn expecting(
+				&self,
+				formatter: &mut alloc::fmt::Formatter,
+			) -> alloc::fmt::Result {
 				formatter.write_str("a sequence")
 			}
 
@@ -137,9 +157,18 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 							let stride = data.col_stride() as usize;
 							let data = data.as_ptr_mut();
 							for i in 0..expected_length {
-								let el = seq
-									.next_element::<T>()?
-									.ok_or_else(|| serde::de::Error::invalid_length(i, &alloc::format!("{} elements", expected_length).as_str()))?;
+								let el = seq.next_element::<T>()?.ok_or_else(
+									|| {
+										serde::de::Error::invalid_length(
+											i,
+											&alloc::format!(
+												"{} elements",
+												expected_length
+											)
+											.as_str(),
+										)
+									},
+								)?;
 								let (i, j) = (i / ncols, i % ncols);
 								unsafe { data.add(i + j * stride).write(el) };
 							}
@@ -154,7 +183,8 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 						if additional > 0 {
 							return Err(serde::de::Error::invalid_length(
 								additional + expected_length,
-								&alloc::format!("{} elements", expected_length).as_str(),
+								&alloc::format!("{} elements", expected_length)
+									.as_str(),
 							));
 						}
 						Ok(MatrixOrVec::Matrix(data))
@@ -172,7 +202,10 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 		impl<'a, T: 'a + Deserialize<'a>> Visitor<'a> for MatVisitor<T> {
 			type Value = Mat<T>;
 
-			fn expecting(&self, formatter: &mut alloc::fmt::Formatter) -> alloc::fmt::Result {
+			fn expecting(
+				&self,
+				formatter: &mut alloc::fmt::Formatter,
+			) -> alloc::fmt::Result {
 				formatter.write_str("a faer matrix")
 			}
 
@@ -180,14 +213,18 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 			where
 				A: SeqAccess<'a>,
 			{
-				let nrows = seq
-					.next_element::<usize>()?
-					.ok_or_else(|| serde::de::Error::invalid_length(0, &"nrows"))?;
-				let ncols = seq
-					.next_element::<usize>()?
-					.ok_or_else(|| serde::de::Error::invalid_length(1, &"ncols"))?;
-				let data = seq.next_element_seed(MatrixOrVecDeserializer::<T>::new(Some(nrows), Some(ncols)))?;
-				let mat = data.ok_or_else(|| serde::de::Error::missing_field("data"))?.into_mat(nrows, ncols);
+				let nrows = seq.next_element::<usize>()?.ok_or_else(|| {
+					serde::de::Error::invalid_length(0, &"nrows")
+				})?;
+				let ncols = seq.next_element::<usize>()?.ok_or_else(|| {
+					serde::de::Error::invalid_length(1, &"ncols")
+				})?;
+				let data = seq.next_element_seed(
+					MatrixOrVecDeserializer::<T>::new(Some(nrows), Some(ncols)),
+				)?;
+				let mat = data
+					.ok_or_else(|| serde::de::Error::missing_field("data"))?
+					.into_mat(nrows, ncols);
 				Ok(mat)
 			}
 
@@ -202,29 +239,44 @@ impl<'a, T: 'a + Deserialize<'a>> Deserialize<'a> for Mat<T> {
 					match key {
 						Field::nrows => {
 							if nrows.is_some() {
-								return Err(serde::de::Error::duplicate_field("nrows"));
+								return Err(serde::de::Error::duplicate_field(
+									"nrows",
+								));
 							}
 							let value = map.next_value()?;
 							nrows = Some(value);
 						},
 						Field::ncols => {
 							if ncols.is_some() {
-								return Err(serde::de::Error::duplicate_field("ncols"));
+								return Err(serde::de::Error::duplicate_field(
+									"ncols",
+								));
 							}
 							let value = map.next_value()?;
 							ncols = Some(value);
 						},
 						Field::data => {
 							if data.is_some() {
-								return Err(serde::de::Error::duplicate_field("data"));
+								return Err(serde::de::Error::duplicate_field(
+									"data",
+								));
 							}
-							data = Some(map.next_value_seed(MatrixOrVecDeserializer::<T>::new(nrows.clone(), ncols.clone()))?);
+							data = Some(map.next_value_seed(
+								MatrixOrVecDeserializer::<T>::new(
+									nrows.clone(),
+									ncols.clone(),
+								),
+							)?);
 						},
 					}
 				}
-				let nrows = nrows.ok_or_else(|| serde::de::Error::missing_field("nrows"))?;
-				let ncols = ncols.ok_or_else(|| serde::de::Error::missing_field("ncols"))?;
-				let data = data.ok_or_else(|| serde::de::Error::missing_field("data"))?.into_mat(nrows, ncols);
+				let nrows = nrows
+					.ok_or_else(|| serde::de::Error::missing_field("nrows"))?;
+				let ncols = ncols
+					.ok_or_else(|| serde::de::Error::missing_field("ncols"))?;
+				let data = data
+					.ok_or_else(|| serde::de::Error::missing_field("data"))?
+					.into_mat(nrows, ncols);
 				Ok(data)
 			}
 		}
@@ -241,7 +293,10 @@ mod tests {
 		assert_tokens(
 			&value,
 			&[
-				Token::Struct { name: "Mat", len: 3 },
+				Token::Struct {
+					name: "Mat",
+					len: 3,
+				},
 				Token::Str("nrows"),
 				Token::U64(3),
 				Token::Str("ncols"),
@@ -271,7 +326,10 @@ mod tests {
 		assert_tokens(
 			&value,
 			&[
-				Token::Struct { name: "Mat", len: 3 },
+				Token::Struct {
+					name: "Mat",
+					len: 3,
+				},
 				Token::Str("nrows"),
 				Token::U64(12),
 				Token::Str("ncols"),
@@ -301,7 +359,10 @@ mod tests {
 		assert_tokens(
 			&value,
 			&[
-				Token::Struct { name: "Mat", len: 3 },
+				Token::Struct {
+					name: "Mat",
+					len: 3,
+				},
 				Token::Str("nrows"),
 				Token::U64(1),
 				Token::Str("ncols"),
@@ -331,7 +392,10 @@ mod tests {
 		assert_tokens(
 			&value,
 			&[
-				Token::Struct { name: "Mat", len: 3 },
+				Token::Struct {
+					name: "Mat",
+					len: 3,
+				},
 				Token::Str("nrows"),
 				Token::U64(0),
 				Token::Str("ncols"),
@@ -347,7 +411,10 @@ mod tests {
 	fn matrix_serialization_errors_too_small() {
 		assert_de_tokens_error::<Mat<f64>>(
 			&[
-				Token::Struct { name: "Mat", len: 3 },
+				Token::Struct {
+					name: "Mat",
+					len: 3,
+				},
 				Token::Str("nrows"),
 				Token::U64(3),
 				Token::Str("ncols"),
@@ -372,7 +439,10 @@ mod tests {
 	fn matrix_serialization_errors_too_large() {
 		assert_de_tokens_error::<Mat<f64>>(
 			&[
-				Token::Struct { name: "Mat", len: 3 },
+				Token::Struct {
+					name: "Mat",
+					len: 3,
+				},
 				Token::Str("nrows"),
 				Token::U64(3),
 				Token::Str("ncols"),

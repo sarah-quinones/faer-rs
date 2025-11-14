@@ -4,7 +4,10 @@ pub use meanvar::{NanHandling, col_mean, col_varm, row_mean, row_varm};
 pub mod prelude {
 	pub use super::ComplexDistribution;
 	#[cfg(feature = "rand")]
-	pub use super::{CwiseColDistribution, CwiseMatDistribution, CwiseRowDistribution, DistributionExt, UnitaryMat};
+	pub use super::{
+		CwiseColDistribution, CwiseMatDistribution, CwiseRowDistribution,
+		DistributionExt, UnitaryMat,
+	};
 	#[cfg(feature = "rand")]
 	pub use rand::prelude::*;
 	#[cfg(feature = "rand")]
@@ -61,26 +64,40 @@ mod rand {
 		pub dim: Dim,
 		pub standard_normal: D,
 	}
-	impl<T, Rows: Shape, Cols: Shape, D: Distribution<T>> Distribution<Mat<T, Rows, Cols>> for CwiseMatDistribution<Rows, Cols, D> {
+	impl<T, Rows: Shape, Cols: Shape, D: Distribution<T>>
+		Distribution<Mat<T, Rows, Cols>> for CwiseMatDistribution<Rows, Cols, D>
+	{
 		#[inline]
-		fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Mat<T, Rows, Cols> {
+		fn sample<R: rand::Rng + ?Sized>(
+			&self,
+			rng: &mut R,
+		) -> Mat<T, Rows, Cols> {
 			Mat::from_fn(self.nrows, self.ncols, |_, _| self.dist.sample(rng))
 		}
 	}
-	impl<T, Rows: Shape, D: Distribution<T>> Distribution<Col<T, Rows>> for CwiseColDistribution<Rows, D> {
+	impl<T, Rows: Shape, D: Distribution<T>> Distribution<Col<T, Rows>>
+		for CwiseColDistribution<Rows, D>
+	{
 		#[inline]
 		fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Col<T, Rows> {
 			Col::from_fn(self.nrows, |_| self.dist.sample(rng))
 		}
 	}
-	impl<T, Cols: Shape, D: Distribution<T>> Distribution<Row<T, Cols>> for CwiseRowDistribution<Cols, D> {
+	impl<T, Cols: Shape, D: Distribution<T>> Distribution<Row<T, Cols>>
+		for CwiseRowDistribution<Cols, D>
+	{
 		#[inline]
 		fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Row<T, Cols> {
 			Row::from_fn(self.ncols, |_| self.dist.sample(rng))
 		}
 	}
-	impl<T: ComplexField, D: Distribution<T>> Distribution<Mat<T>> for UnitaryMat<usize, D> {
-		fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> Mat<T> {
+	impl<T: ComplexField, D: Distribution<T>> Distribution<Mat<T>>
+		for UnitaryMat<usize, D>
+	{
+		fn sample<R: rand::prelude::Rng + ?Sized>(
+			&self,
+			rng: &mut R,
+		) -> Mat<T> {
 			let qr = CwiseMatDistribution {
 				nrows: self.dim,
 				ncols: self.dim,
@@ -92,7 +109,11 @@ mod rand {
 			let mut q = qr.compute_Q();
 			for j in 0..self.dim {
 				let ref r = r_diag[j];
-				let ref r = if *r == zero() { one() } else { r.mul_real(r.abs().recip()) };
+				let ref r = if *r == zero() {
+					one()
+				} else {
+					r.mul_real(r.abs().recip())
+				};
 				z!(q.as_mut().col_mut(j)).for_each(|uz!(q)| {
 					*q *= r;
 				});

@@ -4,7 +4,9 @@ use crate::internal_prelude::DiagRef;
 pub struct Mut<'a, T, Dim = usize, Stride = isize> {
 	pub(crate) inner: ColMut<'a, T, Dim, Stride>,
 }
-impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug for Mut<'_, T, Dim, S> {
+impl<T: core::fmt::Debug, Dim: Shape, S: Stride> core::fmt::Debug
+	for Mut<'_, T, Dim, S>
+{
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		self.inner.fmt(f)
 	}
@@ -16,8 +18,8 @@ impl<'a, T> DiagMut<'a, T> {
 		unsafe { DiagMut::from_raw_parts_mut(value as *mut T, 1, 1) }
 	}
 
-	/// creates a `DiagMut` from slice views over the diagonal data, the result has the same
-	/// dimension as the length of the input slice
+	/// creates a `DiagMut` from slice views over the diagonal data, the result
+	/// has the same dimension as the length of the input slice
 	#[inline]
 	pub fn from_slice_mut(slice: &'a mut [T]) -> Self {
 		let len = slice.len();
@@ -25,14 +27,19 @@ impl<'a, T> DiagMut<'a, T> {
 	}
 }
 impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
-	/// creates a `DiagMut` from pointers to the diagonal data, dimension, and stride
+	/// creates a `DiagMut` from pointers to the diagonal data, dimension, and
+	/// stride
 	///
 	/// # safety
 	/// this function has the same safety requirements as
 	/// [`MatMut::from_raw_parts_mut(ptr, dim, 1, stride, 0)`]
 	#[inline(always)]
 	#[track_caller]
-	pub const unsafe fn from_raw_parts_mut(ptr: *mut T, dim: Dim, stride: Stride) -> Self {
+	pub const unsafe fn from_raw_parts_mut(
+		ptr: *mut T,
+		dim: Dim,
+		stride: Stride,
+	) -> Self {
 		Self {
 			0: Mut {
 				inner: ColMut::from_raw_parts_mut(ptr, dim, stride),
@@ -40,7 +47,8 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 		}
 	}
 
-	/// returns the stride of the diagonal, specified in number of elements, not in bytes
+	/// returns the stride of the diagonal, specified in number of elements, not
+	/// in bytes
 	#[inline(always)]
 	pub fn stride(&self) -> Stride {
 		self.rb().stride()
@@ -224,27 +232,37 @@ impl<'a, T, Dim: Shape, Stride: crate::Stride> DiagMut<'a, T, Dim, Stride> {
 	/// copies `other` into `self`
 	#[inline]
 	#[track_caller]
-	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(&mut self, rhs: impl AsDiagRef<T = RhsT, Dim = Dim>)
-	where
+	pub fn copy_from<RhsT: Conjugate<Canonical = T>>(
+		&mut self,
+		rhs: impl AsDiagRef<T = RhsT, Dim = Dim>,
+	) where
 		T: ComplexField,
 	{
 		self.0.inner.copy_from(rhs.as_diag_ref().inner)
 	}
 }
-impl<'short, T, N: Copy, Stride: Copy> Reborrow<'short> for Mut<'_, T, N, Stride> {
+impl<'short, T, N: Copy, Stride: Copy> Reborrow<'short>
+	for Mut<'_, T, N, Stride>
+{
 	type Target = Ref<'short, T, N, Stride>;
 
 	#[inline]
 	fn rb(&'short self) -> Self::Target {
-		Ref { inner: self.inner.rb() }
+		Ref {
+			inner: self.inner.rb(),
+		}
 	}
 }
-impl<'short, T, N: Copy, Stride: Copy> ReborrowMut<'short> for Mut<'_, T, N, Stride> {
+impl<'short, T, N: Copy, Stride: Copy> ReborrowMut<'short>
+	for Mut<'_, T, N, Stride>
+{
 	type Target = Mut<'short, T, N, Stride>;
 
 	#[inline]
 	fn rb_mut(&'short mut self) -> Self::Target {
-		Mut { inner: self.inner.rb_mut() }
+		Mut {
+			inner: self.inner.rb_mut(),
+		}
 	}
 }
 impl<'a, T, N: Copy, Stride: Copy> IntoConst for Mut<'a, T, N, Stride> {

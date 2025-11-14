@@ -12,7 +12,8 @@ fn idx_to_pair<T, R>(f: impl FnMut(T) -> R) -> impl FnMut(T, usize) -> R {
 	move |i, _| f(i)
 }
 impl<T, Rows: Shape> Col<T, Rows> {
-	/// returns a new column with dimension `nrows`, filled with the provided function
+	/// returns a new column with dimension `nrows`, filled with the provided
+	/// function
 	pub fn from_fn(nrows: Rows, f: impl FnMut(Idx<Rows>) -> T) -> Self {
 		Self {
 			0: Own {
@@ -41,7 +42,9 @@ impl<T, Rows: Shape> Col<T, Rows> {
 		T: ComplexField,
 	{
 		Self {
-			0: Own { column: Mat::ones(nrows, 1) },
+			0: Own {
+				column: Mat::ones(nrows, 1),
+			},
 		}
 	}
 
@@ -58,23 +61,31 @@ impl<T, Rows: Shape> Col<T, Rows> {
 		}
 	}
 
-	/// reserves the minimum capacity for `row_capacity` rows without reallocating, or returns an
-	/// error in case of failure. does nothing if the capacity is already sufficient
-	pub fn try_reserve(&mut self, new_row_capacity: usize) -> Result<(), TryReserveError> {
+	/// reserves the minimum capacity for `row_capacity` rows without
+	/// reallocating, or returns an error in case of failure. does nothing if
+	/// the capacity is already sufficient
+	pub fn try_reserve(
+		&mut self,
+		new_row_capacity: usize,
+	) -> Result<(), TryReserveError> {
 		self.column.try_reserve(new_row_capacity, 1)
 	}
 
-	/// reserves the minimum capacity for `row_capacity` rows without reallocating. does nothing if
-	/// the capacity is already sufficient
+	/// reserves the minimum capacity for `row_capacity` rows without
+	/// reallocating. does nothing if the capacity is already sufficient
 	#[track_caller]
 	pub fn reserve(&mut self, new_row_capacity: usize) {
 		self.column.reserve(new_row_capacity, 1)
 	}
 
 	/// resizes the column in-place so that the new dimension is `new_nrows`.
-	/// new elements are created with the given function `f`, so that elements at index `i`
-	/// are created by calling `f(i)`
-	pub fn resize_with(&mut self, new_nrows: Rows, f: impl FnMut(Idx<Rows>) -> T) {
+	/// new elements are created with the given function `f`, so that elements
+	/// at index `i` are created by calling `f(i)`
+	pub fn resize_with(
+		&mut self,
+		new_nrows: Rows,
+		f: impl FnMut(Idx<Rows>) -> T,
+	) {
 		self.column.resize_with(new_nrows, 1, idx_to_pair(f));
 	}
 
@@ -134,7 +145,9 @@ impl<T> Col<T> {
 				col.set_dims(count, 1);
 			}
 			assert_eq!(count, cap);
-			Col { 0: Own { column: col } }
+			Col {
+				0: Own { column: col },
+			}
 		} else {
 			let mut cap = Ord::max(4, min);
 			let mut col = Mat::<T>::with_capacity(cap, 1);
@@ -166,7 +179,9 @@ impl<T> Col<T> {
 					break;
 				}
 			}
-			Col { 0: Own { column: col } }
+			Col {
+				0: Own { column: col },
+			}
 		}
 	}
 }
@@ -251,7 +266,10 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[inline]
 	#[track_caller]
 	/// see [`ColRef::split_at_row`]
-	pub fn split_at_row(&self, row: IdxInc<Rows>) -> (ColRef<'_, T, usize>, ColRef<'_, T, usize>) {
+	pub fn split_at_row(
+		&self,
+		row: IdxInc<Rows>,
+	) -> (ColRef<'_, T, usize>, ColRef<'_, T, usize>) {
 		self.as_ref().split_at_row(row)
 	}
 
@@ -291,7 +309,10 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`ColRef::get`]
-	pub fn get<RowRange>(&self, row: RowRange) -> <ColRef<'_, T, Rows> as ColIndex<RowRange>>::Target
+	pub fn get<RowRange>(
+		&self,
+		row: RowRange,
+	) -> <ColRef<'_, T, Rows> as ColIndex<RowRange>>::Target
 	where
 		for<'a> ColRef<'a, T, Rows>: ColIndex<RowRange>,
 	{
@@ -301,11 +322,19 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`ColRef::get_unchecked`]
-	pub unsafe fn get_unchecked<RowRange>(&self, row: RowRange) -> <ColRef<'_, T, Rows> as ColIndex<RowRange>>::Target
+	pub unsafe fn get_unchecked<RowRange>(
+		&self,
+		row: RowRange,
+	) -> <ColRef<'_, T, Rows> as ColIndex<RowRange>>::Target
 	where
 		for<'a> ColRef<'a, T, Rows>: ColIndex<RowRange>,
 	{
-		unsafe { <ColRef<'_, T, Rows> as ColIndex<RowRange>>::get_unchecked(self.as_ref(), row) }
+		unsafe {
+			<ColRef<'_, T, Rows> as ColIndex<RowRange>>::get_unchecked(
+				self.as_ref(),
+				row,
+			)
+		}
 	}
 
 	#[inline]
@@ -316,7 +345,11 @@ impl<T, Rows: Shape> Col<T, Rows> {
 
 	#[inline]
 	/// see [`ColRef::subrows`]
-	pub fn subrows<V: Shape>(&self, row_start: IdxInc<Rows>, nrows: V) -> ColRef<'_, T, V> {
+	pub fn subrows<V: Shape>(
+		&self,
+		row_start: IdxInc<Rows>,
+		nrows: V,
+	) -> ColRef<'_, T, V> {
 		self.as_ref().subrows(row_start, nrows)
 	}
 
@@ -340,14 +373,18 @@ impl<T, Rows: Shape> Col<T, Rows> {
 
 	#[inline]
 	/// see [`ColRef::iter`]
-	pub fn iter(&self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ T> {
+	pub fn iter(
+		&self,
+	) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ T> {
 		self.as_ref().iter()
 	}
 
 	#[inline]
 	#[cfg(feature = "rayon")]
 	/// see [`ColRef::par_iter`]
-	pub fn par_iter(&self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ T>
+	pub fn par_iter(
+		&self,
+	) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ T>
 	where
 		T: Sync,
 	{
@@ -358,7 +395,10 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[track_caller]
 	#[cfg(feature = "rayon")]
 	/// see [`ColRef::par_partition`]
-	pub fn par_partition(&self, count: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColRef<'_, T, usize>>
+	pub fn par_partition(
+		&self,
+		count: usize,
+	) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColRef<'_, T, usize>>
 	where
 		T: Sync,
 	{
@@ -367,14 +407,20 @@ impl<T, Rows: Shape> Col<T, Rows> {
 
 	#[inline]
 	/// see [`ColRef::try_as_col_major`]
-	pub fn try_as_col_major(&self) -> Option<ColRef<'_, T, Rows, ContiguousFwd>> {
+	pub fn try_as_col_major(
+		&self,
+	) -> Option<ColRef<'_, T, Rows, ContiguousFwd>> {
 		self.as_ref().try_as_col_major()
 	}
 
 	#[inline]
 	/// see [`ColRef::try_as_col_major`]
-	pub fn try_as_col_major_mut(&mut self) -> Option<ColMut<'_, T, Rows, ContiguousFwd>> {
-		self.as_ref().try_as_col_major().map(|x| unsafe { x.const_cast() })
+	pub fn try_as_col_major_mut(
+		&mut self,
+	) -> Option<ColMut<'_, T, Rows, ContiguousFwd>> {
+		self.as_ref()
+			.try_as_col_major()
+			.map(|x| unsafe { x.const_cast() })
 	}
 
 	#[inline]
@@ -418,7 +464,10 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[inline]
 	#[track_caller]
 	/// see [`ColMut::split_at_row_mut`]
-	pub fn split_at_row_mut(&mut self, row: IdxInc<Rows>) -> (ColMut<'_, T, usize>, ColMut<'_, T, usize>) {
+	pub fn split_at_row_mut(
+		&mut self,
+		row: IdxInc<Rows>,
+	) -> (ColMut<'_, T, usize>, ColMut<'_, T, usize>) {
 		self.as_mut().split_at_row_mut(row)
 	}
 
@@ -458,7 +507,10 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`ColMut::get_mut`]
-	pub fn get_mut<RowRange>(&mut self, row: RowRange) -> <ColMut<'_, T, Rows> as ColIndex<RowRange>>::Target
+	pub fn get_mut<RowRange>(
+		&mut self,
+		row: RowRange,
+	) -> <ColMut<'_, T, Rows> as ColIndex<RowRange>>::Target
 	where
 		for<'a> ColMut<'a, T, Rows>: ColIndex<RowRange>,
 	{
@@ -468,11 +520,19 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[track_caller]
 	#[inline(always)]
 	/// see [`ColMut::get_mut_unchecked`]
-	pub unsafe fn get_mut_unchecked<RowRange>(&mut self, row: RowRange) -> <ColMut<'_, T, Rows> as ColIndex<RowRange>>::Target
+	pub unsafe fn get_mut_unchecked<RowRange>(
+		&mut self,
+		row: RowRange,
+	) -> <ColMut<'_, T, Rows> as ColIndex<RowRange>>::Target
 	where
 		for<'a> ColMut<'a, T, Rows>: ColIndex<RowRange>,
 	{
-		unsafe { <ColMut<'_, T, Rows> as ColIndex<RowRange>>::get_unchecked(self.as_mut(), row) }
+		unsafe {
+			<ColMut<'_, T, Rows> as ColIndex<RowRange>>::get_unchecked(
+				self.as_mut(),
+				row,
+			)
+		}
 	}
 
 	#[inline]
@@ -483,7 +543,11 @@ impl<T, Rows: Shape> Col<T, Rows> {
 
 	#[inline]
 	/// see [`ColMut::subrows_mut`]
-	pub fn subrows_mut<V: Shape>(&mut self, row_start: IdxInc<Rows>, nrows: V) -> ColMut<'_, T, V> {
+	pub fn subrows_mut<V: Shape>(
+		&mut self,
+		row_start: IdxInc<Rows>,
+		nrows: V,
+	) -> ColMut<'_, T, V> {
 		self.as_mut().subrows_mut(row_start, nrows)
 	}
 
@@ -507,14 +571,18 @@ impl<T, Rows: Shape> Col<T, Rows> {
 
 	#[inline]
 	/// see [`ColMut::iter_mut`]
-	pub fn iter_mut(&mut self) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ mut T> {
+	pub fn iter_mut(
+		&mut self,
+	) -> impl '_ + ExactSizeIterator + DoubleEndedIterator<Item = &'_ mut T> {
 		self.as_mut().iter_mut()
 	}
 
 	#[inline]
 	#[cfg(feature = "rayon")]
 	/// see [`ColMut::par_iter_mut`]
-	pub fn par_iter_mut(&mut self) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ mut T>
+	pub fn par_iter_mut(
+		&mut self,
+	) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = &'_ mut T>
 	where
 		T: Send,
 	{
@@ -525,7 +593,10 @@ impl<T, Rows: Shape> Col<T, Rows> {
 	#[track_caller]
 	#[cfg(feature = "rayon")]
 	/// see [`ColMut::par_partition_mut`]
-	pub fn par_partition_mut(&mut self, count: usize) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColMut<'_, T, usize>>
+	pub fn par_partition_mut(
+		&mut self,
+		count: usize,
+	) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColMut<'_, T, usize>>
 	where
 		T: Send,
 	{
@@ -547,7 +618,9 @@ impl<'short, T, Rows: Shape> Reborrow<'short> for Own<T, Rows> {
 			imp: ColView {
 				nrows: self.column.nrows(),
 				row_stride: 1,
-				ptr: unsafe { NonNull::new_unchecked(self.column.as_ptr() as *mut T) },
+				ptr: unsafe {
+					NonNull::new_unchecked(self.column.as_ptr() as *mut T)
+				},
 			},
 			__marker: core::marker::PhantomData,
 		}
@@ -562,7 +635,9 @@ impl<'short, T, Rows: Shape> ReborrowMut<'short> for Own<T, Rows> {
 			imp: ColView {
 				nrows: self.column.nrows(),
 				row_stride: 1,
-				ptr: unsafe { NonNull::new_unchecked(self.column.as_ptr_mut()) },
+				ptr: unsafe {
+					NonNull::new_unchecked(self.column.as_ptr_mut())
+				},
 			},
 			__marker: core::marker::PhantomData,
 		}
@@ -572,12 +647,14 @@ impl<T, Rows: Shape> Col<T, Rows>
 where
 	T: RealField,
 {
-	/// Returns the maximum element in the column, or `None` if the column is empty
+	/// Returns the maximum element in the column, or `None` if the column is
+	/// empty
 	pub fn max(&self) -> Option<T> {
 		self.as_dyn_rows().as_dyn_stride().internal_max()
 	}
 
-	/// Returns the minimum element in the column, or `None` if the column is empty
+	/// Returns the minimum element in the column, or `None` if the column is
+	/// empty
 	pub fn min(&self) -> Option<T> {
 		self.as_dyn_rows().as_dyn_stride().internal_min()
 	}

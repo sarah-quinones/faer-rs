@@ -35,7 +35,11 @@ impl<I: Index> ColamdRow<I> {
 		self.shared2 = I::Signed::truncate(NONE);
 	}
 }
-fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I {
+fn clear_mark<I: Index>(
+	tag_mark: I,
+	max_mark: I,
+	row: &mut [ColamdRow<I>],
+) -> I {
 	let I = I::truncate;
 	let SI = I::Signed::truncate;
 	if tag_mark == I(0) || tag_mark >= max_mark {
@@ -49,9 +53,13 @@ fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I
 		tag_mark
 	}
 }
-/// computes the layout of required workspace for computing the colamd ordering of a
-/// matrix
-pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> StackReq {
+/// computes the layout of required workspace for computing the colamd ordering
+/// of a matrix
+pub fn order_scratch<I: Index>(
+	nrows: usize,
+	ncols: usize,
+	A_nnz: usize,
+) -> StackReq {
 	let m = nrows;
 	let n = ncols;
 	let n_scratch = StackReq::new::<I>(n);
@@ -74,12 +82,16 @@ pub fn order_scratch<I: Index>(nrows: usize, ncols: usize, A_nnz: usize) -> Stac
 		StackReq::all_of(&[
 			n_scratch,
 			n_scratch,
-			StackReq::or(StackReq::and(n_scratch, m_scratch), StackReq::all_of(&[n_scratch; 3])),
+			StackReq::or(
+				StackReq::and(n_scratch, m_scratch),
+				StackReq::all_of(&[n_scratch; 3]),
+			),
 		]),
 	)
 }
-/// computes the approximate minimum degree ordering for reducing the fill-in during the sparse
-/// qr factorization of a matrix with the sparsity pattern of $A$
+/// computes the approximate minimum degree ordering for reducing the fill-in
+/// during the sparse qr factorization of a matrix with the sparsity pattern of
+/// $A$
 ///
 /// # note
 /// allows unsorted matrices
@@ -99,8 +111,12 @@ pub fn order<I: Index>(
 		let (row, stack) = unsafe { stack.make_raw::<ColamdRow<I>>(m + 1) };
 		let nnz = A.compute_nnz();
 		let (p, stack) = unsafe { stack.make_raw::<I>(n + 1) };
-		let size = (2 * nnz).checked_add(nnz / 5).and_then(|p| p.checked_add(n));
-		let (new_row_idx, _) = unsafe { stack.make_raw::<I>(size.ok_or(FaerError::IndexOverflow)?) };
+		let size = (2 * nnz)
+			.checked_add(nnz / 5)
+			.and_then(|p| p.checked_add(n));
+		let (new_row_idx, _) = unsafe {
+			stack.make_raw::<I>(size.ok_or(FaerError::IndexOverflow)?)
+		};
 		p[0] = I(0);
 		for j in 0..n {
 			let row_idx = A.row_idx_of_col_raw(j);
@@ -337,9 +353,13 @@ pub fn order<I: Index>(
 			assert!(pivot_col_thickness > SI(0));
 			k += pivot_col_thickness.zx();
 			let needed_memory = Ord::min(pivot_col_score, SI(n - k));
-			if pfree as isize + needed_memory.sx() as isize >= A.len() as isize {
+			if pfree as isize + needed_memory.sx() as isize >= A.len() as isize
+			{
 				pfree = garbage_collection(row, col, A, pfree);
-				assert!((pfree as isize + needed_memory.sx() as isize) < A.len() as isize);
+				assert!(
+					(pfree as isize + needed_memory.sx() as isize)
+						< A.len() as isize
+				);
 				tag_mark = clear_mark(I(0), max_mark, row);
 			}
 			let pivot_row_start = pfree;
@@ -376,7 +396,11 @@ pub fn order<I: Index>(
 				row[r].kill();
 			}
 			let pivot_row_length = pfree - pivot_row_start;
-			let pivot_row = if pivot_row_length > 0 { A[col[pivot_col].start.zx()] } else { I(NONE) };
+			let pivot_row = if pivot_row_length > 0 {
+				A[col[pivot_col].start.zx()]
+			} else {
+				I(NONE)
+			};
 			let mut rp = pivot_row_start;
 			let rp_end = rp + pivot_row_length;
 			while rp < rp_end {
@@ -542,7 +566,12 @@ pub fn order<I: Index>(
 	}
 	let mut etree = alloc::vec![I(0); n];
 	let mut post = alloc::vec![I(0); n];
-	let etree = super::qr::col_etree::<I>(A, Some(PermRef::<'_, I>::new_checked(perm, perm_inv, n)), &mut etree, stack);
+	let etree = super::qr::col_etree::<I>(
+		A,
+		Some(PermRef::<'_, I>::new_checked(perm, perm_inv, n)),
+		&mut etree,
+		stack,
+	);
 	super::qr::postorder(&mut post, etree, stack);
 	for i in 0..n {
 		perm[post[i].zx()] = I(i);
@@ -555,7 +584,13 @@ pub fn order<I: Index>(
 	}
 	Ok(())
 }
-fn detect_super_cols<I: Index>(col: &mut [ColamdCol<I>], A: &mut [I], head: &mut [I], row_start: usize, row_length: usize) {
+fn detect_super_cols<I: Index>(
+	col: &mut [ColamdCol<I>],
+	A: &mut [I],
+	head: &mut [I],
+	row_start: usize,
+	row_length: usize,
+) {
 	let I = I::truncate;
 	let SI = I::Signed::truncate;
 	let mut rp = row_start;
@@ -581,7 +616,9 @@ fn detect_super_cols<I: Index>(col: &mut [ColamdCol<I>], A: &mut [I], head: &mut
 			let mut c_ = col[super_c].shared4;
 			while c_ != SI(NONE) {
 				let c = c_.zx();
-				if col[c].length != length || col[c].shared2 != col[super_c].shared2 {
+				if col[c].length != length
+					|| col[c].shared2 != col[super_c].shared2
+				{
 					prev_c = c;
 					c_ = col[c].shared4;
 					continue;
@@ -618,7 +655,12 @@ fn detect_super_cols<I: Index>(col: &mut [ColamdCol<I>], A: &mut [I], head: &mut
 		}
 	}
 }
-fn garbage_collection<I: Index>(row: &mut [ColamdRow<I>], col: &mut [ColamdCol<I>], A: &mut [I], pfree: usize) -> usize {
+fn garbage_collection<I: Index>(
+	row: &mut [ColamdRow<I>],
+	col: &mut [ColamdCol<I>],
+	A: &mut [I],
+	pfree: usize,
+) -> usize {
 	let I = I::truncate;
 	let SI = I::Signed::truncate;
 	let mut pdest = 0usize;

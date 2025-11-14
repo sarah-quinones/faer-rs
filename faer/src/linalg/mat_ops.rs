@@ -1,6 +1,8 @@
 use crate::internal_prelude::*;
 use crate::{Scale, assert, col, diag, get_global_parallelism, mat, perm, row};
-use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::ops::{
+	Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
+};
 extern crate alloc;
 macro_rules! impl_binop {
     (
@@ -54,12 +56,21 @@ impl<
 	RCols: Shape,
 	RRStride: Stride,
 	RCStride: Stride,
-	L: for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, LRows, LCols, LRStride, LCStride>>,
-	R: for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, RRows, RCols, RRStride, RCStride>>,
+	L: for<'a> Reborrow<
+			'a,
+			Target = mat::Ref<'a, LT, LRows, LCols, LRStride, LCStride>,
+		>,
+	R: for<'a> Reborrow<
+			'a,
+			Target = mat::Ref<'a, RT, RRows, RCols, RRStride, RCStride>,
+		>,
 > PartialEq<mat::generic::Mat<R>> for mat::generic::Mat<L>
 {
 	fn eq(&self, other: &mat::generic::Mat<R>) -> bool {
-		fn imp<LT: PartialEq<RT>, RT>(l: MatRef<'_, LT>, r: MatRef<'_, RT>) -> bool {
+		fn imp<LT: PartialEq<RT>, RT>(
+			l: MatRef<'_, LT>,
+			r: MatRef<'_, RT>,
+		) -> bool {
 			if l.nrows() != r.nrows() {
 				return false;
 			}
@@ -76,7 +87,10 @@ impl<
 			}
 			true
 		}
-		imp(self.rb().as_dyn().as_dyn_stride(), other.rb().as_dyn().as_dyn_stride())
+		imp(
+			self.rb().as_dyn().as_dyn_stride(),
+			other.rb().as_dyn().as_dyn_stride(),
+		)
 	}
 }
 impl<
@@ -91,7 +105,10 @@ impl<
 > PartialEq<col::generic::Col<R>> for col::generic::Col<L>
 {
 	fn eq(&self, other: &col::generic::Col<R>) -> bool {
-		fn imp<LT: PartialEq<RT>, RT>(l: ColRef<'_, LT>, r: ColRef<'_, RT>) -> bool {
+		fn imp<LT: PartialEq<RT>, RT>(
+			l: ColRef<'_, LT>,
+			r: ColRef<'_, RT>,
+		) -> bool {
 			if l.nrows() != r.nrows() {
 				return false;
 			}
@@ -105,7 +122,10 @@ impl<
 			}
 			true
 		}
-		imp(self.rb().as_dyn_rows().as_dyn_stride(), other.rb().as_dyn_rows().as_dyn_stride())
+		imp(
+			self.rb().as_dyn_rows().as_dyn_stride(),
+			other.rb().as_dyn_rows().as_dyn_stride(),
+		)
 	}
 }
 impl<
@@ -164,16 +184,28 @@ impl_op_assign!({
 		RT: (Conjugate<Canonical = T>),
 		RRStride: Stride,
 		RCStride: Stride,
-		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		L: (for<'a> ReborrowMut<
+				'a,
+				Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>,
+			>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> SubAssign<mat::generic::Mat<R>> for mat::generic::Mat<L>
 	{
 		fn sub_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: MatMut<'_, T>, rhs: MatRef<'_, RT>) {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: MatMut<'_, T>,
+				rhs: MatRef<'_, RT>,
+			) {
 				zip!(lhs, rhs).for_each(sub_assign_fn::<T, RT>())
 			}
 			let lhs = self.rb_mut();
-			imp(lhs.as_dyn_mut().as_dyn_stride_mut(), rhs.rb().as_dyn().as_dyn_stride());
+			imp(
+				lhs.as_dyn_mut().as_dyn_stride_mut(),
+				rhs.rb().as_dyn().as_dyn_stride(),
+			);
 		}
 	}
 	impl<
@@ -187,11 +219,17 @@ impl_op_assign!({
 	> SubAssign<col::generic::Col<R>> for col::generic::Col<L>
 	{
 		fn sub_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: ColMut<'_, T>, rhs: ColRef<'_, RT>) {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: ColMut<'_, T>,
+				rhs: ColRef<'_, RT>,
+			) {
 				zip!(lhs, rhs).for_each(sub_assign_fn::<T, RT>())
 			}
 			let lhs = self.rb_mut();
-			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs.rb().as_dyn_rows().as_dyn_stride());
+			imp(
+				lhs.as_dyn_rows_mut().as_dyn_stride_mut(),
+				rhs.rb().as_dyn_rows().as_dyn_stride(),
+			);
 		}
 	}
 	impl<
@@ -205,11 +243,20 @@ impl_op_assign!({
 	> SubAssign<row::generic::Row<R>> for row::generic::Row<L>
 	{
 		fn sub_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: RowMut<'_, T>, rhs: RowRef<'_, RT>) {
-				SubAssign::sub_assign(&mut lhs.transpose_mut(), &rhs.transpose())
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: RowMut<'_, T>,
+				rhs: RowRef<'_, RT>,
+			) {
+				SubAssign::sub_assign(
+					&mut lhs.transpose_mut(),
+					&rhs.transpose(),
+				)
 			}
 			let lhs = self.rb_mut();
-			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs.rb().as_dyn_cols().as_dyn_stride());
+			imp(
+				lhs.as_dyn_cols_mut().as_dyn_stride_mut(),
+				rhs.rb().as_dyn_cols().as_dyn_stride(),
+			);
 		}
 	}
 	impl<
@@ -223,12 +270,17 @@ impl_op_assign!({
 	> SubAssign<diag::generic::Diag<R>> for diag::generic::Diag<L>
 	{
 		fn sub_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: ColMut<'_, T>, rhs: ColRef<'_, RT>) {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: ColMut<'_, T>,
+				rhs: ColRef<'_, RT>,
+			) {
 				SubAssign::sub_assign(&mut { lhs }, &rhs)
 			}
 			let lhs = self.rb_mut();
 			imp(
-				lhs.column_vector_mut().as_dyn_rows_mut().as_dyn_stride_mut(),
+				lhs.column_vector_mut()
+					.as_dyn_rows_mut()
+					.as_dyn_stride_mut(),
 				rhs.rb().column_vector().as_dyn_rows().as_dyn_stride(),
 			);
 		}
@@ -244,16 +296,28 @@ impl_op_assign!({
 		RT: (Conjugate<Canonical = T>),
 		RRStride: Stride,
 		RCStride: Stride,
-		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		L: (for<'a> ReborrowMut<
+				'a,
+				Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>,
+			>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> AddAssign<mat::generic::Mat<R>> for mat::generic::Mat<L>
 	{
 		fn add_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: MatMut<'_, T>, rhs: MatRef<'_, RT>) {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: MatMut<'_, T>,
+				rhs: MatRef<'_, RT>,
+			) {
 				zip!(lhs, rhs).for_each(add_assign_fn::<T, RT>())
 			}
 			let lhs = self.rb_mut();
-			imp(lhs.as_dyn_mut().as_dyn_stride_mut(), rhs.rb().as_dyn().as_dyn_stride());
+			imp(
+				lhs.as_dyn_mut().as_dyn_stride_mut(),
+				rhs.rb().as_dyn().as_dyn_stride(),
+			);
 		}
 	}
 	impl<
@@ -267,11 +331,17 @@ impl_op_assign!({
 	> AddAssign<col::generic::Col<R>> for col::generic::Col<L>
 	{
 		fn add_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: ColMut<'_, T>, rhs: ColRef<'_, RT>) {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: ColMut<'_, T>,
+				rhs: ColRef<'_, RT>,
+			) {
 				zip!(lhs, rhs).for_each(add_assign_fn::<T, RT>())
 			}
 			let lhs = self.rb_mut();
-			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs.rb().as_dyn_rows().as_dyn_stride());
+			imp(
+				lhs.as_dyn_rows_mut().as_dyn_stride_mut(),
+				rhs.rb().as_dyn_rows().as_dyn_stride(),
+			);
 		}
 	}
 	impl<
@@ -285,11 +355,20 @@ impl_op_assign!({
 	> AddAssign<row::generic::Row<R>> for row::generic::Row<L>
 	{
 		fn add_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: RowMut<'_, T>, rhs: RowRef<'_, RT>) {
-				AddAssign::add_assign(&mut lhs.transpose_mut(), &rhs.transpose())
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: RowMut<'_, T>,
+				rhs: RowRef<'_, RT>,
+			) {
+				AddAssign::add_assign(
+					&mut lhs.transpose_mut(),
+					&rhs.transpose(),
+				)
 			}
 			let lhs = self.rb_mut();
-			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs.rb().as_dyn_cols().as_dyn_stride());
+			imp(
+				lhs.as_dyn_cols_mut().as_dyn_stride_mut(),
+				rhs.rb().as_dyn_cols().as_dyn_stride(),
+			);
 		}
 	}
 	impl<
@@ -303,12 +382,17 @@ impl_op_assign!({
 	> AddAssign<diag::generic::Diag<R>> for diag::generic::Diag<L>
 	{
 		fn add_assign(&mut self, rhs: _) {
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: ColMut<'_, T>, rhs: ColRef<'_, RT>) {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: ColMut<'_, T>,
+				rhs: ColRef<'_, RT>,
+			) {
 				AddAssign::add_assign(&mut { lhs }, &rhs)
 			}
 			let lhs = self.rb_mut();
 			imp(
-				lhs.column_vector_mut().as_dyn_rows_mut().as_dyn_stride_mut(),
+				lhs.column_vector_mut()
+					.as_dyn_rows_mut()
+					.as_dyn_stride_mut(),
 				rhs.rb().column_vector().as_dyn_rows().as_dyn_stride(),
 			);
 		}
@@ -325,20 +409,40 @@ impl_binop!({
 		RT: (Conjugate<Canonical = T>),
 		RRStride: Stride,
 		RCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> Add<mat::generic::Mat<R>> for mat::generic::Mat<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn add(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: MatRef<'_, RT>) -> Mat<T> {
-				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: MatRef<'_, LT>,
+				rhs: MatRef<'_, RT>,
+			) -> Mat<T> {
+				assert!(all(
+					lhs.nrows() == rhs.nrows(),
+					lhs.ncols() == rhs.ncols()
+				));
 				zip!(lhs, rhs).map(add_fn::<LT, RT>())
 			}
 			let lhs = self.rb();
-			imp(lhs.as_dyn().as_dyn_stride(), rhs.rb().as_dyn().as_dyn_stride()).into_shape(lhs.nrows(), lhs.ncols())
+			imp(
+				lhs.as_dyn().as_dyn_stride(),
+				rhs.rb().as_dyn().as_dyn_stride(),
+			)
+			.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -356,12 +460,26 @@ impl_binop!({
 
 		fn add(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
-				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: ColRef<'_, LT>,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
+				assert!(all(
+					lhs.nrows() == rhs.nrows(),
+					lhs.ncols() == rhs.ncols()
+				));
 				zip!(lhs, rhs).map(add_fn::<LT, RT>())
 			}
 			let lhs = self.rb();
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs.rb().as_dyn_rows().as_dyn_stride()).into_row_shape(lhs.nrows())
+			imp(
+				lhs.as_dyn_rows().as_dyn_stride(),
+				rhs.rb().as_dyn_rows().as_dyn_stride(),
+			)
+			.into_row_shape(lhs.nrows())
 		}
 	}
 	impl<
@@ -379,12 +497,26 @@ impl_binop!({
 
 		fn add(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: RowRef<'_, RT>) -> Row<T> {
-				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: RowRef<'_, LT>,
+				rhs: RowRef<'_, RT>,
+			) -> Row<T> {
+				assert!(all(
+					lhs.nrows() == rhs.nrows(),
+					lhs.ncols() == rhs.ncols()
+				));
 				(lhs.transpose() + rhs.transpose()).into_transpose()
 			}
 			let lhs = self.rb();
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.rb().as_dyn_cols().as_dyn_stride()).into_col_shape(lhs.ncols())
+			imp(
+				lhs.as_dyn_cols().as_dyn_stride(),
+				rhs.rb().as_dyn_cols().as_dyn_stride(),
+			)
+			.into_col_shape(lhs.ncols())
 		}
 	}
 	impl<
@@ -402,7 +534,14 @@ impl_binop!({
 
 		fn add(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: ColRef<'_, LT>,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				assert!(all(lhs.nrows() == rhs.nrows()));
 				lhs + rhs
 			}
@@ -427,20 +566,40 @@ impl_binop!({
 		RT: (Conjugate<Canonical = T>),
 		RRStride: Stride,
 		RCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> Sub<mat::generic::Mat<R>> for mat::generic::Mat<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn sub(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: MatRef<'_, RT>) -> Mat<T> {
-				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: MatRef<'_, LT>,
+				rhs: MatRef<'_, RT>,
+			) -> Mat<T> {
+				assert!(all(
+					lhs.nrows() == rhs.nrows(),
+					lhs.ncols() == rhs.ncols()
+				));
 				zip!(lhs, rhs).map(sub_fn::<LT, RT>())
 			}
 			let lhs = self.rb();
-			imp(lhs.as_dyn().as_dyn_stride(), rhs.rb().as_dyn().as_dyn_stride()).into_shape(lhs.nrows(), lhs.ncols())
+			imp(
+				lhs.as_dyn().as_dyn_stride(),
+				rhs.rb().as_dyn().as_dyn_stride(),
+			)
+			.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -458,12 +617,26 @@ impl_binop!({
 
 		fn sub(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
-				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: ColRef<'_, LT>,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
+				assert!(all(
+					lhs.nrows() == rhs.nrows(),
+					lhs.ncols() == rhs.ncols()
+				));
 				zip!(lhs, rhs).map(sub_fn::<LT, RT>())
 			}
 			let lhs = self.rb();
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs.rb().as_dyn_rows().as_dyn_stride()).into_row_shape(lhs.nrows())
+			imp(
+				lhs.as_dyn_rows().as_dyn_stride(),
+				rhs.rb().as_dyn_rows().as_dyn_stride(),
+			)
+			.into_row_shape(lhs.nrows())
 		}
 	}
 	impl<
@@ -481,12 +654,26 @@ impl_binop!({
 
 		fn sub(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: RowRef<'_, RT>) -> Row<T> {
-				assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: RowRef<'_, LT>,
+				rhs: RowRef<'_, RT>,
+			) -> Row<T> {
+				assert!(all(
+					lhs.nrows() == rhs.nrows(),
+					lhs.ncols() == rhs.ncols()
+				));
 				(lhs.transpose() - rhs.transpose()).into_transpose()
 			}
 			let lhs = self.rb();
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.rb().as_dyn_cols().as_dyn_stride()).into_col_shape(lhs.ncols())
+			imp(
+				lhs.as_dyn_cols().as_dyn_stride(),
+				rhs.rb().as_dyn_cols().as_dyn_stride(),
+			)
+			.into_col_shape(lhs.ncols())
 		}
 	}
 	impl<
@@ -504,7 +691,14 @@ impl_binop!({
 
 		fn sub(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<
+				T: ComplexField,
+				LT: Conjugate<Canonical = T>,
+				RT: Conjugate<Canonical = T>,
+			>(
+				lhs: ColRef<'_, LT>,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				assert!(all(lhs.nrows() == rhs.nrows()));
 				lhs - rhs
 			}
@@ -525,7 +719,10 @@ impl_op!({
 		Cols: Shape,
 		RStride: Stride,
 		CStride: Stride,
-		Inner: (for<'a> Reborrow<'a, Target = mat::Ref<'a, T, Rows, Cols, RStride, CStride>>),
+		Inner: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, T, Rows, Cols, RStride, CStride>,
+			>),
 	> Neg for mat::generic::Mat<Inner>
 	{
 		type Output = Mat<T::Canonical, Rows, Cols>;
@@ -539,8 +736,12 @@ impl_op!({
 			imp(A.as_dyn().as_dyn_stride()).into_shape(A.nrows(), A.ncols())
 		}
 	}
-	impl<T: Conjugate, Rows: Shape, RStride: Stride, Inner: (for<'a> Reborrow<'a, Target = col::Ref<'a, T, Rows, RStride>>)> Neg
-		for col::generic::Col<Inner>
+	impl<
+		T: Conjugate,
+		Rows: Shape,
+		RStride: Stride,
+		Inner: (for<'a> Reborrow<'a, Target = col::Ref<'a, T, Rows, RStride>>),
+	> Neg for col::generic::Col<Inner>
 	{
 		type Output = Col<T::Canonical, Rows>;
 
@@ -553,8 +754,12 @@ impl_op!({
 			imp(A.as_dyn_rows().as_dyn_stride()).into_row_shape(A.nrows())
 		}
 	}
-	impl<T: Conjugate, Cols: Shape, CStride: Stride, Inner: (for<'a> Reborrow<'a, Target = row::Ref<'a, T, Cols, CStride>>)> Neg
-		for row::generic::Row<Inner>
+	impl<
+		T: Conjugate,
+		Cols: Shape,
+		CStride: Stride,
+		Inner: (for<'a> Reborrow<'a, Target = row::Ref<'a, T, Cols, CStride>>),
+	> Neg for row::generic::Row<Inner>
 	{
 		type Output = Row<T::Canonical, Cols>;
 
@@ -567,8 +772,12 @@ impl_op!({
 			imp(A.as_dyn_cols().as_dyn_stride()).into_col_shape(A.ncols())
 		}
 	}
-	impl<T: Conjugate, Dim: Shape, Stride: (crate::Stride), Inner: (for<'a> Reborrow<'a, Target = diag::Ref<'a, T, Dim, Stride>>)> Neg
-		for diag::generic::Diag<Inner>
+	impl<
+		T: Conjugate,
+		Dim: Shape,
+		Stride: (crate::Stride),
+		Inner: (for<'a> Reborrow<'a, Target = diag::Ref<'a, T, Dim, Stride>>),
+	> Neg for diag::generic::Diag<Inner>
 	{
 		type Output = Diag<T::Canonical, Dim>;
 
@@ -578,40 +787,57 @@ impl_op!({
 				-A
 			}
 			let A = self.rb().column_vector();
-			imp(A.as_dyn_rows().as_dyn_stride()).into_row_shape(A.nrows()).into_diagonal()
+			imp(A.as_dyn_rows().as_dyn_stride())
+				.into_row_shape(A.nrows())
+				.into_diagonal()
 		}
 	}
 });
 #[inline]
-fn add_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
--> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
+fn add_fn<
+	LhsT: Conjugate<Canonical: ComplexField>,
+	RhsT: Conjugate<Canonical = LhsT::Canonical>,
+>()
+-> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical
+{
 	#[inline(always)]
 	move |unzip!(a, b)| Conj::apply(a) + Conj::apply(b)
 }
 #[inline]
-fn sub_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
--> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
+fn sub_fn<
+	LhsT: Conjugate<Canonical: ComplexField>,
+	RhsT: Conjugate<Canonical = LhsT::Canonical>,
+>()
+-> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical
+{
 	#[inline(always)]
 	move |unzip!(a, b)| Conj::apply(a) - Conj::apply(b)
 }
 #[inline]
-fn mul_fn<LhsT: Conjugate<Canonical: ComplexField>, RhsT: Conjugate<Canonical = LhsT::Canonical>>()
--> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical {
+fn mul_fn<
+	LhsT: Conjugate<Canonical: ComplexField>,
+	RhsT: Conjugate<Canonical = LhsT::Canonical>,
+>()
+-> impl FnMut(linalg::zip::Zip<&LhsT, linalg::zip::Last<&RhsT>>) -> LhsT::Canonical
+{
 	#[inline(always)]
 	move |unzip!(a, b)| Conj::apply(a) * Conj::apply(b)
 }
 #[inline]
-fn neg_fn<LhsT: Conjugate<Canonical: ComplexField>>() -> impl FnMut(linalg::zip::Last<&LhsT>) -> LhsT::Canonical {
+fn neg_fn<LhsT: Conjugate<Canonical: ComplexField>>()
+-> impl FnMut(linalg::zip::Last<&LhsT>) -> LhsT::Canonical {
 	#[inline(always)]
 	move |unzip!(a)| -Conj::apply(a)
 }
 #[inline]
-fn add_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>() -> impl FnMut(linalg::zip::Zip<&mut LhsT, linalg::zip::Last<&RhsT>>) {
+fn add_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>()
+-> impl FnMut(linalg::zip::Zip<&mut LhsT, linalg::zip::Last<&RhsT>>) {
 	#[inline(always)]
 	move |unzip!(a, b)| *a = Conj::apply(a) + Conj::apply(b)
 }
 #[inline]
-fn sub_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>() -> impl FnMut(linalg::zip::Zip<&mut LhsT, linalg::zip::Last<&RhsT>>) {
+fn sub_assign_fn<LhsT: ComplexField, RhsT: Conjugate<Canonical = LhsT>>()
+-> impl FnMut(linalg::zip::Zip<&mut LhsT, linalg::zip::Last<&RhsT>>) {
 	#[inline(always)]
 	move |unzip!(a, b)| *a = Conj::apply(a) - Conj::apply(b)
 }
@@ -630,26 +856,44 @@ mod matmul {
 			RT: (Conjugate<Canonical = T>),
 			RRStride: Stride,
 			RCStride: Stride,
-			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>>),
-			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>>),
+			L: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>,
+				>),
+			R: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>,
+				>),
 		> Mul<mat::generic::Mat<R>> for mat::generic::Mat<L>
 		{
 			type Output = Mat<T, Rows, Cols>;
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: MatRef<'_, LT>,
 					rhs: MatRef<'_, RT>,
 				) -> Mat<T> {
 					assert!(lhs.ncols() == rhs.nrows());
 					let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-					crate::linalg::matmul::matmul(out.as_mut(), Accum::Replace, lhs, rhs, T::one_impl(), get_global_parallelism());
+					crate::linalg::matmul::matmul(
+						out.as_mut(),
+						Accum::Replace,
+						lhs,
+						rhs,
+						T::one_impl(),
+						get_global_parallelism(),
+					);
 					out
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn().as_dyn_stride()).into_shape(lhs.nrows(), rhs.ncols())
+				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn().as_dyn_stride())
+					.into_shape(lhs.nrows(), rhs.ncols())
 			}
 		}
 		impl<
@@ -661,7 +905,10 @@ mod matmul {
 			LCStride: Stride,
 			RT: (Conjugate<Canonical = T>),
 			RRStride: Stride,
-			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+			L: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+				>),
 			R: (for<'a> Reborrow<'a, Target = col::Ref<'a, RT, Cols, RRStride>>),
 		> Mul<col::generic::Col<R>> for mat::generic::Mat<L>
 		{
@@ -669,18 +916,33 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: MatRef<'_, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Col<T> {
 					assert!(lhs.ncols() == rhs.nrows());
 					let mut out = Col::zeros(lhs.nrows());
-					crate::linalg::matmul::matmul(out.as_mut(), Accum::Replace, lhs, rhs, T::one_impl(), get_global_parallelism());
+					crate::linalg::matmul::matmul(
+						out.as_mut(),
+						Accum::Replace,
+						lhs,
+						rhs,
+						T::one_impl(),
+						get_global_parallelism(),
+					);
 					out
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(lhs.nrows())
+				imp(
+					lhs.as_dyn().as_dyn_stride(),
+					rhs.as_dyn_rows().as_dyn_stride(),
+				)
+				.into_row_shape(lhs.nrows())
 			}
 		}
 		impl<
@@ -693,25 +955,43 @@ mod matmul {
 			RRStride: Stride,
 			RCStride: Stride,
 			L: (for<'a> Reborrow<'a, Target = row::Ref<'a, LT, Rows, LCStride>>),
-			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+			R: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+				>),
 		> Mul<mat::generic::Mat<R>> for row::generic::Row<L>
 		{
 			type Output = Row<T, Cols>;
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: RowRef<'_, LT>,
 					rhs: MatRef<'_, RT>,
 				) -> Row<T> {
 					assert!(lhs.ncols() == rhs.nrows());
 					let mut out = Row::zeros(rhs.ncols());
-					crate::linalg::matmul::matmul(out.as_mut(), Accum::Replace, lhs, rhs, T::one_impl(), get_global_parallelism());
+					crate::linalg::matmul::matmul(
+						out.as_mut(),
+						Accum::Replace,
+						lhs,
+						rhs,
+						T::one_impl(),
+						get_global_parallelism(),
+					);
 					out
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn().as_dyn_stride()).into_col_shape(rhs.ncols())
+				imp(
+					lhs.as_dyn_cols().as_dyn_stride(),
+					rhs.as_dyn().as_dyn_stride(),
+				)
+				.into_col_shape(rhs.ncols())
 			}
 		}
 		impl<
@@ -729,7 +1009,14 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: ColRef<'_, RT>) -> T {
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: RowRef<'_, LT>,
+					rhs: ColRef<'_, RT>,
+				) -> T {
 					assert!(lhs.ncols() == rhs.nrows());
 					let mut out = [[zero::<T>()]];
 					crate::linalg::matmul::matmul(
@@ -745,7 +1032,10 @@ mod matmul {
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn_rows().as_dyn_stride())
+				imp(
+					lhs.as_dyn_cols().as_dyn_stride(),
+					rhs.as_dyn_rows().as_dyn_stride(),
+				)
 			}
 		}
 		impl<
@@ -764,18 +1054,33 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: ColRef<'_, LT>,
 					rhs: RowRef<'_, RT>,
 				) -> Mat<T> {
 					assert!(lhs.ncols() == rhs.nrows());
 					let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-					crate::linalg::matmul::matmul(out.rb_mut(), Accum::Replace, lhs, rhs, T::one_impl(), get_global_parallelism());
+					crate::linalg::matmul::matmul(
+						out.rb_mut(),
+						Accum::Replace,
+						lhs,
+						rhs,
+						T::one_impl(),
+						get_global_parallelism(),
+					);
 					out
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn_rows().as_dyn_stride(), rhs.as_dyn_cols().as_dyn_stride()).into_shape(lhs.nrows(), rhs.ncols())
+				imp(
+					lhs.as_dyn_rows().as_dyn_stride(),
+					rhs.as_dyn_cols().as_dyn_stride(),
+				)
+				.into_shape(lhs.nrows(), rhs.ncols())
 			}
 		}
 		impl<
@@ -788,25 +1093,38 @@ mod matmul {
 			RRStride: Stride,
 			RCStride: Stride,
 			L: (for<'a> Reborrow<'a, Target = diag::Ref<'a, LT, Dim, LStride>>),
-			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Dim, Cols, RRStride, RCStride>>),
+			R: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, RT, Dim, Cols, RRStride, RCStride>,
+				>),
 		> Mul<mat::generic::Mat<R>> for diag::generic::Diag<L>
 		{
 			type Output = Mat<T, Dim, Cols>;
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: ColRef<'_, LT>,
 					rhs: MatRef<'_, RT>,
 				) -> Mat<T> {
 					let lhs_dim = lhs.nrows();
 					let rhs_nrows = rhs.nrows();
 					assert!(lhs_dim == rhs_nrows);
-					Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| Conj::apply(lhs.at(i)) * Conj::apply(rhs.at(i, j)))
+					Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| {
+						Conj::apply(lhs.at(i)) * Conj::apply(rhs.at(i, j))
+					})
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.column_vector().as_dyn_rows().as_dyn_stride(), rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+				imp(
+					lhs.column_vector().as_dyn_rows().as_dyn_stride(),
+					rhs.as_dyn().as_dyn_stride(),
+				)
+				.into_shape(rhs.nrows(), rhs.ncols())
 			}
 		}
 		impl<
@@ -824,7 +1142,11 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: ColRef<'_, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Col<T> {
@@ -835,7 +1157,11 @@ mod matmul {
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.column_vector().as_dyn_rows().as_dyn_stride(), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
+				imp(
+					lhs.column_vector().as_dyn_rows().as_dyn_stride(),
+					rhs.as_dyn_rows().as_dyn_stride(),
+				)
+				.into_row_shape(rhs.nrows())
 			}
 		}
 		impl<
@@ -847,7 +1173,10 @@ mod matmul {
 			LCStride: Stride,
 			RT: (Conjugate<Canonical = T>),
 			RStride: Stride,
-			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Dim, LRStride, LCStride>>),
+			L: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, LT, Rows, Dim, LRStride, LCStride>,
+				>),
 			R: (for<'a> Reborrow<'a, Target = diag::Ref<'a, RT, Dim, RStride>>),
 		> Mul<diag::generic::Diag<R>> for mat::generic::Mat<L>
 		{
@@ -855,7 +1184,11 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: MatRef<'_, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Mat<T> {
@@ -864,12 +1197,19 @@ mod matmul {
 					assert!(lhs_ncols == rhs_dim);
 					let mut f = mul_fn::<LT, RT>();
 					Mat::from_fn(lhs.nrows(), lhs.ncols(), |i, j| {
-						f(linalg::zip::Zip(lhs.at(i, j), linalg::zip::Last(rhs.at(j))))
+						f(linalg::zip::Zip(
+							lhs.at(i, j),
+							linalg::zip::Last(rhs.at(j)),
+						))
 					})
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn().as_dyn_stride(), rhs.column_vector().as_dyn_rows().as_dyn_stride()).into_shape(lhs.nrows(), lhs.ncols())
+				imp(
+					lhs.as_dyn().as_dyn_stride(),
+					rhs.column_vector().as_dyn_rows().as_dyn_stride(),
+				)
+				.into_shape(lhs.nrows(), lhs.ncols())
 			}
 		}
 		impl<
@@ -887,7 +1227,11 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: RowRef<'_, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Row<T> {
@@ -898,7 +1242,11 @@ mod matmul {
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
-				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.column_vector().as_dyn_rows().as_dyn_stride()).into_col_shape(lhs.ncols())
+				imp(
+					lhs.as_dyn_cols().as_dyn_stride(),
+					rhs.column_vector().as_dyn_rows().as_dyn_stride(),
+				)
+				.into_col_shape(lhs.ncols())
 			}
 		}
 		impl<
@@ -916,7 +1264,11 @@ mod matmul {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: ColRef<'_, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Col<T> {
@@ -927,31 +1279,46 @@ mod matmul {
 				}
 				let lhs = self.rb().column_vector();
 				let rhs = rhs.rb().column_vector();
-				imp(lhs.as_dyn_rows().as_dyn_stride(), rhs.as_dyn_rows().as_dyn_stride())
-					.into_row_shape(lhs.nrows())
-					.into_diagonal()
+				imp(
+					lhs.as_dyn_rows().as_dyn_stride(),
+					rhs.as_dyn_rows().as_dyn_stride(),
+				)
+				.into_row_shape(lhs.nrows())
+				.into_diagonal()
 			}
 		}
 	});
 }
 impl_binop!({
-	impl<I: Index, N: Shape, L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, N>>), R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, N>>)>
-		Mul<perm::generic::Perm<R>> for perm::generic::Perm<L>
+	impl<
+		I: Index,
+		N: Shape,
+		L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, N>>),
+		R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, N>>),
+	> Mul<perm::generic::Perm<R>> for perm::generic::Perm<L>
 	{
 		type Output = Perm<I, N>;
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<I: Index>(lhs: PermRef<'_, I>, rhs: PermRef<'_, I>) -> Perm<I> {
+			fn imp<I: Index>(
+				lhs: PermRef<'_, I>,
+				rhs: PermRef<'_, I>,
+			) -> Perm<I> {
 				assert!(lhs.len() == rhs.len());
 				let truncate = <I::Signed as SignedIndex>::truncate;
-				let mut fwd = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
-				let mut inv = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+				let mut fwd =
+					alloc::vec![I::from_signed(truncate(0)); lhs.len()]
+						.into_boxed_slice();
+				let mut inv =
+					alloc::vec![I::from_signed(truncate(0)); lhs.len()]
+						.into_boxed_slice();
 				for (fwd, rhs) in fwd.iter_mut().zip(rhs.arrays().0) {
 					*fwd = lhs.arrays().0[rhs.to_signed().zx()];
 				}
 				for (i, fwd) in fwd.iter().enumerate() {
-					inv[fwd.to_signed().zx()] = I::from_signed(I::Signed::truncate(i));
+					inv[fwd.to_signed().zx()] =
+						I::from_signed(I::Signed::truncate(i));
 				}
 				Perm::new_checked(fwd, inv, lhs.len())
 			}
@@ -971,14 +1338,20 @@ impl_binop!({
 		RRStride: Stride,
 		RCStride: Stride,
 		L: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Rows>>),
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> Mul<mat::generic::Mat<R>> for perm::generic::Perm<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: PermRef<'_, I>, rhs: MatRef<'_, RT>) -> Mat<T> {
+			fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: PermRef<'_, I>,
+				rhs: MatRef<'_, RT>,
+			) -> Mat<T> {
 				with_dim!(M, rhs.nrows());
 				with_dim!(N, rhs.ncols());
 				let rhs = rhs.as_shape(M, N);
@@ -997,7 +1370,8 @@ impl_binop!({
 			let lhs = self.rb();
 			let rhs = rhs.rb();
 			let m = rhs.nrows().unbound();
-			imp(lhs.as_shape(m), rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+			imp(lhs.as_shape(m), rhs.as_dyn().as_dyn_stride())
+				.into_shape(rhs.nrows(), rhs.ncols())
 		}
 	}
 	impl<
@@ -1014,7 +1388,10 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: PermRef<'_, I>, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: PermRef<'_, I>,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				with_dim!(M, rhs.nrows());
 				let rhs = rhs.as_row_shape(M);
 				let lhs = lhs.as_shape(M);
@@ -1030,7 +1407,8 @@ impl_binop!({
 			let lhs = self.rb();
 			let rhs = rhs.rb();
 			let m = rhs.nrows().unbound();
-			imp(lhs.as_shape(m), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
+			imp(lhs.as_shape(m), rhs.as_dyn_rows().as_dyn_stride())
+				.into_row_shape(rhs.nrows())
 		}
 	}
 	impl<
@@ -1041,7 +1419,10 @@ impl_binop!({
 		LT: (Conjugate<Canonical = T>),
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
 		R: (for<'a> Reborrow<'a, Target = perm::Ref<'a, I, Cols>>),
 	> Mul<perm::generic::Perm<R>> for mat::generic::Mat<L>
 	{
@@ -1049,7 +1430,10 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: PermRef<'_, I>) -> Mat<T> {
+			fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: MatRef<'_, LT>,
+				rhs: PermRef<'_, I>,
+			) -> Mat<T> {
 				with_dim!(M, lhs.nrows());
 				with_dim!(N, lhs.ncols());
 				let lhs = lhs.as_shape(M, N);
@@ -1068,7 +1452,8 @@ impl_binop!({
 			let lhs = self.rb();
 			let rhs = rhs.rb();
 			let n = lhs.ncols().unbound();
-			imp(lhs.as_dyn().as_dyn_stride(), rhs.as_shape(n)).into_shape(lhs.nrows(), lhs.ncols())
+			imp(lhs.as_dyn().as_dyn_stride(), rhs.as_shape(n))
+				.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -1085,7 +1470,10 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: PermRef<'_, I>) -> Row<T> {
+			fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: RowRef<'_, LT>,
+				rhs: PermRef<'_, I>,
+			) -> Row<T> {
 				with_dim!(N, lhs.ncols());
 				let lhs = lhs.as_col_shape(N);
 				let rhs = rhs.as_shape(N);
@@ -1101,7 +1489,8 @@ impl_binop!({
 			let lhs = self.rb();
 			let rhs = rhs.rb();
 			let n = lhs.ncols().unbound();
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_shape(n)).into_col_shape(lhs.ncols())
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_shape(n))
+				.into_col_shape(lhs.ncols())
 		}
 	}
 });
@@ -1113,19 +1502,26 @@ impl_binop!({
 		LT: (Conjugate<Canonical = T>),
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
 	> Mul<Scale<T>> for mat::generic::Mat<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: MatRef<'_, LT>,
+				rhs: &T,
+			) -> Mat<T> {
 				zip!(lhs).map(|unzip!(x)| Conj::apply(x) * rhs)
 			}
 			let lhs = self.rb();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+			imp(lhs.as_dyn().as_dyn_stride(), rhs)
+				.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -1135,19 +1531,26 @@ impl_binop!({
 		LT: (Conjugate<Canonical = T>),
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
 	> Div<Scale<T>> for mat::generic::Mat<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: MatRef<'_, LT>,
+				rhs: &T,
+			) -> Mat<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+			imp(lhs.as_dyn().as_dyn_stride(), rhs)
+				.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -1157,19 +1560,26 @@ impl_binop!({
 		RT: (Conjugate<Canonical = T>),
 		RRStride: Stride,
 		RCStride: Stride,
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> Mul<mat::generic::Mat<R>> for Scale<T>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: MatRef<'_, RT>) -> Mat<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: MatRef<'_, RT>,
+			) -> Mat<T> {
 				zip!(rhs).map(|unzip!(x)| lhs * Conj::apply(x))
 			}
 			let lhs = &self.0;
 			let rhs = rhs.rb();
-			imp(lhs, rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+			imp(lhs, rhs.as_dyn().as_dyn_stride())
+				.into_shape(rhs.nrows(), rhs.ncols())
 		}
 	}
 });
@@ -1186,12 +1596,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				zip!(lhs).map(|unzip!(x)| Conj::apply(x) * rhs)
 			}
 			let lhs = self.rb();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
 		}
 	}
 	impl<
@@ -1206,12 +1620,16 @@ impl_binop!({
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
 		}
 	}
 	impl<
@@ -1226,12 +1644,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				zip!(rhs).map(|unzip!(x)| lhs * Conj::apply(x))
 			}
 			let lhs = &self.0;
 			let rhs = rhs.rb();
-			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride())
+				.into_row_shape(rhs.nrows())
 		}
 	}
 });
@@ -1248,12 +1670,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: RowRef<'_, LT>,
+				rhs: &T,
+			) -> Row<T> {
 				(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
 			}
 			let lhs = self.rb();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs)
+				.into_col_shape(lhs.ncols())
 		}
 	}
 	impl<
@@ -1268,12 +1694,16 @@ impl_binop!({
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: RowRef<'_, LT>,
+				rhs: &T,
+			) -> Row<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs)
+				.into_col_shape(lhs.ncols())
 		}
 	}
 	impl<
@@ -1288,12 +1718,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: RowRef<'_, RT>) -> Row<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: RowRef<'_, RT>,
+			) -> Row<T> {
 				(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
 			}
 			let lhs = &self.0;
 			let rhs = rhs.rb();
-			imp(lhs, rhs.as_dyn_cols().as_dyn_stride()).into_col_shape(rhs.ncols())
+			imp(lhs, rhs.as_dyn_cols().as_dyn_stride())
+				.into_col_shape(rhs.ncols())
 		}
 	}
 });
@@ -1310,12 +1744,17 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale::from_ref(rhs)
 			}
 			let lhs = self.rb().column_vector();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
+				.into_diagonal()
 		}
 	}
 	impl<
@@ -1330,12 +1769,17 @@ impl_binop!({
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb().column_vector();
 			let rhs = &rhs.0;
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
+				.into_diagonal()
 		}
 	}
 	impl<
@@ -1350,12 +1794,17 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				Scale::from_ref(lhs) * rhs
 			}
 			let lhs = &self.0;
 			let rhs = rhs.rb().column_vector();
-			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows()).into_diagonal()
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride())
+				.into_row_shape(rhs.nrows())
+				.into_diagonal()
 		}
 	}
 });
@@ -1367,19 +1816,26 @@ impl_binop!({
 		LT: (Conjugate<Canonical = T>),
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
 	> Mul<f64> for mat::generic::Mat<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: MatRef<'_, LT>,
+				rhs: &T,
+			) -> Mat<T> {
 				lhs * Scale::from_ref(rhs)
 			}
 			let lhs = self.rb();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+			imp(lhs.as_dyn().as_dyn_stride(), rhs)
+				.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -1389,19 +1845,26 @@ impl_binop!({
 		LT: (Conjugate<Canonical = T>),
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, LT, Rows, Cols, LRStride, LCStride>,
+			>),
 	> Div<f64> for mat::generic::Mat<L>
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: MatRef<'_, LT>, rhs: &T) -> Mat<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: MatRef<'_, LT>,
+				rhs: &T,
+			) -> Mat<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn().as_dyn_stride(), rhs).into_shape(lhs.nrows(), lhs.ncols())
+			imp(lhs.as_dyn().as_dyn_stride(), rhs)
+				.into_shape(lhs.nrows(), lhs.ncols())
 		}
 	}
 	impl<
@@ -1411,19 +1874,26 @@ impl_binop!({
 		RT: (Conjugate<Canonical = T>),
 		RRStride: Stride,
 		RCStride: Stride,
-		R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>>),
+		R: (for<'a> Reborrow<
+				'a,
+				Target = mat::Ref<'a, RT, Rows, Cols, RRStride, RCStride>,
+			>),
 	> Mul<mat::generic::Mat<R>> for f64
 	{
 		type Output = Mat<T, Rows, Cols>;
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: MatRef<'_, RT>) -> Mat<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: MatRef<'_, RT>,
+			) -> Mat<T> {
 				Scale::from_ref(lhs) * rhs
 			}
 			let lhs = &from_f64::<T>(*self);
 			let rhs = rhs.rb();
-			imp(lhs, rhs.as_dyn().as_dyn_stride()).into_shape(rhs.nrows(), rhs.ncols())
+			imp(lhs, rhs.as_dyn().as_dyn_stride())
+				.into_shape(rhs.nrows(), rhs.ncols())
 		}
 	}
 });
@@ -1440,12 +1910,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale::from_ref(rhs)
 			}
 			let lhs = self.rb();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
 		}
 	}
 	impl<
@@ -1460,12 +1934,16 @@ impl_binop!({
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows())
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
 		}
 	}
 	impl<
@@ -1480,12 +1958,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				Scale::from_ref(lhs) * rhs
 			}
 			let lhs = &from_f64::<T>(*self);
 			let rhs = rhs.rb();
-			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows())
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride())
+				.into_row_shape(rhs.nrows())
 		}
 	}
 });
@@ -1502,12 +1984,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: RowRef<'_, LT>,
+				rhs: &T,
+			) -> Row<T> {
 				(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
 			}
 			let lhs = self.rb();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs)
+				.into_col_shape(lhs.ncols())
 		}
 	}
 	impl<
@@ -1522,12 +2008,16 @@ impl_binop!({
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: RowRef<'_, LT>, rhs: &T) -> Row<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: RowRef<'_, LT>,
+				rhs: &T,
+			) -> Row<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs).into_col_shape(lhs.ncols())
+			imp(lhs.as_dyn_cols().as_dyn_stride(), rhs)
+				.into_col_shape(lhs.ncols())
 		}
 	}
 	impl<
@@ -1542,12 +2032,16 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: RowRef<'_, RT>) -> Row<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: RowRef<'_, RT>,
+			) -> Row<T> {
 				(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
 			}
 			let lhs = &from_f64::<T>(*self);
 			let rhs = rhs.rb();
-			imp(lhs, rhs.as_dyn_cols().as_dyn_stride()).into_col_shape(rhs.ncols())
+			imp(lhs, rhs.as_dyn_cols().as_dyn_stride())
+				.into_col_shape(rhs.ncols())
 		}
 	}
 });
@@ -1564,12 +2058,17 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale::from_ref(rhs)
 			}
 			let lhs = self.rb().column_vector();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
+				.into_diagonal()
 		}
 	}
 	impl<
@@ -1584,12 +2083,17 @@ impl_binop!({
 
 		fn div(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(lhs: ColRef<'_, LT>, rhs: &T) -> Col<T> {
+			fn imp<T: ComplexField, LT: Conjugate<Canonical = T>>(
+				lhs: ColRef<'_, LT>,
+				rhs: &T,
+			) -> Col<T> {
 				lhs * Scale(rhs.recip())
 			}
 			let lhs = self.rb().column_vector();
 			let rhs = &from_f64::<T>(*rhs);
-			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs).into_row_shape(lhs.nrows()).into_diagonal()
+			imp(lhs.as_dyn_rows().as_dyn_stride(), rhs)
+				.into_row_shape(lhs.nrows())
+				.into_diagonal()
 		}
 	}
 	impl<
@@ -1604,12 +2108,17 @@ impl_binop!({
 
 		fn mul(self, rhs: _) {
 			#[track_caller]
-			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: ColRef<'_, RT>) -> Col<T> {
+			fn imp<T: ComplexField, RT: Conjugate<Canonical = T>>(
+				lhs: &T,
+				rhs: ColRef<'_, RT>,
+			) -> Col<T> {
 				Scale::from_ref(lhs) * rhs
 			}
 			let lhs = &from_f64::<T>(*self);
 			let rhs = rhs.rb().column_vector();
-			imp(lhs, rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(rhs.nrows()).into_diagonal()
+			imp(lhs, rhs.as_dyn_rows().as_dyn_stride())
+				.into_row_shape(rhs.nrows())
+				.into_diagonal()
 		}
 	}
 });
@@ -1620,7 +2129,10 @@ impl_op_assign!({
 		Cols: Shape,
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> ReborrowMut<
+				'a,
+				Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>,
+			>),
 	> MulAssign<Scale<T>> for mat::generic::Mat<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
@@ -1639,7 +2151,10 @@ impl_op_assign!({
 		Cols: Shape,
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> ReborrowMut<
+				'a,
+				Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>,
+			>),
 	> DivAssign<Scale<T>> for mat::generic::Mat<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
@@ -1654,8 +2169,12 @@ impl_op_assign!({
 	}
 });
 impl_op_assign!({
-	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> MulAssign<Scale<T>>
-		for col::generic::Col<L>
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LRStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>),
+	> MulAssign<Scale<T>> for col::generic::Col<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1667,8 +2186,12 @@ impl_op_assign!({
 			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
 		}
 	}
-	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> DivAssign<Scale<T>>
-		for col::generic::Col<L>
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LRStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>),
+	> DivAssign<Scale<T>> for col::generic::Col<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1682,8 +2205,12 @@ impl_op_assign!({
 	}
 });
 impl_op_assign!({
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> MulAssign<Scale<T>>
-		for row::generic::Row<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>),
+	> MulAssign<Scale<T>> for row::generic::Row<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1696,8 +2223,12 @@ impl_op_assign!({
 			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs)
 		}
 	}
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> DivAssign<Scale<T>>
-		for row::generic::Row<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>),
+	> DivAssign<Scale<T>> for row::generic::Row<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1711,8 +2242,12 @@ impl_op_assign!({
 	}
 });
 impl_op_assign!({
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> MulAssign<Scale<T>>
-		for diag::generic::Diag<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>),
+	> MulAssign<Scale<T>> for diag::generic::Diag<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1724,8 +2259,12 @@ impl_op_assign!({
 			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
 		}
 	}
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> DivAssign<Scale<T>>
-		for diag::generic::Diag<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>),
+	> DivAssign<Scale<T>> for diag::generic::Diag<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1745,7 +2284,10 @@ impl_op_assign!({
 		Cols: Shape,
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> ReborrowMut<
+				'a,
+				Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>,
+			>),
 	> MulAssign<f64> for mat::generic::Mat<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
@@ -1764,7 +2306,10 @@ impl_op_assign!({
 		Cols: Shape,
 		LRStride: Stride,
 		LCStride: Stride,
-		L: (for<'a> ReborrowMut<'a, Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>>),
+		L: (for<'a> ReborrowMut<
+				'a,
+				Target = mat::Mut<'a, T, Rows, Cols, LRStride, LCStride>,
+			>),
 	> DivAssign<f64> for mat::generic::Mat<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
@@ -1779,8 +2324,12 @@ impl_op_assign!({
 	}
 });
 impl_op_assign!({
-	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> MulAssign<f64>
-		for col::generic::Col<L>
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LRStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>),
+	> MulAssign<f64> for col::generic::Col<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1792,8 +2341,12 @@ impl_op_assign!({
 			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
 		}
 	}
-	impl<T: ComplexField, Rows: Shape, LRStride: Stride, L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>)> DivAssign<f64>
-		for col::generic::Col<L>
+	impl<
+		T: ComplexField,
+		Rows: Shape,
+		LRStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = col::Mut<'a, T, Rows, LRStride>>),
+	> DivAssign<f64> for col::generic::Col<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1807,8 +2360,12 @@ impl_op_assign!({
 	}
 });
 impl_op_assign!({
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> MulAssign<f64>
-		for row::generic::Row<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>),
+	> MulAssign<f64> for row::generic::Row<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1821,8 +2378,12 @@ impl_op_assign!({
 			imp(lhs.as_dyn_cols_mut().as_dyn_stride_mut(), rhs)
 		}
 	}
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>)> DivAssign<f64>
-		for row::generic::Row<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = row::Mut<'a, T, Cols, LCStride>>),
+	> DivAssign<f64> for row::generic::Row<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1836,8 +2397,12 @@ impl_op_assign!({
 	}
 });
 impl_op_assign!({
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> MulAssign<f64>
-		for diag::generic::Diag<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>),
+	> MulAssign<f64> for diag::generic::Diag<L>
 	{
 		fn mul_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1849,8 +2414,12 @@ impl_op_assign!({
 			imp(lhs.as_dyn_rows_mut().as_dyn_stride_mut(), rhs)
 		}
 	}
-	impl<T: ComplexField, Cols: Shape, LCStride: Stride, L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>)> DivAssign<f64>
-		for diag::generic::Diag<L>
+	impl<
+		T: ComplexField,
+		Cols: Shape,
+		LCStride: Stride,
+		L: (for<'a> ReborrowMut<'a, Target = diag::Mut<'a, T, Cols, LCStride>>),
+	> DivAssign<f64> for diag::generic::Diag<L>
 	{
 		fn div_assign(&mut self, rhs: _) {
 			#[track_caller]
@@ -1882,7 +2451,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseRowMatRef<'_, I, RT>) -> SparseRowMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: &T,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> SparseRowMat<I, T> {
 					(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
 				}
 				let lhs = &self.0;
@@ -1903,7 +2479,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseColMatRef<'_, I, RT>) -> SparseColMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: &T,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> SparseColMat<I, T> {
 					with_dim!(M, rhs.nrows());
 					with_dim!(N, rhs.ncols());
 					let rhs = rhs.as_shape(M, N);
@@ -1911,7 +2494,10 @@ mod sparse {
 					let mut val = alloc::vec::Vec::new();
 					val.resize(symbolic.row_idx().len(), zero());
 					for j in rhs.ncols().indices() {
-						for (val, rhs) in iter::zip(&mut val[symbolic.col_range(j)], rhs.val_of_col(j)) {
+						for (val, rhs) in iter::zip(
+							&mut val[symbolic.col_range(j)],
+							rhs.val_of_col(j),
+						) {
 							*val = lhs * Conj::apply(rhs);
 						}
 					}
@@ -1937,7 +2523,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseRowMatRef<'_, I, LT>,
+				) -> SparseRowMat<I, T> {
 					(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
 				}
 				let rhs = &rhs.0;
@@ -1958,7 +2551,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseColMatRef<'_, I, LT>,
+				) -> SparseColMat<I, T> {
 					with_dim!(M, lhs.nrows());
 					with_dim!(N, lhs.ncols());
 					let lhs = lhs.as_shape(M, N);
@@ -1966,7 +2566,10 @@ mod sparse {
 					let mut val = alloc::vec::Vec::new();
 					val.resize(symbolic.row_idx().len(), zero());
 					for j in lhs.ncols().indices() {
-						for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], lhs.val_of_col(j)) {
+						for (val, lhs) in iter::zip(
+							&mut val[symbolic.col_range(j)],
+							lhs.val_of_col(j),
+						) {
 							*val = Conj::apply(lhs) * rhs;
 						}
 					}
@@ -1990,7 +2593,14 @@ mod sparse {
 
 			fn div(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseRowMatRef<'_, I, LT>,
+				) -> SparseRowMat<I, T> {
 					lhs * Scale(rhs.recip())
 				}
 				let rhs = &rhs.0;
@@ -2011,7 +2621,14 @@ mod sparse {
 
 			fn div(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseColMatRef<'_, I, LT>,
+				) -> SparseColMat<I, T> {
 					lhs * Scale(rhs.recip())
 				}
 				let rhs = &rhs.0;
@@ -2021,12 +2638,20 @@ mod sparse {
 		}
 	});
 	impl_op_assign!({
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
-			MulAssign<Scale<T>> for csr::generic::SparseRowMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>),
+		> MulAssign<Scale<T>> for csr::generic::SparseRowMat<L>
 		{
 			fn mul_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseRowMatMut<'_, I, T>,
+				) {
 					let mut lhs = lhs.transpose_mut();
 					lhs *= Scale::from_ref(rhs);
 				}
@@ -2035,12 +2660,20 @@ mod sparse {
 				imp(rhs, lhs.as_dyn_mut())
 			}
 		}
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
-			MulAssign<Scale<T>> for csc::generic::SparseColMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>),
+		> MulAssign<Scale<T>> for csc::generic::SparseColMat<L>
 		{
 			fn mul_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseColMatMut<'_, I, T>,
+				) {
 					with_dim!(M, lhs.nrows());
 					with_dim!(N, lhs.ncols());
 					let mut lhs = lhs.as_shape_mut(M, N);
@@ -2055,12 +2688,20 @@ mod sparse {
 				imp(rhs, lhs.as_dyn_mut())
 			}
 		}
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
-			DivAssign<Scale<T>> for csr::generic::SparseRowMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>),
+		> DivAssign<Scale<T>> for csr::generic::SparseRowMat<L>
 		{
 			fn div_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseRowMatMut<'_, I, T>,
+				) {
 					let mut lhs = lhs.transpose_mut();
 					lhs /= Scale::from_ref(rhs);
 				}
@@ -2069,12 +2710,20 @@ mod sparse {
 				imp(rhs, lhs.as_dyn_mut())
 			}
 		}
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
-			DivAssign<Scale<T>> for csc::generic::SparseColMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>),
+		> DivAssign<Scale<T>> for csc::generic::SparseColMat<L>
 		{
 			fn div_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseColMatMut<'_, I, T>,
+				) {
 					let mut lhs = lhs.transpose_mut();
 					lhs *= Scale(rhs.recip());
 				}
@@ -2098,7 +2747,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseRowMatRef<'_, I, RT>) -> SparseRowMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: &T,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) -> SparseRowMat<I, T> {
 					(Scale::from_ref(lhs) * rhs.transpose()).into_transpose()
 				}
 				let lhs = &from_f64::<T>(*self);
@@ -2119,7 +2775,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: &T, rhs: SparseColMatRef<'_, I, RT>) -> SparseColMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: &T,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) -> SparseColMat<I, T> {
 					Scale::from_ref(lhs) * rhs
 				}
 				let lhs = &from_f64::<T>(*self);
@@ -2142,7 +2805,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseRowMatRef<'_, I, LT>,
+				) -> SparseRowMat<I, T> {
 					(lhs.transpose() * Scale::from_ref(rhs)).into_transpose()
 				}
 				let rhs = &from_f64::<T>(*rhs);
@@ -2163,7 +2833,14 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseColMatRef<'_, I, LT>,
+				) -> SparseColMat<I, T> {
 					lhs * Scale::from_ref(rhs)
 				}
 				let rhs = &from_f64::<T>(*rhs);
@@ -2184,7 +2861,14 @@ mod sparse {
 
 			fn div(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseRowMatRef<'_, I, LT>) -> SparseRowMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseRowMatRef<'_, I, LT>,
+				) -> SparseRowMat<I, T> {
 					lhs * Scale(rhs.recip())
 				}
 				let rhs = &from_f64::<T>(*rhs);
@@ -2205,7 +2889,14 @@ mod sparse {
 
 			fn div(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(rhs: &T, lhs: SparseColMatRef<'_, I, LT>) -> SparseColMat<I, T> {
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
+					rhs: &T,
+					lhs: SparseColMatRef<'_, I, LT>,
+				) -> SparseColMat<I, T> {
 					lhs * Scale(rhs.recip())
 				}
 				let rhs = &from_f64::<T>(*rhs);
@@ -2215,12 +2906,20 @@ mod sparse {
 		}
 	});
 	impl_op_assign!({
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
-			MulAssign<f64> for csr::generic::SparseRowMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>),
+		> MulAssign<f64> for csr::generic::SparseRowMat<L>
 		{
 			fn mul_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseRowMatMut<'_, I, T>,
+				) {
 					let mut lhs = lhs.transpose_mut();
 					lhs *= Scale::from_ref(rhs);
 				}
@@ -2229,12 +2928,20 @@ mod sparse {
 				imp(rhs, lhs.as_dyn_mut())
 			}
 		}
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
-			MulAssign<f64> for csc::generic::SparseColMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>),
+		> MulAssign<f64> for csc::generic::SparseColMat<L>
 		{
 			fn mul_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseColMatMut<'_, I, T>,
+				) {
 					*&mut { lhs } *= Scale::from_ref(rhs)
 				}
 				let rhs = &from_f64::<T>(*rhs);
@@ -2242,12 +2949,20 @@ mod sparse {
 				imp(rhs, lhs.as_dyn_mut())
 			}
 		}
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>)>
-			DivAssign<f64> for csr::generic::SparseRowMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csr::Mut<'a, I, T, Rows, Cols>>),
+		> DivAssign<f64> for csr::generic::SparseRowMat<L>
 		{
 			fn div_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseRowMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseRowMatMut<'_, I, T>,
+				) {
 					let mut lhs = lhs.transpose_mut();
 					lhs /= Scale::from_ref(rhs);
 				}
@@ -2256,12 +2971,20 @@ mod sparse {
 				imp(rhs, lhs.as_dyn_mut())
 			}
 		}
-		impl<I: Index, T: ComplexField, Rows: Shape, Cols: Shape, L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>)>
-			DivAssign<f64> for csc::generic::SparseColMat<L>
+		impl<
+			I: Index,
+			T: ComplexField,
+			Rows: Shape,
+			Cols: Shape,
+			L: (for<'a> ReborrowMut<'a, Target = csc::Mut<'a, I, T, Rows, Cols>>),
+		> DivAssign<f64> for csc::generic::SparseColMat<L>
 		{
 			fn div_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField>(rhs: &T, lhs: SparseColMatMut<'_, I, T>) {
+				fn imp<I: Index, T: ComplexField>(
+					rhs: &T,
+					lhs: SparseColMatMut<'_, I, T>,
+				) {
 					let mut lhs = lhs.transpose_mut();
 					lhs *= Scale(rhs.recip());
 				}
@@ -2272,8 +2995,13 @@ mod sparse {
 		}
 	});
 	impl_op!({
-		impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape, Inner: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, T, Rows, Cols>>)> Neg
-			for csr::generic::SparseRowMat<Inner>
+		impl<
+			I: Index,
+			T: Conjugate,
+			Rows: Shape,
+			Cols: Shape,
+			Inner: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, T, Rows, Cols>>),
+		> Neg for csr::generic::SparseRowMat<Inner>
 		{
 			type Output = SparseRowMat<I, T::Canonical, Rows, Cols>;
 
@@ -2281,14 +3009,21 @@ mod sparse {
 				self.rb().transpose().neg().into_transpose()
 			}
 		}
-		impl<I: Index, T: Conjugate, Rows: Shape, Cols: Shape, Inner: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, T, Rows, Cols>>)> Neg
-			for csc::generic::SparseColMat<Inner>
+		impl<
+			I: Index,
+			T: Conjugate,
+			Rows: Shape,
+			Cols: Shape,
+			Inner: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, T, Rows, Cols>>),
+		> Neg for csc::generic::SparseColMat<Inner>
 		{
 			type Output = SparseColMat<I, T::Canonical, Rows, Cols>;
 
 			fn neg(self) {
 				#[track_caller]
-				fn imp<I: Index, T: Conjugate>(A: SparseColMatRef<'_, I, T>) -> SparseColMat<I, T::Canonical> {
+				fn imp<I: Index, T: Conjugate>(
+					A: SparseColMatRef<'_, I, T>,
+				) -> SparseColMat<I, T::Canonical> {
 					with_dim!(M, A.nrows());
 					with_dim!(N, A.ncols());
 					let A = A.as_shape(M, N);
@@ -2296,7 +3031,10 @@ mod sparse {
 					let mut val = alloc::vec::Vec::new();
 					val.resize(symbolic.row_idx().len(), zero());
 					for j in A.ncols().indices() {
-						for (val, lhs) in iter::zip(&mut val[symbolic.col_range(j)], A.val_of_col(j)) {
+						for (val, lhs) in iter::zip(
+							&mut val[symbolic.col_range(j)],
+							A.val_of_col(j),
+						) {
 							*val = -Conj::apply(lhs);
 						}
 					}
@@ -2320,8 +3058,19 @@ mod sparse {
 		{
 			fn add_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RT>) {
-					crate::sparse::ops::binary_op_assign_into(lhs, rhs, add_assign_fn::<T, RT>)
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: SparseColMatMut<'_, I, T>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) {
+					crate::sparse::ops::binary_op_assign_into(
+						lhs,
+						rhs,
+						add_assign_fn::<T, RT>,
+					)
 				}
 				let lhs = self.rb_mut();
 				let rhs = rhs.rb();
@@ -2340,8 +3089,19 @@ mod sparse {
 		{
 			fn sub_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseColMatMut<'_, I, T>, rhs: SparseColMatRef<'_, I, RT>) {
-					crate::sparse::ops::binary_op_assign_into(lhs, rhs, sub_assign_fn::<T, RT>)
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: SparseColMatMut<'_, I, T>,
+					rhs: SparseColMatRef<'_, I, RT>,
+				) {
+					crate::sparse::ops::binary_op_assign_into(
+						lhs,
+						rhs,
+						sub_assign_fn::<T, RT>,
+					)
 				}
 				let lhs = self.rb_mut();
 				let rhs = rhs.rb();
@@ -2362,8 +3122,19 @@ mod sparse {
 		{
 			fn add_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseRowMatMut<'_, I, T>, rhs: SparseRowMatRef<'_, I, RT>) {
-					crate::sparse::ops::binary_op_assign_into(lhs.transpose_mut(), rhs.transpose(), add_assign_fn::<T, RT>)
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: SparseRowMatMut<'_, I, T>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) {
+					crate::sparse::ops::binary_op_assign_into(
+						lhs.transpose_mut(),
+						rhs.transpose(),
+						add_assign_fn::<T, RT>,
+					)
 				}
 				let lhs = self.rb_mut();
 				let rhs = rhs.rb();
@@ -2382,8 +3153,19 @@ mod sparse {
 		{
 			fn sub_assign(&mut self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, RT: Conjugate<Canonical = T>>(lhs: SparseRowMatMut<'_, I, T>, rhs: SparseRowMatRef<'_, I, RT>) {
-					crate::sparse::ops::binary_op_assign_into(lhs.transpose_mut(), rhs.transpose(), sub_assign_fn::<T, RT>)
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					RT: Conjugate<Canonical = T>,
+				>(
+					lhs: SparseRowMatMut<'_, I, T>,
+					rhs: SparseRowMatRef<'_, I, RT>,
+				) {
+					crate::sparse::ops::binary_op_assign_into(
+						lhs.transpose_mut(),
+						rhs.transpose(),
+						sub_assign_fn::<T, RT>,
+					)
 				}
 				let lhs = self.rb_mut();
 				let rhs = rhs.rb();
@@ -2407,11 +3189,17 @@ mod sparse {
 
 			fn add(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: SparseColMatRef<'_, I, RT>,
 				) -> SparseColMat<I, T> {
-					crate::sparse::ops::binary_op(lhs, rhs, add_fn::<T, LT, RT>).unwrap()
+					crate::sparse::ops::binary_op(lhs, rhs, add_fn::<T, LT, RT>)
+						.unwrap()
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
@@ -2434,11 +3222,17 @@ mod sparse {
 
 			fn sub(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: SparseColMatRef<'_, I, RT>,
 				) -> SparseColMat<I, T> {
-					crate::sparse::ops::binary_op(lhs, rhs, sub_fn::<T, LT, RT>).unwrap()
+					crate::sparse::ops::binary_op(lhs, rhs, sub_fn::<T, LT, RT>)
+						.unwrap()
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
@@ -2463,13 +3257,22 @@ mod sparse {
 
 			fn add(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: SparseRowMatRef<'_, I, RT>,
 				) -> SparseRowMat<I, T> {
-					crate::sparse::ops::binary_op(lhs.transpose(), rhs.transpose(), add_fn::<T, LT, RT>)
-						.unwrap()
-						.into_transpose()
+					crate::sparse::ops::binary_op(
+						lhs.transpose(),
+						rhs.transpose(),
+						add_fn::<T, LT, RT>,
+					)
+					.unwrap()
+					.into_transpose()
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
@@ -2492,13 +3295,22 @@ mod sparse {
 
 			fn sub(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: SparseRowMatRef<'_, I, RT>,
 				) -> SparseRowMat<I, T> {
-					crate::sparse::ops::binary_op(lhs.transpose(), rhs.transpose(), sub_fn::<T, LT, RT>)
-						.unwrap()
-						.into_transpose()
+					crate::sparse::ops::binary_op(
+						lhs.transpose(),
+						rhs.transpose(),
+						sub_fn::<T, LT, RT>,
+					)
+					.unwrap()
+					.into_transpose()
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
@@ -2524,15 +3336,25 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: SparseColMatRef<'_, I, RT>,
 				) -> SparseColMat<I, T> {
 					let nrows = lhs.nrows();
 					let ncols = rhs.ncols();
-					linalg_sp::matmul::sparse_sparse_matmul(lhs, rhs, one::<T>(), crate::get_global_parallelism())
-						.unwrap()
-						.into_shape(nrows, ncols)
+					linalg_sp::matmul::sparse_sparse_matmul(
+						lhs,
+						rhs,
+						one::<T>(),
+						crate::get_global_parallelism(),
+					)
+					.unwrap()
+					.into_shape(nrows, ncols)
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
@@ -2557,7 +3379,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: SparseRowMatRef<'_, I, RT>,
 				) -> SparseRowMat<I, T> {
@@ -2583,28 +3410,44 @@ mod sparse {
 			RRStride: Stride,
 			RCStride: Stride,
 			L: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, LT, Rows, Depth>>),
-			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>>),
+			R: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>,
+				>),
 		> Mul<mat::generic::Mat<R>> for csc::generic::SparseColMat<L>
 		{
 			type Output = Mat<T, Rows, Cols>;
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: MatRef<'_, RT>,
 				) -> Mat<T> {
 					let nrows = lhs.nrows();
 					let ncols = rhs.ncols();
 					let mut out = Mat::zeros(nrows, ncols);
-					linalg_sp::matmul::sparse_dense_matmul(out.rb_mut(), Accum::Add, lhs, rhs, T::one_impl(), crate::get_global_parallelism());
+					linalg_sp::matmul::sparse_dense_matmul(
+						out.rb_mut(),
+						Accum::Add,
+						lhs,
+						rhs,
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
 					out
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let nrows = lhs.nrows();
 				let ncols = rhs.ncols();
-				imp(lhs.as_dyn(), rhs.as_dyn().as_dyn_stride()).into_shape(nrows, ncols)
+				imp(lhs.as_dyn(), rhs.as_dyn().as_dyn_stride())
+					.into_shape(nrows, ncols)
 			}
 		}
 		impl<
@@ -2618,14 +3461,22 @@ mod sparse {
 			RRStride: Stride,
 			RCStride: Stride,
 			L: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, LT, Rows, Depth>>),
-			R: (for<'a> Reborrow<'a, Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>>),
+			R: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, RT, Depth, Cols, RRStride, RCStride>,
+				>),
 		> Mul<mat::generic::Mat<R>> for csr::generic::SparseRowMat<L>
 		{
 			type Output = Mat<T, Rows, Cols>;
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: MatRef<'_, RT>,
 				) -> Mat<T> {
@@ -2646,7 +3497,8 @@ mod sparse {
 				let rhs = rhs.rb();
 				let nrows = lhs.nrows();
 				let ncols = rhs.ncols();
-				imp(lhs.as_dyn(), rhs.as_dyn().as_dyn_stride()).into_shape(nrows, ncols)
+				imp(lhs.as_dyn(), rhs.as_dyn().as_dyn_stride())
+					.into_shape(nrows, ncols)
 			}
 		}
 	});
@@ -2667,7 +3519,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Col<T> {
@@ -2686,7 +3543,8 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let nrows = lhs.nrows();
-				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(nrows)
+				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride())
+					.into_row_shape(nrows)
 			}
 		}
 		impl<
@@ -2705,7 +3563,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: ColRef<'_, RT>,
 				) -> Col<T> {
@@ -2724,7 +3587,8 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let nrows = lhs.nrows();
-				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride()).into_row_shape(nrows)
+				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride())
+					.into_row_shape(nrows)
 			}
 		}
 	});
@@ -2745,7 +3609,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: DiagRef<'_, RT>,
 				) -> SparseColMat<I, T> {
@@ -2758,7 +3627,10 @@ mod sparse {
 					out.resize(symbolic.row_idx().len(), T::zero_impl());
 					for j in lhs.ncols().indices() {
 						let ref rhs = Conj::apply(&rhs[j]);
-						for (out, lhs) in iter::zip(&mut out[symbolic.col_range(j)], lhs.val_of_col(j)) {
+						for (out, lhs) in iter::zip(
+							&mut out[symbolic.col_range(j)],
+							lhs.val_of_col(j),
+						) {
 							*out = Conj::apply(lhs) * rhs;
 						}
 					}
@@ -2767,7 +3639,11 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb().column_vector();
 				let (nrows, ncols) = lhs.shape();
-				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride().as_diagonal()).into_shape(nrows, ncols)
+				imp(
+					lhs.as_dyn(),
+					rhs.as_dyn_rows().as_dyn_stride().as_diagonal(),
+				)
+				.into_shape(nrows, ncols)
 			}
 		}
 		impl<
@@ -2786,7 +3662,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: DiagRef<'_, RT>,
 				) -> SparseRowMat<I, T> {
@@ -2798,7 +3679,13 @@ mod sparse {
 					let mut out = alloc::vec::Vec::new();
 					out.resize(symbolic.col_idx().len(), T::zero_impl());
 					for i in lhs.nrows().indices() {
-						for ((j, out), lhs) in iter::zip(iter::zip(symbolic.col_idx_of_row(i), &mut out[symbolic.row_range(i)]), lhs.val_of_row(i)) {
+						for ((j, out), lhs) in iter::zip(
+							iter::zip(
+								symbolic.col_idx_of_row(i),
+								&mut out[symbolic.row_range(i)],
+							),
+							lhs.val_of_row(i),
+						) {
 							*out = Conj::apply(lhs) * Conj::apply(&rhs[j]);
 						}
 					}
@@ -2807,7 +3694,11 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb().column_vector();
 				let (nrows, ncols) = lhs.shape();
-				imp(lhs.as_dyn(), rhs.as_dyn_rows().as_dyn_stride().as_diagonal()).into_shape(nrows, ncols)
+				imp(
+					lhs.as_dyn(),
+					rhs.as_dyn_rows().as_dyn_stride().as_diagonal(),
+				)
+				.into_shape(nrows, ncols)
 			}
 		}
 	});
@@ -2826,7 +3717,11 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseColMatRef<'_, I, LT>,
 					rhs: PermRef<'_, I>,
 				) -> SparseColMat<I, T> {
@@ -2838,9 +3733,14 @@ mod sparse {
 					let mut out_col_ptr = alloc::vec::Vec::new();
 					let mut out_row_idx = alloc::vec::Vec::new();
 					let mut out = alloc::vec::Vec::new();
-					out_col_ptr.resize(symbolic.col_ptr().len(), I::truncate(0));
-					out_row_idx.resize(symbolic.col_ptr().len(), I::truncate(0));
-					out.resize(symbolic.row_idx().len(), T::Canonical::zero_impl());
+					out_col_ptr
+						.resize(symbolic.col_ptr().len(), I::truncate(0));
+					out_row_idx
+						.resize(symbolic.col_ptr().len(), I::truncate(0));
+					out.resize(
+						symbolic.row_idx().len(),
+						T::Canonical::zero_impl(),
+					);
 					let inv = rhs.bound_arrays().1;
 					let mut pos = 0usize;
 					for j in lhs.ncols().indices() {
@@ -2848,7 +3748,10 @@ mod sparse {
 						let row_idx = lhs.as_dyn().row_idx_of_col_raw(*inv);
 						let len = row_idx.len();
 						out_row_idx[pos..][..len].copy_from_slice(row_idx);
-						for (out, lhs) in iter::zip(&mut out[pos..][..len], lhs.val_of_col(inv)) {
+						for (out, lhs) in iter::zip(
+							&mut out[pos..][..len],
+							lhs.val_of_col(inv),
+						) {
 							*out = Conj::apply(lhs);
 						}
 						pos += row_idx.len();
@@ -2856,7 +3759,15 @@ mod sparse {
 					out_row_idx.truncate(pos);
 					out.truncate(pos);
 					SparseColMat::new(
-						unsafe { SymbolicSparseColMat::new_unchecked(symbolic.nrows(), symbolic.ncols(), out_col_ptr, None, out_row_idx) },
+						unsafe {
+							SymbolicSparseColMat::new_unchecked(
+								symbolic.nrows(),
+								symbolic.ncols(),
+								out_col_ptr,
+								None,
+								out_row_idx,
+							)
+						},
 						out,
 					)
 					.into_shape(*M, *N)
@@ -2864,7 +3775,8 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let (nrows, ncols) = lhs.shape();
-				imp(lhs.as_dyn(), rhs.as_shape(ncols.unbound())).into_shape(nrows, ncols)
+				imp(lhs.as_dyn(), rhs.as_shape(ncols.unbound()))
+					.into_shape(nrows, ncols)
 			}
 		}
 		impl<
@@ -2881,7 +3793,11 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+				>(
 					lhs: SparseRowMatRef<'_, I, LT>,
 					rhs: PermRef<'_, I>,
 				) -> SparseRowMat<I, T> {
@@ -2893,16 +3809,24 @@ mod sparse {
 					let mut out_row_ptr = alloc::vec::Vec::new();
 					let mut out_col_idx = alloc::vec::Vec::new();
 					let mut out = alloc::vec::Vec::new();
-					out_row_ptr.resize(symbolic.row_ptr().len(), I::truncate(0));
-					out_col_idx.resize(symbolic.row_ptr().len(), I::truncate(0));
-					out.resize(symbolic.col_idx().len(), T::Canonical::zero_impl());
+					out_row_ptr
+						.resize(symbolic.row_ptr().len(), I::truncate(0));
+					out_col_idx
+						.resize(symbolic.row_ptr().len(), I::truncate(0));
+					out.resize(
+						symbolic.col_idx().len(),
+						T::Canonical::zero_impl(),
+					);
 					let inv = rhs.bound_arrays().0;
 					let mut pos = 0usize;
 					for i in lhs.nrows().indices() {
 						let col_idx = lhs.col_idx_of_row_raw(i);
 						let len = col_idx.len();
 						for ((out_j, out_v), (lhs_j, lhs_v)) in iter::zip(
-							iter::zip(&mut out_col_idx[pos..][..len], &mut out[pos..][..len]),
+							iter::zip(
+								&mut out_col_idx[pos..][..len],
+								&mut out[pos..][..len],
+							),
 							iter::zip(lhs.col_idx_of_row(i), lhs.val_of_row(i)),
 						) {
 							*out_j = *inv[lhs_j];
@@ -2913,7 +3837,15 @@ mod sparse {
 					out_col_idx.truncate(pos);
 					out.truncate(pos);
 					SparseRowMat::new(
-						unsafe { SymbolicSparseRowMat::new_unchecked(symbolic.nrows(), symbolic.ncols(), out_row_ptr, None, out_col_idx) },
+						unsafe {
+							SymbolicSparseRowMat::new_unchecked(
+								symbolic.nrows(),
+								symbolic.ncols(),
+								out_row_ptr,
+								None,
+								out_col_idx,
+							)
+						},
 						out,
 					)
 					.into_shape(*M, *N)
@@ -2921,7 +3853,8 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let (nrows, ncols) = lhs.shape();
-				imp(lhs.as_dyn(), rhs.as_shape(ncols.unbound())).into_shape(nrows, ncols)
+				imp(lhs.as_dyn(), rhs.as_shape(ncols.unbound()))
+					.into_shape(nrows, ncols)
 			}
 		}
 	});
@@ -2976,7 +3909,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: DiagRef<'_, LT>,
 					rhs: SparseColMatRef<'_, I, RT>,
 				) -> SparseColMat<I, T> {
@@ -2985,7 +3923,11 @@ mod sparse {
 				let lhs = self.rb().column_vector();
 				let rhs = rhs.rb();
 				let (nrows, ncols) = rhs.shape();
-				imp(lhs.as_dyn_rows().as_dyn_stride().as_diagonal(), rhs.as_dyn()).into_shape(nrows, ncols)
+				imp(
+					lhs.as_dyn_rows().as_dyn_stride().as_diagonal(),
+					rhs.as_dyn(),
+				)
+				.into_shape(nrows, ncols)
 			}
 		}
 		impl<
@@ -3004,7 +3946,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: DiagRef<'_, LT>,
 					rhs: SparseRowMatRef<'_, I, RT>,
 				) -> SparseRowMat<I, T> {
@@ -3013,7 +3960,11 @@ mod sparse {
 				let lhs = self.rb().column_vector();
 				let rhs = rhs.rb();
 				let (nrows, ncols) = rhs.shape();
-				imp(lhs.as_dyn_rows().as_dyn_stride().as_diagonal(), rhs.as_dyn()).into_shape(nrows, ncols)
+				imp(
+					lhs.as_dyn_rows().as_dyn_stride().as_diagonal(),
+					rhs.as_dyn(),
+				)
+				.into_shape(nrows, ncols)
 			}
 		}
 	});
@@ -3028,7 +3979,10 @@ mod sparse {
 			LRStride: Stride,
 			LCStride: Stride,
 			RT: (Conjugate<Canonical = T>),
-			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>>),
+			L: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>,
+				>),
 			R: (for<'a> Reborrow<'a, Target = csc::Ref<'a, I, RT, Depth, Cols>>),
 		> Mul<csc::generic::SparseColMat<R>> for mat::generic::Mat<L>
 		{
@@ -3036,21 +3990,34 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: MatRef<'_, LT>,
 					rhs: SparseColMatRef<'_, I, RT>,
 				) -> Mat<T> {
 					let nrows = lhs.nrows();
 					let ncols = rhs.ncols();
 					let mut out = Mat::zeros(nrows, ncols);
-					linalg_sp::matmul::dense_sparse_matmul(out.rb_mut(), Accum::Add, lhs, rhs, T::one_impl(), crate::get_global_parallelism());
+					linalg_sp::matmul::dense_sparse_matmul(
+						out.rb_mut(),
+						Accum::Add,
+						lhs,
+						rhs,
+						T::one_impl(),
+						crate::get_global_parallelism(),
+					);
 					out
 				}
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let nrows = lhs.nrows();
 				let ncols = rhs.ncols();
-				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn()).into_shape(nrows, ncols)
+				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn())
+					.into_shape(nrows, ncols)
 			}
 		}
 		impl<
@@ -3063,7 +4030,10 @@ mod sparse {
 			LRStride: Stride,
 			LCStride: Stride,
 			RT: (Conjugate<Canonical = T>),
-			L: (for<'a> Reborrow<'a, Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>>),
+			L: (for<'a> Reborrow<
+					'a,
+					Target = mat::Ref<'a, LT, Rows, Depth, LRStride, LCStride>,
+				>),
 			R: (for<'a> Reborrow<'a, Target = csr::Ref<'a, I, RT, Depth, Cols>>),
 		> Mul<csr::generic::SparseRowMat<R>> for mat::generic::Mat<L>
 		{
@@ -3071,7 +4041,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: MatRef<'_, LT>,
 					rhs: SparseRowMatRef<'_, I, RT>,
 				) -> Mat<T> {
@@ -3092,7 +4067,8 @@ mod sparse {
 				let rhs = rhs.rb();
 				let nrows = lhs.nrows();
 				let ncols = rhs.ncols();
-				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn()).into_shape(nrows, ncols)
+				imp(lhs.as_dyn().as_dyn_stride(), rhs.as_dyn())
+					.into_shape(nrows, ncols)
 			}
 		}
 	});
@@ -3113,7 +4089,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: RowRef<'_, LT>,
 					rhs: SparseColMatRef<'_, I, RT>,
 				) -> Row<T> {
@@ -3132,7 +4113,8 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let ncols = rhs.ncols();
-				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn()).into_col_shape(ncols)
+				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn())
+					.into_col_shape(ncols)
 			}
 		}
 		impl<
@@ -3151,7 +4133,12 @@ mod sparse {
 
 			fn mul(self, rhs: _) {
 				#[track_caller]
-				fn imp<I: Index, T: ComplexField, LT: Conjugate<Canonical = T>, RT: Conjugate<Canonical = T>>(
+				fn imp<
+					I: Index,
+					T: ComplexField,
+					LT: Conjugate<Canonical = T>,
+					RT: Conjugate<Canonical = T>,
+				>(
 					lhs: RowRef<'_, LT>,
 					rhs: SparseRowMatRef<'_, I, RT>,
 				) -> Row<T> {
@@ -3170,22 +4157,45 @@ mod sparse {
 				let lhs = self.rb();
 				let rhs = rhs.rb();
 				let ncols = rhs.ncols();
-				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn()).into_col_shape(ncols)
+				imp(lhs.as_dyn_cols().as_dyn_stride(), rhs.as_dyn())
+					.into_col_shape(ncols)
 			}
 		}
 	});
-	fn add_fn<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: Option<&LhsT>, rhs: Option<&RhsT>) -> T {
-		lhs.map(Conj::apply).unwrap_or_else(zero::<T>) + rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
+	fn add_fn<
+		T: ComplexField,
+		LhsT: Conjugate<Canonical = T>,
+		RhsT: Conjugate<Canonical = T>,
+	>(
+		lhs: Option<&LhsT>,
+		rhs: Option<&RhsT>,
+	) -> T {
+		lhs.map(Conj::apply).unwrap_or_else(zero::<T>)
+			+ rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
 	}
-	fn sub_fn<T: ComplexField, LhsT: Conjugate<Canonical = T>, RhsT: Conjugate<Canonical = T>>(lhs: Option<&LhsT>, rhs: Option<&RhsT>) -> T {
-		lhs.map(Conj::apply).unwrap_or_else(zero::<T>) - rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
+	fn sub_fn<
+		T: ComplexField,
+		LhsT: Conjugate<Canonical = T>,
+		RhsT: Conjugate<Canonical = T>,
+	>(
+		lhs: Option<&LhsT>,
+		rhs: Option<&RhsT>,
+	) -> T {
+		lhs.map(Conj::apply).unwrap_or_else(zero::<T>)
+			- rhs.map(Conj::apply).unwrap_or_else(zero::<T>)
 	}
-	fn add_assign_fn<T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: &mut T, rhs: Option<&RhsT>) {
+	fn add_assign_fn<T: ComplexField, RhsT: Conjugate<Canonical = T>>(
+		dst: &mut T,
+		rhs: Option<&RhsT>,
+	) {
 		if let Some(rhs) = rhs {
 			*dst += Conj::apply(rhs);
 		}
 	}
-	fn sub_assign_fn<T: ComplexField, RhsT: Conjugate<Canonical = T>>(dst: &mut T, rhs: Option<&RhsT>) {
+	fn sub_assign_fn<T: ComplexField, RhsT: Conjugate<Canonical = T>>(
+		dst: &mut T,
+		rhs: Option<&RhsT>,
+	) {
 		if let Some(rhs) = rhs {
 			*dst -= Conj::apply(rhs);
 		}
@@ -3321,7 +4331,8 @@ mod test {
 		use crate::Scale as scale;
 		let (A, _) = matrices();
 		let k = 3.0;
-		let expected = Mat::from_fn(A.nrows(), A.ncols(), |i, j| A.as_ref()[(i, j)] * k);
+		let expected =
+			Mat::from_fn(A.nrows(), A.ncols(), |i, j| A.as_ref()[(i, j)] * k);
 		{
 			assert_matrix_approx_eq(A.as_ref() * scale(k), &expected);
 			assert_matrix_approx_eq(&A * scale(k), &expected);
@@ -3357,8 +4368,16 @@ mod test {
 	#[test]
 	fn test_perm_mul() {
 		let A = Mat::from_fn(6, 5, |i, j| (j + 5 * i) as f64);
-		let pl = Perm::<usize>::new_checked(Box::new([5, 1, 4, 0, 2, 3]), Box::new([3, 1, 4, 5, 2, 0]), 6);
-		let pr = Perm::<usize>::new_checked(Box::new([1, 4, 0, 2, 3]), Box::new([2, 0, 3, 4, 1]), 5);
+		let pl = Perm::<usize>::new_checked(
+			Box::new([5, 1, 4, 0, 2, 3]),
+			Box::new([3, 1, 4, 5, 2, 0]),
+			6,
+		);
+		let pr = Perm::<usize>::new_checked(
+			Box::new([1, 4, 0, 2, 3]),
+			Box::new([2, 0, 3, 4, 1]),
+			5,
+		);
 		let perm_left = mat![
 			[0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
 			[0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
@@ -3374,7 +4393,14 @@ mod test {
 			[0.0, 0.0, 1.0, 0.0, 0.0],
 			[0.0, 0.0, 0.0, 1.0, 0.0],
 		];
-		assert!(&pl * pl.as_ref().inverse() == PermRef::<'_, usize>::new_checked(&[0, 1, 2, 3, 4, 5], &[0, 1, 2, 3, 4, 5], 6));
+		assert!(
+			&pl * pl.as_ref().inverse()
+				== PermRef::<'_, usize>::new_checked(
+					&[0, 1, 2, 3, 4, 5],
+					&[0, 1, 2, 3, 4, 5],
+					6
+				)
+		);
 		assert!(&perm_left * &A == &pl * &A);
 		assert!(&A * &perm_right == &A * &pr);
 	}
@@ -3402,7 +4428,10 @@ mod test {
 		assert_eq!(given.ncols(), expected.ncols());
 		for i in 0..given.nrows() {
 			for j in 0..given.ncols() {
-				assert_approx_eq!(given.as_ref()[(i, j)], expected.as_ref()[(i, j)]);
+				assert_approx_eq!(
+					given.as_ref()[(i, j)],
+					expected.as_ref()[(i, j)]
+				);
 			}
 		}
 	}

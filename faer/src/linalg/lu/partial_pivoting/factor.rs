@@ -2,7 +2,11 @@ use crate::internal_prelude::*;
 use crate::perm::swap_rows_idx;
 use crate::{assert, debug_assert};
 #[inline]
-pub(crate) fn swap_elems<T: ComplexField>(col: ColMut<'_, T>, i: usize, j: usize) {
+pub(crate) fn swap_elems<T: ComplexField>(
+	col: ColMut<'_, T>,
+	i: usize,
+	j: usize,
+) {
 	debug_assert!(all(i < col.nrows(), j < col.nrows()));
 	let rs = col.row_stride();
 	let col = col.as_ptr_mut();
@@ -12,7 +16,12 @@ pub(crate) fn swap_elems<T: ComplexField>(col: ColMut<'_, T>, i: usize, j: usize
 		core::ptr::swap(a, b);
 	}
 }
-fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start: usize, end: usize, trans: &mut [I]) -> usize {
+fn lu_in_place_unblocked<I: Index, T: ComplexField>(
+	matrix: MatMut<'_, T>,
+	start: usize,
+	end: usize,
+	trans: &mut [I],
+) -> usize {
 	let mut matrix = matrix;
 	let m = matrix.nrows();
 	if start == end {
@@ -45,7 +54,14 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(matrix: MatMut<'_, T>, start
 		let (_, A01, A10, A11) = matrix.rb_mut().split_at_mut(row + 1, row + 1);
 		let A01 = A01.row(row);
 		let A10 = A10.col(row);
-		linalg::matmul::matmul(A11, Accum::Add, A10.as_mat(), A01.as_mat(), -one::<T>(), Par::Seq);
+		linalg::matmul::matmul(
+			A11,
+			Accum::Add,
+			A10.as_mat(),
+			A01.as_mat(),
+			-one::<T>(),
+			Par::Seq,
+		);
 	}
 	n_trans
 }
@@ -80,13 +96,25 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	);
 	{
 		let mut A = A.rb_mut().get_mut(.., start..end);
-		let (A00, mut A01, A10, mut A11) = A.rb_mut().split_at_mut(block_size, block_size);
+		let (A00, mut A01, A10, mut A11) =
+			A.rb_mut().split_at_mut(block_size, block_size);
 		let A00 = A00.rb();
 		let A10 = A10.rb();
 		{
-			linalg::triangular_solve::solve_unit_lower_triangular_in_place(A00.rb(), A01.rb_mut(), par);
+			linalg::triangular_solve::solve_unit_lower_triangular_in_place(
+				A00.rb(),
+				A01.rb_mut(),
+				par,
+			);
 		}
-		linalg::matmul::matmul(A11.rb_mut(), Accum::Add, A10.rb(), A01.rb(), -one::<T>(), par);
+		linalg::matmul::matmul(
+			A11.rb_mut(),
+			Accum::Add,
+			A10.rb(),
+			A01.rb(),
+			-one::<T>(),
+			par,
+		);
 		n_trans += lu_in_place_recursion(
 			A.rb_mut().get_mut(block_size..m, ..),
 			block_size,
@@ -113,7 +141,11 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 	};
 	let (A_left, A_right) = A.rb_mut().split_at_col_mut(start);
 	let A_right = A_right.get_mut(.., end - start..ncols - start);
-	let par = if m * (ncols - n) > params.par_threshold { par } else { Par::Seq };
+	let par = if m * (ncols - n) > params.par_threshold {
+		par
+	} else {
+		Par::Seq
+	};
 	match par {
 		Par::Seq => {
 			swap(A_left);
@@ -123,17 +155,28 @@ pub(crate) fn lu_in_place_recursion<I: Index, T: ComplexField>(
 		Par::Rayon(nthreads) => {
 			let nthreads = nthreads.get();
 			let len = (A_left.ncols() + A_right.ncols()) as f64;
-			let left_threads = Ord::min((nthreads as f64 * (A_left.ncols() as f64 / len)) as usize, nthreads);
+			let left_threads = Ord::min(
+				(nthreads as f64 * (A_left.ncols() as f64 / len)) as usize,
+				nthreads,
+			);
 			let right_threads = nthreads - left_threads;
 			crate::utils::thread::join_raw(
 				|_| {
 					if A_left.ncols() > 0 {
-						spindle::for_each(left_threads, A_left.par_col_partition_mut(left_threads), |A| swap(A))
+						spindle::for_each(
+							left_threads,
+							A_left.par_col_partition_mut(left_threads),
+							|A| swap(A),
+						)
 					}
 				},
 				|_| {
 					if A_right.ncols() > 0 {
-						spindle::for_each(right_threads, A_right.par_col_partition_mut(right_threads), |A| swap(A))
+						spindle::for_each(
+							right_threads,
+							A_right.par_col_partition_mut(right_threads),
+							|A| swap(A),
+						)
 					}
 				},
 				par,
@@ -157,8 +200,8 @@ pub struct PartialPivLuParams {
 /// information about the resulting $LU$ factorization
 #[derive(Copy, Clone, Debug)]
 pub struct PartialPivLuInfo {
-	/// number of transpositions that were performed, can be used to compute the determinant of
-	/// $P$
+	/// number of transpositions that were performed, can be used to compute
+	/// the determinant of $P$
 	pub transposition_count: usize,
 }
 /// error in the $LU$ factorization
@@ -178,7 +221,12 @@ impl<T: ComplexField> Auto<T> for PartialPivLuParams {
 	}
 }
 #[inline]
-pub fn lu_in_place_scratch<I: Index, T: ComplexField>(nrows: usize, ncols: usize, par: Par, params: Spec<PartialPivLuParams, T>) -> StackReq {
+pub fn lu_in_place_scratch<I: Index, T: ComplexField>(
+	nrows: usize,
+	ncols: usize,
+	par: Par,
+	params: Spec<PartialPivLuParams, T>,
+) -> StackReq {
 	_ = par;
 	_ = params;
 	StackReq::new::<I>(Ord::min(nrows, ncols))
@@ -194,7 +242,10 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 	let _ = &params;
 	let truncate = I::truncate;
 	#[cfg(feature = "perf-warn")]
-	if (A.col_stride().unsigned_abs() == 1 || A.row_stride().unsigned_abs() != 1) && crate::__perf_warn!(LU_WARN) {
+	if (A.col_stride().unsigned_abs() == 1
+		|| A.row_stride().unsigned_abs() != 1)
+		&& crate::__perf_warn!(LU_WARN)
+	{
 		log::warn!(
 			target : "faer_perf",
 			"LU with partial pivoting prefers column-major or row-major matrix. Found matrix with generic strides."
@@ -209,16 +260,28 @@ pub fn lu_in_place<'out, I: Index, T: ComplexField>(
 		let p = &mut perm[i];
 		*p = truncate(i);
 	}
-	let (mut transpositions, _) = stack.rb_mut().make_with(size, |_| truncate(0));
+	let (mut transpositions, _) =
+		stack.rb_mut().make_with(size, |_| truncate(0));
 	let transpositions = transpositions.as_mut();
-	let n_transpositions = lu_in_place_recursion(matrix.rb_mut(), 0, size, transpositions.as_mut(), par, params);
+	let n_transpositions = lu_in_place_recursion(
+		matrix.rb_mut(),
+		0,
+		size,
+		transpositions.as_mut(),
+		par,
+		params,
+	);
 	for idx in 0..size {
 		let t = transpositions[idx];
 		perm.as_mut().swap(idx, idx + t.zx());
 	}
 	if m < n {
 		let (left, right) = matrix.split_at_col_mut(size);
-		linalg::triangular_solve::solve_unit_lower_triangular_in_place(left.rb(), right, par);
+		linalg::triangular_solve::solve_unit_lower_triangular_in_place(
+			left.rb(),
+			right,
+			par,
+		);
 	}
 	for i in 0..m {
 		perm_inv[perm[i].zx()] = truncate(i);
@@ -265,7 +328,15 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, params.into()))),
+				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<
+					usize,
+					f64,
+				>(
+					n,
+					n,
+					Par::Seq,
+					params.into(),
+				))),
 				params.into(),
 			)
 			.1;
@@ -303,7 +374,12 @@ mod tests {
 				perm,
 				perm_inv,
 				Par::Seq,
-				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<usize, f64>(n, n, Par::Seq, default()))),
+				MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<
+					usize,
+					f64,
+				>(
+					n, n, Par::Seq, default()
+				))),
 				default(),
 			)
 			.1;
