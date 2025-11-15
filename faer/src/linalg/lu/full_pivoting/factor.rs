@@ -4,6 +4,7 @@ use crate::utils::thread::par_split_indices;
 use faer_traits::{Real, RealReg};
 use linalg::matmul::matmul;
 use pulp::Simd;
+
 #[inline(always)]
 fn best_value<T: ComplexField, S: Simd>(
 	simd: &SimdCtx<T, S>,
@@ -74,59 +75,35 @@ fn best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	simd: SimdCtx<'M, T, S>,
 	data: ColRef<'_, T, Dim<'M>, ContiguousFwd>,
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
-	let (head, body4, body1, tail) = simd.batch_indices::<4>();
 	let iota = T::simd_iota(&simd.0);
 	let lane_count =
 		core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
-	let inc1 = simd.isplat(T::Index::truncate(lane_count));
-	let inc4 = simd.isplat(T::Index::truncate(4 * lane_count));
-	let mut best_val0 = simd.splat_real(&zero());
-	let mut best_val1 = simd.splat_real(&zero());
-	let mut best_val2 = simd.splat_real(&zero());
-	let mut best_val3 = simd.splat_real(&zero());
-	let mut best_idx0 = simd.isplat(T::Index::truncate(0));
-	let mut best_idx1 = simd.isplat(T::Index::truncate(0));
-	let mut best_idx2 = simd.isplat(T::Index::truncate(0));
-	let mut best_idx3 = simd.isplat(T::Index::truncate(0));
-	let mut idx0 = simd.iadd(
+	let inc = simd.isplat(T::Index::truncate(lane_count));
+
+	let indices = simd.batch_indices::<4>();
+	let mut best_val = [RealReg(simd.zero()); 4];
+	let mut best_idx = [simd.izero(); 4];
+
+	let mut idx = simd.iadd(
 		iota,
 		simd.isplat(T::Index::truncate(simd.offset().wrapping_neg())),
 	);
-	if let Some(i0) = head {
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
-		idx0 = simd.iadd(idx0, inc1);
-	}
-	let mut idx1 = simd.iadd(idx0, inc1);
-	let mut idx2 = simd.iadd(idx1, inc1);
-	let mut idx3 = simd.iadd(idx2, inc1);
-	for [i0, i1, i2, i3] in body4 {
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
-		(best_val1, best_idx1) =
-			best_value(&simd, best_val1, best_idx1, simd.read(data, i1), idx1);
-		(best_val2, best_idx2) =
-			best_value(&simd, best_val2, best_idx2, simd.read(data, i2), idx2);
-		(best_val3, best_idx3) =
-			best_value(&simd, best_val3, best_idx3, simd.read(data, i3), idx3);
-		idx0 = simd.iadd(idx0, inc4);
-		idx1 = simd.iadd(idx1, inc4);
-		idx2 = simd.iadd(idx2, inc4);
-		idx3 = simd.iadd(idx3, inc4);
-	}
-	for i0 in body1 {
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
-		idx0 = simd.iadd(idx0, inc1);
-	}
-	if let Some(i0) = tail {
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, simd.read(data, i0), idx0);
-	}
-	(best_val0, best_idx0) =
-		best_score(&simd, best_val0, best_idx0, best_val1, best_idx1);
-	(best_val2, best_idx2) =
-		best_score(&simd, best_val2, best_idx2, best_val3, best_idx3);
+	simd_iter!(for (IDX, i) in [indices; 4] {
+		(best_val[IDX], best_idx[IDX]) = best_value(
+			&simd,
+			best_val[IDX],
+			best_idx[IDX],
+			simd.read(data, i),
+			idx,
+		);
+		idx = simd.iadd(idx, inc);
+	});
+	let _ = idx;
+
+	let (best_val0, best_idx0) =
+		best_score(&simd, best_val[0], best_idx[0], best_val[1], best_idx[1]);
+	let (best_val2, best_idx2) =
+		best_score(&simd, best_val[2], best_idx[2], best_val[3], best_idx[3]);
 	best_score(&simd, best_val0, best_idx0, best_val2, best_idx2)
 }
 #[inline(always)]
@@ -137,76 +114,34 @@ fn update_and_best_in_col_simd<'M, T: ComplexField, S: Simd>(
 	rhs: T,
 ) -> (RealReg<T::SimdVec<S>>, T::SimdIndex<S>) {
 	let mut data = data;
-	let (head, body4, body1, tail) = simd.batch_indices::<3>();
 	let iota = T::simd_iota(&simd.0);
 	let lane_count =
 		core::mem::size_of::<T::SimdVec<S>>() / core::mem::size_of::<T>();
-	let inc1 = simd.isplat(T::Index::truncate(lane_count));
-	let inc3 = simd.isplat(T::Index::truncate(3 * lane_count));
-	let mut best_val0 = simd.splat_real(&zero());
-	let mut best_val1 = simd.splat_real(&zero());
-	let mut best_val2 = simd.splat_real(&zero());
-	let mut best_idx0 = simd.isplat(T::Index::truncate(0));
-	let mut best_idx1 = simd.isplat(T::Index::truncate(0));
-	let mut best_idx2 = simd.isplat(T::Index::truncate(0));
-	let mut idx0 = simd.iadd(
+	let inc = simd.isplat(T::Index::truncate(lane_count));
+	let mut best_val = [RealReg(simd.zero()); 3];
+	let mut best_idx = [simd.izero(); 3];
+
+	let mut idx = simd.iadd(
 		iota,
 		simd.isplat(T::Index::truncate(simd.offset().wrapping_neg())),
 	);
+
+	let indices = simd.batch_indices::<3>();
 	let rhs = simd.splat(&-rhs);
-	if let Some(i0) = head {
-		let mut x0 = simd.read(data.rb(), i0);
-		let l0 = simd.read(lhs, i0);
+	simd_iter!(for (IDX, i) in [indices; 3] {
+		let mut x0 = simd.read(data.rb(), i);
+		let l0 = simd.read(lhs, i);
 		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, x0, idx0);
-		idx0 = simd.iadd(idx0, inc1);
-		simd.write(data.rb_mut(), i0, x0);
-	}
-	let mut idx1 = simd.iadd(idx0, inc1);
-	let mut idx2 = simd.iadd(idx1, inc1);
-	for [i0, i1, i2] in body4 {
-		let mut x0 = simd.read(data.rb(), i0);
-		let l0 = simd.read(lhs, i0);
-		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, x0, idx0);
-		simd.write(data.rb_mut(), i0, x0);
-		let mut x1 = simd.read(data.rb(), i1);
-		let l1 = simd.read(lhs, i1);
-		x1 = simd.mul_add(l1, rhs, x1);
-		(best_val1, best_idx1) =
-			best_value(&simd, best_val1, best_idx1, x1, idx1);
-		simd.write(data.rb_mut(), i1, x1);
-		let mut x2 = simd.read(data.rb(), i2);
-		let l2 = simd.read(lhs, i2);
-		x2 = simd.mul_add(l2, rhs, x2);
-		(best_val2, best_idx2) =
-			best_value(&simd, best_val2, best_idx2, x2, idx2);
-		simd.write(data.rb_mut(), i2, x2);
-		idx0 = simd.iadd(idx0, inc3);
-		idx1 = simd.iadd(idx1, inc3);
-		idx2 = simd.iadd(idx2, inc3);
-	}
-	for i0 in body1 {
-		let mut x0 = simd.read(data.rb(), i0);
-		let l0 = simd.read(lhs, i0);
-		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, x0, idx0);
-		idx0 = simd.iadd(idx0, inc1);
-		simd.write(data.rb_mut(), i0, x0);
-	}
-	if let Some(i0) = tail {
-		let mut x0 = simd.read(data.rb(), i0);
-		let l0 = simd.read(lhs, i0);
-		x0 = simd.mul_add(l0, rhs, x0);
-		(best_val0, best_idx0) =
-			best_value(&simd, best_val0, best_idx0, x0, idx0);
-		simd.write(data.rb_mut(), i0, x0);
-	}
-	(best_val0, best_idx0) =
-		best_score(&simd, best_val0, best_idx0, best_val1, best_idx1);
+		(best_val[IDX], best_idx[IDX]) =
+			best_value(&simd, best_val[IDX], best_idx[IDX], x0, idx);
+		simd.write(data.rb_mut(), i, x0);
+		idx = simd.iadd(idx, inc);
+	});
+	let _ = idx;
+
+	let (best_val0, best_idx0) =
+		best_score(&simd, best_val[0], best_idx[0], best_val[1], best_idx[1]);
+	let (best_val2, best_idx2) = (best_val[2], best_idx[2]);
 	best_score(&simd, best_val0, best_idx0, best_val2, best_idx2)
 }
 #[inline(always)]

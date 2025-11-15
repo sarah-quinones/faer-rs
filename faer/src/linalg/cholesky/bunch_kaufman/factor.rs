@@ -983,37 +983,20 @@ pub fn rank2_update_simd<'a, T: ComplexField>(
 					let L1 = L1.rb().get(j..).as_row_shape(subrange_len);
 					let simd =
 						SimdCtx::<T, S>::new(T::simd_ctx(simd), subrange_len);
-					let (head, body, tail) = simd.indices();
 					let w0_conj = w0.conj();
 					let w1_conj = w1.conj();
 					let w0_conj_neg = -w0_conj;
 					let w1_conj_neg = -w1_conj;
 					let w0_splat = simd.splat(&w0_conj_neg);
 					let w1_splat = simd.splat(&w1_conj_neg);
-					if let Some(i) = head {
+					simd_iter!(for i in [simd.indices()] {
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						let l1_val = simd.read(L1, i);
 						acc = simd.mul_add(l0_val, w0_splat, acc);
 						acc = simd.mul_add(l1_val, w1_splat, acc);
 						simd.write(A.rb_mut(), i, acc);
-					}
-					for i in body.clone() {
-						let mut acc = simd.read(A.rb(), i);
-						let l0_val = simd.read(L0, i);
-						let l1_val = simd.read(L1, i);
-						acc = simd.mul_add(l0_val, w0_splat, acc);
-						acc = simd.mul_add(l1_val, w1_splat, acc);
-						simd.write(A.rb_mut(), i, acc);
-					}
-					if let Some(i) = tail {
-						let mut acc = simd.read(A.rb(), i);
-						let l0_val = simd.read(L0, i);
-						let l1_val = simd.read(L1, i);
-						acc = simd.mul_add(l0_val, w0_splat, acc);
-						acc = simd.mul_add(l1_val, w1_splat, acc);
-						simd.write(A.rb_mut(), i, acc);
-					}
+					});
 				}
 				A[(j, j)] = A[(j, j)].real().to_cplx();
 				L0[j] = w0;
@@ -1107,28 +1090,15 @@ pub fn rank1_update_simd<'a, T: ComplexField>(
 					let L0 = L0.rb().get(j..).as_row_shape(subrange_len);
 					let simd =
 						SimdCtx::<T, S>::new(T::simd_ctx(simd), subrange_len);
-					let (head, body, tail) = simd.indices();
 					let w0_conj = w0.conj();
 					let w0_conj_neg = -w0_conj;
 					let w0_splat = simd.splat(&w0_conj_neg);
-					if let Some(i) = head {
+					simd_iter!(for i in [simd.indices()] {
 						let mut acc = simd.read(A.rb(), i);
 						let l0_val = simd.read(L0, i);
 						acc = simd.mul_add(l0_val, w0_splat, acc);
 						simd.write(A.rb_mut(), i, acc);
-					}
-					for i in body.clone() {
-						let mut acc = simd.read(A.rb(), i);
-						let l0_val = simd.read(L0, i);
-						acc = simd.mul_add(l0_val, w0_splat, acc);
-						simd.write(A.rb_mut(), i, acc);
-					}
-					if let Some(i) = tail {
-						let mut acc = simd.read(A.rb(), i);
-						let l0_val = simd.read(L0, i);
-						acc = simd.mul_add(l0_val, w0_splat, acc);
-						simd.write(A.rb_mut(), i, acc);
-					}
+					});
 				}
 				A[(j, j)] = A[(j, j)].real().to_cplx();
 				L0[j] = w0;

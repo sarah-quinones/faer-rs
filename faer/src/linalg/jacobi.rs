@@ -320,8 +320,8 @@ impl<T: ComplexField> JacobiRotation<T> {
 		let mut y = y.transpose_mut();
 		let c = simd.splat_real(c.real());
 		let s = simd.splat(s);
-		let (head, body, tail) = simd.indices();
-		if let Some(i) = head {
+		let indices = simd.indices();
+		simd_iter!(for i in [indices] {
 			let mut xx = simd.read(x.rb(), i);
 			let mut yy = simd.read(y.rb(), i);
 			(xx, yy) = (
@@ -330,27 +330,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 			);
 			simd.write(x.rb_mut(), i, xx);
 			simd.write(y.rb_mut(), i, yy);
-		}
-		for i in body {
-			let mut xx = simd.read(x.rb(), i);
-			let mut yy = simd.read(y.rb(), i);
-			(xx, yy) = (
-				simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)),
-				simd.mul_add(s, xx, simd.mul_real(yy, c)),
-			);
-			simd.write(x.rb_mut(), i, xx);
-			simd.write(y.rb_mut(), i, yy);
-		}
-		if let Some(i) = tail {
-			let mut xx = simd.read(x.rb(), i);
-			let mut yy = simd.read(y.rb(), i);
-			(xx, yy) = (
-				simd.conj_mul_add(simd.neg(s), yy, simd.mul_real(xx, c)),
-				simd.mul_add(s, xx, simd.mul_real(yy, c)),
-			);
-			simd.write(x.rb_mut(), i, xx);
-			simd.write(y.rb_mut(), i, yy);
-		}
+		});
 	}
 
 	/// returns the adjoint of `self`

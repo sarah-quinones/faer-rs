@@ -33,7 +33,7 @@ fn rank_update_step_simd<T: ComplexField>(
 			let R = W.ncols();
 			let simd =
 				SimdCtx::<T, S>::new_align(T::simd_ctx(simd), N, align_offset);
-			let (head, body, tail) = simd.indices();
+			let indices = simd.indices();
 			let mut iter = R.indices();
 			let (i0, i1, i2, i3) =
 				(iter.next(), iter.next(), iter.next(), iter.next());
@@ -41,55 +41,32 @@ fn rank_update_step_simd<T: ComplexField>(
 				(Some(i0), None, None, None) => {
 					let p0 = simd.splat(&p[i0]);
 					let beta0 = simd.splat(&beta[i0]);
-					macro_rules! simd {
-						($i:expr) => {{
-							let i = $i;
-							let mut l = simd.read(L.rb(), i);
-							let mut w0 = simd.read(W.rb().col(i0), i);
-							w0 = simd.mul_add(p0, l, w0);
-							l = simd.mul_add(beta0, w0, l);
-							simd.write(L.rb_mut(), i, l);
-							simd.write(W.rb_mut().col_mut(i0), i, w0);
-						}};
-					}
-					if let Some(i) = head {
-						simd!(i);
-					}
-					for i in body {
-						simd!(i);
-					}
-					if let Some(i) = tail {
-						simd!(i);
-					}
+					simd_iter!(for i in [indices] {
+						let mut l = simd.read(L.rb(), i);
+						let mut w0 = simd.read(W.rb().col(i0), i);
+						w0 = simd.mul_add(p0, l, w0);
+						l = simd.mul_add(beta0, w0, l);
+						simd.write(L.rb_mut(), i, l);
+						simd.write(W.rb_mut().col_mut(i0), i, w0);
+					});
 				},
 				(Some(i0), Some(i1), None, None) => {
 					let (p0, p1) = (simd.splat(&p[i0]), simd.splat(&p[i1]));
 					let (beta0, beta1) =
 						(simd.splat(&beta[i0]), simd.splat(&beta[i1]));
-					macro_rules! simd {
-						($i:expr) => {{
-							let i = $i;
-							let mut l = simd.read(L.rb(), i);
-							let mut w0 = simd.read(W.rb().col(i0), i);
-							let mut w1 = simd.read(W.rb().col(i1), i);
-							w0 = simd.mul_add(p0, l, w0);
-							l = simd.mul_add(beta0, w0, l);
-							w1 = simd.mul_add(p1, l, w1);
-							l = simd.mul_add(beta1, w1, l);
-							simd.write(L.rb_mut(), i, l);
-							simd.write(W.rb_mut().col_mut(i0), i, w0);
-							simd.write(W.rb_mut().col_mut(i1), i, w1);
-						}};
-					}
-					if let Some(i) = head {
-						simd!(i);
-					}
-					for i in body {
-						simd!(i);
-					}
-					if let Some(i) = tail {
-						simd!(i);
-					}
+
+					simd_iter!(for i in [indices] {
+						let mut l = simd.read(L.rb(), i);
+						let mut w0 = simd.read(W.rb().col(i0), i);
+						let mut w1 = simd.read(W.rb().col(i1), i);
+						w0 = simd.mul_add(p0, l, w0);
+						l = simd.mul_add(beta0, w0, l);
+						w1 = simd.mul_add(p1, l, w1);
+						l = simd.mul_add(beta1, w1, l);
+						simd.write(L.rb_mut(), i, l);
+						simd.write(W.rb_mut().col_mut(i0), i, w0);
+						simd.write(W.rb_mut().col_mut(i1), i, w1);
+					});
 				},
 				(Some(i0), Some(i1), Some(i2), None) => {
 					let (p0, p1, p2) = (
@@ -102,34 +79,23 @@ fn rank_update_step_simd<T: ComplexField>(
 						simd.splat(&beta[i1]),
 						simd.splat(&beta[i2]),
 					);
-					macro_rules! simd {
-						($i:expr) => {{
-							let i = $i;
-							let mut l = simd.read(L.rb(), i);
-							let mut w0 = simd.read(W.rb().col(i0), i);
-							let mut w1 = simd.read(W.rb().col(i1), i);
-							let mut w2 = simd.read(W.rb().col(i2), i);
-							w0 = simd.mul_add(p0, l, w0);
-							l = simd.mul_add(beta0, w0, l);
-							w1 = simd.mul_add(p1, l, w1);
-							l = simd.mul_add(beta1, w1, l);
-							w2 = simd.mul_add(p2, l, w2);
-							l = simd.mul_add(beta2, w2, l);
-							simd.write(L.rb_mut(), i, l);
-							simd.write(W.rb_mut().col_mut(i0), i, w0);
-							simd.write(W.rb_mut().col_mut(i1), i, w1);
-							simd.write(W.rb_mut().col_mut(i2), i, w2);
-						}};
-					}
-					if let Some(i) = head {
-						simd!(i);
-					}
-					for i in body {
-						simd!(i);
-					}
-					if let Some(i) = tail {
-						simd!(i);
-					}
+
+					simd_iter!(for i in [indices] {
+						let mut l = simd.read(L.rb(), i);
+						let mut w0 = simd.read(W.rb().col(i0), i);
+						let mut w1 = simd.read(W.rb().col(i1), i);
+						let mut w2 = simd.read(W.rb().col(i2), i);
+						w0 = simd.mul_add(p0, l, w0);
+						l = simd.mul_add(beta0, w0, l);
+						w1 = simd.mul_add(p1, l, w1);
+						l = simd.mul_add(beta1, w1, l);
+						w2 = simd.mul_add(p2, l, w2);
+						l = simd.mul_add(beta2, w2, l);
+						simd.write(L.rb_mut(), i, l);
+						simd.write(W.rb_mut().col_mut(i0), i, w0);
+						simd.write(W.rb_mut().col_mut(i1), i, w1);
+						simd.write(W.rb_mut().col_mut(i2), i, w2);
+					});
 				},
 				(Some(i0), Some(i1), Some(i2), Some(i3)) => {
 					let (p0, p1, p2, p3) = (
@@ -144,38 +110,26 @@ fn rank_update_step_simd<T: ComplexField>(
 						simd.splat(&beta[i2]),
 						simd.splat(&beta[i3]),
 					);
-					macro_rules! simd {
-						($i:expr) => {{
-							let i = $i;
-							let mut l = simd.read(L.rb(), i);
-							let mut w0 = simd.read(W.rb().col(i0), i);
-							let mut w1 = simd.read(W.rb().col(i1), i);
-							let mut w2 = simd.read(W.rb().col(i2), i);
-							let mut w3 = simd.read(W.rb().col(i3), i);
-							w0 = simd.mul_add(p0, l, w0);
-							l = simd.mul_add(beta0, w0, l);
-							w1 = simd.mul_add(p1, l, w1);
-							l = simd.mul_add(beta1, w1, l);
-							w2 = simd.mul_add(p2, l, w2);
-							l = simd.mul_add(beta2, w2, l);
-							w3 = simd.mul_add(p3, l, w3);
-							l = simd.mul_add(beta3, w3, l);
-							simd.write(L.rb_mut(), i, l);
-							simd.write(W.rb_mut().col_mut(i0), i, w0);
-							simd.write(W.rb_mut().col_mut(i1), i, w1);
-							simd.write(W.rb_mut().col_mut(i2), i, w2);
-							simd.write(W.rb_mut().col_mut(i3), i, w3);
-						}};
-					}
-					if let Some(i) = head {
-						simd!(i);
-					}
-					for i in body {
-						simd!(i);
-					}
-					if let Some(i) = tail {
-						simd!(i);
-					}
+					simd_iter!(for i in [indices] {
+						let mut l = simd.read(L.rb(), i);
+						let mut w0 = simd.read(W.rb().col(i0), i);
+						let mut w1 = simd.read(W.rb().col(i1), i);
+						let mut w2 = simd.read(W.rb().col(i2), i);
+						let mut w3 = simd.read(W.rb().col(i3), i);
+						w0 = simd.mul_add(p0, l, w0);
+						l = simd.mul_add(beta0, w0, l);
+						w1 = simd.mul_add(p1, l, w1);
+						l = simd.mul_add(beta1, w1, l);
+						w2 = simd.mul_add(p2, l, w2);
+						l = simd.mul_add(beta2, w2, l);
+						w3 = simd.mul_add(p3, l, w3);
+						l = simd.mul_add(beta3, w3, l);
+						simd.write(L.rb_mut(), i, l);
+						simd.write(W.rb_mut().col_mut(i0), i, w0);
+						simd.write(W.rb_mut().col_mut(i1), i, w1);
+						simd.write(W.rb_mut().col_mut(i2), i, w2);
+						simd.write(W.rb_mut().col_mut(i3), i, w3);
+					});
 				},
 				_ => panic!(),
 			}

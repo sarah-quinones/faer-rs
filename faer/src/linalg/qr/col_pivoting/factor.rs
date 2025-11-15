@@ -46,138 +46,27 @@ fn update_mat_and_dot_simd<T: ComplexField>(
 			let n = B11.ncols();
 			let simd =
 				SimdCtx::<'_, T, S>::new_align(T::simd_ctx(simd), m, align);
-			let (head, body4, body1, tail) = simd.batch_indices::<4>();
-			let mut j = n.indices();
-			loop {
-				match (j.next(), j.next(), j.next(), j.next()) {
-					(Some(j0), Some(j1), Some(j2), Some(j3)) => {
-						let b0 = dot[j0].copy();
-						let b1 = dot[j1].copy();
-						let b2 = dot[j2].copy();
-						let b3 = dot[j3].copy();
-						let rhs0 = simd.splat(&b0);
-						let rhs1 = simd.splat(&b1);
-						let rhs2 = simd.splat(&b2);
-						let rhs3 = simd.splat(&b3);
-						let mut acc0 = simd.zero();
-						let mut acc1 = simd.zero();
-						let mut acc2 = simd.zero();
-						let mut acc3 = simd.zero();
-						macro_rules! do_it {
-							($i:expr) => {{
-								let i = $i;
-								let lhs0 = simd.read(A10, i);
-								let lhs1 = simd.read(B10, i);
-								let mut dst0 = simd.read(B11.rb().col(j0), i);
-								dst0 = simd.mul_add(lhs0, rhs0, dst0);
-								acc0 = simd.conj_mul_add(lhs1, dst0, acc0);
-								simd.write(B11.rb_mut().col_mut(j0), i, dst0);
-								let mut dst1 = simd.read(B11.rb().col(j1), i);
-								dst1 = simd.mul_add(lhs0, rhs1, dst1);
-								acc1 = simd.conj_mul_add(lhs1, dst1, acc1);
-								simd.write(B11.rb_mut().col_mut(j1), i, dst1);
-								let mut dst2 = simd.read(B11.rb().col(j2), i);
-								dst2 = simd.mul_add(lhs0, rhs2, dst2);
-								acc2 = simd.conj_mul_add(lhs1, dst2, acc2);
-								simd.write(B11.rb_mut().col_mut(j2), i, dst2);
-								let mut dst3 = simd.read(B11.rb().col(j3), i);
-								dst3 = simd.mul_add(lhs0, rhs3, dst3);
-								acc3 = simd.conj_mul_add(lhs1, dst3, acc3);
-								simd.write(B11.rb_mut().col_mut(j3), i, dst3);
-							}};
-						}
-						if let Some(i) = head {
-							do_it!(i);
-						}
-						for [i0, i1, i2, i3] in body4.clone() {
-							do_it!(i0);
-							do_it!(i1);
-							do_it!(i2);
-							do_it!(i3);
-						}
-						for i in body1.clone() {
-							do_it!(i);
-						}
-						if let Some(i) = tail {
-							do_it!(i);
-						}
-						let tmp = &u[j0] + &l * b0;
-						let d0 =
-							(&tmp + simd.reduce_sum(acc0)).mul_real(-tau_inv);
-						u[j0] = tmp + &d0;
-						dot[j0] = d0;
-						norm[j0] =
-							(norm[j0].abs2() - u[j0].abs2()).sqrt().to_cplx();
-						let tmp = &u[j1] + &l * b1;
-						let d1 =
-							(&tmp + simd.reduce_sum(acc1)).mul_real(-tau_inv);
-						u[j1] = tmp + &d1;
-						dot[j1] = d1;
-						norm[j1] =
-							(norm[j1].abs2() - u[j1].abs2()).sqrt().to_cplx();
-						let tmp = &u[j2] + &l * b2;
-						let d2 =
-							(&tmp + simd.reduce_sum(acc2)).mul_real(-tau_inv);
-						u[j2] = tmp + &d2;
-						dot[j2] = d2;
-						norm[j2] =
-							(norm[j2].abs2() - u[j2].abs2()).sqrt().to_cplx();
-						let tmp = &u[j3] + &l * b3;
-						let d3 =
-							(&tmp + simd.reduce_sum(acc3)).mul_real(-tau_inv);
-						u[j3] = tmp + &d3;
-						dot[j3] = d3;
-						norm[j3] =
-							(norm[j3].abs2() - u[j3].abs2()).sqrt().to_cplx();
-					},
-					(j0, j1, j2, j3) => {
-						for j0 in [j0, j1, j2, j3].into_iter().flatten() {
-							let b0 = dot[j0].copy();
-							let rhs0 = simd.splat(&b0);
-							let mut acc0 = simd.zero();
-							macro_rules! do_it {
-								($i:expr) => {{
-									let i = $i;
-									let lhs0 = simd.read(A10, i);
-									let lhs1 = simd.read(B10, i);
-									let mut dst0 =
-										simd.read(B11.rb().col(j0), i);
-									dst0 = simd.mul_add(lhs0, rhs0, dst0);
-									acc0 = simd.conj_mul_add(lhs1, dst0, acc0);
-									simd.write(
-										B11.rb_mut().col_mut(j0),
-										i,
-										dst0,
-									);
-								}};
-							}
-							if let Some(i) = head {
-								do_it!(i);
-							}
-							for [i0, i1, i2, i3] in body4.clone() {
-								do_it!(i0);
-								do_it!(i1);
-								do_it!(i2);
-								do_it!(i3);
-							}
-							for i in body1.clone() {
-								do_it!(i);
-							}
-							if let Some(i) = tail {
-								do_it!(i);
-							}
-							let tmp = &u[j0] + &l * b0;
-							let d0 = (&tmp + simd.reduce_sum(acc0))
-								.mul_real(-tau_inv);
-							u[j0] = tmp + &d0;
-							dot[j0] = d0;
-							norm[j0] = (norm[j0].abs2() - u[j0].abs2())
-								.sqrt()
-								.to_cplx();
-						}
-						break;
-					},
-				}
+			let indices4 = simd.batch_indices::<4>();
+
+			for j in n.indices() {
+				let b0 = dot[j].copy();
+				let rhs0 = simd.splat(&b0);
+				let mut acc = [simd.zero(); 4];
+				simd_iter!(for (IDX, i) in [indices4; 4] {
+					let lhs0 = simd.read(A10, i);
+					let lhs1 = simd.read(B10, i);
+					let mut dst0 = simd.read(B11.rb().col(j), i);
+					dst0 = simd.mul_add(lhs0, rhs0, dst0);
+					acc[IDX] = simd.conj_mul_add(lhs1, dst0, acc[IDX]);
+					simd.write(B11.rb_mut().col_mut(j), i, dst0);
+				});
+				let acc = simd
+					.add(simd.add(acc[0], acc[2]), simd.add(acc[1], acc[3]));
+				let tmp = &u[j] + &l * b0;
+				let d0 = (&tmp + simd.reduce_sum(acc)).mul_real(-tau_inv);
+				u[j] = tmp + &d0;
+				dot[j] = d0;
+				norm[j] = (norm[j].abs2() - u[j].abs2()).sqrt().to_cplx();
 			}
 		}
 	}

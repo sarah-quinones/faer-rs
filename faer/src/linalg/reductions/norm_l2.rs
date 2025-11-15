@@ -16,47 +16,24 @@ fn norm_l2_simd<'N, T: ComplexField>(
 		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
 			let Self { data } = self;
 			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), data.nrows());
-			let zero = simd.splat(&zero());
 			let sml = simd.splat_real(&sqrt_min_positive());
 			let big = simd.splat_real(&sqrt_max_positive());
-			let mut acc0_sml = RealReg(zero);
-			let mut acc1_sml = RealReg(zero);
-			let mut acc0_med = RealReg(zero);
-			let mut acc1_med = RealReg(zero);
-			let mut acc0_big = RealReg(zero);
-			let mut acc1_big = RealReg(zero);
-			let (head, body2, body1, tail) = simd.batch_indices::<2>();
-			if let Some(i0) = head {
-				let x0 = simd.read(data, i0);
-				acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
-				acc0_med = simd.abs2_add(x0, acc0_med);
-				acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
-			}
-			for [i0, i1] in body2 {
-				let x0 = simd.read(data, i0);
-				let x1 = simd.read(data, i1);
-				acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
-				acc1_sml = simd.abs2_add(simd.mul_real(x1, sml), acc1_sml);
-				acc0_med = simd.abs2_add(x0, acc0_med);
-				acc1_med = simd.abs2_add(x1, acc1_med);
-				acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
-				acc1_big = simd.abs2_add(simd.mul_real(x1, big), acc1_big);
-			}
-			for i0 in body1 {
-				let x0 = simd.read(data, i0);
-				acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
-				acc0_med = simd.abs2_add(x0, acc0_med);
-				acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
-			}
-			if let Some(i0) = tail {
-				let x0 = simd.read(data, i0);
-				acc0_sml = simd.abs2_add(simd.mul_real(x0, sml), acc0_sml);
-				acc0_med = simd.abs2_add(x0, acc0_med);
-				acc0_big = simd.abs2_add(simd.mul_real(x0, big), acc0_big);
-			}
-			acc0_sml = RealReg(simd.add(acc0_sml.0, acc1_sml.0));
-			acc0_big = RealReg(simd.add(acc0_big.0, acc1_big.0));
-			acc0_med = RealReg(simd.add(acc0_med.0, acc1_med.0));
+			let mut acc_sml = [RealReg(simd.zero()); 2];
+			let mut acc_med = [RealReg(simd.zero()); 2];
+			let mut acc_big = [RealReg(simd.zero()); 2];
+
+			simd_iter!(for (IDX, i) in [simd.batch_indices::<2>(); 2] {
+				let x = simd.read(data, i);
+				acc_sml[IDX] =
+					simd.abs2_add(simd.mul_real(x, sml), acc_sml[IDX]);
+				acc_med[IDX] = simd.abs2_add(x, acc_med[IDX]);
+				acc_big[IDX] =
+					simd.abs2_add(simd.mul_real(x, big), acc_big[IDX]);
+			});
+
+			let acc0_sml = RealReg(simd.add(acc_sml[0].0, acc_sml[1].0));
+			let acc0_big = RealReg(simd.add(acc_big[0].0, acc_big[1].0));
+			let acc0_med = RealReg(simd.add(acc_med[0].0, acc_med[1].0));
 			[
 				simd.reduce_sum_real(acc0_sml),
 				simd.reduce_sum_real(acc0_med),

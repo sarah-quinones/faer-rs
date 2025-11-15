@@ -422,7 +422,7 @@ fn apply_block_householder_on_the_left_in_place_generic<
 				let N = rhs.nrows();
 				let K = rhs.ncols();
 				let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), N);
-				let (head, indices, tail) = simd.indices();
+				let indices = simd.indices();
 				for idx in K.indices() {
 					let col0 = rhs0.rb_mut().at_mut(idx);
 					let mut col = rhs.rb_mut().col_mut(idx);
@@ -445,28 +445,17 @@ fn apply_block_householder_on_the_left_in_place_generic<
 					let ref k = -dot * tau_inv;
 					*col0 += k;
 					let k = simd.splat(k);
-					macro_rules! simd {
-						($i:expr) => {{
-							let i = $i;
-							let mut a = simd.read(col.rb(), i);
-							let b = simd.read(essential.rb(), i);
-							if const { CONJ } {
-								a = simd.conj_mul_add(b, k, a);
-							} else {
-								a = simd.mul_add(b, k, a);
-							}
-							simd.write(col.rb_mut(), i, a);
-						}};
-					}
-					if let Some(i) = head {
-						simd!(i);
-					}
-					for i in indices.clone() {
-						simd!(i);
-					}
-					if let Some(i) = tail {
-						simd!(i);
-					}
+
+					simd_iter!(for i in [indices] {
+						let mut a = simd.read(col.rb(), i);
+						let b = simd.read(essential.rb(), i);
+						if const { CONJ } {
+							a = simd.conj_mul_add(b, k, a);
+						} else {
+							a = simd.mul_add(b, k, a);
+						}
+						simd.write(col.rb_mut(), i, a);
+					});
 				}
 			}
 		}

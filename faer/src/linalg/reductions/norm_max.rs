@@ -16,37 +16,14 @@ fn norm_max_simd<'N, T: ComplexField>(
 		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
 			let Self { data } = self;
 			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), data.nrows());
-			let zero = simd.splat(&zero());
-			let mut acc0 = RealReg(zero);
-			let mut acc1 = RealReg(zero);
-			let mut acc2 = RealReg(zero);
-			let mut acc3 = RealReg(zero);
-			let (head, body4, body1, tail) = simd.batch_indices::<4>();
-			if let Some(i0) = head {
-				let x0 = simd.abs_max(simd.read(data, i0));
-				acc0 = (*simd).max(acc0, x0);
-			}
-			for [i0, i1, i2, i3] in body4 {
-				let x0 = simd.abs_max(simd.read(data, i0));
-				let x1 = simd.abs_max(simd.read(data, i1));
-				let x2 = simd.abs_max(simd.read(data, i2));
-				let x3 = simd.abs_max(simd.read(data, i3));
-				acc0 = (*simd).max(acc0, x0);
-				acc1 = (*simd).max(acc1, x1);
-				acc2 = (*simd).max(acc2, x2);
-				acc3 = (*simd).max(acc3, x3);
-			}
-			for i0 in body1 {
-				let x0 = simd.abs_max(simd.read(data, i0));
-				acc0 = (*simd).max(acc0, x0);
-			}
-			if let Some(i0) = tail {
-				let x0 = simd.abs_max(simd.read(data, i0));
-				acc0 = (*simd).max(acc0, x0);
-			}
-			acc0 = (*simd).max(acc0, acc1);
-			acc2 = (*simd).max(acc2, acc3);
-			acc0 = (*simd).max(acc0, acc2);
+			let mut acc = [RealReg(simd.zero()); 4];
+			simd_iter!(for (IDX, i) in [simd.batch_indices(); 4] {
+				let x = simd.abs_max(simd.read(data, i));
+				acc[IDX] = (*simd).max(acc[IDX], x);
+			});
+			let acc0 = simd.max(acc[0], acc[1]);
+			let acc2 = simd.max(acc[2], acc[3]);
+			let acc0 = simd.max(acc0, acc2);
 			simd.reduce_max_real(acc0)
 		}
 	}

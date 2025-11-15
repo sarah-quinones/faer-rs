@@ -976,6 +976,8 @@ pub use mat::{Mat, MatMut, MatRef};
 pub use row::{Row, RowMut, RowRef};
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
+	pub use crate::simd_iter;
+
 	pub trait DivCeil: Sized {
 		fn msrv_div_ceil(self, rhs: Self) -> Self;
 		fn msrv_next_multiple_of(self, rhs: Self) -> Self;
@@ -1278,3 +1280,60 @@ pub extern crate num_complex as complex;
 #[cfg_attr(docs_rs, doc(cfg(feature = "rand")))]
 pub extern crate rand;
 pub extern crate reborrow;
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! simd_iter {
+	(for ($batch_id:tt, $i:pat $(,)?) in [$indices:expr; $batch_size:expr] $b:block $(,)?) => {#[allow(non_upper_case_globals, unconditional_panic)] 'out:{
+		let (__head__, __body_batch__, __body_item__, __tail__) = &$indices;
+		let __body_batch__ = __body_batch__.clone();
+		let mut __body_item__ = __body_item__.clone();
+		const {
+			::core::assert!($batch_size > 0);
+			::core::assert!($batch_size <= 8);
+		}
+		{
+		if const { $batch_size == 1 } {if $batch_size == 1 { const $batch_id: usize = 0; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 2 } {if $batch_size == 2 { const $batch_id: usize = 1; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 3 } {if $batch_size == 3 { const $batch_id: usize = 2; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 4 } {if $batch_size == 4 { const $batch_id: usize = 3; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 5 } {if $batch_size == 5 { const $batch_id: usize = 4; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 6 } {if $batch_size == 6 { const $batch_id: usize = 5; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 7 } {if $batch_size == 7 { const $batch_id: usize = 6; if let &Some($i) = __head__ $b; }}
+		if const { $batch_size == 8 } {if $batch_size == 8 { const $batch_id: usize = 7; if let &Some($i) = __head__ $b; }}
+		}
+		for __i__ in __body_batch__ {
+			let __i__: [_; $batch_size] = __i__;
+			let __i__ = __i__.as_slice();
+			::core::assert!(__i__.len() == $batch_size);
+
+			{
+			if const { $batch_size > 0 } {if __i__.len() > 0 { const $batch_id: usize = 0; let $i = __i__[0]; $b }}
+			if const { $batch_size > 1 } {if __i__.len() > 1 { const $batch_id: usize = 1; let $i = __i__[1]; $b }}
+			if const { $batch_size > 2 } {if __i__.len() > 2 { const $batch_id: usize = 2; let $i = __i__[2]; $b }}
+			if const { $batch_size > 3 } {if __i__.len() > 3 { const $batch_id: usize = 3; let $i = __i__[3]; $b }}
+			if const { $batch_size > 4 } {if __i__.len() > 4 { const $batch_id: usize = 4; let $i = __i__[4]; $b }}
+			if const { $batch_size > 5 } {if __i__.len() > 5 { const $batch_id: usize = 5; let $i = __i__[5]; $b }}
+			if const { $batch_size > 6 } {if __i__.len() > 6 { const $batch_id: usize = 6; let $i = __i__[6]; $b }}
+			if const { $batch_size > 7 } {if __i__.len() > 7 { const $batch_id: usize = 7; let $i = __i__[7]; $b }}
+			}
+		};
+
+		{
+		if const { $batch_size > 0 } { if $batch_size > 0 { const $batch_id: usize = 0; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 1 } { if $batch_size > 1 { const $batch_id: usize = 1; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 2 } { if $batch_size > 2 { const $batch_id: usize = 2; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 3 } { if $batch_size > 3 { const $batch_id: usize = 3; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 4 } { if $batch_size > 4 { const $batch_id: usize = 4; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 5 } { if $batch_size > 5 { const $batch_id: usize = 5; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 6 } { if $batch_size > 6 { const $batch_id: usize = 6; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		if const { $batch_size > 7 } { if $batch_size > 7 { const $batch_id: usize = 7; if let Some($i) = __body_item__.next() $b else { if let &Some($i) = __tail__ $b; break 'out; } } }
+		}
+	}};
+	(for $i:pat in [$indices:expr] $b:block $(,)?) => {#[allow(non_upper_case_globals)]{
+		let (__head__, __body__, __tail__) = &$indices;
+		if let &Some($i) = __head__ $b;
+		for $i in __body__.clone() $b;
+		if let &Some($i) = __tail__ $b;
+	}};
+}

@@ -759,6 +759,11 @@ impl<T: ComplexField, S: Simd> SimdCtx<T, S> {
 	}
 
 	#[inline(always)]
+	pub fn izero(&self) -> T::SimdIndex<S> {
+		unsafe { core::mem::zeroed() }
+	}
+
+	#[inline(always)]
 	pub fn iadd(
 		&self,
 		lhs: T::SimdIndex<S>,

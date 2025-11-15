@@ -96,113 +96,32 @@ fn hessenberg_fused_op_simd<T: ComplexField>(
 			} = self;
 			let (m, n) = A.shape();
 			let simd = SimdCtx::<T, S>::new_align(T::simd_ctx(simd), m, align);
-			{
-				let (head, body, tail) = simd.indices();
-				if let Some(i) = head {
-					simd.write(r_out.rb_mut(), i, simd.zero());
-				}
-				for i in body {
-					simd.write(r_out.rb_mut(), i, simd.zero());
-				}
-				if let Some(i) = tail {
-					simd.write(r_out.rb_mut(), i, simd.zero());
-				}
-			}
-			let (head, body4, body1, tail) = simd.batch_indices::<4>();
+
+			simd_iter!(for i in [simd.indices()] {
+				simd.write(r_out.rb_mut(), i, simd.zero());
+			});
+
+			let indices = simd.batch_indices::<4>();
 			let l_in = l_in.transpose();
 			for j in n.indices() {
 				let mut A = A.rb_mut().col_mut(j);
 				let r_in = simd.splat(r_in.at(j));
 				let r0 = simd.splat(-&r0[j]);
 				let r1 = simd.splat(-&r1[j]);
-				let mut acc0 = simd.zero();
-				let mut acc1 = simd.zero();
-				let mut acc2 = simd.zero();
-				let mut acc3 = simd.zero();
-				if let Some(i0) = head {
-					let mut a0 = simd.read(A.rb(), i0);
-					a0 = simd.mul_add(simd.read(l0, i0), r0, a0);
-					a0 = simd.conj_mul_add(r1, simd.read(l1, i0), a0);
-					simd.write(A.rb_mut(), i0, a0);
-					acc0 = simd.conj_mul_add(simd.read(l_in, i0), a0, acc0);
-					let tmp = simd.read(r_out.rb(), i0);
-					simd.write(r_out.rb_mut(), i0, simd.mul_add(a0, r_in, tmp));
-				}
-				for [i0, i1, i2, i3] in body4.clone() {
-					{
-						let mut a0 = simd.read(A.rb(), i0);
-						a0 = simd.mul_add(simd.read(l0, i0), r0, a0);
-						a0 = simd.conj_mul_add(r1, simd.read(l1, i0), a0);
-						simd.write(A.rb_mut(), i0, a0);
-						acc0 = simd.conj_mul_add(simd.read(l_in, i0), a0, acc0);
-						let tmp = simd.read(r_out.rb(), i0);
-						simd.write(
-							r_out.rb_mut(),
-							i0,
-							simd.mul_add(a0, r_in, tmp),
-						);
-					}
-					{
-						let mut a1 = simd.read(A.rb(), i1);
-						a1 = simd.mul_add(simd.read(l0, i1), r0, a1);
-						a1 = simd.conj_mul_add(r1, simd.read(l1, i1), a1);
-						simd.write(A.rb_mut(), i1, a1);
-						acc1 = simd.conj_mul_add(simd.read(l_in, i1), a1, acc1);
-						let tmp = simd.read(r_out.rb(), i1);
-						simd.write(
-							r_out.rb_mut(),
-							i1,
-							simd.mul_add(a1, r_in, tmp),
-						);
-					}
-					{
-						let mut a2 = simd.read(A.rb(), i2);
-						a2 = simd.mul_add(simd.read(l0, i2), r0, a2);
-						a2 = simd.conj_mul_add(r1, simd.read(l1, i2), a2);
-						simd.write(A.rb_mut(), i2, a2);
-						acc2 = simd.conj_mul_add(simd.read(l_in, i2), a2, acc2);
-						let tmp = simd.read(r_out.rb(), i2);
-						simd.write(
-							r_out.rb_mut(),
-							i2,
-							simd.mul_add(a2, r_in, tmp),
-						);
-					}
-					{
-						let mut a3 = simd.read(A.rb(), i3);
-						a3 = simd.mul_add(simd.read(l0, i3), r0, a3);
-						a3 = simd.conj_mul_add(r1, simd.read(l1, i3), a3);
-						simd.write(A.rb_mut(), i3, a3);
-						acc3 = simd.conj_mul_add(simd.read(l_in, i3), a3, acc3);
-						let tmp = simd.read(r_out.rb(), i3);
-						simd.write(
-							r_out.rb_mut(),
-							i3,
-							simd.mul_add(a3, r_in, tmp),
-						);
-					}
-				}
-				for i0 in body1.clone() {
-					let mut a0 = simd.read(A.rb(), i0);
-					a0 = simd.mul_add(simd.read(l0, i0), r0, a0);
-					a0 = simd.conj_mul_add(r1, simd.read(l1, i0), a0);
-					simd.write(A.rb_mut(), i0, a0);
-					acc0 = simd.conj_mul_add(simd.read(l_in, i0), a0, acc0);
-					let tmp = simd.read(r_out.rb(), i0);
-					simd.write(r_out.rb_mut(), i0, simd.mul_add(a0, r_in, tmp));
-				}
-				if let Some(i0) = tail {
-					let mut a0 = simd.read(A.rb(), i0);
-					a0 = simd.mul_add(simd.read(l0, i0), r0, a0);
-					a0 = simd.conj_mul_add(r1, simd.read(l1, i0), a0);
-					simd.write(A.rb_mut(), i0, a0);
-					acc0 = simd.conj_mul_add(simd.read(l_in, i0), a0, acc0);
-					let tmp = simd.read(r_out.rb(), i0);
-					simd.write(r_out.rb_mut(), i0, simd.mul_add(a0, r_in, tmp));
-				}
-				acc0 = simd.add(acc0, acc1);
-				acc2 = simd.add(acc2, acc3);
-				acc0 = simd.add(acc0, acc2);
+				let mut acc = [simd.zero(); 4];
+				simd_iter!(for (IDX, i) in [indices; 4] {
+					let mut a = simd.read(A.rb(), i);
+					a = simd.mul_add(simd.read(l0, i), r0, a);
+					a = simd.conj_mul_add(r1, simd.read(l1, i), a);
+					simd.write(A.rb_mut(), i, a);
+					acc[IDX] =
+						simd.conj_mul_add(simd.read(l_in, i), a, acc[IDX]);
+					let tmp = simd.read(r_out.rb(), i);
+					simd.write(r_out.rb_mut(), i, simd.mul_add(a, r_in, tmp));
+				});
+				let acc0 = simd.add(acc[0], acc[1]);
+				let acc2 = simd.add(acc[2], acc[3]);
+				let acc0 = simd.add(acc0, acc2);
 				let l_out = l_out.rb_mut().at_mut(j);
 				*l_out = simd.reduce_sum(acc0);
 			}

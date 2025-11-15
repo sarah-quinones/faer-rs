@@ -16,37 +16,15 @@ fn norm_l2_sqr_simd<'N, T: ComplexField>(
 		fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
 			let Self { data } = self;
 			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), data.nrows());
-			let zero = simd.splat(&zero());
-			let mut acc0 = RealReg(zero);
-			let mut acc1 = RealReg(zero);
-			let mut acc2 = RealReg(zero);
-			let mut acc3 = RealReg(zero);
-			let (head, body4, body1, tail) = simd.batch_indices::<4>();
-			if let Some(i0) = head {
-				let x0 = simd.read(data, i0);
-				acc0 = simd.abs2_add(x0, acc0);
-			}
-			for [i0, i1, i2, i3] in body4 {
-				let x0 = simd.read(data, i0);
-				let x1 = simd.read(data, i1);
-				let x2 = simd.read(data, i2);
-				let x3 = simd.read(data, i3);
-				acc0 = simd.abs2_add(x0, acc0);
-				acc1 = simd.abs2_add(x1, acc1);
-				acc2 = simd.abs2_add(x2, acc2);
-				acc3 = simd.abs2_add(x3, acc3);
-			}
-			for i0 in body1 {
-				let x0 = simd.read(data, i0);
-				acc0 = simd.abs2_add(x0, acc0);
-			}
-			if let Some(i0) = tail {
-				let x0 = simd.read(data, i0);
-				acc0 = simd.abs2_add(x0, acc0);
-			}
-			acc0 = RealReg(simd.add(acc0.0, acc1.0));
-			acc2 = RealReg(simd.add(acc2.0, acc3.0));
-			acc0 = RealReg(simd.add(acc0.0, acc2.0));
+
+			let mut acc = [RealReg(simd.zero()); 4];
+			simd_iter!(for (IDX, i) in [simd.batch_indices(); 4] {
+				let x = simd.read(data, i);
+				acc[IDX] = simd.abs2_add(x, acc[IDX]);
+			});
+			let acc0 = RealReg(simd.add(acc[0].0, acc[1].0));
+			let acc2 = RealReg(simd.add(acc[2].0, acc[3].0));
+			let acc0 = RealReg(simd.add(acc0.0, acc2.0));
 			simd.reduce_sum_real(acc0)
 		}
 	}

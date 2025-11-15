@@ -83,106 +83,124 @@ mod matmul_vertical {
 				alpha,
 				beta,
 			} = self;
-			with_dim!(M, a.nrows());
-			with_dim!(N, b.ncols());
-			with_dim!(K, a.ncols());
-			let a = a.as_shape(M, K);
-			let b = b.as_shape(K, N);
-			let mut dst = dst.as_shape_mut(M, N);
-			let simd = SimdCtx::<T, S>::new_force_mask(T::simd_ctx(simd), M);
-			let (_, body, tail) = simd.indices();
-			let tail = tail.unwrap();
-			let mut local_acc = [[simd.zero(); MR_DIV_N]; NR];
-			if conj_lhs == conj_rhs {
-				for depth in K.indices() {
-					let mut a_uninit =
-						[MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
-					for (dst, src) in
-						core::iter::zip(&mut a_uninit, body.clone())
-					{
-						*dst = MaybeUninit::new(simd.read(a.col(depth), src));
-					}
-					a_uninit[MR_DIV_N - 1] =
-						MaybeUninit::new(simd.read(a.col(depth), tail));
-					let a: [T::SimdVec<S>; MR_DIV_N] = unsafe {
-						crate::hacks::transmute::<
-							[MaybeUninit<T::SimdVec<S>>; MR_DIV_N],
-							[T::SimdVec<S>; MR_DIV_N],
-						>(a_uninit)
-					};
-					for j in N.indices() {
-						let b = simd.splat(&b[(depth, j)]);
-						for i in 0..MR_DIV_N {
-							let local_acc = &mut local_acc[*j][i];
-							*local_acc = simd.mul_add(b, a[i], *local_acc);
-						}
-					}
-				}
+			if const {
+				!(T::IS_NATIVE_F64
+					|| T::IS_NATIVE_F32
+					|| T::IS_NATIVE_C64
+					|| T::IS_NATIVE_C32)
+					&& !cfg!(test)
+			} {
+				panic!();
 			} else {
-				for depth in K.indices() {
-					let mut a_uninit: [_; MR_DIV_N] =
-						[MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
-					for (dst, src) in
-						core::iter::zip(&mut a_uninit, body.clone())
-					{
-						*dst = MaybeUninit::new(simd.read(a.col(depth), src));
+				with_dim!(M, a.nrows());
+				with_dim!(N, b.ncols());
+				with_dim!(K, a.ncols());
+				let a = a.as_shape(M, K);
+				let b = b.as_shape(K, N);
+				let mut dst = dst.as_shape_mut(M, N);
+				let simd =
+					SimdCtx::<T, S>::new_force_mask(T::simd_ctx(simd), M);
+				let (_, body, tail) = simd.indices();
+				let tail = tail.unwrap();
+				let mut local_acc = [[simd.zero(); MR_DIV_N]; NR];
+				if conj_lhs == conj_rhs {
+					for depth in K.indices() {
+						let mut a_uninit =
+							[MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
+						for (dst, src) in
+							core::iter::zip(&mut a_uninit, body.clone())
+						{
+							*dst =
+								MaybeUninit::new(simd.read(a.col(depth), src));
+						}
+						a_uninit[MR_DIV_N - 1] =
+							MaybeUninit::new(simd.read(a.col(depth), tail));
+						let a: [T::SimdVec<S>; MR_DIV_N] = unsafe {
+							crate::hacks::transmute::<
+								[MaybeUninit<T::SimdVec<S>>; MR_DIV_N],
+								[T::SimdVec<S>; MR_DIV_N],
+							>(a_uninit)
+						};
+						for j in N.indices() {
+							let b = simd.splat(&b[(depth, j)]);
+							for i in 0..MR_DIV_N {
+								let local_acc = &mut local_acc[*j][i];
+								*local_acc = simd.mul_add(b, a[i], *local_acc);
+							}
+						}
 					}
-					a_uninit[MR_DIV_N - 1] =
-						MaybeUninit::new(simd.read(a.col(depth), tail));
-					let a: [T::SimdVec<S>; MR_DIV_N] = unsafe {
-						crate::hacks::transmute::<
-							[MaybeUninit<T::SimdVec<S>>; MR_DIV_N],
-							[T::SimdVec<S>; MR_DIV_N],
-						>(a_uninit)
-					};
-					for j in N.indices() {
-						let b = simd.splat(&b[(depth, j)]);
-						for i in 0..MR_DIV_N {
-							let local_acc = &mut local_acc[*j][i];
-							*local_acc = simd.conj_mul_add(b, a[i], *local_acc);
+				} else {
+					for depth in K.indices() {
+						let mut a_uninit: [_; MR_DIV_N] =
+							[MaybeUninit::<T::SimdVec<S>>::uninit(); MR_DIV_N];
+						for (dst, src) in
+							core::iter::zip(&mut a_uninit, body.clone())
+						{
+							*dst =
+								MaybeUninit::new(simd.read(a.col(depth), src));
+						}
+						a_uninit[MR_DIV_N - 1] =
+							MaybeUninit::new(simd.read(a.col(depth), tail));
+						let a: [T::SimdVec<S>; MR_DIV_N] = unsafe {
+							crate::hacks::transmute::<
+								[MaybeUninit<T::SimdVec<S>>; MR_DIV_N],
+								[T::SimdVec<S>; MR_DIV_N],
+							>(a_uninit)
+						};
+						for j in N.indices() {
+							let b = simd.splat(&b[(depth, j)]);
+							for i in 0..MR_DIV_N {
+								let local_acc = &mut local_acc[*j][i];
+								*local_acc =
+									simd.conj_mul_add(b, a[i], *local_acc);
+							}
 						}
 					}
 				}
-			}
-			if conj_lhs.is_conj() {
-				for x in &mut local_acc {
-					for x in x {
-						*x = simd.conj(*x);
+				if conj_lhs.is_conj() {
+					for x in &mut local_acc {
+						for x in x {
+							*x = simd.conj(*x);
+						}
 					}
 				}
-			}
-			let alpha = simd.splat(alpha);
-			match beta {
-				Accum::Add => {
-					for (result, j) in core::iter::zip(&local_acc, N.indices())
-					{
-						for (result, i) in core::iter::zip(result, body.clone())
+				let alpha = simd.splat(alpha);
+				match beta {
+					Accum::Add => {
+						for (result, j) in
+							core::iter::zip(&local_acc, N.indices())
 						{
+							for (result, i) in
+								core::iter::zip(result, body.clone())
+							{
+								let mut val = simd.read(dst.rb().col(j), i);
+								val = simd.mul_add(alpha, *result, val);
+								simd.write(dst.rb_mut().col_mut(j), i, val);
+							}
+							let i = tail;
+							let result = &result[MR_DIV_N - 1];
 							let mut val = simd.read(dst.rb().col(j), i);
 							val = simd.mul_add(alpha, *result, val);
 							simd.write(dst.rb_mut().col_mut(j), i, val);
 						}
-						let i = tail;
-						let result = &result[MR_DIV_N - 1];
-						let mut val = simd.read(dst.rb().col(j), i);
-						val = simd.mul_add(alpha, *result, val);
-						simd.write(dst.rb_mut().col_mut(j), i, val);
-					}
-				},
-				Accum::Replace => {
-					for (result, j) in core::iter::zip(&local_acc, N.indices())
-					{
-						for (result, i) in core::iter::zip(result, body.clone())
+					},
+					Accum::Replace => {
+						for (result, j) in
+							core::iter::zip(&local_acc, N.indices())
 						{
+							for (result, i) in
+								core::iter::zip(result, body.clone())
+							{
+								let val = simd.mul(alpha, *result);
+								simd.write(dst.rb_mut().col_mut(j), i, val);
+							}
+							let i = tail;
+							let result = &result[MR_DIV_N - 1];
 							let val = simd.mul(alpha, *result);
 							simd.write(dst.rb_mut().col_mut(j), i, val);
 						}
-						let i = tail;
-						let result = &result[MR_DIV_N - 1];
-						let val = simd.mul(alpha, *result);
-						simd.write(dst.rb_mut().col_mut(j), i, val);
-					}
-				},
+					},
+				}
 			}
 		}
 	}
@@ -328,120 +346,133 @@ mod matmul_horizontal {
 
 		#[inline(always)]
 		fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-			let Self {
-				dst,
-				a,
-				b,
-				conj_lhs,
-				conj_rhs,
-				alpha,
-				beta,
-			} = self;
-			with_dim!(M, a.nrows());
-			with_dim!(N, b.ncols());
-			with_dim!(K, a.ncols());
-			let a = a.as_shape(M, K);
-			let b = b.as_shape(K, N);
-			let mut dst = dst.as_shape_mut(M, N);
-			let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), K);
-			let (_, body, tail) = simd.indices();
-			let mut local_acc = [[simd.zero(); MR]; NR];
-			let mut is: [_; MR] = [M.idx(0usize); MR];
-			let mut js: [_; NR] = [N.idx(0usize); NR];
-			for (idx, i) in is.iter_mut().enumerate() {
-				*i = M.idx(idx);
-			}
-			for (idx, j) in js.iter_mut().enumerate() {
-				*j = N.idx(idx);
-			}
-			if conj_lhs == conj_rhs {
-				macro_rules! do_it {
-					($depth:expr) => {{
-						let depth = $depth;
-						let a = is.map(
-							#[inline(always)]
-							|i| simd.read(a.row(i).transpose(), depth),
-						);
-						let b = js.map(
-							#[inline(always)]
-							|j| simd.read(b.col(j), depth),
-						);
-						for i in 0..MR {
-							for j in 0..NR {
-								local_acc[j][i] =
-									simd.mul_add(b[j], a[i], local_acc[j][i]);
-							}
-						}
-					}};
-				}
-				for depth in body {
-					do_it!(depth);
-				}
-				if let Some(depth) = tail {
-					do_it!(depth);
-				}
+			if const {
+				!(T::IS_NATIVE_F64
+					|| T::IS_NATIVE_F32
+					|| T::IS_NATIVE_C64
+					|| T::IS_NATIVE_C32)
+					&& !cfg!(test)
+			} {
+				panic!();
 			} else {
-				macro_rules! do_it {
-					($depth:expr) => {{
-						let depth = $depth;
-						let a = is.map(
+				let Self {
+					dst,
+					a,
+					b,
+					conj_lhs,
+					conj_rhs,
+					alpha,
+					beta,
+				} = self;
+				with_dim!(M, a.nrows());
+				with_dim!(N, b.ncols());
+				with_dim!(K, a.ncols());
+				let a = a.as_shape(M, K);
+				let b = b.as_shape(K, N);
+				let mut dst = dst.as_shape_mut(M, N);
+				let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), K);
+				let (_, body, tail) = simd.indices();
+				let mut local_acc = [[simd.zero(); MR]; NR];
+				let mut is: [_; MR] = [M.idx(0usize); MR];
+				let mut js: [_; NR] = [N.idx(0usize); NR];
+				for (idx, i) in is.iter_mut().enumerate() {
+					*i = M.idx(idx);
+				}
+				for (idx, j) in js.iter_mut().enumerate() {
+					*j = N.idx(idx);
+				}
+				if conj_lhs == conj_rhs {
+					macro_rules! do_it {
+						($depth:expr) => {{
+							let depth = $depth;
+							let a = is.map(
+								#[inline(always)]
+								|i| simd.read(a.row(i).transpose(), depth),
+							);
+							let b = js.map(
+								#[inline(always)]
+								|j| simd.read(b.col(j), depth),
+							);
+							for i in 0..MR {
+								for j in 0..NR {
+									local_acc[j][i] = simd.mul_add(
+										b[j],
+										a[i],
+										local_acc[j][i],
+									);
+								}
+							}
+						}};
+					}
+					for depth in body {
+						do_it!(depth);
+					}
+					if let Some(depth) = tail {
+						do_it!(depth);
+					}
+				} else {
+					macro_rules! do_it {
+						($depth:expr) => {{
+							let depth = $depth;
+							let a = is.map(
+								#[inline(always)]
+								|i| simd.read(a.row(i).transpose(), depth),
+							);
+							let b = js.map(
+								#[inline(always)]
+								|j| simd.read(b.col(j), depth),
+							);
+							for i in 0..MR {
+								for j in 0..NR {
+									local_acc[j][i] = simd.conj_mul_add(
+										b[j],
+										a[i],
+										local_acc[j][i],
+									);
+								}
+							}
+						}};
+					}
+					for depth in body {
+						do_it!(depth);
+					}
+					if let Some(depth) = tail {
+						do_it!(depth);
+					}
+				}
+				if conj_lhs.is_conj() {
+					for x in &mut local_acc {
+						for x in x {
+							*x = simd.conj(*x);
+						}
+					}
+				}
+				let result = local_acc;
+				let result = result.map(
+					#[inline(always)]
+					|result| {
+						result.map(
 							#[inline(always)]
-							|i| simd.read(a.row(i).transpose(), depth),
-						);
-						let b = js.map(
-							#[inline(always)]
-							|j| simd.read(b.col(j), depth),
-						);
-						for i in 0..MR {
-							for j in 0..NR {
-								local_acc[j][i] = simd.conj_mul_add(
-									b[j],
-									a[i],
-									local_acc[j][i],
-								);
+							|result| simd.reduce_sum(result),
+						)
+					},
+				);
+				match beta {
+					Accum::Add => {
+						for (result, j) in core::iter::zip(&result, js) {
+							for (result, i) in core::iter::zip(result, is) {
+								dst[(i, j)] = alpha * result + &dst[(i, j)];
 							}
 						}
-					}};
-				}
-				for depth in body {
-					do_it!(depth);
-				}
-				if let Some(depth) = tail {
-					do_it!(depth);
-				}
-			}
-			if conj_lhs.is_conj() {
-				for x in &mut local_acc {
-					for x in x {
-						*x = simd.conj(*x);
-					}
-				}
-			}
-			let result = local_acc;
-			let result = result.map(
-				#[inline(always)]
-				|result| {
-					result.map(
-						#[inline(always)]
-						|result| simd.reduce_sum(result),
-					)
-				},
-			);
-			match beta {
-				Accum::Add => {
-					for (result, j) in core::iter::zip(&result, js) {
-						for (result, i) in core::iter::zip(result, is) {
-							dst[(i, j)] = alpha * result + &dst[(i, j)];
+					},
+					Accum::Replace => {
+						for (result, j) in core::iter::zip(&result, js) {
+							for (result, i) in core::iter::zip(result, is) {
+								dst[(i, j)] = alpha * result;
+							}
 						}
-					}
-				},
-				Accum::Replace => {
-					for (result, j) in core::iter::zip(&result, js) {
-						for (result, i) in core::iter::zip(result, is) {
-							dst[(i, j)] = alpha * result;
-						}
-					}
-				},
+					},
+				}
 			}
 		}
 	}
@@ -663,43 +694,16 @@ pub mod dot {
 		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
 		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
 	) -> T {
-		let mut acc0 = simd.zero();
-		let mut acc1 = simd.zero();
-		let mut acc2 = simd.zero();
-		let mut acc3 = simd.zero();
-		let (head, idx4, idx, tail) = simd.batch_indices::<4>();
-		if let Some(i0) = head {
-			let l0 = simd.read(lhs, i0);
-			let r0 = simd.read(rhs, i0);
-			acc0 = simd.mul_add(l0, r0, acc0);
-		}
-		for [i0, i1, i2, i3] in idx4 {
-			let l0 = simd.read(lhs, i0);
-			let l1 = simd.read(lhs, i1);
-			let l2 = simd.read(lhs, i2);
-			let l3 = simd.read(lhs, i3);
-			let r0 = simd.read(rhs, i0);
-			let r1 = simd.read(rhs, i1);
-			let r2 = simd.read(rhs, i2);
-			let r3 = simd.read(rhs, i3);
-			acc0 = simd.mul_add(l0, r0, acc0);
-			acc1 = simd.mul_add(l1, r1, acc1);
-			acc2 = simd.mul_add(l2, r2, acc2);
-			acc3 = simd.mul_add(l3, r3, acc3);
-		}
-		for i0 in idx {
-			let l0 = simd.read(lhs, i0);
-			let r0 = simd.read(rhs, i0);
-			acc0 = simd.mul_add(l0, r0, acc0);
-		}
-		if let Some(i0) = tail {
-			let l0 = simd.read(lhs, i0);
-			let r0 = simd.read(rhs, i0);
-			acc0 = simd.mul_add(l0, r0, acc0);
-		}
-		acc0 = simd.add(acc0, acc1);
-		acc2 = simd.add(acc2, acc3);
-		acc0 = simd.add(acc0, acc2);
+		let mut acc = [simd.zero(); 4];
+		simd_iter!(for (IDX, i) in [simd.batch_indices(); 4] {
+			let l = simd.read(lhs, i);
+			let r = simd.read(rhs, i);
+			acc[IDX] = simd.mul_add(l, r, acc[IDX]);
+		});
+
+		let acc0 = simd.add(acc[0], acc[1]);
+		let acc2 = simd.add(acc[2], acc[3]);
+		let acc0 = simd.add(acc0, acc2);
 		simd.reduce_sum(acc0)
 	}
 	#[inline(always)]
@@ -708,43 +712,16 @@ pub mod dot {
 		lhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
 		rhs: ColRef<'_, T, Dim<'K>, ContiguousFwd>,
 	) -> T {
-		let mut acc0 = simd.zero();
-		let mut acc1 = simd.zero();
-		let mut acc2 = simd.zero();
-		let mut acc3 = simd.zero();
-		let (head, idx4, idx, tail) = simd.batch_indices::<4>();
-		if let Some(i0) = head {
-			let l0 = simd.read(lhs, i0);
-			let r0 = simd.read(rhs, i0);
-			acc0 = simd.conj_mul_add(l0, r0, acc0);
-		}
-		for [i0, i1, i2, i3] in idx4 {
-			let l0 = simd.read(lhs, i0);
-			let l1 = simd.read(lhs, i1);
-			let l2 = simd.read(lhs, i2);
-			let l3 = simd.read(lhs, i3);
-			let r0 = simd.read(rhs, i0);
-			let r1 = simd.read(rhs, i1);
-			let r2 = simd.read(rhs, i2);
-			let r3 = simd.read(rhs, i3);
-			acc0 = simd.conj_mul_add(l0, r0, acc0);
-			acc1 = simd.conj_mul_add(l1, r1, acc1);
-			acc2 = simd.conj_mul_add(l2, r2, acc2);
-			acc3 = simd.conj_mul_add(l3, r3, acc3);
-		}
-		for i0 in idx {
-			let l0 = simd.read(lhs, i0);
-			let r0 = simd.read(rhs, i0);
-			acc0 = simd.conj_mul_add(l0, r0, acc0);
-		}
-		if let Some(i0) = tail {
-			let l0 = simd.read(lhs, i0);
-			let r0 = simd.read(rhs, i0);
-			acc0 = simd.conj_mul_add(l0, r0, acc0);
-		}
-		acc0 = simd.add(acc0, acc1);
-		acc2 = simd.add(acc2, acc3);
-		acc0 = simd.add(acc0, acc2);
+		let mut acc = [simd.zero(); 4];
+		simd_iter!(for (IDX, i) in [simd.batch_indices(); 4] {
+			let l = simd.read(lhs, i);
+			let r = simd.read(rhs, i);
+			acc[IDX] = simd.conj_mul_add(l, r, acc[IDX]);
+		});
+
+		let acc0 = simd.add(acc[0], acc[1]);
+		let acc2 = simd.add(acc[2], acc[3]);
+		let acc0 = simd.add(acc0, acc2);
 		simd.reduce_sum(acc0)
 	}
 	pub(crate) fn inner_prod_schoolbook<'K, T: ComplexField>(
@@ -942,36 +919,25 @@ mod matvec_colmajor {
 						let simd = T::simd_ctx(simd);
 						let M = lhs.nrows();
 						let simd = SimdCtx::<T, S>::new(simd, M);
-						let (head, body, tail) = simd.indices();
+						let indices = simd.indices();
 						let mut dst = dst;
 						match beta {
 							Accum::Add => {},
 							Accum::Replace => {
-								let mut dst = dst.rb_mut();
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									simd.write(dst.rb_mut(), i, simd.zero());
-								}
-								for i in body.clone() {
-									simd.write(dst.rb_mut(), i, simd.zero());
-								}
-								if let Some(i) = tail {
-									simd.write(dst.rb_mut(), i, simd.zero());
-								}
+								});
 							},
 						}
 						for j in lhs.ncols().indices() {
 							let mut dst = dst.rb_mut();
 							let lhs = lhs.col(j);
 							let rhs = &rhs[j];
-							let rhs = if conj_rhs == Conj::Yes {
-								rhs.conj()
-							} else {
-								rhs.copy()
-							};
+							let rhs = conj_rhs.apply_rt(rhs);
 							let rhs = rhs * alpha;
 							let vrhs = simd.splat(&rhs);
 							if conj_lhs == Conj::Yes {
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
 									simd.write(
@@ -979,27 +945,9 @@ mod matvec_colmajor {
 										i,
 										simd.conj_mul_add(x, vrhs, y),
 									);
-								}
-								for i in body.clone() {
-									let y = simd.read(dst.rb(), i);
-									let x = simd.read(lhs, i);
-									simd.write(
-										dst.rb_mut(),
-										i,
-										simd.conj_mul_add(x, vrhs, y),
-									);
-								}
-								if let Some(i) = tail {
-									let y = simd.read(dst.rb(), i);
-									let x = simd.read(lhs, i);
-									simd.write(
-										dst.rb_mut(),
-										i,
-										simd.conj_mul_add(x, vrhs, y),
-									);
-								}
+								});
 							} else {
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									let y = simd.read(dst.rb(), i);
 									let x = simd.read(lhs, i);
 									simd.write(
@@ -1007,25 +955,7 @@ mod matvec_colmajor {
 										i,
 										simd.mul_add(x, vrhs, y),
 									);
-								}
-								for i in body.clone() {
-									let y = simd.read(dst.rb(), i);
-									let x = simd.read(lhs, i);
-									simd.write(
-										dst.rb_mut(),
-										i,
-										simd.mul_add(x, vrhs, y),
-									);
-								}
-								if let Some(i) = tail {
-									let y = simd.read(dst.rb(), i);
-									let x = simd.read(lhs, i);
-									simd.write(
-										dst.rb_mut(),
-										i,
-										simd.mul_add(x, vrhs, y),
-									);
-								}
+								});
 							}
 						}
 					}
@@ -1141,7 +1071,7 @@ mod rank_update {
 				} = self;
 				let (m, n) = dst.shape();
 				let simd = SimdCtx::<T, S>::new(T::simd_ctx(simd), m);
-				let (head, body, tail) = simd.indices();
+				let indices = simd.indices();
 				for j in n.indices() {
 					let mut dst = dst.rb_mut().col_mut(j);
 					let rhs = alpha * conj_rhs.apply_rt(&rhs[j]);
@@ -1149,7 +1079,7 @@ mod rank_update {
 					if conj_lhs.is_conj() {
 						match beta {
 							Accum::Add => {
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									let mut acc = simd.read(dst.rb(), i);
 									acc = simd.conj_mul_add(
 										simd.read(lhs, i),
@@ -1157,48 +1087,20 @@ mod rank_update {
 										acc,
 									);
 									simd.write(dst.rb_mut(), i, acc);
-								}
-								for i in body.clone() {
-									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.conj_mul_add(
-										simd.read(lhs, i),
-										rhs,
-										acc,
-									);
-									simd.write(dst.rb_mut(), i, acc);
-								}
-								if let Some(i) = tail {
-									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.conj_mul_add(
-										simd.read(lhs, i),
-										rhs,
-										acc,
-									);
-									simd.write(dst.rb_mut(), i, acc);
-								}
+								});
 							},
 							Accum::Replace => {
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									let acc =
 										simd.conj_mul(simd.read(lhs, i), rhs);
 									simd.write(dst.rb_mut(), i, acc);
-								}
-								for i in body.clone() {
-									let acc =
-										simd.conj_mul(simd.read(lhs, i), rhs);
-									simd.write(dst.rb_mut(), i, acc);
-								}
-								if let Some(i) = tail {
-									let acc =
-										simd.conj_mul(simd.read(lhs, i), rhs);
-									simd.write(dst.rb_mut(), i, acc);
-								}
+								});
 							},
 						}
 					} else {
 						match beta {
 							Accum::Add => {
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									let mut acc = simd.read(dst.rb(), i);
 									acc = simd.mul_add(
 										simd.read(lhs, i),
@@ -1206,39 +1108,13 @@ mod rank_update {
 										acc,
 									);
 									simd.write(dst.rb_mut(), i, acc);
-								}
-								for i in body.clone() {
-									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.mul_add(
-										simd.read(lhs, i),
-										rhs,
-										acc,
-									);
-									simd.write(dst.rb_mut(), i, acc);
-								}
-								if let Some(i) = tail {
-									let mut acc = simd.read(dst.rb(), i);
-									acc = simd.mul_add(
-										simd.read(lhs, i),
-										rhs,
-										acc,
-									);
-									simd.write(dst.rb_mut(), i, acc);
-								}
+								});
 							},
 							Accum::Replace => {
-								if let Some(i) = head {
+								simd_iter!(for i in [indices] {
 									let acc = simd.mul(simd.read(lhs, i), rhs);
 									simd.write(dst.rb_mut(), i, acc);
-								}
-								for i in body.clone() {
-									let acc = simd.mul(simd.read(lhs, i), rhs);
-									simd.write(dst.rb_mut(), i, acc);
-								}
-								if let Some(i) = tail {
-									let acc = simd.mul(simd.read(lhs, i), rhs);
-									simd.write(dst.rb_mut(), i, acc);
-								}
+								});
 							},
 						}
 					}

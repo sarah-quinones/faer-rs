@@ -1305,6 +1305,8 @@ fn annotate_noalias_mat<Z: MatIndex>(
 }
 #[inline(always)]
 fn annotate_noalias_mat_with_index<
+	const TRANSPOSE: bool,
+	const REVERSE_ROWS: bool,
 	Z: MatIndex<Index = (RowIdx, ColIdx)>,
 	RowIdx,
 	ColIdx,
@@ -1314,13 +1316,11 @@ fn annotate_noalias_mat_with_index<
 	i_begin: usize,
 	i_end: usize,
 	j: usize,
-	transpose: bool,
-	reverse_rows: bool,
 ) where
 	Z::Dyn: MatIndex<Index = (usize, usize)>,
 {
-	if !transpose {
-		if !reverse_rows {
+	if const { !TRANSPOSE } {
+		if const { !REVERSE_ROWS } {
 			for i in i_begin..i_end {
 				unsafe {
 					let (ii, jj) = Z::from_dyn_idx((i, j));
@@ -1337,7 +1337,7 @@ fn annotate_noalias_mat_with_index<
 			}
 		}
 	} else {
-		if !reverse_rows {
+		if const { !REVERSE_ROWS } {
 			for i in i_begin..i_end {
 				unsafe {
 					let (ii, jj) = Z::from_dyn_idx((j, i));
@@ -1458,14 +1458,12 @@ fn for_each_mat_with_index<
 		MatLayoutTransform::None => unsafe {
 			if Z::Dyn::is_contiguous(&z) {
 				for j in 0..n {
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<false, false, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(&mut z, (0, j), m),
 						0,
 						m,
 						j,
-						false,
-						false,
 					);
 				}
 			} else {
@@ -1480,14 +1478,12 @@ fn for_each_mat_with_index<
 		MatLayoutTransform::ReverseRows => unsafe {
 			if Z::Dyn::is_contiguous(&z) {
 				for j in 0..n {
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<false, true, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(&mut z, (0, j), m),
 						0,
 						m,
 						j,
-						false,
-						true,
 					);
 				}
 			} else {
@@ -1502,14 +1498,12 @@ fn for_each_mat_with_index<
 		MatLayoutTransform::Transpose => unsafe {
 			if Z::Dyn::is_contiguous(&z) {
 				for j in 0..n {
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<true, false, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(&mut z, (0, j), m),
 						0,
 						m,
 						j,
-						true,
-						false,
 					);
 				}
 			} else {
@@ -1524,14 +1518,12 @@ fn for_each_mat_with_index<
 		MatLayoutTransform::TransposeReverseRows => unsafe {
 			if Z::Dyn::is_contiguous(&z) {
 				for j in 0..n {
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<true, true, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(&mut z, (0, j), m),
 						0,
 						m,
 						j,
-						true,
-						true,
 					);
 				}
 			} else {
@@ -1584,7 +1576,7 @@ fn for_each_mat_triangular_lower_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<false, false, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1594,8 +1586,6 @@ fn for_each_mat_triangular_lower_with_index<
 						start,
 						end,
 						j,
-						false,
-						false,
 					);
 				}
 			} else {
@@ -1620,7 +1610,7 @@ fn for_each_mat_triangular_lower_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<false, true, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1630,8 +1620,6 @@ fn for_each_mat_triangular_lower_with_index<
 						j + strict + start,
 						j + strict + end,
 						j,
-						false,
-						true,
 					);
 				}
 			} else {
@@ -1656,7 +1644,7 @@ fn for_each_mat_triangular_lower_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<true, false, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1666,8 +1654,6 @@ fn for_each_mat_triangular_lower_with_index<
 						start,
 						end,
 						j,
-						true,
-						false,
 					);
 				}
 			} else {
@@ -1692,7 +1678,7 @@ fn for_each_mat_triangular_lower_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<true, true, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1702,8 +1688,6 @@ fn for_each_mat_triangular_lower_with_index<
 						0,
 						end - start,
 						j,
-						true,
-						true,
 					);
 				}
 			} else {
@@ -1761,7 +1745,7 @@ fn for_each_mat_triangular_upper_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<false, false, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1771,8 +1755,6 @@ fn for_each_mat_triangular_upper_with_index<
 						start,
 						end,
 						j,
-						false,
-						false,
 					);
 				}
 			} else {
@@ -1797,7 +1779,7 @@ fn for_each_mat_triangular_upper_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<false, true, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1807,8 +1789,6 @@ fn for_each_mat_triangular_upper_with_index<
 						0,
 						end - start,
 						j,
-						false,
-						true,
 					);
 				}
 			} else {
@@ -1833,7 +1813,7 @@ fn for_each_mat_triangular_upper_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<true, false, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1843,8 +1823,6 @@ fn for_each_mat_triangular_upper_with_index<
 						start,
 						end,
 						j,
-						true,
-						false,
 					);
 				}
 			} else {
@@ -1869,7 +1847,7 @@ fn for_each_mat_triangular_upper_with_index<
 					if start == end {
 						continue;
 					}
-					annotate_noalias_mat_with_index::<Z, _, _>(
+					annotate_noalias_mat_with_index::<true, true, Z, _, _>(
 						&mut f,
 						Z::Dyn::get_slice_unchecked(
 							&mut z,
@@ -1879,8 +1857,6 @@ fn for_each_mat_triangular_upper_with_index<
 						j + strict,
 						j + strict + end - start,
 						j,
-						true,
-						true,
 					);
 				}
 			} else {
@@ -2075,8 +2051,10 @@ fn for_each_diag_with_index<
 	}
 }
 #[inline(always)]
-fn for_each_col<Z: MatIndex>(z: Z, mut f: impl FnMut(<Z as MatIndex>::Item))
-where
+fn for_each_col<Z: MatIndex<LayoutTransform = VecLayoutTransform>>(
+	z: Z,
+	mut f: impl FnMut(<Z as MatIndex>::Item),
+) where
 	Z::Dyn: MatIndex<
 			Rows = usize,
 			Cols = (),
