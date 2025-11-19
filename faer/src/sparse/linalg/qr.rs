@@ -400,6 +400,23 @@ pub mod supernodal {
 			&self.H
 		}
 
+		/// returns the layout of the workspace required to solve the system $A
+		/// x = \text{rhs}$ in the sense of least squares
+		pub fn apply_Q_transpose_in_place_scratch<T>(
+			&self,
+			rhs_ncols: usize,
+			par: Par,
+		) -> StackReq
+		where
+			T: ComplexField,
+		{
+			let _ = par;
+			temp_mat_scratch::<T>(
+				self.householder().nrows(),
+				rhs_ncols.saturating_mul(2),
+			)
+		}
+
 		/// computes the layout of the workspace required to solve the linear
 		/// system $A x = \text{rhs}$ in the sense of least squares
 		pub fn solve_in_place_scratch<T: ComplexField>(
@@ -407,25 +424,7 @@ pub mod supernodal {
 			rhs_ncols: usize,
 			par: Par,
 		) -> StackReq {
-			let _ = par;
-			let L_symbolic = self.R_adjoint();
-			let H_symbolic = self.householder();
-			let n_supernodes = L_symbolic.n_supernodes();
-			let mut loop_scratch = StackReq::empty();
-			for s in 0..n_supernodes {
-				let s_h_row_begin = H_symbolic.col_ptr_for_row_idx[s].zx();
-				let s_h_row_full_end =
-					H_symbolic.col_ptr_for_row_idx[s + 1].zx();
-				let max_block_size = H_symbolic.max_block_size[s].zx();
-				loop_scratch = loop_scratch.or(
-					linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_scratch::<T>(
-						s_h_row_full_end - s_h_row_begin,
-						max_block_size,
-						rhs_ncols,
-					),
-				);
-			}
-			loop_scratch
+			self.apply_Q_transpose_in_place_scratch::<T>(rhs_ncols, par)
 		}
 	}
 	/// computes the layout of the workspace required to compute the symbolic
@@ -716,18 +715,20 @@ pub mod supernodal {
 
 		/// Applies $Q^{\top}$ to the rhs in place, implicitly conjugating $Q$
 		/// if needed
-		///
-		/// `work` is a temporary workspace with the same dimensions as `rhs`
 		pub fn apply_Q_transpose_in_place_with_conj(
 			&self,
-			conj: Conj,
+			conj_qr: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
 			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
+			let (n, k) = rhs.shape();
+			alloca!('stack: {
+				let work = unsafe { mat![uninit::<T>, n, k] };
+			});
+
 			let L_symbolic = self.symbolic().R_adjoint();
 			let H_symbolic = self.symbolic().householder();
 			let n_supernodes = L_symbolic.n_supernodes();
@@ -789,7 +790,7 @@ pub mod supernodal {
 						linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 							b_H.rb(),
 							b_tau.rb(),
-							conj,
+							conj_qr,
 							tmp.rb_mut().subrows_mut(start, nrows),
 							par,
 							stack.rb_mut(),
@@ -818,33 +819,31 @@ pub mod supernodal {
 
 		/// solves the equation $A x = \text{rhs}$ in the sense of least
 		/// squares, implicitly conjugating $A$ if needed
-		///
-		/// `work` is a temporary workspace with the same dimensions as `rhs`
 		#[track_caller]
 		pub fn solve_in_place_with_conj(
 			&self,
 			conj: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
 			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
-			let mut work = work;
+			let (n, k) = rhs.shape();
+
 			let mut rhs = rhs;
 			self.apply_Q_transpose_in_place_with_conj(
 				conj.compose(Conj::Yes),
 				rhs.rb_mut(),
 				par,
-				work.rb_mut(),
 				stack,
 			);
 			let L_symbolic = self.symbolic().R_adjoint();
 			let n_supernodes = L_symbolic.n_supernodes();
-			let mut tmp = work;
+			alloca!('stack: {
+				let mut tmp = unsafe { mat![uninit::<T>, n, k] };
+			});
 			let mut x = rhs;
-			let k = x.ncols();
 			{
 				let L =
 					SupernodalLltRef::<'_, I, T>::new(L_symbolic, self.rt_val);
@@ -1425,6 +1424,33 @@ pub mod simplicial {
 		pub fn len_r(&self) -> usize {
 			self.l_nnz
 		}
+
+		/// returns the layout of the workspace required to solve the system $A
+		/// x = \text{rhs}$ in the sense of least squares
+		pub fn apply_Q_transpose_in_place_scratch<T>(
+			&self,
+			rhs_ncols: usize,
+			par: Par,
+		) -> StackReq
+		where
+			T: ComplexField,
+		{
+			let _ = par;
+			temp_mat_scratch::<T>(self.nrows(), rhs_ncols)
+		}
+
+		/// returns the layout of the workspace required to solve the system $A
+		/// x = \text{rhs}$ in the sense of least squares
+		pub fn solve_in_place_scratch<T>(
+			&self,
+			rhs_ncols: usize,
+			par: Par,
+		) -> StackReq
+		where
+			T: ComplexField,
+		{
+			self.apply_Q_transpose_in_place_scratch::<T>(rhs_ncols, par)
+		}
 	}
 	/// $QR$ factors containing both the symbolic and numeric representations
 	#[derive(Debug)]
@@ -1548,17 +1574,20 @@ pub mod simplicial {
 
 		/// Applies $Q^{\top}$ to the input matrix `rhs`, implicitly conjugating
 		/// the $Q$ matrix if needed
-		///
-		/// `work` is a temporary workspace with the same dimensions as `rhs`.
-		pub fn apply_qt_in_place_with_conj(
+		pub fn apply_Q_transpose_in_place_with_conj(
 			&self,
 			conj_qr: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
+			let (n, k) = rhs.shape();
+			alloca!('stack: {
+				let mut tmp = unsafe { mat![uninit::<T>, n, k] };
+			});
+
 			let _ = par;
 			assert!(rhs.nrows() == self.symbolic.nrows);
 			let mut x = rhs;
@@ -1577,7 +1606,6 @@ pub mod simplicial {
 				self.householder_val,
 			);
 			let tau = self.tau_val;
-			let mut tmp = work;
 			tmp.fill(zero());
 			{
 				for j in 0..n {
@@ -1623,25 +1651,22 @@ pub mod simplicial {
 
 		/// solves the equation $A x = \text{rhs}$ in the sense of least
 		/// squares, implicitly conjugating $A$ if needed
-		///
-		/// `work` is a temporary workspace with the same dimensions as `rhs`.
 		#[track_caller]
 		pub fn solve_in_place_with_conj(
 			&self,
 			conj_qr: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
-			let mut work = work;
 			let mut rhs = rhs;
-			self.apply_qt_in_place_with_conj(
+			self.apply_Q_transpose_in_place_with_conj(
 				conj_qr,
 				rhs.rb_mut(),
 				par,
-				work.rb_mut(),
+				stack,
 			);
 			let _ = par;
 			assert!(rhs.nrows() == self.symbolic.nrows);
@@ -1990,8 +2015,6 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 
 	/// solves the equation $A x = \text{rhs}$ in the sense of least squares,
 	/// implicitly conjugating $A$ if needed
-	///
-	/// `work` is a temporary workspace with the same dimensions as `rhs`
 	#[track_caller]
 	pub fn solve_in_place_with_conj(
 		self,
@@ -2010,10 +2033,7 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 			self.symbolic.nrows() >= self.symbolic.ncols(),
 		));
 		let mut rhs = rhs;
-		let (mut x, stack) = unsafe { temp_mat_uninit::<T, _, _>(m, k, stack) };
-		let mut x = x.as_mat_mut();
 		let (_, inv) = self.symbolic.col_perm().arrays();
-		x.copy_from(rhs.rb());
 		let indices = self.indices;
 		let val = self.val;
 		match &self.symbolic.raw {
@@ -2050,12 +2070,7 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 				let this = simplicial::SimplicialQrRef::<'_, I, T>::new(
 					symbolic, r, h, tau_val,
 				);
-				this.solve_in_place_with_conj(
-					conj,
-					x.rb_mut(),
-					par,
-					rhs.rb_mut(),
-				);
+				this.solve_in_place_with_conj(conj, rhs.rb_mut(), par, stack);
 			},
 			SymbolicQrRaw::Supernodal(symbolic) => {
 				let (householder_row_idx, indices) = indices
@@ -2090,18 +2105,16 @@ impl<'a, I: Index, T> QrRef<'a, I, T> {
 						tau_val,
 					)
 				};
-				this.solve_in_place_with_conj(
-					conj,
-					x.rb_mut(),
-					par,
-					rhs.rb_mut(),
-					stack,
-				);
+				this.solve_in_place_with_conj(conj, rhs.rb_mut(), par, stack);
 			},
 		}
+		alloca!('stack: {
+			let mut x = unsafe { col![uninit::<T>, n] };
+		});
 		for j in 0..k {
+			x.copy_from(rhs.rb_mut().col_mut(j).get_mut(..n));
 			for (i, p) in inv.iter().enumerate() {
-				rhs[(i, j)] = x[(p.zx(), j)].copy();
+				rhs[(i, j)] = x[p.zx()].copy();
 			}
 		}
 	}
@@ -2182,8 +2195,10 @@ impl<I: Index> SymbolicQr<I> {
 	where
 		T: ComplexField,
 	{
-		temp_mat_scratch::<T>(self.nrows(), rhs_ncols).and(match &self.raw {
-			SymbolicQrRaw::Simplicial(_) => StackReq::empty(),
+		temp_mat_scratch::<T>(self.nrows(), 1).or(match &self.raw {
+			SymbolicQrRaw::Simplicial(this) => {
+				this.solve_in_place_scratch::<T>(rhs_ncols, par)
+			},
 			SymbolicQrRaw::Supernodal(this) => {
 				this.solve_in_place_scratch::<T>(rhs_ncols, par)
 			},
@@ -2808,12 +2823,10 @@ mod tests {
 			c64::new(gen.random(), gen.random())
 		});
 		let mut x = rhs.clone();
-		let mut work = rhs.clone();
 		qr.solve_in_place_with_conj(
 			Conj::No,
 			x.as_mut(),
 			Par::Seq,
-			work.as_mut(),
 			MemStack::new(&mut MemBuffer::new(
 				symbolic.solve_in_place_scratch::<T>(2, Par::Seq),
 			)),
@@ -2933,12 +2946,14 @@ mod tests {
 		});
 		{
 			let mut x = rhs.clone();
-			let mut work = rhs.clone();
 			qr.solve_in_place_with_conj(
 				Conj::No,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					qr.symbolic()
+						.solve_in_place_scratch::<T>(rhs.ncols(), Par::Seq),
+				)),
 			);
 			let mut y = rhs.clone();
 			A.to_dense()
@@ -2951,12 +2966,14 @@ mod tests {
 		}
 		{
 			let mut x = rhs.clone();
-			let mut work = rhs.clone();
 			qr.solve_in_place_with_conj(
 				Conj::Yes,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					qr.symbolic()
+						.solve_in_place_scratch::<T>(rhs.ncols(), Par::Seq),
+				)),
 			);
 			let x = x.as_ref().subrows(0, n);
 			let a = a.conjugate();

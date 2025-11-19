@@ -43,6 +43,25 @@ fn resize_vec<T: Clone>(
 pub mod supernodal {
 	use super::*;
 	use crate::assert;
+
+	pub fn solve_in_place_scratch<I: Index, T: ComplexField>(
+		dim: usize,
+		rhs_ncols: usize,
+		par: Par,
+	) -> StackReq {
+		let _ = par;
+		crate::perm::permute_rows_in_place_scratch::<I, T>(dim, rhs_ncols)
+			.or(temp_mat_scratch::<T>(dim, rhs_ncols))
+	}
+
+	pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(
+		dim: usize,
+		rhs_ncols: usize,
+		par: Par,
+	) -> StackReq {
+		solve_in_place_scratch::<I, T>(dim, rhs_ncols, par)
+	}
+
 	/// $LU$ factor structure containing the symbolic structure
 	#[derive(Debug, Clone)]
 	pub struct SymbolicSupernodalLu<I> {
@@ -128,7 +147,7 @@ pub mod supernodal {
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -137,24 +156,13 @@ pub mod supernodal {
 				self.nrows() == rhs.nrows()
 			));
 			let mut X = rhs;
-			let mut temp = work;
-			crate::perm::permute_rows(temp.rb_mut(), X.rb(), row_perm);
-			self.l_solve_in_place_with_conj(
-				conj_lhs,
-				temp.rb_mut(),
+			crate::perm::permute_rows_in_place(X.rb_mut(), row_perm, stack);
+			self.l_solve_in_place_with_conj(conj_lhs, X.rb_mut(), par, stack);
+			self.u_solve_in_place_with_conj(conj_lhs, X.rb_mut(), par, stack);
+			crate::perm::permute_rows_in_place(
 				X.rb_mut(),
-				par,
-			);
-			self.u_solve_in_place_with_conj(
-				conj_lhs,
-				temp.rb_mut(),
-				X.rb_mut(),
-				par,
-			);
-			crate::perm::permute_rows(
-				X.rb_mut(),
-				temp.rb(),
 				col_perm.inverse(),
+				stack,
 			);
 		}
 
@@ -172,7 +180,7 @@ pub mod supernodal {
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -181,24 +189,23 @@ pub mod supernodal {
 				self.nrows() == rhs.nrows()
 			));
 			let mut X = rhs;
-			let mut temp = work;
-			crate::perm::permute_rows(temp.rb_mut(), X.rb(), col_perm);
+			crate::perm::permute_rows_in_place(X.rb_mut(), col_perm, stack);
 			self.u_solve_transpose_in_place_with_conj(
 				conj_lhs,
-				temp.rb_mut(),
 				X.rb_mut(),
 				par,
+				stack,
 			);
 			self.l_solve_transpose_in_place_with_conj(
 				conj_lhs,
-				temp.rb_mut(),
 				X.rb_mut(),
 				par,
+				stack,
 			);
-			crate::perm::permute_rows(
+			crate::perm::permute_rows_in_place(
 				X.rb_mut(),
-				temp.rb(),
 				row_perm.inverse(),
+				stack,
 			);
 		}
 
@@ -207,8 +214,8 @@ pub mod supernodal {
 			&self,
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
-			mut work: MatMut<'_, T>,
 			par: Par,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -218,6 +225,10 @@ pub mod supernodal {
 			let mut X = rhs;
 			let nrhs = X.ncols();
 			let supernode_ptr = &*lu.supernode_ptr;
+			alloca!('stack: {
+				let mut work =
+					unsafe { mat![uninit::<T>, X.nrows(), X.ncols()] };
+			});
 			for s in 0..lu.nsupernodes {
 				let s_begin = supernode_ptr[s].zx();
 				let s_end = supernode_ptr[s + 1].zx();
@@ -264,8 +275,8 @@ pub mod supernodal {
 			&self,
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
-			mut work: MatMut<'_, T>,
 			par: Par,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -275,6 +286,10 @@ pub mod supernodal {
 			let mut X = rhs;
 			let nrhs = X.ncols();
 			let supernode_ptr = &*lu.supernode_ptr;
+			alloca!('stack: {
+				let mut work =
+					unsafe { mat![uninit::<T>, X.nrows(), X.ncols()] };
+			});
 			for s in (0..lu.nsupernodes).rev() {
 				let s_begin = supernode_ptr[s].zx();
 				let s_end = supernode_ptr[s + 1].zx();
@@ -321,8 +336,8 @@ pub mod supernodal {
 			&self,
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
-			mut work: MatMut<'_, T>,
 			par: Par,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -332,6 +347,10 @@ pub mod supernodal {
 			let mut X = rhs;
 			let nrhs = X.ncols();
 			let supernode_ptr = &*lu.supernode_ptr;
+			alloca!('stack: {
+				let mut work =
+					unsafe { mat![uninit::<T>, X.nrows(), X.ncols()] };
+			});
 			for s in (0..lu.nsupernodes).rev() {
 				let s_begin = supernode_ptr[s].zx();
 				let s_end = supernode_ptr[s + 1].zx();
@@ -383,8 +402,8 @@ pub mod supernodal {
 			&self,
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
-			mut work: MatMut<'_, T>,
 			par: Par,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -394,6 +413,10 @@ pub mod supernodal {
 			let mut X = rhs;
 			let nrhs = X.ncols();
 			let supernode_ptr = &*lu.supernode_ptr;
+			alloca!('stack: {
+				let mut work =
+					unsafe { mat![uninit::<T>, X.nrows(), X.ncols()] };
+			});
 			for s in 0..lu.nsupernodes {
 				let s_begin = supernode_ptr[s].zx();
 				let s_end = supernode_ptr[s + 1].zx();
@@ -1246,6 +1269,7 @@ pub mod supernodal {
 		Ok(())
 	}
 }
+
 /// simplicial factorization module
 ///
 /// a supernodal factorization is one that processes the elements of the $LU$
@@ -1254,6 +1278,24 @@ pub mod supernodal {
 pub mod simplicial {
 	use super::*;
 	use crate::assert;
+
+	pub fn solve_in_place_scratch<I: Index, T: ComplexField>(
+		dim: usize,
+		rhs_ncols: usize,
+		par: Par,
+	) -> StackReq {
+		let _ = par;
+		crate::perm::permute_rows_in_place_scratch::<I, T>(dim, rhs_ncols)
+	}
+
+	pub fn solve_transpose_in_place_scratch<I: Index, T: ComplexField>(
+		dim: usize,
+		rhs_ncols: usize,
+		par: Par,
+	) -> StackReq {
+		solve_in_place_scratch::<I, T>(dim, rhs_ncols, par)
+	}
+
 	/// $LU$ factor structure containing the symbolic and numerical
 	/// representations
 	#[derive(Debug, Clone)]
@@ -1350,33 +1392,32 @@ pub mod simplicial {
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
 			assert!(self.nrows() == self.ncols());
 			assert!(self.nrows() == rhs.nrows());
 			let mut X = rhs;
-			let mut temp = work;
 			let l = self.l_factor_unsorted();
 			let u = self.u_factor_unsorted();
-			crate::perm::permute_rows(temp.rb_mut(), X.rb(), row_perm);
+			crate::perm::permute_rows_in_place(X.rb_mut(), row_perm, stack);
 			linalg_sp::triangular_solve::solve_unit_lower_triangular_in_place(
 				l,
 				conj_lhs,
-				temp.rb_mut(),
+				X.rb_mut(),
 				par,
 			);
 			linalg_sp::triangular_solve::solve_upper_triangular_in_place(
 				u,
 				conj_lhs,
-				temp.rb_mut(),
+				X.rb_mut(),
 				par,
 			);
-			crate::perm::permute_rows(
+			crate::perm::permute_rows_in_place(
 				X.rb_mut(),
-				temp.rb(),
 				col_perm.inverse(),
+				stack,
 			);
 		}
 
@@ -1394,7 +1435,7 @@ pub mod simplicial {
 			conj_lhs: Conj,
 			rhs: MatMut<'_, T>,
 			par: Par,
-			work: MatMut<'_, T>,
+			stack: &mut MemStack,
 		) where
 			T: ComplexField,
 		{
@@ -1403,16 +1444,15 @@ pub mod simplicial {
 				self.nrows() == rhs.nrows()
 			));
 			let mut X = rhs;
-			let mut temp = work;
 			let l = self.l_factor_unsorted();
 			let u = self.u_factor_unsorted();
-			crate::perm::permute_rows(temp.rb_mut(), X.rb(), col_perm);
-			linalg_sp::triangular_solve::solve_upper_triangular_transpose_in_place(u, conj_lhs, temp.rb_mut(), par);
-			linalg_sp::triangular_solve::solve_unit_lower_triangular_transpose_in_place(l, conj_lhs, temp.rb_mut(), par);
-			crate::perm::permute_rows(
+			crate::perm::permute_rows_in_place(X.rb_mut(), col_perm, stack);
+			linalg_sp::triangular_solve::solve_upper_triangular_transpose_in_place(u, conj_lhs, X.rb_mut(), par);
+			linalg_sp::triangular_solve::solve_unit_lower_triangular_transpose_in_place(l, conj_lhs, X.rb_mut(), par);
+			crate::perm::permute_rows_in_place(
 				X.rb_mut(),
-				temp.rb(),
 				row_perm.inverse(),
+				stack,
 			);
 		}
 	}
@@ -1824,9 +1864,6 @@ impl<'a, I: Index, T> LuRef<'a, I, T> {
 	) where
 		T: ComplexField,
 	{
-		let (mut work, _) =
-			unsafe { temp_mat_uninit(rhs.nrows(), rhs.ncols(), stack) };
-		let work = work.as_mat_mut();
 		match (&self.symbolic.raw, &self.numeric.raw) {
 			(
 				SymbolicLuRaw::Simplicial { .. },
@@ -1837,7 +1874,7 @@ impl<'a, I: Index, T> LuRef<'a, I, T> {
 				conj,
 				rhs,
 				par,
-				work,
+				stack,
 			),
 			(
 				SymbolicLuRaw::Supernodal(_),
@@ -1848,7 +1885,7 @@ impl<'a, I: Index, T> LuRef<'a, I, T> {
 				conj,
 				rhs,
 				par,
-				work,
+				stack,
 			),
 			_ => unreachable!(),
 		}
@@ -1870,9 +1907,6 @@ impl<'a, I: Index, T> LuRef<'a, I, T> {
 	) where
 		T: ComplexField,
 	{
-		let (mut work, _) =
-			unsafe { temp_mat_uninit(rhs.nrows(), rhs.ncols(), stack) };
-		let work = work.as_mat_mut();
 		match (&self.symbolic.raw, &self.numeric.raw) {
 			(
 				SymbolicLuRaw::Simplicial { .. },
@@ -1883,7 +1917,7 @@ impl<'a, I: Index, T> LuRef<'a, I, T> {
 				conj,
 				rhs,
 				par,
-				work,
+				stack,
 			),
 			(
 				SymbolicLuRaw::Supernodal(_),
@@ -1894,7 +1928,7 @@ impl<'a, I: Index, T> LuRef<'a, I, T> {
 				conj,
 				rhs,
 				par,
-				work,
+				stack,
 			),
 			_ => unreachable!(),
 		}
@@ -1977,8 +2011,18 @@ impl<I: Index> SymbolicLu<I> {
 	where
 		T: ComplexField,
 	{
-		let _ = par;
-		temp_mat_scratch::<T>(self.nrows(), rhs_ncols)
+		match &self.raw {
+			SymbolicLuRaw::Simplicial { nrows, .. } => {
+				simplicial::solve_in_place_scratch::<I, T>(
+					*nrows, rhs_ncols, par,
+				)
+			},
+			SymbolicLuRaw::Supernodal(this) => {
+				supernodal::solve_in_place_scratch::<I, T>(
+					this.nrows, rhs_ncols, par,
+				)
+			},
+		}
 	}
 
 	/// computes the layout of the workspace required to solve the equation
@@ -1991,8 +2035,7 @@ impl<I: Index> SymbolicLu<I> {
 	where
 		T: ComplexField,
 	{
-		let _ = par;
-		temp_mat_scratch::<T>(self.nrows(), rhs_ncols)
+		self.solve_in_place_scratch::<T>(rhs_ncols, par)
 	}
 
 	/// computes a numerical $LU$ factorization of $A$
@@ -2358,7 +2401,6 @@ mod tests {
 		.unwrap();
 		let k = 2;
 		let rhs = Mat::from_fn(n, k, |_, _| gen());
-		let mut work = rhs.clone();
 		let A_dense = A.to_dense();
 		let row_perm =
 			PermRef::<'_, _>::new_checked(&row_perm, &row_perm_inv, m);
@@ -2370,7 +2412,13 @@ mod tests {
 				Conj::No,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					supernodal::solve_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((&A_dense * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2382,7 +2430,13 @@ mod tests {
 				Conj::Yes,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					supernodal::solve_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2394,7 +2448,13 @@ mod tests {
 				Conj::No,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					supernodal::solve_transpose_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((A_dense.transpose() * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2406,7 +2466,13 @@ mod tests {
 				Conj::Yes,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					supernodal::solve_transpose_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((A_dense.adjoint() * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2456,7 +2522,6 @@ mod tests {
 		.unwrap();
 		let k = 1;
 		let rhs = Mat::from_fn(n, k, |_, _| gen());
-		let mut work = rhs.clone();
 		let A_dense = A.to_dense();
 		let row_perm =
 			PermRef::<'_, _>::new_checked(&row_perm, &row_perm_inv, m);
@@ -2468,7 +2533,13 @@ mod tests {
 				Conj::No,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					simplicial::solve_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((&A_dense * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2480,7 +2551,13 @@ mod tests {
 				Conj::Yes,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					simplicial::solve_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2492,7 +2569,13 @@ mod tests {
 				Conj::No,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					simplicial::solve_transpose_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((A_dense.transpose() * &x - &rhs).norm_max() < 1e-10);
 		}
@@ -2504,7 +2587,13 @@ mod tests {
 				Conj::Yes,
 				x.as_mut(),
 				Par::Seq,
-				work.as_mut(),
+				MemStack::new(&mut MemBuffer::new(
+					simplicial::solve_transpose_in_place_scratch::<usize, T>(
+						n,
+						k,
+						Par::Seq,
+					),
+				)),
 			);
 			assert!((A_dense.adjoint() * &x - &rhs).norm_max() < 1e-10);
 		}

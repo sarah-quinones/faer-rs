@@ -1578,7 +1578,7 @@ where
 }
 #[cfg(test)]
 mod tests {
-	use crate::{assert, mat};
+	use crate::assert;
 	#[test]
 	fn test_resize() {
 		let mut m = mat![

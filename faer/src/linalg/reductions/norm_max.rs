@@ -132,7 +132,7 @@ pub fn norm_max<T: ComplexField>(mut mat: MatRef<'_, T>) -> T::Real {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Mat, assert, unzip, zip};
+	use crate::{Mat, assert};
 	#[test]
 	fn test_norm_max() {
 		let relative_err =

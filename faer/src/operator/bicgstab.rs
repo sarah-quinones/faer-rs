@@ -413,7 +413,6 @@ pub fn bicgstab<T: ComplexField>(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::mat;
 	use crate::stats::prelude::*;
 	use dyn_stack::MemBuffer;
 	use equator::assert;

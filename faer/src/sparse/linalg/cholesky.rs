@@ -1565,9 +1565,13 @@ pub mod supernodal {
 		pub(crate) col_ptr_for_row_idx: alloc::vec::Vec<I>,
 		pub(crate) col_ptr_for_val: alloc::vec::Vec<I>,
 		pub(crate) row_idx: alloc::vec::Vec<I>,
-		pub(crate) nnz_per_super: Option<alloc::vec::Vec<I>>,
+		pub(crate) nnz_per_super: alloc::vec::Vec<I>,
 	}
 	impl<I: Index> SymbolicSupernodalCholesky<I> {
+		/// returns `col_ptr`, `row_idx` and `nnz` for mutation
+		// pub unsafe fn as_symbolic_mut(&mut self) -> (&[I], &mut [I], &mut
+		// [I]) { }
+
 		/// returns the number of supernodes in the cholesky factor
 		#[inline]
 		pub fn n_supernodes(&self) -> usize {
@@ -1637,9 +1641,9 @@ pub mod supernodal {
 		) -> supernodal::SymbolicSupernodeRef<'_, I> {
 			let symbolic = self;
 			let start = symbolic.supernode_begin[s].zx();
-			let pattern = &symbolic.row_idx()[symbolic.col_ptr_for_row_idx()[s]
-				.zx()
-				..symbolic.col_ptr_for_row_idx()[s + 1].zx()];
+			let pattern = &symbolic.row_idx()
+				[symbolic.col_ptr_for_row_idx()[s].zx()..]
+				[..symbolic.nnz_per_super()[s].zx()];
 			supernodal::SymbolicSupernodeRef { start, pattern }
 		}
 
@@ -1660,21 +1664,17 @@ pub mod supernodal {
 			req
 		}
 
-		#[doc(hidden)]
-		pub fn __prepare_for_refactorize(&mut self) -> Result<(), FaerError> {
-			let mut v = try_zeroed(self.n_supernodes())?;
-			for s in 0..self.n_supernodes() {
-				v[s] = self.col_ptr_for_row_idx[s + 1]
-					- self.col_ptr_for_row_idx[s];
-			}
-			self.nnz_per_super = Some(v);
-			Ok(())
-		}
+		// fn prepare_for_refactorize(&mut self) -> Result<(), FaerError> {
+		// 	let col_ptr = &self.col_ptr_for_row_idx;
+		// 	let v = make_nnz(col_ptr)?;
+		// 	self.nnz_per_super = Some(v);
+		// 	Ok(())
+		// }
 
 		#[doc(hidden)]
 		#[track_caller]
-		pub fn __nnz_per_super(&self) -> &[I] {
-			self.nnz_per_super.as_deref().unwrap()
+		pub fn nnz_per_super(&self) -> &[I] {
+			&self.nnz_per_super
 		}
 
 		#[doc(hidden)]
@@ -1765,14 +1765,21 @@ pub mod supernodal {
 					);
 				}
 			}
-			let Some(nnz_per_super) = self.nnz_per_super.as_deref_mut() else {
-				panic!()
-			};
 			for s in N_SUPERNODES.indices() {
-				nnz_per_super[*s] =
+				self.nnz_per_super[*s] =
 					current_row_positions[s] - self.supernode_begin[*s];
 			}
 		}
+	}
+
+	fn make_nnz<I: Index>(
+		col_ptr: &[I],
+	) -> Result<alloc::vec::Vec<I>, FaerError> {
+		let mut v = try_zeroed(col_ptr.len() - 1)?;
+		for s in 0..col_ptr.len() - 1 {
+			v[s] = col_ptr[s + 1] - col_ptr[s];
+		}
+		Ok(v)
 	}
 	impl<I: Index, T> Copy for SupernodalLdltRef<'_, I, T> {}
 	impl<I: Index, T> Clone for SupernodalLdltRef<'_, I, T> {
@@ -1826,9 +1833,8 @@ pub mod supernodal {
 			let L_values = self.values();
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
-			let s_pattern =
-				&symbolic.row_idx()[symbolic.col_ptr_for_row_idx()[s].zx()
-					..symbolic.col_ptr_for_row_idx()[s + 1].zx()];
+			let s_pattern = &symbolic.row_idx
+				[symbolic.col_ptr_for_row_idx[s].zx()..][..symbolic.nnz_per_super[s].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 			let Ls = MatRef::from_column_major_slice(
@@ -1974,9 +1980,8 @@ pub mod supernodal {
 			let L_values = self.values();
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
-			let s_pattern =
-				&symbolic.row_idx()[symbolic.col_ptr_for_row_idx()[s].zx()
-					..symbolic.col_ptr_for_row_idx()[s + 1].zx()];
+			let s_pattern = &symbolic.row_idx
+				[symbolic.col_ptr_for_row_idx[s].zx()..][..symbolic.nnz_per_super[s].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 			let Ls = MatRef::from_column_major_slice(
@@ -2218,9 +2223,8 @@ pub mod supernodal {
 			let L_values = self.val();
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
-			let s_pattern =
-				&symbolic.row_idx()[symbolic.col_ptr_for_row_idx()[s].zx()
-					..symbolic.col_ptr_for_row_idx()[s + 1].zx()];
+			let s_pattern = &symbolic.row_idx
+				[symbolic.col_ptr_for_row_idx[s].zx()..][..symbolic.nnz_per_super[s].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 			let Ls = MatRef::from_column_major_slice(
@@ -2443,7 +2447,7 @@ pub mod supernodal {
 				col_ptr_for_row_idx: try_collect([zero])?,
 				col_ptr_for_val: try_collect([zero])?,
 				row_idx: alloc::vec::Vec::new(),
-				nnz_per_super: None,
+				nnz_per_super: alloc::vec::Vec::new(),
 			});
 		}
 		let original_stack = stack;
@@ -2933,10 +2937,10 @@ pub mod supernodal {
 			supernode_postorder_inv: supernode_etree__,
 			descendant_count: descendent_count__,
 			supernode_begin: supernode_begin__,
+			nnz_per_super: make_nnz(&col_ptr_for_row_idx__)?,
 			col_ptr_for_row_idx: col_ptr_for_row_idx__,
 			col_ptr_for_val: col_ptr_for_val__,
 			row_idx: row_idx__,
-			nnz_per_super: None,
 		})
 	}
 	#[inline]
@@ -2973,8 +2977,8 @@ pub mod supernodal {
 				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
-				let d_pattern =
-					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
+					[..symbolic.nnz_per_super[d].zx()];
 				let d_pattern_start =
 					d_pattern.partition_point(partition_fn(s_start));
 				let d_pattern_mid_len = d_pattern[d_pattern_start..]
@@ -3029,8 +3033,8 @@ pub mod supernodal {
 				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
-				let d_pattern =
-					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
+					[..symbolic.nnz_per_super[d].zx()];
 				let d_ncols = d_end - d_start;
 				let d_pattern_start =
 					d_pattern.partition_point(partition_fn(s_start));
@@ -3079,8 +3083,8 @@ pub mod supernodal {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 			let s_ncols = s_end - s_start;
-			let s_pattern =
-				&row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..]
+				[..symbolic.nnz_per_super[s].zx()];
 			let s_postordered = post_inv[s].zx();
 			let desc_count = desc_count[s].zx();
 			for d in &post[s_postordered - desc_count..s_postordered] {
@@ -3088,8 +3092,8 @@ pub mod supernodal {
 				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
-				let d_pattern =
-					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
+					[..symbolic.nnz_per_super[d].zx()];
 				let d_ncols = d_end - d_start;
 				let d_pattern_start =
 					d_pattern.partition_point(partition_fn(s_start));
@@ -3157,8 +3161,8 @@ pub mod supernodal {
 		for s in 0..n_supernodes {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
-			let s_pattern =
-				&row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..]
+				[..symbolic.nnz_per_super[s].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 			for (i, &row) in s_pattern.iter().enumerate() {
@@ -3193,8 +3197,8 @@ pub mod supernodal {
 				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
-				let d_pattern =
-					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
+					[..symbolic.nnz_per_super[d].zx()];
 				let d_ncols = d_end - d_start;
 				let d_nrows = d_pattern.len() + d_ncols;
 				let Ld = MatRef::from_column_major_slice(
@@ -3317,13 +3321,8 @@ pub mod supernodal {
 		for s in 0..n_supernodes {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
-			let s_pattern = if let Some(nnz_per_super) =
-				symbolic.nnz_per_super.as_deref()
-			{
-				&row_idx[col_ptr_row[s].zx()..][..nnz_per_super[s].zx()]
-			} else {
-				&row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()]
-			};
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..]
+				[..symbolic.nnz_per_super[s].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 			for (i, &row) in s_pattern.iter().enumerate() {
@@ -3358,13 +3357,8 @@ pub mod supernodal {
 				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
-				let d_pattern = if let Some(nnz_per_super) =
-					symbolic.nnz_per_super.as_deref()
-				{
-					&row_idx[col_ptr_row[d].zx()..][..nnz_per_super[d].zx()]
-				} else {
-					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()]
-				};
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
+					[..symbolic.nnz_per_super[d].zx()];
 				let d_ncols = d_end - d_start;
 				let d_nrows = d_pattern.len() + d_ncols;
 				let Ld = MatRef::from_column_major_slice(
@@ -3510,8 +3504,8 @@ pub mod supernodal {
 		for s in 0..n_supernodes {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
-			let s_pattern =
-				&row_idx[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+			let s_pattern = &row_idx[col_ptr_row[s].zx()..]
+				[..symbolic.nnz_per_super[s].zx()];
 			let s_ncols = s_end - s_start;
 			let s_nrows = s_pattern.len() + s_ncols;
 			for (i, &row) in s_pattern.iter().enumerate() {
@@ -3546,8 +3540,8 @@ pub mod supernodal {
 				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
-				let d_pattern =
-					&row_idx[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
+					[..symbolic.nnz_per_super[d].zx()];
 				let d_ncols = d_end - d_start;
 				let d_nrows = d_pattern.len() + d_ncols;
 				let Ld = MatRef::from_column_major_slice(

@@ -119,7 +119,7 @@ mod tests {
 		use faer::linalg::qr::no_pivoting::factor;
 		use faer::linalg::{householder, triangular_solve};
 		use faer::reborrow::*;
-		use faer::{Conj, Mat, Par, mat};
+		use faer::{Conj, Mat, Par};
 		let a = mat![
 			[-1.14920683, -1.67950492],
 			[-0.93009756, -0.03885086],

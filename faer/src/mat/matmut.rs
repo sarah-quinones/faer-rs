@@ -1,7 +1,8 @@
 use super::{MatRef, *};
 use crate::internal_prelude::*;
 use crate::utils::bound::{Dim, Partition};
-use crate::{Conj, ContiguousFwd, Idx, IdxInc, unzip, zip};
+use crate::{Conj, ContiguousFwd, Idx, IdxInc};
+
 use equator::assert;
 use faer_traits::ComplexField;
 use generativity::Guard;

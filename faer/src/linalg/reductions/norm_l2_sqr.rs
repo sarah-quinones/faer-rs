@@ -132,7 +132,7 @@ pub fn norm_l2_sqr<T: ComplexField>(mut mat: MatRef<'_, T>) -> T::Real {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Col, Mat, assert, unzip, zip};
+	use crate::{Col, Mat, assert};
 	#[test]
 	fn test_norm_l2_sqr() {
 		let relative_err =

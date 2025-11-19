@@ -4204,12 +4204,12 @@ mod sparse {
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod test {
+	use crate::assert;
 	use crate::col::*;
 	use crate::internal_prelude::*;
 	use crate::mat::*;
 	use crate::perm::*;
 	use crate::row::*;
-	use crate::{assert, mat};
 	use assert_approx_eq::assert_approx_eq;
 	fn matrices() -> (Mat<f64>, Mat<f64>) {
 		let A = mat![[2.8, -3.3], [-1.7, 5.2], [4.6, -8.3],];

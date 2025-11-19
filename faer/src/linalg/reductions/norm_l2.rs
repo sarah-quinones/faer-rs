@@ -168,7 +168,8 @@ pub fn norm_l2<T: ComplexField>(mat: MatRef<'_, T>) -> T::Real {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Col, Mat, assert, c64, unzip, zip};
+	use crate::{Col, Mat, assert, c64};
+
 	#[test]
 	fn test_norm_l2() {
 		let relative_err =

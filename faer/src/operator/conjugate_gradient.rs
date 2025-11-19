@@ -380,8 +380,8 @@ pub fn conjugate_gradient<T: ComplexField>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::matrix_free;
 	use crate::stats::prelude::*;
-	use crate::{mat, matrix_free};
 	use dyn_stack::MemBuffer;
 	use equator::assert;
 	#[test]

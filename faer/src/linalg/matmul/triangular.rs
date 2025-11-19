@@ -3,7 +3,8 @@ use crate::linalg::temp_mat_uninit;
 use crate::linalg::zip::Diag;
 use crate::mat::{AsMatMut, MatMut, MatRef};
 use crate::utils::thread::join_raw;
-use crate::{assert, debug_assert, unzip, zip};
+use crate::{assert, debug_assert};
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum DiagonalKind {

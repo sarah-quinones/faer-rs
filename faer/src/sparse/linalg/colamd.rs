@@ -243,8 +243,8 @@ pub fn order<I: Index>(
 		};
 		let mut max_deg = 0;
 		let mut ncol2 = n;
-		let mut nrow2 = m;
-		let _ = nrow2;
+		// let nrow2 = m;
+		// let _ = nrow2;
 		let head = &mut *p;
 		for c in (0..n).rev() {
 			let deg = col[c].length;
@@ -276,7 +276,7 @@ pub fn order<I: Index>(
 			assert!(deg <= n);
 			if deg > dense_row_count || deg == 0 {
 				row[r].kill();
-				nrow2 -= 1;
+				// nrow2 -= 1;
 			} else {
 				max_deg = Ord::max(deg, max_deg);
 			}

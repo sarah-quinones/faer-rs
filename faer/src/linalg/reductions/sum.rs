@@ -83,7 +83,7 @@ pub fn sum<T: ComplexField>(mut mat: MatRef<'_, T>) -> T {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Col, Mat, assert, unzip, zip};
+	use crate::{Col, Mat, assert};
 	#[test]
 	fn test_sum_real() {
 		let relative_err =

@@ -876,7 +876,7 @@ mod matvec_colmajor {
 	use crate::col::ColMut;
 	use crate::mat::AsMatMut;
 	use crate::utils::bound::IdxInc;
-	use crate::{unzip, zip};
+
 	use faer_traits::SimdArch;
 	pub fn matvec<'M, 'K, T: ComplexField>(
 		dst: ColMut<'_, T, Dim<'M>, ContiguousFwd>,
