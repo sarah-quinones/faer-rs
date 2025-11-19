@@ -1,6 +1,7 @@
 use crate::assert;
 use crate::internal_prelude_sp::*;
 use core::cell::UnsafeCell;
+
 /// info about the matrix multiplication operation to help split the workload
 /// between multiple threads
 pub struct SparseMatMulInfo {
@@ -64,6 +65,7 @@ pub fn sparse_sparse_matmul_numeric_scratch<I: Index, T: ComplexField>(
 ) -> StackReq {
 	temp_mat_scratch::<T>(dst.nrows(), par.degree())
 }
+
 /// performs a numeric matrix multiplication of a sparse matrix `lhs` by a
 /// sparse matrix `rhs` multiplied by `alpha`, and stores or adds the result to
 /// `dst`.
@@ -173,6 +175,7 @@ pub fn sparse_sparse_matmul_numeric<
 		},
 	}
 }
+
 /// performs a numeric matrix multiplication of a sparse matrix `lhs` by a
 /// sparse matrix `rhs` multiplied by `alpha`, and returns the result.
 ///
@@ -212,6 +215,31 @@ pub fn sparse_sparse_matmul<
 	);
 	Ok(SparseColMat::new(symbolic, val))
 }
+
+#[doc(hidden)]
+pub trait SparseDenseMatMul<T: ComplexField>: Sized {
+	fn matmul_impl<RhsT: Conjugate<Canonical = T>>(
+		dst: MatMut<'_, T>,
+		beta: Accum,
+		lhs: Self,
+		rhs: MatRef<'_, RhsT>,
+		alpha: T,
+		par: Par,
+	);
+}
+
+#[doc(hidden)]
+pub trait DenseSparseMatMul<T: ComplexField>: Sized {
+	fn matmul_impl<RhsT: Conjugate<Canonical = T>>(
+		dst: MatMut<'_, T>,
+		beta: Accum,
+		lhs: MatRef<'_, RhsT>,
+		rhs: Self,
+		alpha: T,
+		par: Par,
+	);
+}
+
 /// multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores or adds
 /// the result to `dst`. see
 /// [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more
@@ -220,7 +248,96 @@ pub fn sparse_sparse_matmul<
 /// # note
 /// allows unsorted matrices.
 #[track_caller]
-pub fn sparse_dense_matmul<
+pub fn sparse_dense_matmul<T: ComplexField, RhsT: Conjugate<Canonical = T>>(
+	dst: MatMut<'_, T>,
+	beta: Accum,
+	lhs: impl SparseDenseMatMul<T>,
+	rhs: MatRef<'_, RhsT>,
+	alpha: T,
+	par: Par,
+) {
+	SparseDenseMatMul::matmul_impl(dst, beta, lhs, rhs, alpha, par);
+}
+
+impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>>
+	DenseSparseMatMul<T> for SparseColMatRef<'_, I, LhsT>
+{
+	#[track_caller]
+	fn matmul_impl<RhsT: Conjugate<Canonical = T>>(
+		dst: MatMut<'_, T>,
+		beta: Accum,
+		lhs: MatRef<'_, RhsT>,
+		rhs: Self,
+		alpha: T,
+		par: Par,
+	) {
+		dense_sparse_csc_matmul(dst, beta, lhs, rhs, alpha, par)
+	}
+}
+
+impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>>
+	DenseSparseMatMul<T> for SparseRowMatRef<'_, I, LhsT>
+{
+	#[track_caller]
+	fn matmul_impl<RhsT: Conjugate<Canonical = T>>(
+		dst: MatMut<'_, T>,
+		beta: Accum,
+		lhs: MatRef<'_, RhsT>,
+		rhs: Self,
+		alpha: T,
+		par: Par,
+	) {
+		sparse_dense_csc_matmul(
+			dst.transpose_mut(),
+			beta,
+			rhs.transpose(),
+			lhs.transpose(),
+			alpha,
+			par,
+		)
+	}
+}
+impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>>
+	SparseDenseMatMul<T> for SparseColMatRef<'_, I, LhsT>
+{
+	#[track_caller]
+	fn matmul_impl<RhsT: Conjugate<Canonical = T>>(
+		dst: MatMut<'_, T>,
+		beta: Accum,
+		lhs: Self,
+		rhs: MatRef<'_, RhsT>,
+		alpha: T,
+		par: Par,
+	) {
+		sparse_dense_csc_matmul(dst, beta, lhs, rhs, alpha, par)
+	}
+}
+
+impl<I: Index, T: ComplexField, LhsT: Conjugate<Canonical = T>>
+	SparseDenseMatMul<T> for SparseRowMatRef<'_, I, LhsT>
+{
+	#[track_caller]
+	fn matmul_impl<RhsT: Conjugate<Canonical = T>>(
+		dst: MatMut<'_, T>,
+		beta: Accum,
+		lhs: Self,
+		rhs: MatRef<'_, RhsT>,
+		alpha: T,
+		par: Par,
+	) {
+		dense_sparse_csc_matmul(
+			dst.transpose_mut(),
+			beta,
+			rhs.transpose(),
+			lhs.transpose(),
+			alpha,
+			par,
+		)
+	}
+}
+
+#[track_caller]
+fn sparse_dense_csc_matmul<
 	I: Index,
 	T: ComplexField,
 	LhsT: Conjugate<Canonical = T>,
@@ -261,6 +378,7 @@ pub fn sparse_dense_matmul<
 		}
 	}
 }
+
 /// multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores or adds
 /// the result to `dst`. see
 /// [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more
@@ -269,7 +387,18 @@ pub fn sparse_dense_matmul<
 /// # note
 /// allows unsorted matrices.
 #[track_caller]
-pub fn dense_sparse_matmul<
+pub fn dense_sparse_matmul<T: ComplexField, LhsT: Conjugate<Canonical = T>>(
+	dst: MatMut<'_, T>,
+	beta: Accum,
+	lhs: MatRef<'_, LhsT>,
+	rhs: impl DenseSparseMatMul<T>,
+	alpha: T,
+	par: Par,
+) {
+	DenseSparseMatMul::matmul_impl(dst, beta, lhs, rhs, alpha, par);
+}
+
+fn dense_sparse_csc_matmul<
 	I: Index,
 	T: ComplexField,
 	LhsT: Conjugate<Canonical = T>,
@@ -312,6 +441,7 @@ pub fn dense_sparse_matmul<
 		}
 	}
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
