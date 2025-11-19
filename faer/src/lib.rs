@@ -231,7 +231,7 @@ macro_rules! stack_mat {
 		let __stack = MemStack::new_any(core::slice::from_mut(&mut __tmp));
 		let mut $name =
 			$crate::linalg::temp_mat_zeroed::<$T, _, _>($m, $n, __stack).0;
-		let mut $name = $name.as_mat_mut();
+		let mut $name = $crate::mat::AsMatMut::as_mat_mut(&mut $name);
 	};
 	($name:ident, $m:expr, $n:expr, $T:ty $(,)?) => {
 		stack_mat!($name, $m, $n, $m, $n, $T)
@@ -434,14 +434,14 @@ macro_rules! mat {
         $(,)?)
     ) => {
         let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_uninit::<$ty, _, _
-        > ($($arg,)* $stack,) }; let $var = __mat__.as_mat_mut();
+        > ($($arg,)* $stack,) }; let $var = $crate::mat::AsMatMut::as_mat_mut(&mut __mat__);
     };
     (
         @ alloc $($unsafe:ident)? ($stack:ident) ($var:pat) (zero::<$ty:ty >, $($arg:expr),+
         $(,)?)
     ) => {
         let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_zeroed::<$ty, _, _
-        > ($($arg,)* $stack,) }; let $var = __mat__.as_mat_mut();
+        > ($($arg,)* $stack,) }; let $var = $crate::mat::AsMatMut::as_mat_mut(&mut __mat__);
     };
 }
 /// creates a [`col::Col`] containing the arguments
@@ -467,7 +467,7 @@ macro_rules! col {
         $(,)?)
     ) => {
         let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_uninit::<$ty, _, _
-        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0);
+        > ($($arg,)* 1, $stack,) }; let $var = $crate::mat::AsMatMut::as_mat_mut(&mut __mat__).col_mut(0);
     };
 
     (
@@ -475,7 +475,7 @@ macro_rules! col {
         $(,)?)
     ) => {
         let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_zeroed::<$ty, _, _
-        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0);
+        > ($($arg,)* 1, $stack,) }; let $var = $crate::mat::AsMatMut::as_mat_mut(&mut __mat__).col_mut(0);
     };
 }
 /// creates a [`row::Row`] containing the arguments
@@ -501,7 +501,7 @@ macro_rules! row {
         $(,)?)
     ) => {
         let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_uninit::<$ty, _, _
-        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0).transpose_mut();
+        > ($($arg,)* 1, $stack,) }; let $var = $crate::mat::AsMatMut::as_mat_mut(&mut __mat__).col_mut(0).transpose_mut();
     };
 
     (
@@ -509,7 +509,7 @@ macro_rules! row {
         $(,)?)
     ) => {
         let (mut __mat__, $stack) = $($unsafe)? { $crate::linalg::temp_mat_zeroed::<$ty, _, _
-        > ($($arg,)* 1, $stack,) }; let $var = __mat__.as_mat_mut().col_mut(0).transpose_mut();
+        > ($($arg,)* 1, $stack,) }; let $var = $crate::mat::AsMatMut::as_mat_mut(&mut __mat__).col_mut(0).transpose_mut();
     };
 }
 /// convenience function to concatenate a nested list of matrices into a single
