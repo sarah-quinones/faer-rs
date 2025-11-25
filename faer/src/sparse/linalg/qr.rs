@@ -14,6 +14,7 @@ use linalg::qr::no_pivoting::factor::QrParams;
 use linalg_sp::cholesky::ghost_postorder;
 use linalg_sp::cholesky::simplicial::EliminationTreeRef;
 use linalg_sp::{SupernodalThreshold, SymbolicSupernodalParams, colamd, ghost};
+
 #[inline]
 pub(crate) fn ghost_col_etree<'n, I: Index>(
 	A: SymbolicSparseColMatRef<'_, I, Dim<'_>, Dim<'n>>,
@@ -1961,6 +1962,7 @@ pub enum SymbolicQrRaw<I> {
 	/// supernodal structure
 	Supernodal(supernodal::SymbolicSupernodalQr<I>),
 }
+
 /// the symbolic structure of a sparse $QR$ decomposition
 #[derive(Debug)]
 pub struct SymbolicQr<I> {
@@ -1969,6 +1971,7 @@ pub struct SymbolicQr<I> {
 	col_perm_inv: alloc::vec::Vec<I>,
 	A_nnz: usize,
 }
+
 /// sparse $QR$ factorization wrapper
 #[derive(Debug)]
 pub struct QrRef<'a, I: Index, T> {

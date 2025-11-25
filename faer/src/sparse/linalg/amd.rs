@@ -488,9 +488,12 @@ fn amd_2<I: Index>(
 						let mut j = next[i].sx();
 						while j != NONE {
 							let mut ok = len[j] == ln && elen[j] == eln;
-							for p in (pe[j] + one).zx()..(pe[j] + ln).zx() {
-								if w[iw[p].zx()] != wflg {
-									ok = false;
+							if ok {
+								for p in (pe[j] + one).zx()..(pe[j] + ln).zx() {
+									if w[iw[p].zx()] != wflg {
+										ok = false;
+										break;
+									}
 								}
 							}
 							if ok {
@@ -983,4 +986,69 @@ pub struct FlopCount {
 	pub n_mult_subs_ldl: f64,
 	/// number of multiplications and subtractions for the lu factorization
 	pub n_mult_subs_lu: f64,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use alloc::alloc::Layout;
+	use core::slice;
+	use std::alloc::System;
+
+	struct GlobalAlloc;
+	#[global_allocator]
+	static GLOBAL_ALLOC: GlobalAlloc = GlobalAlloc;
+	unsafe impl core::alloc::GlobalAlloc for GlobalAlloc {
+		unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+			let result = unsafe { System.alloc(layout) };
+			// Fill the memory with garbage.
+			unsafe {
+				slice::from_raw_parts_mut(result, layout.size()).fill(0x7F)
+			};
+			result
+		}
+
+		unsafe fn realloc(
+			&self,
+			ptr: *mut u8,
+			layout: Layout,
+			new_size: usize,
+		) -> *mut u8 {
+			unsafe { System.realloc(ptr, layout, new_size) }
+		}
+
+		unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+			unsafe { System.dealloc(ptr, layout) }
+		}
+	}
+
+	#[test]
+	fn test_gh_258() {
+		use faer::Side;
+		use faer::sparse::linalg::cholesky::{
+			SymmetricOrdering, factorize_symbolic_cholesky,
+		};
+		use faer::sparse::{SparseColMat, Triplet};
+		use std::fs::read_to_string;
+
+		let data =
+			read_to_string("test_data/sparse_cholesky/gh_258.txt").unwrap();
+		let mut triplets = Vec::<Triplet<u32, u32, f64>>::new();
+		for line in data.lines() {
+			let [i, j, a] = Vec::from_iter(line.split(" ")).try_into().unwrap();
+			triplets.push(Triplet::new(
+				i.parse().unwrap(),
+				j.parse().unwrap(),
+				a.parse().unwrap(),
+			));
+		}
+		let mat =
+			SparseColMat::try_new_from_triplets(52, 52, &triplets).unwrap();
+		_ = factorize_symbolic_cholesky(
+			mat.symbolic(),
+			Side::Lower,
+			SymmetricOrdering::Amd,
+			<_>::default(),
+		);
+	}
 }

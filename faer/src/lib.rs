@@ -1281,6 +1281,8 @@ pub extern crate num_complex as complex;
 pub extern crate rand;
 pub extern crate reborrow;
 
+extern crate self as faer;
+
 #[macro_export]
 #[doc(hidden)]
 macro_rules! simd_iter {

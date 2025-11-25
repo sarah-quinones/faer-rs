@@ -874,7 +874,6 @@ mod matvec_rowmajor {
 mod matvec_colmajor {
 	use super::*;
 	use crate::col::ColMut;
-	use crate::mat::AsMatMut;
 	use crate::utils::bound::IdxInc;
 
 	use faer_traits::SimdArch;

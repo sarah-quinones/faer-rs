@@ -333,12 +333,11 @@ impl<I: Index, T: ComplexField> SolveCore<T> for Lu<I, T> {
 	fn solve_in_place_with_conj(&self, conj: Conj, rhs: MatMut<'_, T>) {
 		let par = get_global_parallelism();
 		let rhs_ncols = rhs.ncols();
-		unsafe {
-			linalg_sp::lu::LuRef::<'_, I, T>::new_unchecked(
-				&self.symbolic.inner,
-				&self.numeric,
-			)
-		}
+
+		linalg_sp::lu::LuRef::<'_, I, T>::new_unchecked(
+			&self.symbolic.inner,
+			&self.numeric,
+		)
 		.solve_in_place_with_conj(
 			conj,
 			rhs,
@@ -359,12 +358,11 @@ impl<I: Index, T: ComplexField> SolveCore<T> for Lu<I, T> {
 	) {
 		let par = get_global_parallelism();
 		let rhs_ncols = rhs.ncols();
-		unsafe {
-			linalg_sp::lu::LuRef::<'_, I, T>::new_unchecked(
-				&self.symbolic.inner,
-				&self.numeric,
-			)
-		}
+
+		linalg_sp::lu::LuRef::<'_, I, T>::new_unchecked(
+			&self.symbolic.inner,
+			&self.numeric,
+		)
 		.solve_transpose_in_place_with_conj(
 			conj,
 			rhs,

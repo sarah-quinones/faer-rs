@@ -3,6 +3,7 @@ use core::marker::PhantomData;
 use core::ptr::NonNull;
 use faer_traits::{ComplexField, Conjugate};
 use reborrow::*;
+
 pub(crate) struct MatView<T: ?Sized, Rows, Cols, RStride, CStride> {
 	ptr: NonNull<T>,
 	nrows: Rows,
