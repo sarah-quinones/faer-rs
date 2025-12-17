@@ -1139,6 +1139,132 @@ pub fn partial_eigen_scratch<T: ComplexField>(
 		StackReq::any_of(&[hess, apply_house, schur, arnoldi]),
 	])
 }
+
+/// computes the layout of required workspace for computing the `n_eigval`
+/// eigenvalues (and corresponding eigenvectors) of $A$ with the largest
+/// magnitude.
+pub fn partial_self_adjoint_eigen_scratch<T: ComplexField>(
+	A: &dyn LinOp<T>,
+	n_eigval: usize,
+	par: Par,
+	params: PartialEigenParams,
+) -> StackReq {
+	let n = A.nrows();
+	assert!(A.ncols() == n);
+	if n == 0 {
+		return StackReq::EMPTY;
+	}
+
+	let n_eigval = Ord::min(n_eigval, n);
+	let max_dim = Ord::min(
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)),
+		n,
+	);
+	let residual = temp_mat_scratch::<T::Real>(max_dim, 1);
+	let H = temp_mat_scratch::<T>(max_dim + 1, max_dim);
+	let V = temp_mat_scratch::<T>(n, max_dim + 1);
+	let tmp = temp_mat_scratch::<T>(n, max_dim);
+	let Q = temp_mat_scratch::<T>(max_dim, max_dim);
+
+	let X = Q;
+	let s = temp_mat_scratch::<T>(max_dim, 1);
+	let evd = linalg::evd::evd_scratch::<T>(
+		max_dim,
+		linalg::evd::ComputeEigenvectors::Yes,
+		linalg::evd::ComputeEigenvectors::Yes,
+		par,
+		default(),
+	);
+	let norms = StackReq::new::<T::Real>(max_dim);
+	let perm = StackReq::new::<usize>(max_dim);
+
+	let arnoldi = StackReq::any_of(&[
+		A.apply_scratch(1, par),
+		StackReq::new::<bool>(max_dim),
+	]);
+
+	StackReq::all_of(&[
+		H,
+		V,
+		Q,
+		tmp,
+		X,
+		residual,
+		StackReq::any_of(&[
+			arnoldi,
+			StackReq::all_of(&[s, evd]),
+			StackReq::all_of(&[norms, perm]),
+		]),
+	])
+}
+
+/// computes the layout of required workspace for computing the `n_sval`
+/// singular values (and corresponding singular vectors) of $A$ with the largest
+/// magnitude.
+pub fn partial_svd_scratch<T: ComplexField>(
+	A: &dyn BiLinOp<T>,
+	n_sval: usize,
+	par: Par,
+	params: PartialEigenParams,
+) -> StackReq {
+	let m = A.nrows();
+	let n = A.ncols();
+
+	let k = Ord::min(m, n);
+
+	if k == 0 {
+		return StackReq::EMPTY;
+	}
+
+	let n_sval = Ord::min(n_sval, k);
+	let max_dim = Ord::min(
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_sval)),
+		k,
+	);
+
+	let H = temp_mat_scratch::<T>(max_dim, max_dim + 1);
+	let P = temp_mat_scratch::<T>(m, max_dim);
+	let Q = temp_mat_scratch::<T>(n, max_dim + 1);
+	let tmp = temp_mat_scratch::<T>(Ord::max(m, n), max_dim);
+
+	let X = temp_mat_scratch::<T>(max_dim, max_dim);
+	let Y = X;
+	let residual = temp_mat_scratch::<T>(max_dim, 1);
+
+	let s = temp_mat_scratch::<T>(max_dim, 1);
+	let svd = linalg::svd::svd_scratch::<T>(
+		max_dim,
+		max_dim,
+		linalg::svd::ComputeSvdVectors::Full,
+		linalg::svd::ComputeSvdVectors::Full,
+		par,
+		default(),
+	);
+	let norms = StackReq::new::<T::Real>(max_dim);
+	let perm = StackReq::new::<usize>(max_dim);
+
+	let arnoldi = StackReq::any_of(&[
+		A.apply_scratch(1, par),
+		A.transpose_apply_scratch(1, par),
+		StackReq::new::<bool>(max_dim),
+	]);
+
+	StackReq::all_of(&[
+		H,
+		P,
+		Q,
+		tmp,
+		X,
+		Y,
+		residual,
+		StackReq::any_of(&[
+			arnoldi,
+			StackReq::all_of(&[s, svd]),
+			StackReq::all_of(&[norms, perm]),
+		]),
+	])
+}
+
 /// computes an estimate of the eigenvalues (and corresponding eigenvectors) of
 /// $A$ with the largest magnitude until the provided outputs are full or the
 /// maximum number of algorithm restarts is reached.

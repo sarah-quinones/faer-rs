@@ -1,7 +1,9 @@
+use crate::assert;
 use crate::internal_prelude::*;
 use crate::matrix_free::BiLinOp;
 use linalg::matmul::matmul;
 use linalg::temp_mat_zeroed;
+
 fn iterate_lanczos<T: ComplexField>(
 	A: &dyn BiLinOp<T>,
 	H: MatMut<'_, T>,
@@ -139,230 +141,219 @@ pub fn partial_svd_imp<T: ComplexField>(
 		temp_mat_zeroed::<T, _, _>(Ord::max(m, n), max_dim, stack);
 	let mut tmp = tmp.as_mat_mut();
 	let mut active = 0usize;
-	if max_dim < Ord::min(m, n) {
-		let (mut X, stack) =
-			temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
-		let mut X = X.as_mat_mut();
-		let (mut Y, stack) =
-			temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
-		let mut Y = Y.as_mat_mut();
-		let (mut residual, stack) =
-			temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
-		let mut residual = residual.as_mat_mut().col_mut(0);
-		let ref f = v0.norm_l2();
-		if *f > min_positive() {
-			let ref f = f.recip();
-			zip!(Q.rb_mut().col_mut(0), v0)
-				.for_each(|unzip!(y, x): Zip!(&mut _, &_)| *y = x.mul_real(f));
-		} else {
-			let n0 = n as u32;
-			let n1 = (n >> 32) as u32;
-			let n = from_f64::<T>(n0 as f64) + from_f64::<T>(n1 as f64);
-			let ref f = n.sqrt().recip();
-			zip!(Q.rb_mut().col_mut(0)).for_each(|unzip!(y)| *y = f.copy());
-		}
+	assert!(max_dim < Ord::min(m, n));
+
+	let (mut X, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
+	let mut X = X.as_mat_mut();
+	let (mut Y, stack) = temp_mat_zeroed::<T, _, _>(max_dim, max_dim, stack);
+	let mut Y = Y.as_mat_mut();
+	let (mut residual, stack) = temp_mat_zeroed::<T, _, _>(max_dim, 1, stack);
+	let mut residual = residual.as_mat_mut().col_mut(0);
+	let ref f = v0.norm_l2();
+	if *f > min_positive() {
+		let ref f = f.recip();
+		zip!(Q.rb_mut().col_mut(0), v0)
+			.for_each(|unzip!(y, x): Zip!(&mut _, &_)| *y = x.mul_real(f));
+	} else {
+		let n0 = n as u32;
+		let n1 = (n >> 32) as u32;
+		let n = from_f64::<T>(n0 as f64) + from_f64::<T>(n1 as f64);
+		let ref f = n.sqrt().recip();
+		zip!(Q.rb_mut().col_mut(0)).for_each(|unzip!(y)| *y = f.copy());
+	}
+	iterate_lanczos(
+		A,
+		H.as_mut(),
+		Q.as_mut(),
+		P.as_mut(),
+		1,
+		min_dim,
+		par,
+		stack,
+	);
+	let mut k = min_dim;
+	for _ in 0..restarts {
 		iterate_lanczos(
 			A,
 			H.as_mut(),
 			Q.as_mut(),
 			P.as_mut(),
-			1,
-			min_dim,
+			k + 1,
+			max_dim,
 			par,
 			stack,
 		);
-		let mut k = min_dim;
-		for _ in 0..restarts {
-			iterate_lanczos(
-				A,
-				H.as_mut(),
-				Q.as_mut(),
-				P.as_mut(),
-				k + 1,
-				max_dim,
+		let ref Hmm = H[(max_dim - 1, max_dim)].copy();
+		let dim = max_dim - active;
+		X.fill(zero());
+		X.rb_mut().diagonal_mut().fill(one());
+		Y.fill(zero());
+		Y.rb_mut().diagonal_mut().fill(one());
+		let mut X_slice = X.rb_mut().get_mut(active..max_dim, active..max_dim);
+		let mut Y_slice = Y.rb_mut().get_mut(active..max_dim, active..max_dim);
+		let mut H_slice = H.rb_mut().get_mut(active..max_dim, active..max_dim);
+		{
+			let (mut s, stack) = temp_mat_zeroed(dim, 1, stack);
+			let mut s = s.as_mat_mut().col_mut(0).as_diagonal_mut();
+			if linalg::svd::svd(
+				H_slice.rb(),
+				s.rb_mut(),
+				Some(X_slice.rb_mut()),
+				Some(Y_slice.rb_mut()),
 				par,
 				stack,
-			);
-			let ref Hmm = H[(max_dim - 1, max_dim)].copy();
-			let dim = max_dim - active;
-			X.fill(zero());
-			X.rb_mut().diagonal_mut().fill(one());
-			Y.fill(zero());
-			Y.rb_mut().diagonal_mut().fill(one());
-			let mut X_slice =
-				X.rb_mut().get_mut(active..max_dim, active..max_dim);
-			let mut Y_slice =
-				Y.rb_mut().get_mut(active..max_dim, active..max_dim);
-			let mut H_slice =
-				H.rb_mut().get_mut(active..max_dim, active..max_dim);
+				default(),
+			)
+			.is_err()
 			{
-				let (mut s, stack) = temp_mat_zeroed(dim, 1, stack);
-				let mut s = s.as_mat_mut().col_mut(0).as_diagonal_mut();
-				if linalg::svd::svd(
-					H_slice.rb(),
-					s.rb_mut(),
-					Some(X_slice.rb_mut()),
-					Some(Y_slice.rb_mut()),
-					par,
-					stack,
-					default(),
-				)
-				.is_err()
-				{
-					break;
-				}
-				H_slice.fill(zero());
-				H_slice.rb_mut().diagonal_mut().copy_from(s.rb());
-			}
-			for j in 0..dim {
-				residual[active + j] = Hmm * &X[(max_dim - 1, active + j)];
-			}
-			#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-			enum Group {
-				Lock,
-				Retain,
-				Purge,
-			}
-			let mut groups = alloc::vec![Group::Purge; max_dim];
-			let nev = n_eigval;
-			let mut nlock = 0usize;
-			for j in 0..nev {
-				if residual[j].abs() <= tol {
-					groups[j] = Group::Lock;
-					nlock += 1;
-				} else {
-					groups[j] = Group::Retain;
-				}
-			}
-			let ideal_size = Ord::min(nlock + min_dim, (min_dim + max_dim) / 2);
-			k = nev;
-			for i in nev..max_dim {
-				let group;
-				if k < ideal_size && residual[i].abs() > tol {
-					group = Group::Retain;
-					k += 1;
-				} else {
-					group = Group::Purge;
-				}
-				groups[i] = group;
-			}
-			let mut purge = 0usize;
-			while purge < active && groups[purge] == Group::Lock {
-				purge += 1;
-			}
-			let mut lo = 0usize;
-			let mut mi = 0usize;
-			let mut hi = 0usize;
-			while hi < max_dim {
-				match groups[hi] {
-					Group::Lock => {
-						if hi > lo {
-							H[(lo, lo)] = H[(hi, hi)].copy();
-							residual[lo] = residual[hi].copy();
-							{
-								let (mut lo, hi) =
-									X.rb_mut().two_cols_mut(lo, hi);
-								lo.copy_from(hi);
-							}
-							{
-								let (mut lo, hi) =
-									Y.rb_mut().two_cols_mut(lo, hi);
-								lo.copy_from(hi);
-							}
-						}
-						lo += 1;
-						mi += 1;
-						hi += 1;
-					},
-					Group::Retain => {
-						if hi > mi {
-							H[(mi, mi)] = H[(hi, hi)].copy();
-							{
-								let (mut mi, hi) =
-									X.rb_mut().two_cols_mut(mi, hi);
-								mi.copy_from(hi);
-							}
-							{
-								let (mut mi, hi) =
-									Y.rb_mut().two_cols_mut(mi, hi);
-								mi.copy_from(hi);
-							}
-						}
-						mi += 1;
-						hi += 1;
-					},
-					Group::Purge => {
-						hi += 1;
-					},
-				}
-			}
-			{
-				let mut P_tmp = tmp.rb_mut().get_mut(..m, purge..k);
-				matmul(
-					P_tmp.rb_mut(),
-					Accum::Replace,
-					P.rb().get(.., purge..max_dim),
-					X.rb().get(purge..max_dim, purge..k),
-					one(),
-					par,
-				);
-				P.rb_mut().get_mut(.., purge..k).copy_from(&P_tmp);
-			}
-			{
-				let mut Q_tmp = tmp.rb_mut().get_mut(..n, purge..k);
-				matmul(
-					Q_tmp.rb_mut(),
-					Accum::Replace,
-					Q.rb().get(.., purge..max_dim),
-					Y.rb().get(purge..max_dim, purge..k),
-					one(),
-					par,
-				);
-				Q.rb_mut().get_mut(.., purge..k).copy_from(&Q_tmp);
-			}
-			for i in 0..k {
-				H[(i, k)] = residual[i].copy();
-			}
-			let (mut x, y) = Q.rb_mut().two_cols_mut(k, max_dim);
-			x.copy_from(&y);
-			active = nlock;
-			if nlock >= n_eigval {
 				break;
 			}
+
+			H_slice.fill(zero());
+			H_slice.rb_mut().diagonal_mut().copy_from(s.rb());
 		}
-		let n = active;
-		let (mut norms, stack) = stack.make_with(n, |j| H[(j, j)].abs());
-		let (mut perm, stack) = stack.make_with(n, |j| j);
-		let _ = stack;
-		let perm = &mut *perm;
-		let norms = &mut *norms;
-		perm.sort_unstable_by(|&i, &j| {
-			if norms[i] > norms[j] {
-				core::cmp::Ordering::Less
-			} else if norms[i] < norms[j] {
-				core::cmp::Ordering::Greater
+		for j in 0..dim {
+			residual[active + j] = Hmm * &X[(max_dim - 1, active + j)];
+		}
+		#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+		enum Group {
+			Lock,
+			Retain,
+			Purge,
+		}
+		let mut groups = alloc::vec![Group::Purge; max_dim];
+		let nev = n_eigval;
+		let mut nlock = 0usize;
+		for j in 0..nev {
+			if residual[j].abs() <= tol {
+				groups[j] = Group::Lock;
+				nlock += 1;
 			} else {
-				core::cmp::Ordering::Equal
+				groups[j] = Group::Retain;
 			}
-		});
-		let mut left_singular_vecs = left_singular_vecs;
-		let mut right_singular_vecs = right_singular_vecs;
-		for idx in 0..active {
-			let j = perm[idx];
-			left_singular_vecs
-				.rb_mut()
-				.col_mut(idx)
-				.copy_from(P.rb().col(j));
-			right_singular_vecs
-				.rb_mut()
-				.col_mut(idx)
-				.copy_from(Q.rb().col(j));
-			singular_vals[idx] = H[(j, j)].copy();
 		}
-		active
-	} else {
-		panic!()
+		let ideal_size = Ord::min(nlock + min_dim, (min_dim + max_dim) / 2);
+		k = nev;
+		for i in nev..max_dim {
+			let group;
+			if k < ideal_size && residual[i].abs() > tol {
+				group = Group::Retain;
+				k += 1;
+			} else {
+				group = Group::Purge;
+			}
+			groups[i] = group;
+		}
+		let mut purge = 0usize;
+		while purge < active && groups[purge] == Group::Lock {
+			purge += 1;
+		}
+		let mut lo = 0usize;
+		let mut mi = 0usize;
+		let mut hi = 0usize;
+		while hi < max_dim {
+			match groups[hi] {
+				Group::Lock => {
+					if hi > lo {
+						H[(lo, lo)] = H[(hi, hi)].copy();
+						residual[lo] = residual[hi].copy();
+						{
+							let (mut lo, hi) = X.rb_mut().two_cols_mut(lo, hi);
+							lo.copy_from(hi);
+						}
+						{
+							let (mut lo, hi) = Y.rb_mut().two_cols_mut(lo, hi);
+							lo.copy_from(hi);
+						}
+					}
+					lo += 1;
+					mi += 1;
+					hi += 1;
+				},
+				Group::Retain => {
+					if hi > mi {
+						H[(mi, mi)] = H[(hi, hi)].copy();
+						{
+							let (mut mi, hi) = X.rb_mut().two_cols_mut(mi, hi);
+							mi.copy_from(hi);
+						}
+						{
+							let (mut mi, hi) = Y.rb_mut().two_cols_mut(mi, hi);
+							mi.copy_from(hi);
+						}
+					}
+					mi += 1;
+					hi += 1;
+				},
+				Group::Purge => {
+					hi += 1;
+				},
+			}
+		}
+		{
+			let mut P_tmp = tmp.rb_mut().get_mut(..m, purge..k);
+			matmul(
+				P_tmp.rb_mut(),
+				Accum::Replace,
+				P.rb().get(.., purge..max_dim),
+				X.rb().get(purge..max_dim, purge..k),
+				one(),
+				par,
+			);
+			P.rb_mut().get_mut(.., purge..k).copy_from(&P_tmp);
+		}
+		{
+			let mut Q_tmp = tmp.rb_mut().get_mut(..n, purge..k);
+			matmul(
+				Q_tmp.rb_mut(),
+				Accum::Replace,
+				Q.rb().get(.., purge..max_dim),
+				Y.rb().get(purge..max_dim, purge..k),
+				one(),
+				par,
+			);
+			Q.rb_mut().get_mut(.., purge..k).copy_from(&Q_tmp);
+		}
+		for i in 0..k {
+			H[(i, k)] = residual[i].copy();
+		}
+		let (mut x, y) = Q.rb_mut().two_cols_mut(k, max_dim);
+		x.copy_from(&y);
+		active = nlock;
+		if nlock >= n_eigval {
+			break;
+		}
 	}
+	let n = active;
+	let (mut norms, stack) = stack.make_with(n, |j| H[(j, j)].abs());
+	let (mut perm, stack) = stack.make_with(n, |j| j);
+	let _ = stack;
+	let perm = &mut *perm;
+	let norms = &mut *norms;
+	perm.sort_unstable_by(|&i, &j| {
+		if norms[i] > norms[j] {
+			core::cmp::Ordering::Less
+		} else if norms[i] < norms[j] {
+			core::cmp::Ordering::Greater
+		} else {
+			core::cmp::Ordering::Equal
+		}
+	});
+	let mut left_singular_vecs = left_singular_vecs;
+	let mut right_singular_vecs = right_singular_vecs;
+	for idx in 0..active {
+		let j = perm[idx];
+		left_singular_vecs
+			.rb_mut()
+			.col_mut(idx)
+			.copy_from(P.rb().col(j));
+		right_singular_vecs
+			.rb_mut()
+			.col_mut(idx)
+			.copy_from(Q.rb().col(j));
+		singular_vals[idx] = H[(j, j)].copy();
+	}
+	active
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@ use crate::internal_prelude::*;
 use crate::perm;
 use linalg::matmul::matmul;
 use linalg::temp_mat_zeroed;
+
 fn iterate_lanczos<T: ComplexField>(
 	A: &dyn LinOp<T>,
 	H: MatMut<'_, T>,
@@ -67,6 +68,7 @@ fn iterate_lanczos<T: ComplexField>(
 		H[j] = norm.to_cplx();
 	}
 }
+
 pub fn partial_self_adjoint_eigen_imp<T: ComplexField>(
 	eigvecs: MatMut<'_, T>,
 	eigvals: &mut [T],
@@ -288,6 +290,7 @@ pub fn partial_self_adjoint_eigen_imp<T: ComplexField>(
 		panic!();
 	}
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
