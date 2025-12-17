@@ -2,7 +2,9 @@ use super::*;
 use crate::assert;
 use crate::linalg::matmul::matmul;
 use linalg::evd::schur;
+
 const MIN_DIM: usize = 32;
+
 /// partial eigendecomposition tuning parameters.
 #[derive(Debug, Copy, Clone)]
 pub struct PartialEigenParams {
@@ -15,6 +17,7 @@ pub struct PartialEigenParams {
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
+
 /// partial eigendecomposition tuning parameters.
 #[derive(Debug, Copy, Clone)]
 pub struct PartialEigenInfo {
@@ -23,6 +26,7 @@ pub struct PartialEigenInfo {
 	#[doc(hidden)]
 	pub non_exhaustive: NonExhaustive,
 }
+
 impl Default for PartialEigenParams {
 	fn default() -> Self {
 		Self {
@@ -33,6 +37,7 @@ impl Default for PartialEigenParams {
 		}
 	}
 }
+
 fn iterate_arnoldi<T: ComplexField>(
 	A: &dyn LinOp<T>,
 	H: MatMut<'_, T>,
@@ -90,6 +95,7 @@ fn iterate_arnoldi<T: ComplexField>(
 		H[j] = norm.to_cplx();
 	}
 }
+
 fn schur_swap<T: ComplexField>(
 	a: MatMut<T>,
 	q: Option<MatMut<T>>,
@@ -112,6 +118,7 @@ fn schur_swap<T: ComplexField>(
 		schur::complex_schur::schur_swap(a, q, j0)
 	}
 }
+
 fn reorder_schur<T: ComplexField>(
 	mut A: MatMut<'_, T>,
 	mut Q: Option<MatMut<'_, T>>,
@@ -259,6 +266,7 @@ fn reorder_schur<T: ComplexField>(
 		}
 	}
 }
+
 fn partial_schur_real_imp<T: RealField>(
 	eigvecs: MatMut<'_, Complex<T>>,
 	eigvals: &mut [Complex<T>],
@@ -710,6 +718,7 @@ fn partial_schur_real_imp<T: RealField>(
 	}
 	limit
 }
+
 fn partial_schur_cplx_imp<T: ComplexField>(
 	eigvecs: MatMut<'_, Complex<T::Real>>,
 	eigvals: &mut [Complex<T::Real>],
@@ -1069,6 +1078,7 @@ fn partial_schur_cplx_imp<T: ComplexField>(
 	}
 	limit
 }
+
 /// computes the layout of required workspace for computing the `n_eigval`
 /// eigenvalues (and corresponding eigenvectors) of $A$ with the largest
 /// magnitude.
@@ -1197,6 +1207,7 @@ pub fn partial_eigen<T: ComplexField>(
 		non_exhaustive: NonExhaustive(()),
 	}
 }
+
 /// computes an estimate of the eigenvalues (and corresponding eigenvectors) of
 /// $A$ with the largest magnitude, assuming $A$ is self-adjoint, until the
 /// provided outputs are full or the maximum number of algorithm restarts is
@@ -1252,6 +1263,7 @@ pub fn partial_self_adjoint_eigen<T: ComplexField>(
 		non_exhaustive: NonExhaustive(()),
 	}
 }
+
 /// computes an estimate of the singular values (and corresponding singular
 /// vectors) of $A$ with the largest magnitude, until the provided outputs are
 /// full or the maximum number of algorithm restarts is reached.
@@ -1266,56 +1278,61 @@ pub fn partial_svd<T: ComplexField>(
 	stack: &mut MemStack,
 	params: PartialEigenParams,
 ) -> PartialEigenInfo {
-	let n = v0.nrows();
+	let m = A.nrows();
+	let n = A.ncols();
+	let k = Ord::min(m, n);
+
 	assert!(all(
 		singular_vals.len() == left_singular_vecs.ncols(),
 		singular_vals.len() == right_singular_vecs.ncols(),
-		A.nrows() == n,
-		A.ncols() == n,
-		left_singular_vecs.nrows() == n,
+		v0.nrows() == n,
+		left_singular_vecs.nrows() == m,
 		right_singular_vecs.nrows() == n,
 	));
-	let n_eigval = singular_vals.len();
-	let n_eigval = Ord::min(n_eigval, n);
-	if n == 0 {
+	let n_sval = singular_vals.len();
+	let n_sval = Ord::min(n_sval, k);
+
+	if k == 0 {
 		return PartialEigenInfo {
 			n_converged_eigen: 0,
 			non_exhaustive: NonExhaustive(()),
 		};
 	}
+
 	let min_dim =
-		Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_eigval)), n);
+		Ord::min(Ord::max(params.min_dim, Ord::max(MIN_DIM, n_sval)), k);
 	let max_dim = Ord::min(
-		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_eigval)),
-		n,
+		Ord::max(params.max_dim, Ord::max(2 * MIN_DIM, 2 * n_sval)),
+		k,
 	);
-	let n_eigval = {
-		super::svd::partial_svd_imp(
-			left_singular_vecs,
-			right_singular_vecs,
-			singular_vals,
-			A,
-			v0,
-			min_dim,
-			max_dim,
-			n_eigval,
-			tolerance,
-			params.max_restarts,
-			par,
-			stack,
-		)
-	};
+	let n_sval = super::svd::partial_svd_imp(
+		left_singular_vecs,
+		right_singular_vecs,
+		singular_vals,
+		A,
+		v0,
+		min_dim,
+		max_dim,
+		n_sval,
+		tolerance,
+		params.max_restarts,
+		par,
+		stack,
+	);
+
 	PartialEigenInfo {
-		n_converged_eigen: n_eigval,
+		n_converged_eigen: n_sval,
 		non_exhaustive: NonExhaustive(()),
 	}
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::stats::prelude::*;
 	use crate::{Scale, assert};
 	use rand::prelude::*;
+
 	#[test]
 	fn test_arnoldi_real() {
 		let rng = &mut StdRng::seed_from_u64(1);

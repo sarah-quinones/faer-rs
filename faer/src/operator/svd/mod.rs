@@ -111,6 +111,7 @@ fn iterate_lanczos<T: ComplexField>(
 		}
 	}
 }
+
 pub fn partial_svd_imp<T: ComplexField>(
 	left_singular_vecs: MatMut<'_, T>,
 	right_singular_vecs: MatMut<'_, T>,
@@ -363,6 +364,7 @@ pub fn partial_svd_imp<T: ComplexField>(
 		panic!()
 	}
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
