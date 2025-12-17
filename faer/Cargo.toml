@@ -16,7 +16,7 @@ generativity = "1.1.0"
 reborrow = "0.5.5"
 libm = { version = "0.2.15", default-features = false }
 
-spindle = { version = "0.2.5", optional = true }
+spindle = { version = "0.2.6", optional = true }
 rayon = { version = "1.11.0", optional = true }
 log = { version = "0.4.28", optional = true }
 rand = { version = "0.9.2", optional = true }
