@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 faer = { version = "0.23.0", path = "../faer" }
-pastey = "0.1.1"
+pastey = "0.2.1"
 
 [build-dependencies]
 cbindgen = { version = "0.29" }

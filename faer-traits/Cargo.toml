@@ -10,13 +10,13 @@ license = "MIT"
 keywords = ["math", "linear-algebra"]
 
 [dependencies]
-bytemuck = "1.23.2"
+bytemuck = "1.24.0"
 reborrow = "0.5.5"
 generativity = "1.1.0"
 libm = { version = "0.2.15", default-features = false }
 
-dyn-stack = { version = "0.13.0", default-features = false, features = ["core-error", "alloc"] }
-pulp = { version = "0.22.0", default-features = false }
+dyn-stack = { version = "0.13.2", default-features = false, features = ["core-error", "alloc"] }
+pulp = { version = "0.22.2", default-features = false }
 
 num-complex = { version = "0.4.6", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }
