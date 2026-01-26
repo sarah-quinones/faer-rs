@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-faer = { version = "0.23.0", path = "../faer" }
+faer = { version = "0.24.0", path = "../faer" }
 pastey = "0.2.1"
 
 [build-dependencies]

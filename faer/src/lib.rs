@@ -160,7 +160,6 @@
 //!   additional features such as cpu feature detection at runtime
 //! - `rayon`: enabled by default. enables the `rayon` parallel backend and
 //!   enables global parallelism by default
-//! - `serde`: Enables serialization and deserialization of [`Mat`]
 //! - `npy`: enables conversions to/from numpy's matrix file format
 //! - `perf-warn`: produces performance warnings when matrix operations are
 //!   called with suboptimal
@@ -617,8 +616,6 @@ pub mod matrix_free;
 pub mod perm;
 /// row vector
 pub mod row;
-#[cfg(feature = "serde")]
-mod serde;
 pub mod sparse;
 /// helper utilities
 pub mod utils;

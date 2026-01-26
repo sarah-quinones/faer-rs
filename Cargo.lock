@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "faer"
-version = "0.23.2"
+version = "0.24.0"
 dependencies = [
  "aligned-vec",
  "amd",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "faer-traits"
-version = "0.23.2"
+version = "0.24.0"
 dependencies = [
  "bytemuck",
  "dyn-stack",

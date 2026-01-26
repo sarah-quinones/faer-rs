@@ -1,3 +1,16 @@
+# 0.24
+- add missing scratch space functions for matrix-free eigen/svd solvers
+- allow sparse-dense/dense-sparse matmuls to accept both CSC and CSR matrices
+- add for-each and triangular solve helpers
+- fix uninit read in AMD ordering
+- remove serde support
+
+# 0.23
+- generalized eigendecomposition
+- self adjoint matrix-free eigensolver
+- matrix-free svd solver
+- better multithreaded perf
+
 # 0.22
 - accelerated matrix multiply backend on `x86_64` targets.
 - accelerated column pivoted qr factorization

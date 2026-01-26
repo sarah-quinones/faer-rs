@@ -9,55 +9,55 @@
 #include "faer.h"
 #include "quad.hpp"
 
-#define LIBFAER_CAST_REAL(x) reinterpret_cast<::FaerV0_23_Real const*>(&x)
-#define LIBFAER_CAST_SCALAR(x) reinterpret_cast<::FaerV0_23_Scalar const*>(&x)
+#define LIBFAER_CAST_REAL(x) reinterpret_cast<::FaerV0_24_Real const*>(&x)
+#define LIBFAER_CAST_SCALAR(x) reinterpret_cast<::FaerV0_24_Scalar const*>(&x)
 #define LIBFAER_ALLOC(...) \
     ((mem.ptr ? mem : detail::mem(detail::alloc(__VA_ARGS__))).mem_ffi())
 
 #define LIBFAER_SCALAR_DISPATCH(name) \
-    static_cast<decltype(&libfaer_v0_23_##name##_f32)>( \
+    static_cast<decltype(&libfaer_v0_24_##name##_f32)>( \
         detail::ScalarDispatch { \
-            libfaer_v0_23_##name##_f32, \
-            libfaer_v0_23_##name##_f64, \
-            libfaer_v0_23_##name##_fx128, \
-            libfaer_v0_23_##name##_c32, \
-            libfaer_v0_23_##name##_c64, \
-            libfaer_v0_23_##name##_cx128, \
+            libfaer_v0_24_##name##_f32, \
+            libfaer_v0_24_##name##_f64, \
+            libfaer_v0_24_##name##_fx128, \
+            libfaer_v0_24_##name##_c32, \
+            libfaer_v0_24_##name##_c64, \
+            libfaer_v0_24_##name##_cx128, \
         } \
             .for_type(detail::TYPE<T>) \
     )
 
 #define LIBFAER_INDEX_DISPATCH(name) \
-    static_cast<decltype(&libfaer_v0_23_##name##_u32_f32)>( \
+    static_cast<decltype(&libfaer_v0_24_##name##_u32_f32)>( \
         detail::ScalarDispatch { \
             detail::IndexDispatch { \
-                libfaer_v0_23_##name##_u32_f32, \
-                libfaer_v0_23_##name##_u64_f32, \
+                libfaer_v0_24_##name##_u32_f32, \
+                libfaer_v0_24_##name##_u64_f32, \
             } \
                 .for_type(detail::TYPE<I>), \
             detail::IndexDispatch { \
-                libfaer_v0_23_##name##_u32_f64, \
-                libfaer_v0_23_##name##_u64_f64, \
+                libfaer_v0_24_##name##_u32_f64, \
+                libfaer_v0_24_##name##_u64_f64, \
             } \
                 .for_type(detail::TYPE<I>), \
             detail::IndexDispatch { \
-                libfaer_v0_23_##name##_u32_fx128, \
-                libfaer_v0_23_##name##_u64_fx128, \
+                libfaer_v0_24_##name##_u32_fx128, \
+                libfaer_v0_24_##name##_u64_fx128, \
             } \
                 .for_type(detail::TYPE<I>), \
             detail::IndexDispatch { \
-                libfaer_v0_23_##name##_u32_c32, \
-                libfaer_v0_23_##name##_u64_c32, \
+                libfaer_v0_24_##name##_u32_c32, \
+                libfaer_v0_24_##name##_u64_c32, \
             } \
                 .for_type(detail::TYPE<I>), \
             detail::IndexDispatch { \
-                libfaer_v0_23_##name##_u32_c64, \
-                libfaer_v0_23_##name##_u64_c64, \
+                libfaer_v0_24_##name##_u32_c64, \
+                libfaer_v0_24_##name##_u64_c64, \
             } \
                 .for_type(detail::TYPE<I>), \
             detail::IndexDispatch { \
-                libfaer_v0_23_##name##_u32_cx128, \
-                libfaer_v0_23_##name##_u64_cx128, \
+                libfaer_v0_24_##name##_u32_cx128, \
+                libfaer_v0_24_##name##_u64_cx128, \
             } \
                 .for_type(detail::TYPE<I>), \
         } \
@@ -65,20 +65,20 @@
     )
 
 namespace faer {
-inline namespace v0_23 {
+inline namespace v0_24 {
     namespace meta {
         template<typename T>
         struct Ffi {
-            using Mat = FaerV0_23_MatMut;
-            using Vec = FaerV0_23_VecMut;
-            using Slice = FaerV0_23_SliceMut;
+            using Mat = FaerV0_24_MatMut;
+            using Vec = FaerV0_24_VecMut;
+            using Slice = FaerV0_24_SliceMut;
         };
 
         template<typename T>
         struct Ffi<T const> {
-            using Mat = FaerV0_23_MatRef;
-            using Vec = FaerV0_23_VecRef;
-            using Slice = FaerV0_23_SliceRef;
+            using Mat = FaerV0_24_MatRef;
+            using Vec = FaerV0_24_VecRef;
+            using Slice = FaerV0_24_SliceRef;
         };
     } // namespace meta
 
@@ -194,7 +194,7 @@ inline namespace v0_23 {
         I* ptr;
         size_t len;
 
-        constexpr auto mem_ffi() const -> FaerV0_23_MemAlloc {
+        constexpr auto mem_ffi() const -> FaerV0_24_MemAlloc {
             return {
                 this->ptr,
                 sizeof(I) * this->len,
@@ -239,10 +239,10 @@ inline namespace v0_23 {
 
         size_t nthreads;
 
-        constexpr auto ffi() const -> FaerV0_23_Par {
+        constexpr auto ffi() const -> FaerV0_24_Par {
             return {
-                this->which == Seq ? FaerV0_23_ParTag::FaerV0_23_ParTag_Seq
-                                   : FaerV0_23_ParTag::FaerV0_23_ParTag_Rayon,
+                this->which == Seq ? FaerV0_24_ParTag::FaerV0_24_ParTag_Seq
+                                   : FaerV0_24_ParTag::FaerV0_24_ParTag_Rayon,
                 this->nthreads,
             };
         }
@@ -254,8 +254,8 @@ inline namespace v0_23 {
             Yes,
         } which;
 
-        constexpr auto ffi() const -> FaerV0_23_Conj {
-            return this->which == No ? FaerV0_23_Conj_No : FaerV0_23_Conj_Yes;
+        constexpr auto ffi() const -> FaerV0_24_Conj {
+            return this->which == No ? FaerV0_24_Conj_No : FaerV0_24_Conj_Yes;
         }
     };
 
@@ -266,10 +266,10 @@ inline namespace v0_23 {
             Full,
         } which;
 
-        constexpr auto ffi() const -> FaerV0_23_ComputeSvdVectors {
-            return this->which == No  ? FaerV0_23_ComputeSvdVectors_No
-                : this->which == Thin ? FaerV0_23_ComputeSvdVectors_Thin
-                                      : FaerV0_23_ComputeSvdVectors_Full;
+        constexpr auto ffi() const -> FaerV0_24_ComputeSvdVectors {
+            return this->which == No  ? FaerV0_24_ComputeSvdVectors_No
+                : this->which == Thin ? FaerV0_24_ComputeSvdVectors_Thin
+                                      : FaerV0_24_ComputeSvdVectors_Full;
         }
     };
 
@@ -279,37 +279,37 @@ inline namespace v0_23 {
             Yes,
         } which;
 
-        constexpr auto ffi() const -> FaerV0_23_ComputeEigenvectors {
-            return this->which == No ? FaerV0_23_ComputeEigenvectors_No
-                                     : FaerV0_23_ComputeEigenvectors_Yes;
+        constexpr auto ffi() const -> FaerV0_24_ComputeEigenvectors {
+            return this->which == No ? FaerV0_24_ComputeEigenvectors_No
+                                     : FaerV0_24_ComputeEigenvectors_Yes;
         }
     };
 
     inline auto get_global_par() -> Par {
-        auto par = libfaer_v0_23_get_global_par();
+        auto par = libfaer_v0_24_get_global_par();
         return Par {
-            par.tag == FaerV0_23_ParTag::FaerV0_23_ParTag_Seq ? Par::Seq
+            par.tag == FaerV0_24_ParTag::FaerV0_24_ParTag_Seq ? Par::Seq
                                                               : Par::Rayon,
             par.nthreads,
         };
     }
 
     inline auto set_global_par(Par par) {
-        libfaer_v0_23_set_global_par(par.ffi());
+        libfaer_v0_24_set_global_par(par.ffi());
     }
 
     struct Layout {
         size_t size;
         size_t align;
 
-        constexpr static auto from_ffi(FaerV0_23_Layout ffi) -> Layout {
+        constexpr static auto from_ffi(FaerV0_24_Layout ffi) -> Layout {
             return {
                 ffi.len_bytes,
                 ffi.align_bytes,
             };
         }
 
-        constexpr auto ffi() const -> FaerV0_23_Layout {
+        constexpr auto ffi() const -> FaerV0_24_Layout {
             return {
                 this->size,
                 this->align,
@@ -346,7 +346,7 @@ inline namespace v0_23 {
         namespace cholesky {
             namespace llt {
                 namespace factor {
-                    using Params = FaerV0_23_LltParams;
+                    using Params = FaerV0_24_LltParams;
 
                     template<typename T>
                     struct Regularization {
@@ -435,7 +435,7 @@ inline namespace v0_23 {
 
             namespace llt_pivoting {
                 namespace factor {
-                    using Params = FaerV0_23_PivLltParams;
+                    using Params = FaerV0_24_PivLltParams;
 
                     template<typename T>
                     auto params() -> Params {
@@ -516,7 +516,7 @@ inline namespace v0_23 {
 
             namespace ldlt {
                 namespace factor {
-                    using Params = FaerV0_23_LdltParams;
+                    using Params = FaerV0_24_LdltParams;
 
                     template<typename T>
                     struct Regularization {
@@ -555,7 +555,7 @@ inline namespace v0_23 {
                         constexpr auto ptr =
                             LIBFAER_SCALAR_DISPATCH(ldlt_factor_in_place);
                         ptr(A.ffi(),
-                            FaerV0_23_LdltRegularization {
+                            FaerV0_24_LdltRegularization {
                                 .dynamic_regularization_delta =
                                     LIBFAER_CAST_REAL(
                                         regularization
@@ -612,7 +612,7 @@ inline namespace v0_23 {
 
             namespace lblt {
                 namespace factor {
-                    using Params = FaerV0_23_LbltParams;
+                    using Params = FaerV0_24_LbltParams;
 
                     template<typename T>
                     auto params() -> Params {
@@ -699,7 +699,7 @@ inline namespace v0_23 {
         namespace qr {
             namespace no_pivoting {
                 namespace factor {
-                    using Params = FaerV0_23_QrParams;
+                    using Params = FaerV0_24_QrParams;
 
                     template<typename T>
                     auto params() -> Params {
@@ -843,7 +843,7 @@ inline namespace v0_23 {
 
             namespace col_pivoting {
                 namespace factor {
-                    using Params = FaerV0_23_ColPivQrParams;
+                    using Params = FaerV0_24_ColPivQrParams;
 
                     template<typename T>
                     auto params() -> Params {
@@ -1005,7 +1005,7 @@ inline namespace v0_23 {
         namespace lu {
             namespace partial_pivoting {
                 namespace factor {
-                    using Params = FaerV0_23_PartialPivLuParams;
+                    using Params = FaerV0_24_PartialPivLuParams;
 
                     template<typename T>
                     auto params() -> Params {
@@ -1097,7 +1097,7 @@ inline namespace v0_23 {
 
             namespace full_pivoting {
                 namespace factor {
-                    using Params = FaerV0_23_FullPivLuParams;
+                    using Params = FaerV0_24_FullPivLuParams;
 
                     template<typename T>
                     auto params() -> Params {
@@ -1195,7 +1195,7 @@ inline namespace v0_23 {
         } // namespace lu
 
         namespace svd {
-            using Params = FaerV0_23_SvdParams;
+            using Params = FaerV0_24_SvdParams;
 
             template<typename T>
             auto params() -> Params {
@@ -1259,7 +1259,7 @@ inline namespace v0_23 {
         } // namespace svd
 
         namespace self_adjoint_evd {
-            using Params = FaerV0_23_SelfAdjointEvdParams;
+            using Params = FaerV0_24_SelfAdjointEvdParams;
 
             template<typename T>
             auto params() -> Params {
@@ -1312,7 +1312,7 @@ inline namespace v0_23 {
         } // namespace self_adjoint_evd
 
         namespace evd {
-            using Params = FaerV0_23_EvdParams;
+            using Params = FaerV0_24_EvdParams;
 
             template<typename T>
             auto params() -> Params {
@@ -1372,7 +1372,7 @@ inline namespace v0_23 {
         } // namespace evd
 
         namespace generalized_evd {
-            using Params = FaerV0_23_GevdParams;
+            using Params = FaerV0_24_GevdParams;
 
             template<typename T>
             auto params() -> Params {
@@ -1485,7 +1485,7 @@ inline namespace v0_23 {
             }
         }
     } // namespace detail
-} // namespace v0_23
+} // namespace v0_24
 
 template<typename T>
 auto from_eigen(T&& mat) -> Mat<std::remove_pointer_t<decltype(mat.data())>> {
