@@ -1191,16 +1191,44 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 				},
 			));
 		}
-		let mut argsort = try_collect((0..all_nnz).map(I::truncate))?;
-		argsort.sort_unstable_by_key(|&i| {
-			let Pair { row, col } = idx(i.zx());
-			let ignore = ignore(row, col);
-			(ignore, col, row)
-		});
-		let all_nnz = argsort.partition_point(|&i| {
-			let Pair { row, col } = idx(i.zx());
-			!ignore(row, col)
-		});
+		let mut nnz_by_col = try_zeroed::<I>(ncols.unbound() + 1)?;
+		for i in 0..all_nnz {
+			let Pair { row, col } = idx(i);
+			if !ignore(row, col) {
+				*nnz_by_col.get_mut(col.unbound().zx() + 1).ok_or(
+					CreationError::OutOfBounds {
+						row: row.unbound().zx(),
+						col: col.unbound().zx(),
+					},
+				)? += I::truncate(1);
+			}
+		}
+
+		let mut prev_nnz = I::truncate(0);
+		for val in nnz_by_col.iter_mut() {
+			let new_val = prev_nnz;
+			prev_nnz += *val;
+			*val = new_val;
+		}
+
+		let mut argsort = try_zeroed::<I>(all_nnz)?;
+		for i in 0..all_nnz {
+			let Pair { row, col } = idx(i);
+			if !ignore(row, col) {
+				let off = nnz_by_col.get_mut(col.unbound().zx() + 1).unwrap();
+				argsort[off.zx()] = I::truncate(i);
+				*off += I::truncate(1);
+			}
+		}
+		let all_nnz = prev_nnz.zx();
+
+		for w in nnz_by_col.windows(2) {
+			argsort[w[0].zx()..w[1].zx()].sort_unstable_by_key(|i| {
+				let Pair { row, col } = idx(i.zx());
+				(row, col)
+			});
+		}
+
 		let mut n_dup = 0usize;
 		let mut prev = (I::truncate(usize::MAX), I::truncate(usize::MAX));
 		let top_bit = I::truncate(1 << (I::BITS - 1));
@@ -1230,7 +1258,7 @@ impl<Rows: Shape, Cols: Shape, I: Index> SymbolicSparseColMat<I, Rows, Cols> {
 			prev = idx;
 		}
 		let nnz = all_nnz - n_dup;
-		let mut col_ptr = try_zeroed::<I>(ncols.unbound() + 1)?;
+		let mut col_ptr = nnz_by_col;
 		let mut row_idx = try_zeroed::<I>(nnz)?;
 		let mut reader = 0usize;
 		let mut writer = 0usize;
