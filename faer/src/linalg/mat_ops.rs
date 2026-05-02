@@ -2436,7 +2436,8 @@ impl_op_assign!({
 mod sparse {
 	use super::*;
 	use crate::internal_prelude_sp::*;
-	use {csc_numeric as csc, csr_numeric as csr};
+	use csc_numeric as csc;
+	use csr_numeric as csr;
 	impl_binop!({
 		impl<
 			I: Index,

@@ -1046,7 +1046,8 @@ mod internal_prelude {
 		assert, assert as Assert, debug_assert, debug_assert as DebugAssert,
 	};
 	pub use reborrow::*;
-	pub use {unzip as uz, zip as z};
+	pub use unzip as uz;
+	pub use zip as z;
 }
 #[allow(unused_imports)]
 pub(crate) mod internal_prelude_sp {

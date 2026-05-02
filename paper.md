@@ -5,7 +5,7 @@ tags:
   - linear algebra
   - math
 authors:
-  - name: Sarah El Kazdadi
+  - name: Sarah Quiñones El Kazdadi
     orcid: 0000-0002-5657-0710
     affiliation: 1
 affiliations:
@@ -42,7 +42,7 @@ Multiple scalar types are supported, and the library code is generic over the
 data type. Native floating point types `f32`, `f64`[^2], `c32`, and `c64` are
 supported out of the box, as well as any user-defined types that satisfy the
 requested interface, such as extended precision real numbers (double-double or multi-precision floats),
-complex numbers using the aforementioned types as the base element, dual/hyper-dual numbers[^3]
+complex numbers using the aforementioned types as the base element, dual/hyper-dual numbers[^3].
 
 
 [^1]: Inline assembly is not entirely appropriate for our use case since it's hard to make it generic enough for all the operations and types that we wish to support.
@@ -51,7 +51,7 @@ complex numbers using the aforementioned types as the base element, dual/hyper-d
 
 # Statement of need
 
-Rust was chosen as a language for the library since it allows full control
+Rust was chosen as the language for the library since it allows full control
 over the memory layout of data and exposes low level CPU intrinsics for
 SIMD[^4] computations. Additionally, its memory safety features make it a
 perfect candidate for writing efficient and parallel code, since the compiler
@@ -74,8 +74,8 @@ challenge and can impede generic programming.
 This helps keep the API simple in that it doesn't need to accomodate SoA storage in memory, and is often also benefitial from a memory locality point of view.
 
 The library generically implements algorithms for matrix multiplication, based
-on the approach of @BLIS1. For native types, `faer` uses explicit SIMD
-depending on the detected CPU features, that dispatch to several precompiled
+on the approach of @BLIS1. For native types, `faer` uses SIMD explicitly
+depending on the detected CPU features, to dispatch instructions to several precompiled
 variants for operations that can make use of these features.
 An interesting alternative would be to compile the code JIT, which could improve compilation times and reduce binary size.
 But there are also possible downsides that have to be weighed against these advantages,
@@ -88,13 +88,13 @@ numerical robustness:
 - Cholesky (LLT, LDLT and Bunch-Kaufman LDLT),  
 - QR (with and without column pivoting),  
 - LU (with partial and full pivoting),  
-- SVD (with or without singular vectors, thin or full),  
+- SVD (with or without singular vectors, thin or full), and  
 - eigenvalue decomposition (with or without eigenvectors).
 
 For algorithms that are memory-bound and don't make much use of matrix multiplication,
-`faer` uses optimized fused kernels[^5]. This can immensely improve the performance of the
-QR decomposition with column pivoting, the LU decomposition with full pivoting,
-as well as the reduction to condensed form to prepare matrices for the SVD or
+`faer` uses optimized fused kernels[^5]. This can immensely improve the performance of
+QR decomposition with column pivoting, LU decomposition with full pivoting,
+as well as reduction to condensed form to prepare matrices for SVD or
 eigenvalue decomposition, as described by @10.1145/2382585.2382587.
 
 State of the art algorithms are used for each decomposition, allowing performance
@@ -115,11 +115,11 @@ showcase our improvements over the current state of the art.
 The benchmarks were run on an 11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz with 12 threads.
 Eigen is compiled with the `-fopenmp` flag to enable parallelism.
 
-![$n^3$ over run time of matrix multiplication. Higher is better](https://github.com/sarah-ek/faer-rs/files/13344473/matmul.pdf){#matmul_perf width="100%"}
+![$n^3$ over run time of matrix multiplication. Higher is better](https://github.com/sarah-quinones/faer-rs/files/13344473/matmul.pdf){#matmul_perf width="100%"}
 
-![$n^3$ over run time of QR decomposition. Higher is better](https://github.com/sarah-ek/faer-rs/files/13344474/qr.pdf){#qr_perf width="100%"}
+![$n^3$ over run time of QR decomposition. Higher is better](https://github.com/sarah-quinones/faer-rs/files/13344474/qr.pdf){#qr_perf width="100%"}
 
-![$n^3$ over run time of eigenvalue decomposition. Higher is better](https://github.com/sarah-ek/faer-rs/files/13344472/evd.pdf){#evd_perf width="100%"}
+![$n^3$ over run time of eigenvalue decomposition. Higher is better](https://github.com/sarah-quinones/faer-rs/files/13344472/evd.pdf){#evd_perf width="100%"}
 
 # Future work
 We have so far focused mainly on dense matrix algorithms, which will eventually form
