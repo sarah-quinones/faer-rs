@@ -21,10 +21,6 @@ unsafe fn noalias_annotate<T, Rows: Shape, Cols: Shape>(
 	j: Idx<Cols>,
 ) {
 	let ptr = iter.as_mut_ptr();
-	let iter = core::slice::from_raw_parts_mut(
-		ptr,
-		new_nrows.unbound() - old_nrows.unbound(),
-	);
 	let mut guard = DropCol {
 		ptr: ptr as *mut T,
 		nrows: 0,
@@ -364,7 +360,7 @@ impl<T, Rows: Shape, Cols: Shape> Mat<T, Rows, Cols> {
 			noalias_annotate::<T, Rows, Cols>(
 				core::slice::from_raw_parts_mut(
 					ptr as *mut _,
-					new_nrows.unbound() - old_nrows.unbound(),
+					new_nrows.unbound(),
 				),
 				new_nrows,
 				old_nrows,
@@ -1578,6 +1574,7 @@ where
 }
 #[cfg(test)]
 mod tests {
+	use super::Mat;
 	use crate::assert;
 	#[test]
 	fn test_resize() {
@@ -1695,5 +1692,34 @@ mod tests {
 		assert_eq!(m.max(), Some(9.0));
 		let empty: Mat<f64> = Mat::new();
 		assert_eq!(empty.max(), None);
+	}
+
+	#[test]
+	fn test_drop() {
+		use core::cell::Cell;
+		const M: usize = 5;
+		const N: usize = 7;
+
+		#[derive(Clone)]
+		struct PanicOnDrop<'a> {
+			counter: &'a Cell<usize>,
+		}
+
+		impl Drop for PanicOnDrop<'_> {
+			fn drop(&mut self) {
+				self.counter.set(self.counter.get() + 1);
+				if self.counter.get() == M * (N / 2) {
+					panic!();
+				}
+			}
+		}
+
+		let counter = &Cell::new(0);
+		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			drop(Mat::full(M, N, PanicOnDrop { counter }))
+		}))
+		.unwrap_err();
+		// matrix elements + init value
+		assert!(counter.get() == M * N + 1);
 	}
 }
