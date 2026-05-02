@@ -1343,7 +1343,9 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 							rhs.col_stride(),
 							match beta {
 								Accum::Replace => core::mem::zeroed(),
-								Accum::Add => 1.0.into(),
+								Accum::Add => {
+									<$ty as ComplexFieldExt>::from_f64(1.0)
+								},
 							},
 							alpha,
 							conj_lhs == Conj::Yes,
@@ -1427,7 +1429,9 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 								rhs.row_stride(),
 								match beta {
 									Accum::Replace => core::mem::zeroed(),
-									Accum::Add => 1.0.into(),
+									Accum::Add => {
+										<$ty as ComplexFieldExt>::from_f64(1.0)
+									},
 								},
 								alpha,
 								false,

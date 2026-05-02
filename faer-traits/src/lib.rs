@@ -924,10 +924,6 @@ impl SignedIndex for i32 {
 
 	#[inline(always)]
 	fn truncate(value: usize) -> Self {
-		#[allow(clippy::assertions_on_constants)]
-		const _: () = {
-			core::assert!(i32::BITS <= usize::BITS);
-		};
 		value as isize as Self
 	}
 
@@ -941,16 +937,11 @@ impl SignedIndex for i32 {
 		self as isize as usize
 	}
 }
-#[cfg(any(target_pointer_width = "64"))]
 impl SignedIndex for i64 {
 	const MAX: Self = Self::MAX;
 
 	#[inline(always)]
 	fn truncate(value: usize) -> Self {
-		#[allow(clippy::assertions_on_constants)]
-		const _: () = {
-			core::assert!(i64::BITS <= usize::BITS);
-		};
 		value as isize as Self
 	}
 
@@ -1123,7 +1114,6 @@ impl Index for u32 {
 	type FixedWidth = u32;
 	type Signed = i32;
 }
-#[cfg(any(target_pointer_width = "64"))]
 impl Index for u64 {
 	type FixedWidth = u64;
 	type Signed = i64;

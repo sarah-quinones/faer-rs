@@ -1036,18 +1036,16 @@ mod internal_prelude {
 	pub fn simd_align(i: usize) -> usize {
 		i.wrapping_neg()
 	}
-	pub use crate::make_guard;
+	pub(crate) use self::{unzip as uz, zip as z};
 	pub(crate) use crate::{
 		Accum, Conj, ContiguousBwd, ContiguousFwd, DiagStatus, Par, Shape,
-		Stride, Unbind, unzip, zip,
+		Stride, Unbind, make_guard, unzip, zip,
 	};
 	pub use dyn_stack::{MemStack, StackReq, alloc as alloca};
 	pub use equator::{
 		assert, assert as Assert, debug_assert, debug_assert as DebugAssert,
 	};
 	pub use reborrow::*;
-	pub use unzip as uz;
-	pub use zip as z;
 }
 #[allow(unused_imports)]
 pub(crate) mod internal_prelude_sp {
