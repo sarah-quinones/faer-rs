@@ -82,6 +82,7 @@ But there are also possible downsides that have to be weighed against these adva
 such as increasing the startup time to optimize and assemble the code,
 as well as the gap in maturity between ahead-of-time compilation (currently backed by LLVM),
 and JIT compilation, for which the Rust ecosystem is still developing.
+
 The library then uses matrix multiplication as a building block to implement commonly used matrix
 decompositions, based on state of the art algorithms in order to guarantee
 numerical robustness:  
