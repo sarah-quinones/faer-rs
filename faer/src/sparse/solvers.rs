@@ -4,35 +4,35 @@ use crate::linalg::solvers::{ShapeCore, SolveCore, SolveLstsqCore};
 use linalg_sp::{LltError, LuError};
 /// reference-counted sparse symbolic $LL^\top$ factorization
 #[derive(Debug, Clone)]
-pub struct SymbolicLlt<I> {
+pub struct SymbolicLlt<I: Index> {
 	inner: alloc::sync::Arc<linalg_sp::cholesky::SymbolicCholesky<I>>,
 }
 /// sparse $LL^\top$ factorization
 #[derive(Debug, Clone)]
-pub struct Llt<I, T> {
+pub struct Llt<I: Index, T> {
 	symbolic: SymbolicLlt<I>,
 	numeric: alloc::vec::Vec<T>,
 }
 /// reference-counted sparse symbolic $QR$ factorization
 #[derive(Debug, Clone)]
-pub struct SymbolicQr<I> {
+pub struct SymbolicQr<I: Index> {
 	inner: alloc::sync::Arc<linalg_sp::qr::SymbolicQr<I>>,
 }
 /// sparse $QR$ factorization
 #[derive(Debug, Clone)]
-pub struct Qr<I, T> {
+pub struct Qr<I: Index, T> {
 	symbolic: SymbolicQr<I>,
 	indices: alloc::vec::Vec<I>,
 	numeric: alloc::vec::Vec<T>,
 }
 /// reference-counted sparse symbolic $LU$ factorization
 #[derive(Debug, Clone)]
-pub struct SymbolicLu<I> {
+pub struct SymbolicLu<I: Index> {
 	inner: alloc::sync::Arc<linalg_sp::lu::SymbolicLu<I>>,
 }
 /// sparse $QR$ factorization
 #[derive(Debug, Clone)]
-pub struct Lu<I, T> {
+pub struct Lu<I: Index, T> {
 	symbolic: SymbolicLu<I>,
 	numeric: linalg_sp::lu::NumericLu<I, T>,
 }

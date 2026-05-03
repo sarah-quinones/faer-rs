@@ -64,19 +64,17 @@ pub mod supernodal {
 
 	/// $LU$ factor structure containing the symbolic structure
 	#[derive(Debug, Clone)]
-	pub struct SymbolicSupernodalLu<I> {
+	pub struct SymbolicSupernodalLu<I: Index> {
 		pub(super) supernode_ptr: alloc::vec::Vec<I>,
 		pub(super) super_etree: alloc::vec::Vec<I>,
-		pub(super) supernode_postorder: alloc::vec::Vec<I>,
-		pub(super) supernode_postorder_inv: alloc::vec::Vec<I>,
-		pub(super) descendant_count: alloc::vec::Vec<I>,
+		pub(super) row_major: SymbolicSparseRowMat<I>,
 		pub(super) nrows: usize,
 		pub(super) ncols: usize,
 	}
 	/// $LU$ factor structure containing the symbolic and numerical
 	/// representations
 	#[derive(Debug, Clone)]
-	pub struct SupernodalLu<I, T> {
+	pub struct SupernodalLu<I: Index, T> {
 		nrows: usize,
 		ncols: usize,
 		nsupernodes: usize,
@@ -527,10 +525,8 @@ pub mod supernodal {
 		}
 		Ok(SymbolicSupernodalLu {
 			supernode_ptr: L.supernode_begin,
+			row_major: L.row_major,
 			super_etree,
-			supernode_postorder: L.supernode_postorder,
-			supernode_postorder_inv: L.supernode_postorder_inv,
-			descendant_count: L.descendant_count,
 			nrows: *A.nrows(),
 			ncols: *A.ncols(),
 		})
@@ -611,9 +607,7 @@ pub mod supernodal {
 		let SymbolicSupernodalLu {
 			supernode_ptr,
 			super_etree,
-			supernode_postorder,
-			supernode_postorder_inv,
-			descendant_count,
+			row_major,
 			nrows: _,
 			ncols: _,
 		} = symbolic;
@@ -639,8 +633,6 @@ pub mod supernodal {
 		assert!(all(AT.nrows() == n, AT.ncols() == m));
 		assert!(all(row_perm.len() == m, row_perm_inv.len() == m));
 		let n_supernodes = super_etree.len();
-		assert!(supernode_postorder.len() == n_supernodes);
-		assert!(supernode_postorder_inv.len() == n_supernodes);
 		assert!(supernode_ptr.len() == n_supernodes + 1);
 		assert!(supernode_ptr[n_supernodes].zx() == n);
 		lu.nrows = 0;
@@ -718,11 +710,9 @@ pub mod supernodal {
 			let s_begin = supernode_ptr[s].zx();
 			let s_end = supernode_ptr[s + 1].zx();
 			let s_size = s_end - s_begin;
-			let s_postordered = supernode_postorder_inv[s].zx();
-			let desc_count = descendant_count[s].zx();
 			let mut s_row_idx_count = 0usize;
 			let (left_contrib, right_contrib) = contrib_work.split_at_mut(s);
-			let s_row_idxices = &mut *indices;
+			let s_row_idx = &mut *indices;
 			for j in s_begin..s_end {
 				let pj = col_perm[j].zx();
 				let row_idx = A.row_idx_of_col_raw(pj);
@@ -733,15 +723,13 @@ pub mod supernodal {
 						continue;
 					}
 					if marked[i] < I(2 * s + 1) {
-						s_row_idxices[s_row_idx_count] = I(i);
+						s_row_idx[s_row_idx_count] = I(i);
 						s_row_idx_count += 1;
 						marked[i] = I(2 * s + 1);
 					}
 				}
 			}
-			for d in
-				&supernode_postorder[s_postordered - desc_count..s_postordered]
-			{
+			for d in row_major.col_idx_of_row(s) {
 				let d = d.zx();
 				let d_begin = supernode_ptr[d].zx();
 				let d_end = supernode_ptr[d + 1].zx();
@@ -762,7 +750,7 @@ pub mod supernodal {
 							continue;
 						}
 						if marked[i] < I(2 * s + 1) {
-							s_row_idxices[s_row_idx_count] = I(i);
+							s_row_idx[s_row_idx_count] = I(i);
 							s_row_idx_count += 1;
 							marked[i] = I(2 * s + 1);
 						}
@@ -791,16 +779,16 @@ pub mod supernodal {
 			)?;
 			lu.l_row_idx[lu.l_col_ptr_for_row_idx[s].zx()
 				..lu.l_col_ptr_for_row_idx[s + 1].zx()]
-				.copy_from_slice(&s_row_idxices[..s_row_idx_count]);
+				.copy_from_slice(&s_row_idx[..s_row_idx_count]);
 			lu.l_row_idx[lu.l_col_ptr_for_row_idx[s].zx()
 				..lu.l_col_ptr_for_row_idx[s + 1].zx()]
 				.sort_unstable();
-			let (left_row_idxices, right_row_idxices) =
+			let (left_row_idx, right_row_idx) =
 				lu.l_row_idx.split_at_mut(lu.l_col_ptr_for_row_idx[s].zx());
-			let s_row_idxices =
-				&mut right_row_idxices[0..lu.l_col_ptr_for_row_idx[s + 1].zx()
+			let s_row_idx =
+				&mut right_row_idx[0..lu.l_col_ptr_for_row_idx[s + 1].zx()
 					- lu.l_col_ptr_for_row_idx[s].zx()];
-			for (idx, i) in s_row_idxices.iter().enumerate() {
+			for (idx, i) in s_row_idx.iter().enumerate() {
 				row_global_to_local[i.zx()] = I(idx);
 			}
 			let s_L = &mut lu.l_val[lu.l_col_ptr_for_val[s].zx()
@@ -828,9 +816,7 @@ pub mod supernodal {
 				}
 			}
 			noinline(LPanel, || {
-				for d in &supernode_postorder
-					[s_postordered - desc_count..s_postordered]
-				{
+				for d in row_major.col_idx_of_row(s) {
 					let d = d.zx();
 					if left_contrib[d].0.is_empty() {
 						continue;
@@ -838,9 +824,9 @@ pub mod supernodal {
 					let d_begin = supernode_ptr[d].zx();
 					let d_end = supernode_ptr[d + 1].zx();
 					let d_size = d_end - d_begin;
-					let d_row_idx =
-						&left_row_idxices[lu.l_col_ptr_for_row_idx[d].zx()
-							..lu.l_col_ptr_for_row_idx[d + 1].zx()][d_size..];
+					let d_row_idx = &left_row_idx[lu.l_col_ptr_for_row_idx[d]
+						.zx()
+						..lu.l_col_ptr_for_row_idx[d + 1].zx()][d_size..];
 					let d_col_ind = &lu.ut_row_idx[lu.ut_col_ptr_for_row_idx[d]
 						.zx()
 						..lu.ut_col_ptr_for_row_idx[d + 1].zx()];
@@ -915,20 +901,18 @@ pub mod supernodal {
 				params,
 			);
 			for (idx, t) in transpositions.iter().enumerate() {
-				let i_t = s_row_idxices[idx + t.zx()].zx();
+				let i_t = s_row_idx[idx + t.zx()].zx();
 				let kk = row_perm_inv[i_t].zx();
 				row_perm.swap(s_begin + idx, row_perm_inv[i_t].zx());
 				row_perm_inv
 					.swap(row_perm[s_begin + idx].zx(), row_perm[kk].zx());
-				s_row_idxices.swap(idx, idx + t.zx());
+				s_row_idx.swap(idx, idx + t.zx());
 			}
 			for (idx, t) in transpositions.iter().enumerate().rev() {
-				row_global_to_local.swap(
-					s_row_idxices[idx].zx(),
-					s_row_idxices[idx + t.zx()].zx(),
-				);
+				row_global_to_local
+					.swap(s_row_idx[idx].zx(), s_row_idx[idx + t.zx()].zx());
 			}
-			for (idx, i) in s_row_idxices.iter().enumerate() {
+			for (idx, i) in s_row_idx.iter().enumerate() {
 				assert!(row_global_to_local[i.zx()] == I(idx));
 			}
 			let s_col_indices = &mut indices[..n];
@@ -947,15 +931,12 @@ pub mod supernodal {
 					}
 				}
 			}
-			for d in
-				&supernode_postorder[s_postordered - desc_count..s_postordered]
-			{
+			for d in row_major.col_idx_of_row(s) {
 				let d = d.zx();
 				let d_begin = supernode_ptr[d].zx();
 				let d_end = supernode_ptr[d + 1].zx();
 				let d_size = d_end - d_begin;
-				let d_row_idx = &left_row_idxices[lu.l_col_ptr_for_row_idx[d]
-					.zx()
+				let d_row_idx = &left_row_idx[lu.l_col_ptr_for_row_idx[d].zx()
 					..lu.l_col_ptr_for_row_idx[d + 1].zx()][d_size..];
 				let d_col_ind = &lu.ut_row_idx[lu.ut_col_ptr_for_row_idx[d].zx()
 					..lu.ut_col_ptr_for_row_idx[d + 1].zx()];
@@ -1034,9 +1015,7 @@ pub mod supernodal {
 				}
 			}
 			noinline(UPanel, || {
-				for d in &supernode_postorder
-					[s_postordered - desc_count..s_postordered]
-				{
+				for d in row_major.col_idx_of_row(s) {
 					let d = d.zx();
 					if left_contrib[d].0.is_empty() {
 						continue;
@@ -1044,9 +1023,9 @@ pub mod supernodal {
 					let d_begin = supernode_ptr[d].zx();
 					let d_end = supernode_ptr[d + 1].zx();
 					let d_size = d_end - d_begin;
-					let d_row_idx =
-						&left_row_idxices[lu.l_col_ptr_for_row_idx[d].zx()
-							..lu.l_col_ptr_for_row_idx[d + 1].zx()][d_size..];
+					let d_row_idx = &left_row_idx[lu.l_col_ptr_for_row_idx[d]
+						.zx()
+						..lu.l_col_ptr_for_row_idx[d + 1].zx()][d_size..];
 					let d_col_ind = &lu.ut_row_idx[lu.ut_col_ptr_for_row_idx[d]
 						.zx()
 						..lu.ut_col_ptr_for_row_idx[d + 1].zx()];
@@ -1149,9 +1128,7 @@ pub mod supernodal {
 					par,
 				);
 				noinline(Front, || {
-					for d in &supernode_postorder
-						[s_postordered - desc_count..s_postordered]
-					{
+					for d in row_major.col_idx_of_row(s) {
 						let d = d.zx();
 						if left_contrib[d].0.is_empty() {
 							continue;
@@ -1160,7 +1137,7 @@ pub mod supernodal {
 						let d_end = supernode_ptr[d + 1].zx();
 						let d_size = d_end - d_begin;
 						let d_row_idx =
-							&left_row_idxices[lu.l_col_ptr_for_row_idx[d].zx()
+							&left_row_idx[lu.l_col_ptr_for_row_idx[d].zx()
 								..lu.l_col_ptr_for_row_idx[d + 1].zx()][d_size..];
 						let d_col_ind =
 							&lu.ut_row_idx[lu.ut_col_ptr_for_row_idx[d].zx()
@@ -1249,7 +1226,7 @@ pub mod supernodal {
 					}
 				})
 			}
-			for i in s_row_idxices.iter() {
+			for i in s_row_idx.iter() {
 				row_global_to_local[i.zx()] = I(NONE);
 			}
 			for j in s_col_indices.iter() {
@@ -1741,7 +1718,7 @@ pub struct LuSymbolicParams<'a> {
 /// the inner factorization used for the symbolic $LU$, either simplicial or
 /// symbolic
 #[derive(Debug, Clone)]
-pub enum SymbolicLuRaw<I> {
+pub enum SymbolicLuRaw<I: Index> {
 	/// simplicial structure
 	Simplicial {
 		/// number of rows of $A$
@@ -1754,14 +1731,14 @@ pub enum SymbolicLuRaw<I> {
 }
 /// the symbolic structure of a sparse $LU$ decomposition
 #[derive(Debug, Clone)]
-pub struct SymbolicLu<I> {
+pub struct SymbolicLu<I: Index> {
 	raw: SymbolicLuRaw<I>,
 	col_perm_fwd: alloc::vec::Vec<I>,
 	col_perm_inv: alloc::vec::Vec<I>,
 	A_nnz: usize,
 }
 #[derive(Debug, Clone)]
-enum NumericLuRaw<I, T> {
+enum NumericLuRaw<I: Index, T> {
 	None,
 	Supernodal(supernodal::SupernodalLu<I, T>),
 	Simplicial(simplicial::SimplicialLu<I, T>),
@@ -1769,7 +1746,7 @@ enum NumericLuRaw<I, T> {
 /// structure that contains the numerical values and row pivoting permutation of
 /// the lu decomposition
 #[derive(Debug, Clone)]
-pub struct NumericLu<I, T> {
+pub struct NumericLu<I: Index, T> {
 	raw: NumericLuRaw<I, T>,
 	row_perm_fwd: alloc::vec::Vec<I>,
 	row_perm_inv: alloc::vec::Vec<I>,

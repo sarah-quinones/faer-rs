@@ -1556,26 +1556,22 @@ pub mod supernodal {
 	}
 	/// cholesky factor structure containing its symbolic structure
 	#[derive(Debug)]
-	pub struct SymbolicSupernodalCholesky<I> {
+	pub struct SymbolicSupernodalCholesky<I: Index> {
 		pub(crate) dimension: usize,
-		pub(crate) supernode_postorder: alloc::vec::Vec<I>,
-		pub(crate) supernode_postorder_inv: alloc::vec::Vec<I>,
-		pub(crate) descendant_count: alloc::vec::Vec<I>,
 		pub(crate) supernode_begin: alloc::vec::Vec<I>,
 		pub(crate) col_ptr_for_row_idx: alloc::vec::Vec<I>,
 		pub(crate) col_ptr_for_val: alloc::vec::Vec<I>,
 		pub(crate) row_idx: alloc::vec::Vec<I>,
 		pub(crate) nnz_per_super: alloc::vec::Vec<I>,
-	}
-	impl<I: Index> SymbolicSupernodalCholesky<I> {
-		/// returns `col_ptr`, `row_idx` and `nnz` for mutation
-		// pub unsafe fn as_symbolic_mut(&mut self) -> (&[I], &mut [I], &mut
-		// [I]) { }
 
+		pub(crate) row_major: SymbolicSparseRowMat<I>,
+	}
+
+	impl<I: Index> SymbolicSupernodalCholesky<I> {
 		/// returns the number of supernodes in the cholesky factor
 		#[inline]
 		pub fn n_supernodes(&self) -> usize {
-			self.supernode_postorder.len()
+			self.supernode_begin.len() - 1
 		}
 
 		/// returns the number of rows of the cholesky factor
@@ -2440,14 +2436,18 @@ pub mod supernodal {
 		if n == 0 {
 			return Ok(SymbolicSupernodalCholesky {
 				dimension: n,
-				supernode_postorder: alloc::vec::Vec::new(),
-				supernode_postorder_inv: alloc::vec::Vec::new(),
-				descendant_count: alloc::vec::Vec::new(),
 				supernode_begin: try_collect([zero])?,
 				col_ptr_for_row_idx: try_collect([zero])?,
 				col_ptr_for_val: try_collect([zero])?,
 				row_idx: alloc::vec::Vec::new(),
 				nnz_per_super: alloc::vec::Vec::new(),
+				row_major: SymbolicSparseRowMat::new_checked(
+					0,
+					0,
+					try_collect([zero])?,
+					None,
+					alloc::vec::Vec::new(),
+				),
 			});
 		}
 		let original_stack = stack;
@@ -2739,6 +2739,7 @@ pub mod supernodal {
 		};
 		let n_supernodes = supernode_begin__.len() - 1;
 		let (
+			row_major,
 			supernode_begin__,
 			col_ptr_for_row_idx__,
 			col_ptr_for_val__,
@@ -2820,6 +2821,7 @@ pub mod supernodal {
 					.ok_or(FaerError::IndexOverflow)?;
 				try_zeroed::<I>(row_ptr.zx())?
 			};
+
 			let super_etree = Array::from_ref(
 				MaybeIdx::from_slice_ref_checked(
 					&super_etree__[..n_supernodes],
@@ -2888,7 +2890,22 @@ pub mod supernodal {
 			debug_assert!(
 				current_row_positions.as_ref() == &col_ptr_for_row_idx__[1..]
 			);
+
+			let row_idx_compressed = try_collect(
+				row_idx__.iter().map(|&i| *index_to_super[N.check(i.zx())]),
+			)?;
+
 			(
+				unsafe {
+					SymbolicSparseColMatRef::new_unchecked(
+						n_supernodes,
+						n_supernodes,
+						&col_ptr_for_row_idx__,
+						None,
+						&row_idx_compressed,
+					)
+				}
+				.to_row_major()?,
 				supernode_begin__,
 				col_ptr_for_row_idx__,
 				col_ptr_for_val__,
@@ -2931,11 +2948,10 @@ pub mod supernodal {
 				post_inv[N_SUPERNODES.check(post[i].zx())] = I::truncate(*i);
 			}
 		};
+
 		Ok(SymbolicSupernodalCholesky {
+			row_major,
 			dimension: n,
-			supernode_postorder: supernode_postorder__,
-			supernode_postorder_inv: supernode_etree__,
-			descendant_count: descendent_count__,
 			supernode_begin: supernode_begin__,
 			nnz_per_super: make_nnz(&col_ptr_for_row_idx__)?,
 			col_ptr_for_row_idx: col_ptr_for_row_idx__,
@@ -2960,9 +2976,6 @@ pub mod supernodal {
 	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
-		let post = &*symbolic.supernode_postorder;
-		let post_inv = &*symbolic.supernode_postorder_inv;
-		let desc_count = &*symbolic.descendant_count;
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let row_idx = &*symbolic.row_idx;
 		let mut req = StackReq::empty();
@@ -2970,11 +2983,8 @@ pub mod supernodal {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 			let s_ncols = s_end - s_start;
-			let s_postordered = post_inv[s].zx();
-			let desc_count = desc_count[s].zx();
-			for d in &post[s_postordered - desc_count..s_postordered] {
+			for d in symbolic.row_major.col_idx_of_row(s) {
 				let mut d_scratch = StackReq::empty();
-				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
@@ -3016,9 +3026,6 @@ pub mod supernodal {
 	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
-		let post = &*symbolic.supernode_postorder;
-		let post_inv = &*symbolic.supernode_postorder_inv;
-		let desc_count = &*symbolic.descendant_count;
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let row_idx = &*symbolic.row_idx;
 		let mut req = StackReq::empty();
@@ -3026,11 +3033,8 @@ pub mod supernodal {
 			let s_start = symbolic.supernode_begin[s].zx();
 			let s_end = symbolic.supernode_begin[s + 1].zx();
 			let s_ncols = s_end - s_start;
-			let s_postordered = post_inv[s].zx();
-			let desc_count = desc_count[s].zx();
-			for d in &post[s_postordered - desc_count..s_postordered] {
+			for d in symbolic.row_major.col_idx_of_row(s) {
 				let mut d_scratch = StackReq::empty();
-				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
@@ -3073,9 +3077,6 @@ pub mod supernodal {
 	) -> StackReq {
 		let n_supernodes = symbolic.n_supernodes();
 		let n = symbolic.nrows();
-		let post = &*symbolic.supernode_postorder;
-		let post_inv = &*symbolic.supernode_postorder_inv;
-		let desc_count = &*symbolic.descendant_count;
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let row_idx = &*symbolic.row_idx;
 		let mut req = StackReq::empty();
@@ -3085,11 +3086,8 @@ pub mod supernodal {
 			let s_ncols = s_end - s_start;
 			let s_pattern = &row_idx[col_ptr_row[s].zx()..]
 				[..symbolic.nnz_per_super[s].zx()];
-			let s_postordered = post_inv[s].zx();
-			let desc_count = desc_count[s].zx();
-			for d in &post[s_postordered - desc_count..s_postordered] {
+			for d in symbolic.row_major.col_idx_of_row(s) {
 				let mut d_scratch = StackReq::empty();
-				let d = d.zx();
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
@@ -3149,9 +3147,6 @@ pub mod supernodal {
 		assert!(A_lower.ncols() == n);
 		assert!(L_values.len() == symbolic.len_val());
 		let none = I::Signed::truncate(NONE);
-		let post = &*symbolic.supernode_postorder;
-		let post_inv = &*symbolic.supernode_postorder_inv;
-		let desc_count = &*symbolic.descendant_count;
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let col_ptr_val = &*symbolic.col_ptr_for_val;
 		let row_idx = &*symbolic.row_idx;
@@ -3191,10 +3186,7 @@ pub mod supernodal {
 					Ls[(ix, iy)] += val;
 				}
 			}
-			let s_postordered = post_inv[s].zx();
-			let desc_count = desc_count[s].zx();
-			for d in &post[s_postordered - desc_count..s_postordered] {
-				let d = d.zx();
+			for d in symbolic.row_major.col_idx_of_row(s) {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
@@ -3309,9 +3301,6 @@ pub mod supernodal {
 		assert!(A_lower.ncols() == n);
 		assert!(L_values.len() == symbolic.len_val());
 		let none = I::Signed::truncate(NONE);
-		let post = &*symbolic.supernode_postorder;
-		let post_inv = &*symbolic.supernode_postorder_inv;
-		let desc_count = &*symbolic.descendant_count;
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let col_ptr_val = &*symbolic.col_ptr_for_val;
 		let row_idx = &*symbolic.row_idx;
@@ -3351,10 +3340,8 @@ pub mod supernodal {
 					Ls[(ix, iy)] += val;
 				}
 			}
-			let s_postordered = post_inv[s].zx();
-			let desc_count = desc_count[s].zx();
-			for d in &post[s_postordered - desc_count..s_postordered] {
-				let d = d.zx();
+
+			for d in symbolic.row_major.col_idx_of_row(s) {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
@@ -3492,9 +3479,6 @@ pub mod supernodal {
 		assert!(subdiag.len() == n);
 		assert!(L_values.len() == symbolic.len_val());
 		let none = I::Signed::truncate(NONE);
-		let post = &*symbolic.supernode_postorder;
-		let post_inv = &*symbolic.supernode_postorder_inv;
-		let desc_count = &*symbolic.descendant_count;
 		let col_ptr_row = &*symbolic.col_ptr_for_row_idx;
 		let col_ptr_val = &*symbolic.col_ptr_for_val;
 		let row_idx = &*symbolic.row_idx;
@@ -3534,10 +3518,7 @@ pub mod supernodal {
 					Ls[(ix, iy)] += val;
 				}
 			}
-			let s_postordered = post_inv[s].zx();
-			let desc_count = desc_count[s].zx();
-			for d in &post[s_postordered - desc_count..s_postordered] {
-				let d = d.zx();
+			for d in symbolic.row_major.col_idx_of_row(s) {
 				let d_start = symbolic.supernode_begin[d].zx();
 				let d_end = symbolic.supernode_begin[d + 1].zx();
 				let d_pattern = &row_idx[col_ptr_row[d].zx()..]
@@ -3796,7 +3777,7 @@ pub struct CholeskySymbolicParams<'a> {
 /// the inner factorization used for the symbolic cholesky, either simplicial or
 /// symbolic
 #[derive(Debug)]
-pub enum SymbolicCholeskyRaw<I> {
+pub enum SymbolicCholeskyRaw<I: Index> {
 	/// simplicial structure
 	Simplicial(simplicial::SymbolicSimplicialCholesky<I>),
 	/// supernodal structure
@@ -3804,7 +3785,7 @@ pub enum SymbolicCholeskyRaw<I> {
 }
 /// the symbolic structure of a sparse cholesky decomposition
 #[derive(Debug)]
-pub struct SymbolicCholesky<I> {
+pub struct SymbolicCholesky<I: Index> {
 	raw: SymbolicCholeskyRaw<I>,
 	perm_fwd: Option<alloc::vec::Vec<I>>,
 	perm_inv: Option<alloc::vec::Vec<I>>,

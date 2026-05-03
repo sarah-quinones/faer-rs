@@ -379,7 +379,7 @@ pub mod supernodal {
 	}
 	/// symbolic structure of the $QR$ decomposition,
 	#[derive(Debug)]
-	pub struct SymbolicSupernodalQr<I> {
+	pub struct SymbolicSupernodalQr<I: Index> {
 		L: SymbolicSupernodalCholesky<I>,
 		H: SymbolicSupernodalHouseholder<I>,
 		min_col: alloc::vec::Vec<I>,
@@ -1956,7 +1956,7 @@ pub struct QrSymbolicParams<'a> {
 /// the inner factorization used for the symbolic $QR$, either simplicial or
 /// symbolic
 #[derive(Debug)]
-pub enum SymbolicQrRaw<I> {
+pub enum SymbolicQrRaw<I: Index> {
 	/// simplicial structure
 	Simplicial(simplicial::SymbolicSimplicialQr<I>),
 	/// supernodal structure
@@ -1965,7 +1965,7 @@ pub enum SymbolicQrRaw<I> {
 
 /// the symbolic structure of a sparse $QR$ decomposition
 #[derive(Debug)]
-pub struct SymbolicQr<I> {
+pub struct SymbolicQr<I: Index> {
 	raw: SymbolicQrRaw<I>,
 	col_perm_fwd: alloc::vec::Vec<I>,
 	col_perm_inv: alloc::vec::Vec<I>,
