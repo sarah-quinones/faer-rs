@@ -3091,4 +3091,12 @@ mod tests {
 		svd.solve_lstsq_in_place_with_conj(crate::Conj::No, X.as_mat_mut());
 		assert!(X.get(..X_true.nrows(),..) ~ X_true);
 	}
+
+	#[test]
+	fn codeberg_295() {
+		let a = mat![[1e16, -1e15, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+		let b = mat![[0.0], [0.0], [0.0]];
+		let x = a.qr().solve_lstsq(b.as_ref());
+		assert!(!x.has_nan());
+	}
 }

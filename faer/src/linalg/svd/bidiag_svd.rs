@@ -341,7 +341,7 @@ pub(super) fn qr_algorithm<T: RealField>(
 							subdiag[j] = &rot.c * &subdiag[j];
 						}
 						if let Some(v) = v.rb_mut() {
-							rot.transpose().apply_on_the_right_in_place(
+							rot.adjoint().apply_on_the_right_in_place(
 								v.two_cols_mut(j, i),
 							);
 						}
@@ -1038,7 +1038,7 @@ pub(super) fn divide_and_conquer<T: RealField>(
 				val = &rot.s * &subdiag[i - 1];
 				subdiag[i - 1] = &rot.c * &subdiag[i - 1];
 			}
-			rot.transpose().apply_on_the_right_in_place(
+			rot.adjoint().apply_on_the_right_in_place(
 				u_alloc.rb_mut().two_cols_mut(i, j),
 			);
 		}
@@ -1839,7 +1839,7 @@ mod tests {
 			let (x, y) = M.two_rows_mut(pi, pj);
 			rot.apply_on_the_left_in_place((y, x));
 			let (x, y) = M.two_cols_mut(pi, pj);
-			rot.adjoint().apply_on_the_right_in_place((y, x));
+			rot.transpose().apply_on_the_right_in_place((y, x));
 		}
 		assert!(M ~ M_orig);
 	}
@@ -1900,7 +1900,7 @@ mod tests {
 			let (x, y) = M.two_rows_mut(pi, pj);
 			rot.apply_on_the_left_in_place((y, x));
 			let (x, y) = M.two_cols_mut(pi, pj);
-			rot.adjoint().apply_on_the_right_in_place((y, x));
+			rot.transpose().apply_on_the_right_in_place((y, x));
 		}
 		for (&rot, &i) in
 			core::iter::zip(&jacobi_coeffs[..1], &jacobi_indices[..1]).rev()

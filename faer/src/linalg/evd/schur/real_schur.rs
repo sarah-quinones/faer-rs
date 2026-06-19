@@ -396,7 +396,7 @@ pub(crate) fn schur_swap_11<T: RealField>(
 	a[(j1, j1)] = t00;
 	a[(j0, j0)] = t11;
 	if j2 < n {
-		rot.apply_on_the_right_in_place(
+		rot.adjoint().apply_on_the_right_in_place(
 			a.rb_mut()
 				.transpose_mut()
 				.get_mut(j2.., ..)
@@ -404,12 +404,13 @@ pub(crate) fn schur_swap_11<T: RealField>(
 		);
 	}
 	if j0 > 0 {
-		rot.apply_on_the_right_in_place(
+		rot.adjoint().apply_on_the_right_in_place(
 			a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1),
 		);
 	}
 	if let Some(q) = q.rb_mut() {
-		rot.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
+		rot.adjoint()
+			.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
 	}
 	0
 }

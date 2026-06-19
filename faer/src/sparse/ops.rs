@@ -300,7 +300,7 @@ pub fn sub<
 	binary_op(lhs, rhs, |lhs, rhs| {
 		match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
 			(None, None) => zero(),
-			(None, Some(rhs)) => rhs,
+			(None, Some(rhs)) => -rhs,
 			(Some(lhs), None) => lhs,
 			(Some(lhs), Some(rhs)) => lhs - rhs,
 		}
@@ -388,7 +388,7 @@ pub fn sub_into<
 	ternary_op_assign_into(dst, lhs, rhs, |dst, lhs, rhs| {
 		*dst = match (lhs.map(Conj::apply), rhs.map(Conj::apply)) {
 			(None, None) => zero(),
-			(None, Some(rhs)) => rhs,
+			(None, Some(rhs)) => -rhs,
 			(Some(lhs), None) => lhs,
 			(Some(lhs), Some(rhs)) => lhs - rhs,
 		};

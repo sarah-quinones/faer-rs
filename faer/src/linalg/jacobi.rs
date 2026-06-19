@@ -67,7 +67,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 				(Self { c, s }, p.to_cplx())
 			} else if p == zero::<T::Real>() {
 				let c = zero::<T::Real>();
-				let s = one::<T::Real>();
+				let s = -one::<T::Real>();
 				let c = c.to_cplx();
 				let s = s.to_cplx();
 				(Self { c, s }, q.to_cplx())
@@ -84,7 +84,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 					if *b > zero::<T::Real>() { r } else { -r }
 				};
 				let c = (a / r).to_cplx();
-				let s = (b / r).to_cplx();
+				let s = (-b / r).to_cplx();
 				let r = r.to_cplx();
 				(Self { c, s }, r)
 			}
@@ -170,7 +170,9 @@ impl<T: ComplexField> JacobiRotation<T> {
 					r = fs.mul_real(h2 * p).mul_real(u);
 				}
 			}
-			(Self { c, s }, r)
+			(Self { c, s: -s.conj() }, r)
+			// (Self { c, s }.transpose(), r)
+			// (Self { c, s }, r)
 		}
 	}
 
@@ -188,10 +190,10 @@ impl<T: ComplexField> JacobiRotation<T> {
 	) -> (T, T, T, T) {
 		let Self { c, s } = self;
 		(
-			&m00 * c + &m10 * s,
-			&m01 * c + &m11 * s,
-			c * m10 - s.conj() * m00,
-			c * m11 - s.conj() * m01,
+			&m00 * c - &m10 * s.conj(),
+			&m01 * c - &m11 * s.conj(),
+			c * m10 + s * m00,
+			c * m11 + s * m01,
 		)
 	}
 
@@ -208,7 +210,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 		m11: T,
 	) -> (T, T, T, T) {
 		let (r00, r01, r10, r11) =
-			self.transpose().apply_on_the_left_2x2(m00, m10, m01, m11);
+			self.adjoint().apply_on_the_left_2x2(m00, m10, m01, m11);
 		(r00, r10, r01, r11)
 	}
 
@@ -298,7 +300,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 		x: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
 		y: ColMut<'_, T, Dim<'N>, ContiguousFwd>,
 	) {
-		self.transpose().apply_on_the_left_in_place_with_simd(
+		self.adjoint().apply_on_the_left_in_place_with_simd(
 			simd,
 			x.transpose_mut(),
 			y.transpose_mut(),
@@ -335,7 +337,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	/// returns the adjoint of `self`
 	#[inline]
-	pub fn adjoint(&self) -> Self {
+	pub fn transpose(&self) -> Self {
 		Self {
 			c: self.c.copy(),
 			s: -self.s.conj(),
@@ -353,7 +355,7 @@ impl<T: ComplexField> JacobiRotation<T> {
 
 	/// returns the transpose of `self`
 	#[inline]
-	pub fn transpose(&self) -> Self {
+	pub fn adjoint(&self) -> Self {
 		Self {
 			c: self.c.copy(),
 			s: -&self.s,

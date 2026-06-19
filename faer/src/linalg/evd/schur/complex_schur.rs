@@ -162,18 +162,19 @@ fn lahqr<T: ComplexField>(
 				A[(i, i - 1)] = r.copy();
 				A[(i + 1, i - 1)] = zero();
 			}
-			rot.adjoint().apply_on_the_left_in_place(
+			rot.apply_on_the_left_in_place(
 				A.rb_mut()
 					.subcols_mut(i, istop_m - i)
 					.two_rows_mut(i, i + 1),
 			);
-			rot.apply_on_the_right_in_place(
+			rot.adjoint().apply_on_the_right_in_place(
 				A.rb_mut()
 					.get_mut(istart_m..Ord::min(i + 3, istop), ..)
 					.two_cols_mut(i, i + 1),
 			);
 			if let Some(Z) = Z.rb_mut() {
-				rot.apply_on_the_right_in_place(Z.two_cols_mut(i, i + 1));
+				rot.adjoint()
+					.apply_on_the_right_in_place(Z.two_cols_mut(i, i + 1));
 			}
 		}
 	}
@@ -611,17 +612,18 @@ pub(crate) fn schur_swap<T: ComplexField>(
 	a[(j1, j1)] = t00;
 	a[(j0, j0)] = t11;
 	if j2 < n {
-		rot.adjoint().apply_on_the_left_in_place(
+		rot.apply_on_the_left_in_place(
 			a.rb_mut().get_mut(.., j2..).two_rows_mut(j0, j1),
 		);
 	}
 	if j0 > 0 {
-		rot.apply_on_the_right_in_place(
+		rot.adjoint().apply_on_the_right_in_place(
 			a.rb_mut().get_mut(..j0, ..).two_cols_mut(j0, j1),
 		);
 	}
 	if let Some(q) = q {
-		rot.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
+		rot.adjoint()
+			.apply_on_the_right_in_place(q.two_cols_mut(j0, j1));
 	}
 	0
 }
