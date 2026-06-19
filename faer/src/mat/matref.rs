@@ -127,12 +127,61 @@ impl<'a, T> MatRef<'a, T> {
 		unsafe { MatRef::from_raw_parts(value as *const T, 1, 1, 0, 0) }
 	}
 }
+
+impl<'a, T, Rows: Shape> ColRef<'a, T, Rows> {
+	/// creates a `ColRef` from a view over a single element, repeated
+	/// `nrows` times
+	#[inline]
+	pub fn from_repeated_ref(value: &'a T, nrows: Rows) -> Self {
+		unsafe { ColRef::from_raw_parts(value as *const T, nrows, 0) }
+	}
+}
+
+impl<'a, T, Cols: Shape> RowRef<'a, T, Cols> {
+	/// creates a `RowRef` from a view over a single element, repeated
+	/// `ncols` times
+	#[inline]
+	pub fn from_repeated_ref(value: &'a T, ncols: Cols) -> Self {
+		unsafe { RowRef::from_raw_parts(value as *const T, ncols, 0) }
+	}
+}
+
 impl<'a, T, Rows: Shape, Cols: Shape> MatRef<'a, T, Rows, Cols> {
 	/// creates a `MatRef` from a view over a single element, repeated
 	/// `nrows×ncols` times
 	#[inline]
 	pub fn from_repeated_ref(value: &'a T, nrows: Rows, ncols: Cols) -> Self {
 		unsafe { MatRef::from_raw_parts(value as *const T, nrows, ncols, 0, 0) }
+	}
+
+	/// creates a `MatRef` from a view over a single column, repeated
+	/// `ncols` times
+	#[inline]
+	pub fn from_repeated_col(col: ColRef<'a, T, Rows>, ncols: Cols) -> Self {
+		unsafe {
+			MatRef::from_raw_parts(
+				col.as_ptr(),
+				col.nrows(),
+				ncols,
+				col.row_stride(),
+				0,
+			)
+		}
+	}
+
+	/// creates a `MatRef` from a view over a single row, repeated
+	/// `nrows` times
+	#[inline]
+	pub fn from_repeated_row(row: RowRef<'a, T, Cols>, nrows: Rows) -> Self {
+		unsafe {
+			MatRef::from_raw_parts(
+				row.as_ptr(),
+				nrows,
+				row.ncols(),
+				0,
+				row.col_stride(),
+			)
+		}
 	}
 
 	/// creates a `MatRef` from slice views over the matrix data, and the matrix
