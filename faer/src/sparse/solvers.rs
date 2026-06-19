@@ -619,3 +619,46 @@ impl<
 		Qr::try_new_with_symbolic(SymbolicQr::try_new(this.symbolic())?, this)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+
+	use super::*;
+
+	#[test]
+	fn codeberg_292() {
+		let mat = SparseColMat::<usize, f64>::try_new_from_triplets(
+			3,
+			3,
+			&[
+				Triplet {
+					row: 2,
+					col: 0,
+					val: 1.0,
+				},
+				Triplet {
+					row: 2,
+					col: 1,
+					val: 1.0,
+				},
+				Triplet {
+					row: 0,
+					col: 2,
+					val: 1.0,
+				},
+				Triplet {
+					row: 1,
+					col: 2,
+					val: 1.0,
+				},
+				Triplet {
+					row: 2,
+					col: 2,
+					val: 1.0,
+				},
+			],
+		)
+		.unwrap();
+		let _ = mat.sp_lu();
+	}
+}

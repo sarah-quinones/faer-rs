@@ -2219,7 +2219,8 @@ pub fn factorize_symbolic_lu<I: Index>(
 			if parent < I::Signed::truncate(0) {
 				continue;
 			}
-			h_col_counts[parent.zx()] += h_col_counts[j] - I::truncate(1);
+			h_col_counts[parent.zx()] +=
+				I::truncate(h_col_counts[j].zx().saturating_sub(1));
 		}
 		let mut nnz = 0.0f64;
 		let mut flops = 0.0f64;
