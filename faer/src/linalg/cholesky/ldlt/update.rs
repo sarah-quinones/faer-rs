@@ -277,8 +277,14 @@ impl<T: ComplexField> RankRUpdate<'_, T> {
 					*p = w[j].copy();
 					let ref alpha_conj_p = &*alpha * p.conj();
 					let ref new_d = d.real() + (alpha_conj_p * &*p).real();
-					*beta = alpha_conj_p.mul_real(new_d.recip());
-					*alpha = (alpha.real() - new_d * beta.abs2()).to_cplx();
+
+					if *d == zero() && *new_d == zero() {
+						*beta = zero();
+						*p = zero();
+					} else {
+						*beta = alpha_conj_p.mul_real(new_d.recip());
+						*alpha = (alpha.real() - new_d * beta.abs2()).to_cplx();
+					}
 					*d = new_d.to_cplx();
 					*p = -&*p;
 				}

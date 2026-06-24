@@ -624,6 +624,9 @@ impl<
 mod tests {
 
 	use super::*;
+	use crate::assert;
+	use std::io::BufRead;
+	use std::path::PathBuf;
 
 	#[test]
 	fn codeberg_292() {
@@ -660,5 +663,66 @@ mod tests {
 		)
 		.unwrap();
 		let _ = mat.sp_lu();
+	}
+
+	#[test]
+	fn codeberg_301() {
+		// test code by @activexray
+		for path in [
+			"test_data/sparse_lu/matrix_n15960.txt",
+			"test_data/sparse_lu/matrix_n19168.txt",
+		] {
+			let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path);
+			let f = std::fs::File::open(&path).expect("open matrix dump");
+			let mut lines =
+				std::io::BufReader::new(f).lines().map(|l| l.unwrap());
+
+			let header = lines.next().unwrap();
+			let mut it = header.split_whitespace();
+			let n: usize = it.next().unwrap().parse().unwrap();
+			let nnz: usize = it.next().unwrap().parse().unwrap();
+
+			let mut triplets = Vec::with_capacity(nnz);
+			for _ in 0..nnz {
+				let line = lines.next().unwrap();
+				let mut it = line.split_whitespace();
+				let row: usize = it.next().unwrap().parse().unwrap();
+				let col: usize = it.next().unwrap().parse().unwrap();
+				let val: f64 = it.next().unwrap().parse().unwrap();
+				triplets.push(Triplet::new(row, col, val));
+			}
+
+			let marker = lines.next().unwrap();
+			assert_eq!(marker, "RHS");
+
+			let mut b = Vec::with_capacity(n);
+			for _ in 0..n {
+				let line = lines.next().unwrap();
+				b.push(line.trim().parse::<f64>().unwrap());
+			}
+
+			let mat = SparseColMat::<usize, f64>::try_new_from_triplets(
+				n, n, &triplets,
+			)
+			.unwrap();
+			let rhs = faer::col::Col::from_fn(n, |i| b[i]);
+
+			let lu = mat.sp_lu().expect("sp_lu factorization");
+			let x = lu.solve(&rhs);
+
+			// Residual check: ||A x - b|| / ||b||
+			let ax = &mat * &x;
+			let mut res_norm = 0.0f64;
+			let mut b_norm = 0.0f64;
+			for i in 0..n {
+				let r = ax[i] - b[i];
+				res_norm += r * r;
+				b_norm += b[i] * b[i];
+			}
+			res_norm = res_norm.sqrt();
+			b_norm = b_norm.sqrt();
+
+			assert!(res_norm / b_norm < 1e-14);
+		}
 	}
 }

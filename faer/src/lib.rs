@@ -243,7 +243,7 @@ macro_rules! __dbg {
         std::eprintln!("[{}:{}:{}]", std::file!(), std::line!(), std::column!())
     };
     ($val:expr $(,)?) => {
-        match $val { tmp => { std::eprintln!("[{}:{}:{}] {} = {:16.12?}", std::file!(),
+        match $val { tmp => { std::eprintln!("[{}:{}:{}] {} = {:20?}", std::file!(),
         std::line!(), std::column!(), std::stringify!($val), & tmp); tmp } }
     };
     ($($val:expr),+ $(,)?) => {
