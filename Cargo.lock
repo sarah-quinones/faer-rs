@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "faer"
-version = "0.24.1"
+version = "0.24.2"
 dependencies = [
  "aligned-vec",
  "amd",
