@@ -1748,21 +1748,10 @@ impl<'a, T, Rows: Shape, Cols: Shape> MatMut<'a, T, Rows, Cols> {
 	where
 		T: Sized,
 	{
-		from_strided_row_major_slice_mut_assert(
-			nrows.unbound(),
-			ncols.unbound(),
-			row_stride,
-			slice.len(),
-		);
-		unsafe {
-			Self::from_raw_parts_mut(
-				slice.as_mut_ptr(),
-				nrows,
-				ncols,
-				1,
-				row_stride as isize,
-			)
-		}
+		MatMut::from_column_major_slice_with_stride_mut(
+			slice, ncols, nrows, row_stride,
+		)
+		.transpose_mut()
 	}
 }
 impl<'ROWS, 'COLS, 'a, T, RStride: Stride, CStride: Stride>
@@ -1943,23 +1932,6 @@ fn from_strided_column_major_slice_mut_assert(
 			panic!("address computation of the last matrix element overflowed");
 		};
 		assert!(all(col_stride >= nrows, last < len));
-	}
-}
-#[track_caller]
-#[inline]
-fn from_strided_row_major_slice_mut_assert(
-	nrows: usize,
-	ncols: usize,
-	row_stride: usize,
-	len: usize,
-) {
-	if nrows > 0 && ncols > 0 {
-		let last = usize::checked_mul(row_stride, nrows - 1)
-			.and_then(|last_row| last_row.checked_add(ncols - 1));
-		let Some(last) = last else {
-			panic!("address computation of the last matrix element overflowed");
-		};
-		assert!(all(row_stride >= ncols, last < len));
 	}
 }
 #[cfg(test)]
