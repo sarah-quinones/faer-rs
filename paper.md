@@ -71,7 +71,7 @@ challenge and can impede generic programming.
 # Features
 
 `faer` supports vectorization of arbitrary SIMD user types by deinterleaving Array of Structures (AoS) data to Structure of Arrays (SoA) in registers on the fly.
-This helps keep the API simple in that it doesn't need to accomodate SoA storage in memory, and is often also benefitial from a memory locality point of view.
+This helps keep the API simple in that it doesn't need to accommodate SoA storage in memory, and is often also beneficial from a memory locality point of view.
 
 The library generically implements algorithms for matrix multiplication, based
 on the approach of @BLIS1. For native types, `faer` uses SIMD explicitly
