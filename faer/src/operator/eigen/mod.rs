@@ -3,6 +3,9 @@ use crate::assert;
 use crate::linalg::matmul::matmul;
 use linalg::evd::schur;
 
+mod eigs;
+pub use eigs::{EigsSolvable, eigs};
+
 const MIN_DIM: usize = 32;
 
 /// partial eigendecomposition tuning parameters.
