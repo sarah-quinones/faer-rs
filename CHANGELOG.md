@@ -4,6 +4,7 @@
 - add for-each and triangular solve helpers
 - fix uninit read in AMD ordering
 - remove serde support
+- fix wrong strides in MatMut::from_row_major_slice_with_stride_mut
 
 # 0.23
 - generalized eigendecomposition
