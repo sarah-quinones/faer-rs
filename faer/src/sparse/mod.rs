@@ -20,13 +20,17 @@
 //!  [ 4.0, 0.0,  0.0,  0.0,  5.0]]
 //! ```
 //!
-//! the matrix is stored as follows:
+//! the matrix is stored as follows (with `|` marking column boundaries and `,`
+//! separating intra-column values):
 //! ```notcode
-//! column pointers: | 0                  | 3,3         | 5           | 7           | 9
+//! column pointers: | 0                | 3 | 3           | 5           | 7           | 9
 //!
-//! row indices    : |    0 |    2 |    3 |    0 |    1 |    0 |    1 |    0 |    3 |
-//! values         : | 10.0 |  1.0 |  4.0 | 12.0 | 25.0 | -1.0 | -2.0 | 13.0 |  5.0 |
+//! row indices    : |    0 ,   2 ,   3 |   |    0 ,    1 |    0 ,    1 |    0 ,    3 |
+//! values         : | 10.0 , 1.0 , 4.0 |   | 12.0 , 25.0 | -1.0 , -2.0 | 13.0 ,  5.0 |
 //! ```
+//!
+//! this is the standard compressed sparse column (csc) layout, see
+//! [wikipedia.org/wiki/Sparse_matrix](https://en.wikipedia.org/wiki/Sparse_matrix#Compressed_sparse_column_(CSC_or_CCS))
 mod csc;
 mod csr;
 pub(crate) const NONE: usize = usize::MAX;
