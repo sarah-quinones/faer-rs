@@ -176,6 +176,7 @@ pub fn bicgstab<T: ComplexField>(
 				z!(&mut r, &b).for_each(|uz!(r, b)| *r = b - &*r);
 				r.norm_l2()
 			} else {
+				r.copy_from(&b);
 				b_norm.copy()
 			};
 		if abs_residual < threshold {
