@@ -167,6 +167,7 @@ pub fn conjugate_gradient<T: ComplexField>(
 				z!(&mut r, &b).for_each(|uz!(res, rhs)| *res = rhs - &*res);
 				r.norm_l2()
 			} else {
+				r.copy_from(&b);
 				b_norm.copy()
 			};
 		if abs_residual < threshold {
