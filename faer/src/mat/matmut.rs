@@ -2,6 +2,7 @@ use super::{MatRef, *};
 use crate::internal_prelude::*;
 use crate::utils::bound::{Dim, Partition};
 use crate::{Conj, ContiguousFwd, Idx, IdxInc};
+use core::mem::MaybeUninit;
 
 use equator::assert;
 use faer_traits::ComplexField;
@@ -18,6 +19,154 @@ pub struct Mut<
 > {
 	pub(super) imp: MatView<T, Rows, Cols, RStride, CStride>,
 	pub(super) __marker: PhantomData<&'a mut T>,
+}
+
+/// write-only mutable matrix view over possibly uninitialized storage.
+///
+/// This type deliberately does not implement any operation that forms a
+/// reference to `T`. It is used by overwrite-only kernels, which write through
+/// the raw pointer and return an initialized view only after a full write.
+pub struct UninitMut<
+	'a,
+	T,
+	Rows = usize,
+	Cols = usize,
+	RStride = isize,
+	CStride = isize,
+> {
+	pub(super) imp: MatView<MaybeUninit<T>, Rows, Cols, RStride, CStride>,
+	pub(super) __marker: PhantomData<&'a mut MaybeUninit<T>>,
+}
+
+unsafe impl<T: Sync, Rows: Sync, Cols: Sync, RStride: Sync, CStride: Sync> Sync
+	for UninitMut<'_, T, Rows, Cols, RStride, CStride>
+{
+}
+unsafe impl<T: Send, Rows: Send, Cols: Send, RStride: Send, CStride: Send> Send
+	for UninitMut<'_, T, Rows, Cols, RStride, CStride>
+{
+}
+
+impl<'a, T, Rows: Shape, Cols: Shape, RStride: Stride, CStride: Stride>
+	MatUninitMut<'a, T, Rows, Cols, RStride, CStride>
+{
+	/// creates a write-only matrix view from a raw pointer.
+	///
+	/// # safety
+	/// the pointed-to memory must contain the complete matrix described by the
+	/// dimensions and strides, be properly aligned for `MaybeUninit<T>`, and
+	/// remain exclusively borrowed for `'a`. Matrix elements must not overlap
+	/// each other. Unlike [`MatMut::from_raw_parts_mut`], the elements do not
+	/// need to be initialized.
+	#[inline]
+	#[track_caller]
+	pub const unsafe fn from_raw_parts_mut(
+		ptr: *mut MaybeUninit<T>,
+		nrows: Rows,
+		ncols: Cols,
+		row_stride: RStride,
+		col_stride: CStride,
+	) -> Self {
+		generic::Mat(UninitMut {
+			imp: MatView {
+				ptr: NonNull::new_unchecked(ptr),
+				nrows,
+				ncols,
+				row_stride,
+				col_stride,
+			},
+			__marker: PhantomData,
+		})
+	}
+
+	/// returns the raw pointer to the first matrix element.
+	#[inline]
+	pub fn as_ptr_mut(&self) -> *mut MaybeUninit<T> {
+		self.imp.ptr.as_ptr()
+	}
+
+	/// returns the number of rows.
+	#[inline]
+	pub fn nrows(&self) -> Rows {
+		self.imp.nrows
+	}
+
+	/// returns the number of columns.
+	#[inline]
+	pub fn ncols(&self) -> Cols {
+		self.imp.ncols
+	}
+
+	/// returns the row stride in elements.
+	#[inline]
+	pub fn row_stride(&self) -> RStride {
+		self.imp.row_stride
+	}
+
+	/// returns the column stride in elements.
+	#[inline]
+	pub fn col_stride(&self) -> CStride {
+		self.imp.col_stride
+	}
+
+	/// converts this view to dynamic dimensions and strides.
+	#[inline]
+	pub fn as_dyn(self) -> MatUninitMut<'a, T, usize, usize, isize, isize> {
+		let ptr = self.as_ptr_mut();
+		let nrows = self.nrows().unbound();
+		let ncols = self.ncols().unbound();
+		let row_stride = self.row_stride().element_stride();
+		let col_stride = self.col_stride().element_stride();
+		unsafe {
+			MatUninitMut::from_raw_parts_mut(
+				ptr, nrows, ncols, row_stride, col_stride,
+			)
+		}
+	}
+}
+
+impl<'a, T, Rows: Shape, Cols: Shape>
+	MatUninitMut<'a, T, Rows, Cols, isize, isize>
+{
+	/// creates a column-major write-only view over a `MaybeUninit` slice.
+	#[inline]
+	#[track_caller]
+	pub fn from_column_major_slice_mut(
+		slice: &'a mut [MaybeUninit<T>],
+		nrows: Rows,
+		ncols: Cols,
+	) -> Self {
+		from_slice_assert(nrows.unbound(), ncols.unbound(), slice.len());
+		unsafe {
+			Self::from_raw_parts_mut(
+				slice.as_mut_ptr(),
+				nrows,
+				ncols,
+				1,
+				nrows.unbound() as isize,
+			)
+		}
+	}
+
+	/// creates a row-major write-only view over a `MaybeUninit` slice.
+	#[inline]
+	#[track_caller]
+	pub fn from_row_major_slice_mut(
+		slice: &'a mut [MaybeUninit<T>],
+		nrows: Rows,
+		ncols: Cols,
+	) -> Self {
+		from_slice_assert(nrows.unbound(), ncols.unbound(), slice.len());
+		unsafe {
+			Self::from_raw_parts_mut(
+				slice.as_mut_ptr(),
+				nrows,
+				ncols,
+				ncols.unbound() as isize,
+				1,
+			)
+		}
+	}
 }
 #[repr(transparent)]
 pub(crate) struct SyncCell<T>(T);

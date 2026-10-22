@@ -969,7 +969,7 @@ pub type cx128 = traits::cx128;
 /// `Complex<f64>`
 pub type fx128 = traits::fx128;
 pub use col::{Col, ColMut, ColRef};
-pub use mat::{Mat, MatMut, MatRef};
+pub use mat::{Mat, MatMut, MatRef, MatUninitMut};
 pub use row::{Row, RowMut, RowRef};
 #[allow(unused_imports, dead_code)]
 mod internal_prelude {
@@ -1069,7 +1069,7 @@ pub mod prelude {
 	pub use super::prelude_sp::*;
 	pub use super::{Par, Scale, c32, c64, col, mat, row, unzip, zip};
 	pub use col::{Col, ColMut, ColRef};
-	pub use mat::{Mat, MatMut, MatRef};
+	pub use mat::{Mat, MatMut, MatRef, MatUninitMut};
 	pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 	pub use row::{Row, RowMut, RowRef};
 	/// see [`Default`]

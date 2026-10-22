@@ -48,6 +48,7 @@ pub(crate) mod matmut;
 pub(crate) mod matown;
 pub(crate) mod matref;
 pub use matmut::Mut;
+pub use matmut::UninitMut;
 pub use matown::Own;
 pub use matref::Ref;
 /// heap allocated resizable matrix, similar to a 2d [`alloc::vec::Vec`]
@@ -132,7 +133,9 @@ pub type MatRef<
 /// which allows us to mutably borrow a `MatMut` to obtain another `MatMut` for
 /// the lifetime of the borrow. it's also similarly possible to immutably borrow
 /// a `MatMut` to obtain a `MatRef` for the lifetime of the borrow, using
-/// [`reborrow::Reborrow`] ```
+/// [`reborrow::Reborrow`]
+///
+/// ```
 /// use faer::{Mat, MatMut, MatRef};
 /// use reborrow::*;
 /// fn takes_matmut(view: MatMut<'_, f64>) {}
@@ -152,6 +155,22 @@ pub type MatMut<
 	RStride = isize,
 	CStride = isize,
 > = generic::Mat<Mut<'a, T, Rows, Cols, RStride, CStride>>;
+
+/// mutable view over a matrix whose elements may be uninitialized.
+///
+/// Unlike [`MatMut`], this type does not expose element references. It is
+/// intended for APIs that overwrite every logical destination element before
+/// the storage is converted into an initialized matrix. The only operations
+/// available on this type are metadata queries and raw-pointer access for
+/// write-only kernels.
+pub type MatUninitMut<
+	'a,
+	T,
+	Rows = usize,
+	Cols = usize,
+	RStride = isize,
+	CStride = isize,
+> = generic::Mat<UninitMut<'a, T, Rows, Cols, RStride, CStride>>;
 
 #[doc(hidden)]
 /// generic `Mat` wrapper

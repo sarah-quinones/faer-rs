@@ -2,7 +2,7 @@
 use super::temp_mat_scratch;
 use crate::col::ColRef;
 use crate::internal_prelude::*;
-use crate::mat::{MatMut, MatRef};
+use crate::mat::{MatMut, MatRef, MatUninitMut};
 use crate::row::RowRef;
 use crate::utils::bound::Dim;
 use crate::utils::simd::SimdCtx;
@@ -1558,6 +1558,326 @@ fn matmul_imp<'M, 'N, 'K, T: ComplexField>(
 		},
 	}
 }
+
+#[inline(always)]
+unsafe fn matmul_uninit_one<T: ComplexField>(
+	dst: *mut MaybeUninit<T>,
+	dst_row_stride: isize,
+	dst_col_stride: isize,
+	lhs: *const T,
+	lhs_row_stride: isize,
+	lhs_col_stride: isize,
+	rhs: *const T,
+	rhs_row_stride: isize,
+	rhs_col_stride: isize,
+	k: usize,
+	i: usize,
+	j: usize,
+	conj_lhs: Conj,
+	conj_rhs: Conj,
+	alpha: &T,
+) {
+	let mut acc: T = zero();
+	for p in 0..k {
+		let lhs = &*lhs
+			.offset(i as isize * lhs_row_stride + p as isize * lhs_col_stride);
+		let rhs = &*rhs
+			.offset(p as isize * rhs_row_stride + j as isize * rhs_col_stride);
+		let lhs = conj_lhs.apply_rt(lhs);
+		let rhs = conj_rhs.apply_rt(rhs);
+		acc = &lhs * &rhs + acc;
+	}
+	let dst =
+		dst.offset(i as isize * dst_row_stride + j as isize * dst_col_stride);
+	dst.write(MaybeUninit::new(alpha * acc));
+}
+
+#[cfg(feature = "rayon")]
+#[inline(always)]
+fn raw_ptr<T>(ptr: crate::utils::thread::Ptr<T>) -> *mut T {
+	ptr.0
+}
+
+fn matmul_uninit_scalar<T: ComplexField>(
+	dst: *mut MaybeUninit<T>,
+	dst_row_stride: isize,
+	dst_col_stride: isize,
+	lhs: *const T,
+	lhs_row_stride: isize,
+	lhs_col_stride: isize,
+	rhs: *const T,
+	rhs_row_stride: isize,
+	rhs_col_stride: isize,
+	m: usize,
+	n: usize,
+	k: usize,
+	conj_lhs: Conj,
+	conj_rhs: Conj,
+	alpha: &T,
+	par: Par,
+) {
+	match par {
+		Par::Seq => {
+			for j in 0..n {
+				for i in 0..m {
+					unsafe {
+						matmul_uninit_one(
+							dst,
+							dst_row_stride,
+							dst_col_stride,
+							lhs,
+							lhs_row_stride,
+							lhs_col_stride,
+							rhs,
+							rhs_row_stride,
+							rhs_col_stride,
+							k,
+							i,
+							j,
+							conj_lhs,
+							conj_rhs,
+							alpha,
+						)
+					}
+				}
+			}
+		},
+		#[cfg(feature = "rayon")]
+		Par::Rayon(nthreads) => {
+			use rayon::prelude::*;
+			let nthreads = nthreads.get();
+			let task_count = m * n;
+			let task_per_thread = task_count.msrv_div_ceil(nthreads);
+			let dst = crate::utils::thread::Ptr(dst as *mut T);
+			let lhs = crate::utils::thread::Ptr(lhs as *mut T);
+			let rhs = crate::utils::thread::Ptr(rhs as *mut T);
+			spindle::for_each(nthreads, (0..nthreads).into_par_iter(), |tid| {
+				let task_idx = tid * task_per_thread;
+				if task_idx >= task_count {
+					return;
+				}
+				let ntasks = Ord::min(task_per_thread, task_count - task_idx);
+				for ij in 0..ntasks {
+					let ij = task_idx + ij;
+					let i = ij % m;
+					let j = ij / m;
+					unsafe {
+						matmul_uninit_one(
+							raw_ptr(dst) as *mut MaybeUninit<T>,
+							dst_row_stride,
+							dst_col_stride,
+							raw_ptr(lhs),
+							lhs_row_stride,
+							lhs_col_stride,
+							raw_ptr(rhs),
+							rhs_row_stride,
+							rhs_col_stride,
+							k,
+							i,
+							j,
+							conj_lhs,
+							conj_rhs,
+							alpha,
+						)
+					}
+				}
+			});
+		},
+	}
+}
+
+fn matmul_uninit_fill<T: ComplexField>(
+	dst: *mut MaybeUninit<T>,
+	dst_row_stride: isize,
+	dst_col_stride: isize,
+	m: usize,
+	n: usize,
+) {
+	for j in 0..n {
+		for i in 0..m {
+			unsafe {
+				dst.offset(
+					i as isize * dst_row_stride + j as isize * dst_col_stride,
+				)
+				.write(MaybeUninit::new(zero()));
+			}
+		}
+	}
+}
+
+fn matmul_uninit_imp<T: ComplexField>(
+	dst: MatUninitMut<'_, T>,
+	lhs: MatRef<'_, T>,
+	conj_lhs: Conj,
+	rhs: MatRef<'_, T>,
+	conj_rhs: Conj,
+	alpha: T,
+	par: Par,
+) {
+	let m = dst.nrows();
+	let n = dst.ncols();
+	let k = lhs.ncols();
+	precondition(m, n, lhs.nrows(), k, rhs.nrows(), rhs.ncols());
+	if m == 0 || n == 0 {
+		return;
+	}
+	if k == 0 {
+		matmul_uninit_fill(
+			dst.as_ptr_mut(),
+			dst.row_stride().element_stride(),
+			dst.col_stride().element_stride(),
+			m,
+			n,
+		);
+		return;
+	}
+
+	macro_rules! gemm_call {
+		($ty:ty) => {{
+			unsafe {
+				let alpha: $ty = core::mem::transmute_copy(&alpha);
+				gemm::gemm(
+					m,
+					n,
+					k,
+					dst.as_ptr_mut() as *mut $ty,
+					dst.col_stride().element_stride(),
+					dst.row_stride().element_stride(),
+					false,
+					lhs.as_ptr() as *const $ty,
+					lhs.col_stride().element_stride(),
+					lhs.row_stride().element_stride(),
+					rhs.as_ptr() as *const $ty,
+					rhs.col_stride().element_stride(),
+					rhs.row_stride().element_stride(),
+					zero(),
+					alpha,
+					false,
+					conj_lhs == Conj::Yes,
+					conj_rhs == Conj::Yes,
+					match par {
+						Par::Seq => gemm::Parallelism::None,
+						#[cfg(feature = "rayon")]
+						Par::Rayon(nthreads) => gemm::Parallelism::Rayon(nthreads.get()),
+					},
+				);
+			}
+			return;
+		}};
+	}
+	if const { T::IS_NATIVE_F64 } {
+		gemm_call!(f64);
+	}
+	if const { T::IS_NATIVE_C64 } {
+		gemm_call!(num_complex::Complex<f64>);
+	}
+	if const { T::IS_NATIVE_F32 } {
+		gemm_call!(f32);
+	}
+	if const { T::IS_NATIVE_C32 } {
+		gemm_call!(num_complex::Complex<f32>);
+	}
+
+	matmul_uninit_scalar(
+		dst.as_ptr_mut(),
+		dst.row_stride().element_stride(),
+		dst.col_stride().element_stride(),
+		lhs.as_ptr(),
+		lhs.row_stride().element_stride(),
+		lhs.col_stride().element_stride(),
+		rhs.as_ptr(),
+		rhs.row_stride().element_stride(),
+		rhs.col_stride().element_stride(),
+		m,
+		n,
+		k,
+		conj_lhs,
+		conj_rhs,
+		&alpha,
+		par,
+	);
+}
+
+/// computes `alpha * lhs * rhs` into a possibly uninitialized destination.
+///
+/// Every logical destination element is written exactly once before this
+/// function returns. The destination is never read, and no initialized `T`
+/// reference is formed for it. On success, the returned `MatMut` is a view of
+/// the fully initialized destination storage.
+///
+/// The source matrices and destination must not overlap. The destination must
+/// not contain overlapping matrix elements, and its dimensions and strides
+/// must describe a valid allocation. These conditions are checked when the
+/// destination view is built with a safe slice constructor; otherwise they are
+/// safety preconditions of the unsafe raw-view constructors.
+///
+/// # example
+///
+/// ```
+/// use core::mem::MaybeUninit;
+/// use faer::linalg::matmul::matmul_with_conj_uninit;
+/// use faer::{mat, Conj, MatUninitMut, Par};
+///
+/// let lhs = mat![[1.0_f64, 2.0], [3.0, 4.0]];
+/// let rhs = mat![[5.0_f64, 6.0], [7.0, 8.0]];
+/// let mut storage = [MaybeUninit::<f64>::uninit(); 4];
+/// let dst = MatUninitMut::from_column_major_slice_mut(&mut storage, 2, 2);
+/// let result = matmul_with_conj_uninit(
+///     dst,
+///     lhs.as_ref(),
+///     Conj::No,
+///     rhs.as_ref(),
+///     Conj::No,
+///     1.0,
+///     Par::Seq,
+/// );
+/// assert_eq!(result[(0, 0)], 19.0);
+/// ```
+#[track_caller]
+#[inline]
+pub fn matmul_with_conj_uninit<
+	T: ComplexField,
+	M: Shape,
+	N: Shape,
+	K: Shape,
+	RStride: Stride,
+	CStride: Stride,
+>(
+	dst: MatUninitMut<'_, T, M, N, RStride, CStride>,
+	lhs: impl AsMatRef<T = T, Rows = M, Cols = K>,
+	conj_lhs: Conj,
+	rhs: impl AsMatRef<T = T, Rows = K, Cols = N>,
+	conj_rhs: Conj,
+	alpha: T,
+	par: Par,
+) -> MatMut<'_, T, M, N, RStride, CStride> {
+	let ptr = dst.as_ptr_mut();
+	let nrows = dst.nrows();
+	let ncols = dst.ncols();
+	let row_stride = dst.row_stride();
+	let col_stride = dst.col_stride();
+	matmul_uninit_imp(
+		dst.as_dyn(),
+		lhs.as_mat_ref().as_dyn(),
+		conj_lhs,
+		rhs.as_mat_ref().as_dyn(),
+		conj_rhs,
+		alpha,
+		par,
+	);
+	unsafe {
+		// `matmul_uninit_imp` returns only after every logical destination
+		// element has been written exactly once.
+		MatMut::from_raw_parts_mut(
+			ptr.cast(),
+			nrows,
+			ncols,
+			row_stride,
+			col_stride,
+		)
+	}
+}
+
 #[track_caller]
 fn precondition<M: Shape, N: Shape, K: Shape>(
 	dst_nrows: M,
@@ -1751,9 +2071,10 @@ pub fn matmul_with_conj<T: ComplexField, M: Shape, N: Shape, K: Shape>(
 mod tests {
 	use super::triangular::{BlockStructure, DiagonalKind};
 	use super::*;
-	use crate::mat::{Mat, MatMut, MatRef};
+	use crate::mat::{Mat, MatMut, MatRef, MatUninitMut};
 	use crate::stats::prelude::*;
-	use crate::{assert, c32};
+	use crate::{assert, c32, c64, fx128};
+	use core::mem::MaybeUninit;
 	use std::num::NonZeroUsize;
 	#[test]
 	#[ignore = "takes too long"]
@@ -1905,6 +2226,189 @@ mod tests {
 				}
 			}
 		}
+	}
+	#[test]
+	fn test_matmul_with_conj_uninit() {
+		let lhs = mat![[1.0_f64, 2.0], [3.0, 4.0]];
+		let rhs = mat![[5.0_f64, 6.0], [7.0, 8.0]];
+		let mut data = [MaybeUninit::<f64>::uninit(); 4];
+		let dst = MatUninitMut::from_column_major_slice_mut(&mut data, 2, 2);
+
+		let result = matmul_with_conj_uninit(
+			dst,
+			lhs.as_ref(),
+			Conj::No,
+			rhs.as_ref(),
+			Conj::No,
+			1.0,
+			Par::Seq,
+		);
+
+		assert_eq!(result[(0, 0)], 19.0);
+		assert_eq!(result[(1, 0)], 43.0);
+		assert_eq!(result[(0, 1)], 22.0);
+		assert_eq!(result[(1, 1)], 50.0);
+	}
+
+	#[test]
+	fn test_matmul_with_conj_uninit_strided_and_conjugated() {
+		let lhs = mat![
+			[c64::new(1.0, 2.0), c64::new(2.0, -1.0)],
+			[c64::new(3.0, 1.0), c64::new(-2.0, 4.0)],
+		];
+		let rhs = mat![
+			[c64::new(5.0, -1.0), c64::new(1.0, 3.0)],
+			[c64::new(2.0, 2.0), c64::new(-4.0, 1.0)],
+		];
+		let mut expected = Mat::<c64>::zeros(2, 2);
+		matmul_with_conj(
+			expected.as_mut(),
+			Accum::Replace,
+			lhs.as_ref(),
+			Conj::Yes,
+			rhs.as_ref(),
+			Conj::No,
+			c64::new(2.0, 0.0),
+			Par::Seq,
+		);
+
+		let mut data = [MaybeUninit::<c64>::uninit(); 7];
+		let dst = unsafe {
+			MatUninitMut::from_raw_parts_mut(data.as_mut_ptr(), 2, 2, 3, 1)
+		};
+		let result = matmul_with_conj_uninit(
+			dst,
+			lhs.as_ref(),
+			Conj::Yes,
+			rhs.as_ref(),
+			Conj::No,
+			c64::new(2.0, 0.0),
+			Par::Seq,
+		);
+
+		for j in 0..2 {
+			for i in 0..2 {
+				assert!((result[(i, j)] - expected[(i, j)]).abs() < 1e-12);
+			}
+		}
+	}
+
+	#[cfg(feature = "rayon")]
+	#[test]
+	fn test_matmul_with_conj_uninit_parallel() {
+		let lhs = Mat::from_fn(8, 6, |i, j| (i + 2 * j) as f64);
+		let rhs = Mat::from_fn(6, 7, |i, j| (3 * i + j) as f64);
+		let mut expected = Mat::<f64>::zeros(8, 7);
+		matmul_with_conj(
+			expected.as_mut(),
+			Accum::Replace,
+			lhs.as_ref(),
+			Conj::No,
+			rhs.as_ref(),
+			Conj::No,
+			1.0,
+			Par::Seq,
+		);
+
+		let mut data = [MaybeUninit::<f64>::uninit(); 56];
+		let dst = MatUninitMut::from_column_major_slice_mut(&mut data, 8, 7);
+		let result = matmul_with_conj_uninit(
+			dst,
+			lhs.as_ref(),
+			Conj::No,
+			rhs.as_ref(),
+			Conj::No,
+			1.0,
+			Par::Rayon(NonZeroUsize::new(2).unwrap()),
+		);
+
+		for j in 0..7 {
+			for i in 0..8 {
+				assert_eq!(result[(i, j)], expected[(i, j)]);
+			}
+		}
+	}
+
+	#[test]
+	fn test_matmul_with_conj_uninit_negative_destination_stride() {
+		let lhs = mat![[1.0_f64, 2.0], [3.0, 4.0]];
+		let rhs = mat![[5.0_f64, 6.0], [7.0, 8.0]];
+		let mut data = [MaybeUninit::<f64>::uninit(); 4];
+		let dst = unsafe {
+			MatUninitMut::from_raw_parts_mut(
+				data.as_mut_ptr().add(1),
+				2,
+				2,
+				-1,
+				2,
+			)
+		};
+
+		let result = matmul_with_conj_uninit(
+			dst,
+			lhs.as_ref(),
+			Conj::No,
+			rhs.as_ref(),
+			Conj::No,
+			1.0,
+			Par::Seq,
+		);
+
+		assert_eq!(result[(0, 0)], 19.0);
+		assert_eq!(result[(1, 0)], 43.0);
+		assert_eq!(result[(0, 1)], 22.0);
+		assert_eq!(result[(1, 1)], 50.0);
+	}
+
+	#[test]
+	fn test_matmul_with_conj_uninit_empty_inner_dimension() {
+		let lhs = Mat::<f64>::zeros(2, 0);
+		let rhs = Mat::<f64>::zeros(0, 3);
+		let mut data = [MaybeUninit::<f64>::uninit(); 6];
+		let dst = MatUninitMut::from_row_major_slice_mut(&mut data, 2, 3);
+
+		let result = matmul_with_conj_uninit(
+			dst,
+			lhs.as_ref(),
+			Conj::No,
+			rhs.as_ref(),
+			Conj::No,
+			2.0,
+			Par::Seq,
+		);
+
+		for i in 0..2 {
+			for j in 0..3 {
+				assert_eq!(result[(i, j)], 0.0);
+			}
+		}
+	}
+
+	#[test]
+	fn test_matmul_with_conj_uninit_generic_scalar() {
+		let lhs = Mat::<fx128>::from_fn(2, 2, |i, j| {
+			from_f64((i + 2 * j + 1) as f64)
+		});
+		let rhs = Mat::<fx128>::from_fn(2, 2, |i, j| {
+			from_f64((3 * i + j + 1) as f64)
+		});
+		let mut data = [MaybeUninit::<fx128>::uninit(); 4];
+		let dst = MatUninitMut::from_column_major_slice_mut(&mut data, 2, 2);
+
+		let result = matmul_with_conj_uninit(
+			dst,
+			lhs.as_ref(),
+			Conj::No,
+			rhs.as_ref(),
+			Conj::No,
+			from_f64(2.0),
+			Par::Seq,
+		);
+
+		assert_eq!(result[(0, 0)], from_f64(26.0));
+		assert_eq!(result[(1, 0)], from_f64(36.0));
+		assert_eq!(result[(0, 1)], from_f64(34.0));
+		assert_eq!(result[(1, 1)], from_f64(48.0));
 	}
 	fn matmul_with_conj_fallback<T: Copy + ComplexField>(
 		acc: MatMut<'_, T>,
