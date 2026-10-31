@@ -80,7 +80,8 @@ fn iterate_arnoldi<T: ComplexField>(
 					zip!(Vnext.rb_mut(), V.col(i))
 						.for_each(|unzip!(y, x): Zip!(&mut T, &T)| *y -= r * x);
 					h[i] += r;
-					converged[i] = r.abs() < f * Vnext.norm_l2();
+					// nan counts as converged so the loop ends
+					converged[i] = !(r.abs() >= f * Vnext.norm_l2());
 				}
 			}
 			if all_true {
@@ -1631,6 +1632,137 @@ mod tests {
 		for j in 0..info.n_converged_eigen {
 			assert!((A * V.col(j) - Scale(w[j]) * V.col(j)).norm_l2() < 1e-10);
 		}
+	}
+	#[test]
+	fn test_gh_262_non_finite_operator_does_not_hang() {
+		// shift invert of a tridiagonal matrix where the shift is exactly an
+		// eigenvalue, so the factorization is singular and the operator
+		// returns non finite values
+		use crate::sparse::linalg::cholesky::{
+			IntranodeLbltRef, SymmetricOrdering, factorize_symbolic_cholesky,
+		};
+		use crate::sparse::{SparseColMat, Triplet};
+		use crate::{Conj, Side};
+
+		struct ShiftInvert<'a> {
+			n: usize,
+			lblt: IntranodeLbltRef<'a, usize, f64>,
+			req: StackReq,
+		}
+		impl core::fmt::Debug for ShiftInvert<'_> {
+			fn fmt(
+				&self,
+				f: &mut core::fmt::Formatter<'_>,
+			) -> core::fmt::Result {
+				f.write_str("ShiftInvert")
+			}
+		}
+		impl LinOp<f64> for ShiftInvert<'_> {
+			fn apply_scratch(&self, _: usize, _: Par) -> StackReq {
+				self.req
+			}
+
+			fn nrows(&self) -> usize {
+				self.n
+			}
+
+			fn ncols(&self) -> usize {
+				self.n
+			}
+
+			fn apply(
+				&self,
+				mut out: MatMut<'_, f64>,
+				rhs: MatRef<'_, f64>,
+				par: Par,
+				stack: &mut MemStack,
+			) {
+				out.copy_from(rhs);
+				self.lblt
+					.solve_in_place_with_conj(Conj::No, out, par, stack);
+			}
+
+			fn conj_apply(
+				&self,
+				out: MatMut<'_, f64>,
+				rhs: MatRef<'_, f64>,
+				par: Par,
+				stack: &mut MemStack,
+			) {
+				self.apply(out, rhs, par, stack)
+			}
+		}
+
+		let n = 80usize;
+		let sigma = 1.0;
+		let mut triplets = vec![];
+		for i in 0..n {
+			triplets.push(Triplet::new(i, i, 2.0 - sigma));
+			if i + 1 < n {
+				triplets.push(Triplet::new(i, i + 1, -1.0));
+				triplets.push(Triplet::new(i + 1, i, -1.0));
+			}
+		}
+		let A =
+			SparseColMat::<usize, f64>::try_new_from_triplets(n, n, &triplets)
+				.unwrap();
+		let par = Par::Seq;
+		let symbolic = factorize_symbolic_cholesky(
+			A.symbolic(),
+			Side::Lower,
+			SymmetricOrdering::Amd,
+			default(),
+		)
+		.unwrap();
+		let mut L_values = vec![0.0; symbolic.len_val()];
+		let mut subdiag = vec![0.0; n];
+		let mut fwd = vec![0usize; n];
+		let mut inv = vec![0usize; n];
+		let lblt = symbolic.factorize_numeric_intranode_lblt(
+			&mut L_values,
+			&mut subdiag,
+			&mut fwd,
+			&mut inv,
+			A.rb(),
+			Side::Lower,
+			par,
+			MemStack::new(&mut MemBuffer::new(
+				symbolic.factorize_numeric_intranode_lblt_scratch::<f64>(
+					par,
+					default(),
+				),
+			)),
+			default(),
+		);
+		let n_eigval = 5;
+		let params = PartialEigenParams {
+			min_dim: 15,
+			max_dim: 50,
+			max_restarts: 50,
+			..default()
+		};
+		let op = ShiftInvert {
+			n,
+			lblt,
+			req: symbolic.solve_in_place_scratch::<f64>(params.max_dim, par),
+		};
+		let v0 = Col::<f64>::from_fn(n, |_| 1.0 / (n as f64).sqrt());
+		let mut V = Mat::zeros(n, n_eigval);
+		let mut w = vec![0.0; n_eigval];
+		let mem = &mut MemBuffer::new(partial_self_adjoint_eigen_scratch(
+			&op, n_eigval, par, params,
+		));
+		// this used to loop forever
+		partial_self_adjoint_eigen(
+			V.rb_mut(),
+			&mut w,
+			&op,
+			v0.as_ref(),
+			1e-10,
+			par,
+			MemStack::new(mem),
+			params,
+		);
 	}
 	#[test]
 	fn test_small_real() {
