@@ -47,9 +47,16 @@ fn lu_in_place_unblocked<I: Index, T: ComplexField>(
 			n_trans += 1;
 		}
 		let mut matrix = matrix.rb_mut().get_mut(.., start..end);
-		let ref inv = matrix[(row, row)].recip();
-		for i in row + 1..m {
-			matrix[(i, row)] *= inv;
+		// if the pivot is zero, the whole column below it is zero as well, so
+		// there is nothing to eliminate. scaling by the reciprocal would turn
+		// those zeros into nans (0 * inf) and poison the rest of the
+		// factorization, so we leave the column untouched instead, like lapack
+		// does in getf2
+		if max != zero::<T::Real>() {
+			let ref inv = matrix[(row, row)].recip();
+			for i in row + 1..m {
+				matrix[(i, row)] *= inv;
+			}
 		}
 		let (_, A01, A10, A11) = matrix.rb_mut().split_at_mut(row + 1, row + 1);
 		let A01 = A01.row(row);
@@ -300,6 +307,87 @@ mod tests {
 	use crate::utils::approx::*;
 	use crate::{Mat, assert};
 	use dyn_stack::MemBuffer;
+	#[test]
+	fn test_plu_zero_pivot() {
+		let rng = &mut StdRng::seed_from_u64(0);
+		let approx_eq = CwiseMat(ApproxEq {
+			abs_tol: 1e-13,
+			rel_tol: 1e-13,
+		});
+		for n in [2, 3, 4, 17, 128, 257] {
+			for params in [
+				PartialPivLuParams {
+					recursion_threshold: 2,
+					block_size: 2,
+					..auto!(f64)
+				},
+				auto!(f64),
+			] {
+				let mut A = CwiseMatDistribution {
+					nrows: n,
+					ncols: n,
+					dist: StandardNormal,
+				}
+				.rand::<Mat<f64>>(rng);
+				// zero columns give exactly zero pivots
+				for j in [0, n / 2, n - 1] {
+					A.col_mut(j).fill(0.0);
+				}
+				let A = A.as_ref();
+				let mut LU = A.cloned();
+				let perm = &mut *vec![0usize; n];
+				let perm_inv = &mut *vec![0usize; n];
+				let p = lu_in_place(
+					LU.as_mut(),
+					perm,
+					perm_inv,
+					Par::Seq,
+					MemStack::new(&mut MemBuffer::new(lu_in_place_scratch::<
+						usize,
+						f64,
+					>(
+						n,
+						n,
+						Par::Seq,
+						params.into(),
+					))),
+					params.into(),
+				)
+				.1;
+				assert!(!LU.has_nan());
+				let mut L = LU.as_ref().cloned();
+				let mut U = LU.as_ref().cloned();
+				for j in 0..n {
+					for i in 0..j {
+						L[(i, j)] = 0.0;
+					}
+					L[(j, j)] = 1.0;
+				}
+				for j in 0..n {
+					for i in j + 1..n {
+						U[(i, j)] = 0.0;
+					}
+				}
+				let L = L.as_ref();
+				let U = U.as_ref();
+				assert!(p.inverse() * L * U ~ A);
+			}
+		}
+	}
+	#[test]
+	fn test_gh_260_singular_determinant() {
+		let A = crate::mat![
+			[1.0, 1.0, 1.0],
+			[-0.116025, -0.116025, -0.0626341],
+			[-0.75, -0.75, -0.619973],
+		];
+		assert!(A.determinant() == 0.0);
+		let mut B = Mat::<f64>::zeros(4, 4);
+		B[(0, 1)] = 1.0;
+		B[(1, 2)] = 2.0;
+		B[(3, 3)] = 3.0;
+		assert!(B.determinant() == 0.0);
+	}
 	#[test]
 	fn test_plu() {
 		let rng = &mut StdRng::seed_from_u64(0);
