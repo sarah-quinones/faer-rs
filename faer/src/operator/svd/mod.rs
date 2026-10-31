@@ -50,7 +50,8 @@ fn iterate_lanczos<T: ComplexField>(
 							zip!(Pnext.rb_mut(), P.col(i)).for_each(
 								|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x,
 							);
-							converged[i] = r.abs() < f * Pnext.norm_l2();
+							// nan counts as converged so the loop ends
+							converged[i] = !(r.abs() >= f * Pnext.norm_l2());
 						}
 					}
 					if all_true {
@@ -93,7 +94,8 @@ fn iterate_lanczos<T: ComplexField>(
 							zip!(Qnext.rb_mut(), Q.col(i)).for_each(
 								|unzip!(y, x): Zip!(&mut _, &T)| *y -= r * x,
 							);
-							converged[i] = r.abs() < f * Qnext.norm_l2();
+							// nan counts as converged so the loop ends
+							converged[i] = !(r.abs() >= f * Qnext.norm_l2());
 						}
 					}
 					if all_true {

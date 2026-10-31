@@ -50,7 +50,8 @@ fn iterate_lanczos<T: ComplexField>(
 					if i + 1 == j {
 						h[i] += r;
 					}
-					converged[i] = r.abs() < f * Vnext.norm_l2();
+					// nan counts as converged so the loop ends
+					converged[i] = !(r.abs() >= f * Vnext.norm_l2());
 				}
 			}
 			if all_true {
