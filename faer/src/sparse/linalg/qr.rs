@@ -1398,6 +1398,8 @@ pub mod simplicial {
 		postorder: alloc::vec::Vec<I>,
 		postorder_inv: alloc::vec::Vec<I>,
 		desc_count: alloc::vec::Vec<I>,
+		// parent of each column in the column elimination tree, or `NONE`
+		etree: alloc::vec::Vec<I>,
 	}
 	impl<I: Index> SymbolicSimplicialQr<I> {
 		/// returns the number of rows of the matrix $A$
@@ -1715,6 +1717,15 @@ pub mod simplicial {
 		let mut post = try_zeroed::<I>(n)?;
 		let mut post_inv = try_zeroed::<I>(n)?;
 		let mut desc_count = try_zeroed::<I>(n)?;
+		let mut parent = try_zeroed::<I>(n)?;
+		for j in 0..n {
+			let p = etree.inner[j];
+			parent[j] = if p < I::Signed::truncate(0) {
+				I::truncate(NONE)
+			} else {
+				I::from_signed(p)
+			};
+		}
 		let h_non_zero_count = &mut *post_inv;
 		for i in 0..m {
 			let min_col = min_col[i];
@@ -1756,6 +1767,7 @@ pub mod simplicial {
 			postorder: post,
 			postorder_inv: post_inv,
 			desc_count,
+			etree: parent,
 			h_nnz,
 			l_nnz,
 		})
@@ -1847,7 +1859,15 @@ pub mod simplicial {
 					..householder_col_ptr[d + 1].zx()];
 				let d_h_val = &householder_val[householder_col_ptr[d].zx()
 					..householder_col_ptr[d + 1].zx()];
-				let mut intersects = false;
+				// the symbolic factorization assumes that the householder
+				// rows of every child in the elimination tree that were not
+				// used as a pivot move up to its parent. so the child's
+				// reflector is always applied, even when it does not
+				// intersect the current pattern; otherwise, a column can
+				// end up with no householder entries while the rows it
+				// would have consumed are carried further up the tree,
+				// overrunning the storage reserved for the ancestors.
+				let mut intersects = symbolic.etree[d] == I(j);
 				for i in d_h_pattern {
 					if marked[i.zx()] == I(j + 1) {
 						intersects = true;
@@ -3163,6 +3183,199 @@ mod tests {
 					Default::default(),
 				);
 			}
+		}
+	}
+
+	fn simplicial_qr_r_matches_ata(n: usize, cols: &[Vec<usize>], m: usize) {
+		let mut col_ptr = vec![0usize];
+		let mut row_idx: Vec<usize> = Vec::new();
+		for rows in cols {
+			row_idx.extend_from_slice(rows);
+			col_ptr.push(row_idx.len());
+		}
+		let vals = vec![1.0f64; row_idx.len()];
+		let A = SparseColMatRef::new(
+			SymbolicSparseColMatRef::new_unsorted_checked(
+				m, n, &col_ptr, None, &row_idx,
+			),
+			&vals,
+		);
+		let AT = A.transpose().to_col_major().unwrap();
+		with_dim!(M, m);
+		with_dim!(N, n);
+		let A_ghost = A.as_shape(M, N);
+		let AT_ghost = AT.as_ref().as_shape(N, M);
+		let mut etree = vec![0usize.to_signed(); n];
+		let mut post = vec![0usize; n];
+		let mut col_counts = vec![0usize; n];
+		let mut min_col = vec![0usize; m];
+		ghost_col_etree(
+			A_ghost.symbolic(),
+			None,
+			Array::from_mut(&mut etree, N),
+			MemStack::new(&mut MemBuffer::new(StackReq::new::<usize>(m + n))),
+		);
+		let etree_ =
+			Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
+		ghost_postorder(
+			Array::from_mut(&mut post, N),
+			etree_,
+			MemStack::new(&mut MemBuffer::new(StackReq::new::<usize>(3 * n))),
+		);
+		ghost_column_counts_aat(
+			Array::from_mut(&mut col_counts, N),
+			Array::from_mut(bytemuck::cast_slice_mut(&mut min_col), M),
+			AT_ghost.symbolic(),
+			None,
+			etree_,
+			Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+			MemStack::new(&mut MemBuffer::new(StackReq::new::<usize>(
+				5 * n + m,
+			))),
+		);
+		let symbolic = simplicial::factorize_simplicial_symbolic_qr::<usize>(
+			&min_col,
+			EliminationTreeRef::<'_, usize> { inner: &etree },
+			&col_counts,
+			MemStack::new(&mut MemBuffer::new(StackReq::new::<usize>(3 * n))),
+		)
+		.unwrap();
+		let mut r_col_ptr = vec![0usize; n + 1];
+		let mut r_row_idx = vec![0usize; symbolic.len_r()];
+		let mut householder_col_ptr = vec![0usize; n + 1];
+		let mut householder_row_idx = vec![0usize; symbolic.len_householder()];
+		let mut r_val = vec![0.0f64; symbolic.len_r()];
+		let mut householder_val = vec![0.0f64; symbolic.len_householder()];
+		let mut tau_val = vec![0.0f64; n];
+		simplicial::factorize_simplicial_numeric_qr_unsorted(
+			&mut r_col_ptr,
+			&mut r_row_idx,
+			&mut r_val,
+			&mut householder_col_ptr,
+			&mut householder_row_idx,
+			&mut householder_val,
+			&mut tau_val,
+			A,
+			None,
+			&symbolic,
+			MemStack::new(&mut MemBuffer::new(
+				simplicial::factorize_simplicial_numeric_qr_scratch::<usize, f64>(
+					&symbolic,
+				),
+			)),
+		);
+		let r = SparseColMatRef::<'_, usize, f64>::new(
+			SymbolicSparseColMatRef::new_unsorted_checked(
+				n, n, &r_col_ptr, None, &r_row_idx,
+			),
+			&r_val,
+		)
+		.to_dense();
+		let a = A.to_dense();
+		let ata = a.transpose() * &a;
+		let rtr = r.transpose() * &r;
+		assert!((&ata - &rtr).norm_max() < 1e-10);
+	}
+
+	#[test]
+	fn test_gh_275_simplicial_qr_r_factor() {
+		// the matrix from gh-275, with its columns already in the order
+		// chosen by the fill reducing permutation
+		let m = 22;
+		let cols = [
+			vec![2],
+			vec![0, 1, 2, 3],
+			vec![0, 1, 2, 3],
+			vec![2],
+			(2..22).collect::<Vec<_>>(),
+			(2..22).collect::<Vec<_>>(),
+		];
+		simplicial_qr_r_matches_ata(cols.len(), &cols, m);
+
+		// random structurally rank deficient matrices: the columns are
+		// drawn from a smaller set of distinct patterns, so most of them
+		// have structural duplicates
+		let mut state = 0x2545_F491_4F6C_DD1Du64;
+		let mut next = |bound: usize| {
+			state ^= state << 13;
+			state ^= state >> 7;
+			state ^= state << 17;
+			(state % bound as u64) as usize
+		};
+		for _ in 0..500 {
+			let m = 1 + next(12);
+			let n_distinct = 1 + next(5);
+			let mut distinct = alloc::vec::Vec::new();
+			for _ in 0..n_distinct {
+				let mut rows: alloc::vec::Vec<usize> =
+					(0..m).filter(|_| next(3) == 0).collect();
+				if rows.is_empty() {
+					rows.push(next(m));
+				}
+				distinct.push(rows);
+			}
+			let n = 2 * n_distinct;
+			let mut cols = alloc::vec::Vec::new();
+			for _ in 0..n {
+				cols.push(distinct[next(n_distinct)].clone());
+			}
+			simplicial_qr_r_matches_ata(n, &cols, m);
+		}
+	}
+
+	#[test]
+	fn test_gh_275_simplicial_qr_duplicate_columns() {
+		// 22 x 6, all values 1.0; columns come in structurally identical
+		// pairs, which makes the matrix rank deficient
+		let (m, n) = (22usize, 6usize);
+		let mut col_ptr = vec![0usize];
+		let mut row_idx: Vec<usize> = Vec::new();
+		for rows in [
+			vec![0, 1, 2, 3],
+			vec![0, 1, 2, 3],
+			(2..22).collect::<Vec<_>>(),
+			(2..22).collect::<Vec<_>>(),
+			vec![2],
+			vec![2],
+		] {
+			row_idx.extend_from_slice(&rows);
+			col_ptr.push(row_idx.len());
+		}
+		let vals = vec![1.0f64; row_idx.len()];
+		let sym_a = SymbolicSparseColMatRef::new_unsorted_checked(
+			m, n, &col_ptr, None, &row_idx,
+		);
+		let a = SparseColMatRef::new(sym_a, &vals);
+
+		for threshold in [
+			SupernodalThreshold::FORCE_SIMPLICIAL,
+			SupernodalThreshold::AUTO,
+		] {
+			let symbolic = factorize_symbolic_qr(
+				sym_a,
+				QrSymbolicParams {
+					supernodal_flop_ratio_threshold: threshold,
+					..Default::default()
+				},
+			)
+			.unwrap();
+			let mut indices = vec![0usize; symbolic.len_idx()];
+			let mut val = vec![0.0f64; symbolic.len_val()];
+			let qr = symbolic.factorize_numeric_qr::<f64>(
+				&mut indices,
+				&mut val,
+				a,
+				Par::Seq,
+				MemStack::new(&mut MemBuffer::new(
+					symbolic.factorize_numeric_qr_scratch::<f64>(
+						Par::Seq,
+						Default::default(),
+					),
+				)),
+				Default::default(),
+			);
+
+			_ = qr;
 		}
 	}
 }
