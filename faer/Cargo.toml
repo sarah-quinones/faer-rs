@@ -27,7 +27,7 @@ rayon = { version = "1.11.0", optional = true }
 # the parallel route: `Par::Team` runs its regions on a threadteam team, see src/utils/team.rs.
 # Optional, so that a no_std build (`--no-default-features`, `faer-no-std-test`) has no parallel
 # route at all: `Par::Seq` is the only token it carries, and nothing pulls std in through Rayon.
-threadteam = { version = "0.2.0", default-features = false, optional = true }
+threadteam = { version = "0.3.0", default-features = false, optional = true }
 log = { version = "0.4.29", optional = true }
 rand = { version = "0.9.2", optional = true }
 rand_distr = { version = "0.5.1", optional = true }
