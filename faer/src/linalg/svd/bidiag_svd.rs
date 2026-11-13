@@ -242,12 +242,15 @@ pub(crate) fn secular_eq_root_finder<T: RealField>(
 	};
 	let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
 		secant(args.0, args.1, args.2, args.3);
+	// the secant iterates may leave the bracket (e.g. overshoot past the pole
+	// when the root is very close to it). the sign of the secular function is
+	// meaningless there, so only use candidates that shrink the bracket
 	match (left_candidate, right_candidate) {
 		(Some(left), Some(right)) if left < right => {
-			if left > left_shifted {
+			if left > left_shifted && left < right_shifted {
 				left_shifted = left;
 			}
-			if right < right_shifted {
+			if right < right_shifted && right > left_shifted {
 				right_shifted = right;
 			}
 		},
