@@ -5,6 +5,7 @@
 - fix uninit read in AMD ordering
 - remove serde support
 - fix wrong strides in MatMut::from_row_major_slice_with_stride_mut
+- fix NaN singular vectors from the divide-and-conquer svd when a secular equation root lies very close to a pole
 
 # 0.23
 - generalized eigendecomposition
