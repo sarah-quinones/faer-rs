@@ -1053,6 +1053,42 @@ mod tests {
 		assert!(d[n - 1] != 0.0);
 	}
 	#[test]
+	fn test_secular_root_bracket() {
+		// the secular equation of the top-level divide and conquer merge has a
+		// root extremely close to one of its poles. the secant step overshoots
+		// past the pole and used to shrink the bisection bracket to an empty
+		// interval, which placed the root outside of its interval and produced
+		// NaN singular vectors
+		let diag = [0.0, 0.1, 2.1, 1.0, 1.4, 6e-9, 4e-9, 8.17e-9, 5.8e-9];
+		let subdiag = [1.0, 1.64, 1.8, 6.4e-3, 3.2e-6, 3e-9, 3e-9, 6.1e-9];
+		let k = diag.len();
+		let mat = Mat::<f64>::from_fn(k, k, |i, j| {
+			if i == j {
+				diag[i]
+			} else if j == i + 1 {
+				subdiag[i]
+			} else {
+				0.0
+			}
+		});
+		test_svd(mat.as_ref());
+		test_svd(mat.map(|&x| c64::new(x, 0.0)).as_ref());
+		// same block embedded in a matrix large enough to use divide and
+		// conquer with the default parameters
+		let n = 128;
+		let mut padded = Mat::<f64>::zeros(n, n);
+		padded.submatrix_mut(60, 60, k, k).copy_from(&mat);
+		let mat = padded;
+		let svd = mat.thin_svd().unwrap();
+		let (u, s, v) = (svd.U(), svd.S(), svd.V());
+		assert!(all(u.is_all_finite(), v.is_all_finite()));
+		let approx_eq =
+			CwiseMat(ApproxEq::<f64>::eps() * (8.0 * n as f64).sqrt());
+		assert!(u * s * v.adjoint() ~ mat);
+		assert!(u.adjoint() * u ~ Mat::<f64>::identity(n, n));
+		assert!(v.adjoint() * v ~ Mat::<f64>::identity(n, n));
+	}
+	#[test]
 	fn test_pinv() {
 		let rng = &mut StdRng::seed_from_u64(0);
 		let m = 6;
