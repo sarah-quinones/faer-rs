@@ -308,15 +308,30 @@ fn hessenberg_to_qz_unblocked<T: ComplexField>(
 				let ad22 = H[(ilast, ilast)].mul_real(&ascale)
 					* T[(ilast, ilast)].mul_real(&bscale).recip();
 				let abi22 = &ad22 - &u12 * &ad21;
-				let t1 = (&ad11 + &abi22).mul_real(from_f64::<T::Real>(0.5));
-				let rtdisc = (&t1 * &t1 + &ad12 * &ad21 - &ad11 * &ad22).sqrt();
-				let diff = &t1 - &abi22;
-				let temp =
-					diff.real() * rtdisc.real() + diff.imag() * rtdisc.imag();
-				if temp <= zero() {
-					shift = &t1 + &rtdisc;
+				let abi12 = &ad12 - &u12 * &ad11;
+				// the discriminant is formed from the half difference of the
+				// diagonal entries, as in zhgeqz, rather than as t^2 - det,
+				// which cancels catastrophically when the two eigenvalues are
+				// close relative to their magnitude
+				let ctemp = abi12.sqrt() * ad21.sqrt();
+				if ctemp == zero() {
+					shift = abi22;
 				} else {
-					shift = &t1 - &rtdisc;
+					let x = (&ad11 - &abi22).mul_real(from_f64::<T::Real>(0.5));
+					let temp2 = x.abs1();
+					let temp = ctemp.abs1().fmax(&temp2);
+					let temp_inv = temp.recip();
+					let xs = x.mul_real(&temp_inv);
+					let cs = ctemp.mul_real(&temp_inv);
+					let mut y = (&xs * &xs + &cs * &cs).sqrt().mul_real(&temp);
+					if temp2 > zero() {
+						let xs = x.mul_real(temp2.recip());
+						if xs.real() * y.real() + xs.imag() * y.imag() < zero()
+						{
+							y = -&y;
+						}
+					}
+					shift = &abi22 - &ctemp * (&ctemp * (&x + &y).recip());
 				}
 			} else {
 				eshift = &eshift
@@ -1653,6 +1668,66 @@ mod tests {
 						assert!(A_clone[(i, j)] == c64::ZERO);
 					}
 				}
+			}
+		}
+	}
+	#[test]
+	fn test_qz_cplx_close_eigenvalues() {
+		// pencils whose two eigenvalues are close relative to their magnitude.
+		// the second is the trailing block of a 135x135 pencil at the point
+		// where the iteration used to stall on it.
+		let c = |re: f64| c64::new(re, 0.0);
+		let cases = [
+			(
+				[[c(1.0), c(1e-9)], [c(1e-9), c(1.0)]],
+				[[c(1.0), c(0.0)], [c(0.0), c(1.0)]],
+				[c(1.0 - 1e-9), c(1.0 + 1e-9)],
+			),
+			(
+				[
+					[c(-0.9999999999455889), c(3.3637580359643026e-11)],
+					[c(-1.6257203916566356e-12), c(0.9999999999897714)],
+				],
+				[
+					[c(0.000993542639796518), c(-4.4024658902599564e-14)],
+					[c(0.0), c(-0.0009935426398441707)],
+				],
+				[
+					c64::new(-1006.4993286533766, -3.7362311181249534e-9),
+					c64::new(-1006.4993286533766, 3.7362311181249534e-9),
+				],
+			),
+		];
+		for (A, B, expected) in cases {
+			let A = MatRef::from_row_major_array(&A).to_owned();
+			let B = MatRef::from_row_major_array(&B).to_owned();
+			let mut Q = Mat::identity(2, 2);
+			let mut Z = Mat::identity(2, 2);
+			let mut A_clone = A.clone();
+			let mut B_clone = B.clone();
+			let mut alpha = Col::full(2, c64::new(f64::NAN, f64::NAN));
+			let mut beta = Col::full(2, c64::new(f64::NAN, f64::NAN));
+			hessenberg_to_qz_unblocked(
+				0,
+				1,
+				A_clone.as_mut(),
+				B_clone.as_mut(),
+				Some(Q.as_mut()),
+				Some(Z.as_mut()),
+				alpha.as_mut(),
+				beta.as_mut(),
+				false,
+			);
+			assert!((&Q * &A_clone * Z.adjoint() - &A).norm_max() < 1e-13);
+			assert!((&Q * &B_clone * Z.adjoint() - &B).norm_max() < 1e-13);
+			assert!(A_clone[(1, 0)] == c64::ZERO);
+			assert!(B_clone[(1, 0)] == c64::ZERO);
+			for expected in expected {
+				let found = (0..2).any(|j| {
+					(alpha[j] / beta[j] - expected).norm()
+						< 1e-12 * expected.norm()
+				});
+				assert!(found);
 			}
 		}
 	}
